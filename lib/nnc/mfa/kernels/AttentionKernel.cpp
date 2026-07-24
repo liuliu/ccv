@@ -448,7 +448,7 @@ std::string AttentionKernel::createSource() const noexcept {
     source.SetValue("BLOCK_DIMENSIONS_PARALLELIZATION", std::to_string(blockDimensions[0]));
     source.SetValue("BLOCK_DIMENSIONS_TRAVERSAL", std::to_string(blockDimensions[1]));
     source.SetValue("BLOCK_MASK_THREADS", std::to_string(blockMaskThreads));
-    source.SetValue("SLIDING_WINDOW", std::to_string(slidingWindow));
+    source.SetValue("SLIDING_WINDOW", "sliding_window");
     source += R"(
 kernel void generate_attention_block_mask(
     device const {{MEMORY_NAME_Q}} *Mask_buf [[buffer(15)]],
@@ -619,6 +619,9 @@ std::string AttentionKernel::createConstants() const noexcept {
     output += "  constant uint Block_mask_batch_stride [[function_constant(26)]];\n";
     output += "  constant uint K_block_tiles = (C + " + std::to_string(blockDimensions[1]) + " - 1) / " + std::to_string(blockDimensions[1]) + ";\n";
     output += "  constant float MASKED_THRESHOLD = " + maskedThreshold.str() + ";\n";
+  }
+  if (type.value == AttentionKernelType::forward && slidingWindow > 0) {
+    output += "\n  constant uint sliding_window [[function_constant(27)]];\n";
   }
   return R"(
 
@@ -902,7 +905,7 @@ std::string AttentionKernel::loopForwardMasked() const noexcept {
   source.SetValue("MARK_ACCUMULATED", masked ? "    has_accumulated = true;\n" : "");
   source.SetValue("R_LENGTH", parallelizationDimensionValue());
   source.SetValue("C_LENGTH", traversalDimensionValue());
-  source.SetValue("SLIDING_WINDOW", std::to_string(slidingWindow));
+  source.SetValue("SLIDING_WINDOW", "sliding_window");
   if (isCausal) {
     source += R"(
 
@@ -3316,7 +3319,7 @@ std::string AttentionKernel::maskAttentionMatrix() const noexcept {
 	  }
   if (isCausal) {
     if (slidingWindow > 0) {
-      source.SetValue("CAUSAL_VALID", " && int(column) <= int(row) + int(" + traversalDimensionValue() + ") - int(" + parallelizationDimensionValue() + ") && int(column) >= int(row) + int(" + traversalDimensionValue() + ") - int(" + parallelizationDimensionValue() + ") + 1 - int(" + std::to_string(slidingWindow) + ")");
+      source.SetValue("CAUSAL_VALID", " && int(column) <= int(row) + int(" + traversalDimensionValue() + ") - int(" + parallelizationDimensionValue() + ") && int(column) >= int(row) + int(" + traversalDimensionValue() + ") - int(" + parallelizationDimensionValue() + ") + 1 - int(sliding_window)");
     } else {
       source.SetValue("CAUSAL_VALID", " && int(column) <= int(row) + int(" + traversalDimensionValue() + ") - int(" + parallelizationDimensionValue() + ")");
     }
@@ -3594,7 +3597,7 @@ std::string AttentionKernel::softmax(bool derivative, bool scoresAlreadyScaled) 
         if (isCausal) {
           causalValidation = " && int(column) <= int(row) + int(" + traversalDimensionValue() + ") - int(" + parallelizationDimensionValue() + ")";
           if (slidingWindow > 0) {
-            causalValidation += " && int(column) >= int(row) + int(" + traversalDimensionValue() + ") - int(" + parallelizationDimensionValue() + ") + 1 - int(" + std::to_string(slidingWindow) + ")";
+            causalValidation += " && int(column) >= int(row) + int(" + traversalDimensionValue() + ") - int(" + parallelizationDimensionValue() + ") + 1 - int(sliding_window)";
           }
         }
         source.SetValue("VALIDATE_P", R"(

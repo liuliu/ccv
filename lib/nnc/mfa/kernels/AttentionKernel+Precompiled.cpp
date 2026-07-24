@@ -6,9 +6,6 @@ extern "C" {
 }
 
 MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor descriptor, MTL::Device *const device, NS::Error **error) const noexcept {
-  if (descriptor.slidingWindow > 0 || descriptor.groupedQuery) {
-    return 0;
-  }
   if (transposeState[AttentionOperand::Q].value_or(true) ||
       transposeState[AttentionOperand::K].value_or(true) ||
       transposeState[AttentionOperand::V].value_or(true) ||
@@ -45,7 +42,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 40 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x128x32_h40_i1_t1_cqo_b0_c0_l1_iphoneos_metallib, sizeof(f_b32x128x32_h40_i1_t1_cqo_b0_c0_l1_iphoneos_metallib), NULL, 0);
@@ -61,7 +58,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 40 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x128x32_h40_i1_t1_cqo_b0_c0_l1_sinks1_iphoneos_metallib, sizeof(f_b32x128x32_h40_i1_t1_cqo_b0_c0_l1_sinks1_iphoneos_metallib), NULL, 0);
@@ -77,7 +74,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 40 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 1 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x128x32_h40_i1_t1_cqo_b0_c0_l1_causal1_masked0_varlen0_iphoneos_metallib, sizeof(f_b32x128x32_h40_i1_t1_cqo_b0_c0_l1_causal1_masked0_varlen0_iphoneos_metallib), NULL, 0);
@@ -93,7 +90,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 40 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 1 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x128x32_h40_i1_t1_cqo_b0_c0_l1_causal1_masked0_varlen0_sinks1_iphoneos_metallib, sizeof(f_b32x128x32_h40_i1_t1_cqo_b0_c0_l1_causal1_masked0_varlen0_sinks1_iphoneos_metallib), NULL, 0);
@@ -109,7 +106,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 40 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 0 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x128x32_h40_i1_t1_cqo_b0_c0_l1_causal0_masked1_varlen0_iphoneos_metallib, sizeof(f_b32x128x32_h40_i1_t1_cqo_b0_c0_l1_causal0_masked1_varlen0_iphoneos_metallib), NULL, 0);
@@ -125,7 +122,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 40 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 0 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x128x32_h40_i1_t1_cqo_b0_c0_l1_causal0_masked1_varlen0_sinks1_iphoneos_metallib, sizeof(f_b32x128x32_h40_i1_t1_cqo_b0_c0_l1_causal0_masked1_varlen0_sinks1_iphoneos_metallib), NULL, 0);
@@ -141,7 +138,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 40 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 1 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x128x32_h40_i1_t1_cqo_b0_c0_l1_causal1_masked1_varlen0_iphoneos_metallib, sizeof(f_b32x128x32_h40_i1_t1_cqo_b0_c0_l1_causal1_masked1_varlen0_iphoneos_metallib), NULL, 0);
@@ -157,7 +154,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 40 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 1 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x128x32_h40_i1_t1_cqo_b0_c0_l1_causal1_masked1_varlen0_sinks1_iphoneos_metallib, sizeof(f_b32x128x32_h40_i1_t1_cqo_b0_c0_l1_causal1_masked1_varlen0_sinks1_iphoneos_metallib), NULL, 0);
@@ -173,7 +170,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 40 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x128x32_h40_i1_t1_cqo_b0_c0_l1_causal0_masked0_varlen1_iphoneos_metallib, sizeof(f_b32x128x32_h40_i1_t1_cqo_b0_c0_l1_causal0_masked0_varlen1_iphoneos_metallib), NULL, 0);
@@ -189,7 +186,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 40 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x128x32_h40_i1_t1_cqo_b0_c0_l1_causal0_masked0_varlen1_sinks1_iphoneos_metallib, sizeof(f_b32x128x32_h40_i1_t1_cqo_b0_c0_l1_causal0_masked0_varlen1_sinks1_iphoneos_metallib), NULL, 0);
@@ -205,7 +202,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 40 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 1 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x128x32_h40_i1_t1_cqo_b0_c0_l1_causal1_masked0_varlen1_iphoneos_metallib, sizeof(f_b32x128x32_h40_i1_t1_cqo_b0_c0_l1_causal1_masked0_varlen1_iphoneos_metallib), NULL, 0);
@@ -221,7 +218,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 40 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 1 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x128x32_h40_i1_t1_cqo_b0_c0_l1_causal1_masked0_varlen1_sinks1_iphoneos_metallib, sizeof(f_b32x128x32_h40_i1_t1_cqo_b0_c0_l1_causal1_masked0_varlen1_sinks1_iphoneos_metallib), NULL, 0);
@@ -232,12 +229,76 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     dispatch_release(data);
     return library;
 
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 32 && blockDimensions[1] == 128 && blockDimensions[2] == 32 &&
+    headDimension == 40 &&
+    lowPrecisionIntermediates == 1 && isBF16 == 0 &&
+    isCausal == 1 && masked == 0 && isVarlen == 0 &&
+    attentionSinks == 0 && slidingWindow > 0 &&
+    preferAsyncCache == 0 && preferAsyncLoad == 1) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b32x128x32_h40_i1_t1_cqo_b0_c0_l1_causal1_masked0_varlen0_sliding1_iphoneos_metallib, sizeof(f_b32x128x32_h40_i1_t1_cqo_b0_c0_l1_causal1_masked0_varlen0_sliding1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b32x128x32_h40_i1_t1_cqo_b0_c0_l1_causal1_masked0_varlen0_sliding1_macosx_metallib, sizeof(f_b32x128x32_h40_i1_t1_cqo_b0_c0_l1_causal1_masked0_varlen0_sliding1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 32 && blockDimensions[1] == 128 && blockDimensions[2] == 32 &&
+    headDimension == 40 &&
+    lowPrecisionIntermediates == 1 && isBF16 == 0 &&
+    isCausal == 1 && masked == 0 && isVarlen == 0 &&
+    attentionSinks == 1 && slidingWindow > 0 &&
+    preferAsyncCache == 0 && preferAsyncLoad == 1) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b32x128x32_h40_i1_t1_cqo_b0_c0_l1_causal1_masked0_varlen0_sliding1_sinks1_iphoneos_metallib, sizeof(f_b32x128x32_h40_i1_t1_cqo_b0_c0_l1_causal1_masked0_varlen0_sliding1_sinks1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b32x128x32_h40_i1_t1_cqo_b0_c0_l1_causal1_masked0_varlen0_sliding1_sinks1_macosx_metallib, sizeof(f_b32x128x32_h40_i1_t1_cqo_b0_c0_l1_causal1_masked0_varlen0_sliding1_sinks1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 32 && blockDimensions[1] == 128 && blockDimensions[2] == 32 &&
+    headDimension == 40 &&
+    lowPrecisionIntermediates == 1 && isBF16 == 0 &&
+    isCausal == 1 && masked == 1 && isVarlen == 0 &&
+    attentionSinks == 0 && slidingWindow > 0 &&
+    preferAsyncCache == 0 && preferAsyncLoad == 1) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b32x128x32_h40_i1_t1_cqo_b0_c0_l1_causal1_masked1_varlen0_sliding1_iphoneos_metallib, sizeof(f_b32x128x32_h40_i1_t1_cqo_b0_c0_l1_causal1_masked1_varlen0_sliding1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b32x128x32_h40_i1_t1_cqo_b0_c0_l1_causal1_masked1_varlen0_sliding1_macosx_metallib, sizeof(f_b32x128x32_h40_i1_t1_cqo_b0_c0_l1_causal1_masked1_varlen0_sliding1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 32 && blockDimensions[1] == 128 && blockDimensions[2] == 32 &&
+    headDimension == 40 &&
+    lowPrecisionIntermediates == 1 && isBF16 == 0 &&
+    isCausal == 1 && masked == 1 && isVarlen == 0 &&
+    attentionSinks == 1 && slidingWindow > 0 &&
+    preferAsyncCache == 0 && preferAsyncLoad == 1) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b32x128x32_h40_i1_t1_cqo_b0_c0_l1_causal1_masked1_varlen0_sliding1_sinks1_iphoneos_metallib, sizeof(f_b32x128x32_h40_i1_t1_cqo_b0_c0_l1_causal1_masked1_varlen0_sliding1_sinks1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b32x128x32_h40_i1_t1_cqo_b0_c0_l1_causal1_masked1_varlen0_sliding1_sinks1_macosx_metallib, sizeof(f_b32x128x32_h40_i1_t1_cqo_b0_c0_l1_causal1_masked1_varlen0_sliding1_sinks1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
   } else if (type.value == AttentionKernelType::backwardQuery &&
     blockDimensions[0] == 32 && blockDimensions[1] == 64 && blockDimensions[2] == 32 &&
     headDimension == 40 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(bq_b32x64x32_h40_i1_t1_cdq_b0_c0_l1_iphoneos_metallib, sizeof(bq_b32x64x32_h40_i1_t1_cdq_b0_c0_l1_iphoneos_metallib), NULL, 0);
@@ -253,7 +314,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 40 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(bkv_b32x80x32_h40_i1_t1_cdv_b0_c0_l1_iphoneos_metallib, sizeof(bkv_b32x80x32_h40_i1_t1_cdv_b0_c0_l1_iphoneos_metallib), NULL, 0);
@@ -269,7 +330,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 64 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x128x32_h64_i1_t1_cqo_b0_c0_l1_iphoneos_metallib, sizeof(f_b32x128x32_h64_i1_t1_cqo_b0_c0_l1_iphoneos_metallib), NULL, 0);
@@ -285,7 +346,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 64 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x128x32_h64_i1_t1_cqo_b0_c0_l1_sinks1_iphoneos_metallib, sizeof(f_b32x128x32_h64_i1_t1_cqo_b0_c0_l1_sinks1_iphoneos_metallib), NULL, 0);
@@ -301,7 +362,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 64 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 1 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x128x32_h64_i1_t1_cqo_b0_c0_l1_causal1_masked0_varlen0_iphoneos_metallib, sizeof(f_b32x128x32_h64_i1_t1_cqo_b0_c0_l1_causal1_masked0_varlen0_iphoneos_metallib), NULL, 0);
@@ -317,7 +378,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 64 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 1 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x128x32_h64_i1_t1_cqo_b0_c0_l1_causal1_masked0_varlen0_sinks1_iphoneos_metallib, sizeof(f_b32x128x32_h64_i1_t1_cqo_b0_c0_l1_causal1_masked0_varlen0_sinks1_iphoneos_metallib), NULL, 0);
@@ -333,7 +394,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 64 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 0 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x128x32_h64_i1_t1_cqo_b0_c0_l1_causal0_masked1_varlen0_iphoneos_metallib, sizeof(f_b32x128x32_h64_i1_t1_cqo_b0_c0_l1_causal0_masked1_varlen0_iphoneos_metallib), NULL, 0);
@@ -349,7 +410,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 64 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 0 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x128x32_h64_i1_t1_cqo_b0_c0_l1_causal0_masked1_varlen0_sinks1_iphoneos_metallib, sizeof(f_b32x128x32_h64_i1_t1_cqo_b0_c0_l1_causal0_masked1_varlen0_sinks1_iphoneos_metallib), NULL, 0);
@@ -365,7 +426,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 64 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 1 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x128x32_h64_i1_t1_cqo_b0_c0_l1_causal1_masked1_varlen0_iphoneos_metallib, sizeof(f_b32x128x32_h64_i1_t1_cqo_b0_c0_l1_causal1_masked1_varlen0_iphoneos_metallib), NULL, 0);
@@ -381,7 +442,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 64 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 1 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x128x32_h64_i1_t1_cqo_b0_c0_l1_causal1_masked1_varlen0_sinks1_iphoneos_metallib, sizeof(f_b32x128x32_h64_i1_t1_cqo_b0_c0_l1_causal1_masked1_varlen0_sinks1_iphoneos_metallib), NULL, 0);
@@ -397,7 +458,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 64 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x128x32_h64_i1_t1_cqo_b0_c0_l1_causal0_masked0_varlen1_iphoneos_metallib, sizeof(f_b32x128x32_h64_i1_t1_cqo_b0_c0_l1_causal0_masked0_varlen1_iphoneos_metallib), NULL, 0);
@@ -413,7 +474,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 64 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x128x32_h64_i1_t1_cqo_b0_c0_l1_causal0_masked0_varlen1_sinks1_iphoneos_metallib, sizeof(f_b32x128x32_h64_i1_t1_cqo_b0_c0_l1_causal0_masked0_varlen1_sinks1_iphoneos_metallib), NULL, 0);
@@ -429,7 +490,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 64 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 1 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x128x32_h64_i1_t1_cqo_b0_c0_l1_causal1_masked0_varlen1_iphoneos_metallib, sizeof(f_b32x128x32_h64_i1_t1_cqo_b0_c0_l1_causal1_masked0_varlen1_iphoneos_metallib), NULL, 0);
@@ -445,7 +506,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 64 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 1 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x128x32_h64_i1_t1_cqo_b0_c0_l1_causal1_masked0_varlen1_sinks1_iphoneos_metallib, sizeof(f_b32x128x32_h64_i1_t1_cqo_b0_c0_l1_causal1_masked0_varlen1_sinks1_iphoneos_metallib), NULL, 0);
@@ -456,12 +517,76 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     dispatch_release(data);
     return library;
 
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 32 && blockDimensions[1] == 128 && blockDimensions[2] == 32 &&
+    headDimension == 64 &&
+    lowPrecisionIntermediates == 1 && isBF16 == 0 &&
+    isCausal == 1 && masked == 0 && isVarlen == 0 &&
+    attentionSinks == 0 && slidingWindow > 0 &&
+    preferAsyncCache == 0 && preferAsyncLoad == 1) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b32x128x32_h64_i1_t1_cqo_b0_c0_l1_causal1_masked0_varlen0_sliding1_iphoneos_metallib, sizeof(f_b32x128x32_h64_i1_t1_cqo_b0_c0_l1_causal1_masked0_varlen0_sliding1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b32x128x32_h64_i1_t1_cqo_b0_c0_l1_causal1_masked0_varlen0_sliding1_macosx_metallib, sizeof(f_b32x128x32_h64_i1_t1_cqo_b0_c0_l1_causal1_masked0_varlen0_sliding1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 32 && blockDimensions[1] == 128 && blockDimensions[2] == 32 &&
+    headDimension == 64 &&
+    lowPrecisionIntermediates == 1 && isBF16 == 0 &&
+    isCausal == 1 && masked == 0 && isVarlen == 0 &&
+    attentionSinks == 1 && slidingWindow > 0 &&
+    preferAsyncCache == 0 && preferAsyncLoad == 1) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b32x128x32_h64_i1_t1_cqo_b0_c0_l1_causal1_masked0_varlen0_sliding1_sinks1_iphoneos_metallib, sizeof(f_b32x128x32_h64_i1_t1_cqo_b0_c0_l1_causal1_masked0_varlen0_sliding1_sinks1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b32x128x32_h64_i1_t1_cqo_b0_c0_l1_causal1_masked0_varlen0_sliding1_sinks1_macosx_metallib, sizeof(f_b32x128x32_h64_i1_t1_cqo_b0_c0_l1_causal1_masked0_varlen0_sliding1_sinks1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 32 && blockDimensions[1] == 128 && blockDimensions[2] == 32 &&
+    headDimension == 64 &&
+    lowPrecisionIntermediates == 1 && isBF16 == 0 &&
+    isCausal == 1 && masked == 1 && isVarlen == 0 &&
+    attentionSinks == 0 && slidingWindow > 0 &&
+    preferAsyncCache == 0 && preferAsyncLoad == 1) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b32x128x32_h64_i1_t1_cqo_b0_c0_l1_causal1_masked1_varlen0_sliding1_iphoneos_metallib, sizeof(f_b32x128x32_h64_i1_t1_cqo_b0_c0_l1_causal1_masked1_varlen0_sliding1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b32x128x32_h64_i1_t1_cqo_b0_c0_l1_causal1_masked1_varlen0_sliding1_macosx_metallib, sizeof(f_b32x128x32_h64_i1_t1_cqo_b0_c0_l1_causal1_masked1_varlen0_sliding1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 32 && blockDimensions[1] == 128 && blockDimensions[2] == 32 &&
+    headDimension == 64 &&
+    lowPrecisionIntermediates == 1 && isBF16 == 0 &&
+    isCausal == 1 && masked == 1 && isVarlen == 0 &&
+    attentionSinks == 1 && slidingWindow > 0 &&
+    preferAsyncCache == 0 && preferAsyncLoad == 1) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b32x128x32_h64_i1_t1_cqo_b0_c0_l1_causal1_masked1_varlen0_sliding1_sinks1_iphoneos_metallib, sizeof(f_b32x128x32_h64_i1_t1_cqo_b0_c0_l1_causal1_masked1_varlen0_sliding1_sinks1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b32x128x32_h64_i1_t1_cqo_b0_c0_l1_causal1_masked1_varlen0_sliding1_sinks1_macosx_metallib, sizeof(f_b32x128x32_h64_i1_t1_cqo_b0_c0_l1_causal1_masked1_varlen0_sliding1_sinks1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
   } else if (type.value == AttentionKernelType::backwardQuery &&
     blockDimensions[0] == 32 && blockDimensions[1] == 64 && blockDimensions[2] == 32 &&
     headDimension == 64 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(bq_b32x64x32_h64_i1_t1_cdq_b0_c0_l1_iphoneos_metallib, sizeof(bq_b32x64x32_h64_i1_t1_cdq_b0_c0_l1_iphoneos_metallib), NULL, 0);
@@ -477,7 +602,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 64 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(bkv_b32x64x32_h64_i1_t1_cdv_b0_c0_l1_iphoneos_metallib, sizeof(bkv_b32x64x32_h64_i1_t1_cdv_b0_c0_l1_iphoneos_metallib), NULL, 0);
@@ -493,7 +618,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 80 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x128x32_h80_i1_t1_cqo_b0_c0_l1_iphoneos_metallib, sizeof(f_b32x128x32_h80_i1_t1_cqo_b0_c0_l1_iphoneos_metallib), NULL, 0);
@@ -509,7 +634,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 80 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x128x32_h80_i1_t1_cqo_b0_c0_l1_sinks1_iphoneos_metallib, sizeof(f_b32x128x32_h80_i1_t1_cqo_b0_c0_l1_sinks1_iphoneos_metallib), NULL, 0);
@@ -525,7 +650,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 80 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 1 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x128x32_h80_i1_t1_cqo_b0_c0_l1_causal1_masked0_varlen0_iphoneos_metallib, sizeof(f_b32x128x32_h80_i1_t1_cqo_b0_c0_l1_causal1_masked0_varlen0_iphoneos_metallib), NULL, 0);
@@ -541,7 +666,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 80 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 1 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x128x32_h80_i1_t1_cqo_b0_c0_l1_causal1_masked0_varlen0_sinks1_iphoneos_metallib, sizeof(f_b32x128x32_h80_i1_t1_cqo_b0_c0_l1_causal1_masked0_varlen0_sinks1_iphoneos_metallib), NULL, 0);
@@ -557,7 +682,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 80 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 0 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x128x32_h80_i1_t1_cqo_b0_c0_l1_causal0_masked1_varlen0_iphoneos_metallib, sizeof(f_b32x128x32_h80_i1_t1_cqo_b0_c0_l1_causal0_masked1_varlen0_iphoneos_metallib), NULL, 0);
@@ -573,7 +698,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 80 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 0 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x128x32_h80_i1_t1_cqo_b0_c0_l1_causal0_masked1_varlen0_sinks1_iphoneos_metallib, sizeof(f_b32x128x32_h80_i1_t1_cqo_b0_c0_l1_causal0_masked1_varlen0_sinks1_iphoneos_metallib), NULL, 0);
@@ -589,7 +714,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 80 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 1 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x128x32_h80_i1_t1_cqo_b0_c0_l1_causal1_masked1_varlen0_iphoneos_metallib, sizeof(f_b32x128x32_h80_i1_t1_cqo_b0_c0_l1_causal1_masked1_varlen0_iphoneos_metallib), NULL, 0);
@@ -605,7 +730,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 80 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 1 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x128x32_h80_i1_t1_cqo_b0_c0_l1_causal1_masked1_varlen0_sinks1_iphoneos_metallib, sizeof(f_b32x128x32_h80_i1_t1_cqo_b0_c0_l1_causal1_masked1_varlen0_sinks1_iphoneos_metallib), NULL, 0);
@@ -621,7 +746,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 80 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x128x32_h80_i1_t1_cqo_b0_c0_l1_causal0_masked0_varlen1_iphoneos_metallib, sizeof(f_b32x128x32_h80_i1_t1_cqo_b0_c0_l1_causal0_masked0_varlen1_iphoneos_metallib), NULL, 0);
@@ -637,7 +762,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 80 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x128x32_h80_i1_t1_cqo_b0_c0_l1_causal0_masked0_varlen1_sinks1_iphoneos_metallib, sizeof(f_b32x128x32_h80_i1_t1_cqo_b0_c0_l1_causal0_masked0_varlen1_sinks1_iphoneos_metallib), NULL, 0);
@@ -653,7 +778,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 80 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 1 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x128x32_h80_i1_t1_cqo_b0_c0_l1_causal1_masked0_varlen1_iphoneos_metallib, sizeof(f_b32x128x32_h80_i1_t1_cqo_b0_c0_l1_causal1_masked0_varlen1_iphoneos_metallib), NULL, 0);
@@ -669,7 +794,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 80 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 1 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x128x32_h80_i1_t1_cqo_b0_c0_l1_causal1_masked0_varlen1_sinks1_iphoneos_metallib, sizeof(f_b32x128x32_h80_i1_t1_cqo_b0_c0_l1_causal1_masked0_varlen1_sinks1_iphoneos_metallib), NULL, 0);
@@ -680,12 +805,76 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     dispatch_release(data);
     return library;
 
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 32 && blockDimensions[1] == 128 && blockDimensions[2] == 32 &&
+    headDimension == 80 &&
+    lowPrecisionIntermediates == 1 && isBF16 == 0 &&
+    isCausal == 1 && masked == 0 && isVarlen == 0 &&
+    attentionSinks == 0 && slidingWindow > 0 &&
+    preferAsyncCache == 0 && preferAsyncLoad == 1) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b32x128x32_h80_i1_t1_cqo_b0_c0_l1_causal1_masked0_varlen0_sliding1_iphoneos_metallib, sizeof(f_b32x128x32_h80_i1_t1_cqo_b0_c0_l1_causal1_masked0_varlen0_sliding1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b32x128x32_h80_i1_t1_cqo_b0_c0_l1_causal1_masked0_varlen0_sliding1_macosx_metallib, sizeof(f_b32x128x32_h80_i1_t1_cqo_b0_c0_l1_causal1_masked0_varlen0_sliding1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 32 && blockDimensions[1] == 128 && blockDimensions[2] == 32 &&
+    headDimension == 80 &&
+    lowPrecisionIntermediates == 1 && isBF16 == 0 &&
+    isCausal == 1 && masked == 0 && isVarlen == 0 &&
+    attentionSinks == 1 && slidingWindow > 0 &&
+    preferAsyncCache == 0 && preferAsyncLoad == 1) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b32x128x32_h80_i1_t1_cqo_b0_c0_l1_causal1_masked0_varlen0_sliding1_sinks1_iphoneos_metallib, sizeof(f_b32x128x32_h80_i1_t1_cqo_b0_c0_l1_causal1_masked0_varlen0_sliding1_sinks1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b32x128x32_h80_i1_t1_cqo_b0_c0_l1_causal1_masked0_varlen0_sliding1_sinks1_macosx_metallib, sizeof(f_b32x128x32_h80_i1_t1_cqo_b0_c0_l1_causal1_masked0_varlen0_sliding1_sinks1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 32 && blockDimensions[1] == 128 && blockDimensions[2] == 32 &&
+    headDimension == 80 &&
+    lowPrecisionIntermediates == 1 && isBF16 == 0 &&
+    isCausal == 1 && masked == 1 && isVarlen == 0 &&
+    attentionSinks == 0 && slidingWindow > 0 &&
+    preferAsyncCache == 0 && preferAsyncLoad == 1) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b32x128x32_h80_i1_t1_cqo_b0_c0_l1_causal1_masked1_varlen0_sliding1_iphoneos_metallib, sizeof(f_b32x128x32_h80_i1_t1_cqo_b0_c0_l1_causal1_masked1_varlen0_sliding1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b32x128x32_h80_i1_t1_cqo_b0_c0_l1_causal1_masked1_varlen0_sliding1_macosx_metallib, sizeof(f_b32x128x32_h80_i1_t1_cqo_b0_c0_l1_causal1_masked1_varlen0_sliding1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 32 && blockDimensions[1] == 128 && blockDimensions[2] == 32 &&
+    headDimension == 80 &&
+    lowPrecisionIntermediates == 1 && isBF16 == 0 &&
+    isCausal == 1 && masked == 1 && isVarlen == 0 &&
+    attentionSinks == 1 && slidingWindow > 0 &&
+    preferAsyncCache == 0 && preferAsyncLoad == 1) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b32x128x32_h80_i1_t1_cqo_b0_c0_l1_causal1_masked1_varlen0_sliding1_sinks1_iphoneos_metallib, sizeof(f_b32x128x32_h80_i1_t1_cqo_b0_c0_l1_causal1_masked1_varlen0_sliding1_sinks1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b32x128x32_h80_i1_t1_cqo_b0_c0_l1_causal1_masked1_varlen0_sliding1_sinks1_macosx_metallib, sizeof(f_b32x128x32_h80_i1_t1_cqo_b0_c0_l1_causal1_masked1_varlen0_sliding1_sinks1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
   } else if (type.value == AttentionKernelType::backwardQuery &&
     blockDimensions[0] == 32 && blockDimensions[1] == 64 && blockDimensions[2] == 32 &&
     headDimension == 80 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(bq_b32x64x32_h80_i1_t1_cdq_b0_c0_l1_iphoneos_metallib, sizeof(bq_b32x64x32_h80_i1_t1_cdq_b0_c0_l1_iphoneos_metallib), NULL, 0);
@@ -701,7 +890,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 80 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(bkv_b32x64x32_h80_i1_t1_cdv_b0_c0_l1_iphoneos_metallib, sizeof(bkv_b32x64x32_h80_i1_t1_cdv_b0_c0_l1_iphoneos_metallib), NULL, 0);
@@ -717,7 +906,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 128 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x128x32_h128_i1_t1_cq_b0_c0_l1_iphoneos_metallib, sizeof(f_b32x128x32_h128_i1_t1_cq_b0_c0_l1_iphoneos_metallib), NULL, 0);
@@ -733,7 +922,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 128 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x128x32_h128_i1_t1_cq_b0_c0_l1_sinks1_iphoneos_metallib, sizeof(f_b32x128x32_h128_i1_t1_cq_b0_c0_l1_sinks1_iphoneos_metallib), NULL, 0);
@@ -749,7 +938,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 128 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 1 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x128x32_h128_i1_t1_cq_b0_c0_l1_causal1_masked0_varlen0_iphoneos_metallib, sizeof(f_b32x128x32_h128_i1_t1_cq_b0_c0_l1_causal1_masked0_varlen0_iphoneos_metallib), NULL, 0);
@@ -765,7 +954,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 128 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 1 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x128x32_h128_i1_t1_cq_b0_c0_l1_causal1_masked0_varlen0_sinks1_iphoneos_metallib, sizeof(f_b32x128x32_h128_i1_t1_cq_b0_c0_l1_causal1_masked0_varlen0_sinks1_iphoneos_metallib), NULL, 0);
@@ -781,7 +970,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 128 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 0 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x128x32_h128_i1_t1_cq_b0_c0_l1_causal0_masked1_varlen0_iphoneos_metallib, sizeof(f_b32x128x32_h128_i1_t1_cq_b0_c0_l1_causal0_masked1_varlen0_iphoneos_metallib), NULL, 0);
@@ -797,7 +986,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 128 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 0 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x128x32_h128_i1_t1_cq_b0_c0_l1_causal0_masked1_varlen0_sinks1_iphoneos_metallib, sizeof(f_b32x128x32_h128_i1_t1_cq_b0_c0_l1_causal0_masked1_varlen0_sinks1_iphoneos_metallib), NULL, 0);
@@ -813,7 +1002,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 128 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 1 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x128x32_h128_i1_t1_cq_b0_c0_l1_causal1_masked1_varlen0_iphoneos_metallib, sizeof(f_b32x128x32_h128_i1_t1_cq_b0_c0_l1_causal1_masked1_varlen0_iphoneos_metallib), NULL, 0);
@@ -829,7 +1018,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 128 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 1 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x128x32_h128_i1_t1_cq_b0_c0_l1_causal1_masked1_varlen0_sinks1_iphoneos_metallib, sizeof(f_b32x128x32_h128_i1_t1_cq_b0_c0_l1_causal1_masked1_varlen0_sinks1_iphoneos_metallib), NULL, 0);
@@ -845,7 +1034,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 128 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x128x32_h128_i1_t1_cq_b0_c0_l1_causal0_masked0_varlen1_iphoneos_metallib, sizeof(f_b32x128x32_h128_i1_t1_cq_b0_c0_l1_causal0_masked0_varlen1_iphoneos_metallib), NULL, 0);
@@ -861,7 +1050,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 128 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x128x32_h128_i1_t1_cq_b0_c0_l1_causal0_masked0_varlen1_sinks1_iphoneos_metallib, sizeof(f_b32x128x32_h128_i1_t1_cq_b0_c0_l1_causal0_masked0_varlen1_sinks1_iphoneos_metallib), NULL, 0);
@@ -877,7 +1066,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 128 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 1 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x128x32_h128_i1_t1_cq_b0_c0_l1_causal1_masked0_varlen1_iphoneos_metallib, sizeof(f_b32x128x32_h128_i1_t1_cq_b0_c0_l1_causal1_masked0_varlen1_iphoneos_metallib), NULL, 0);
@@ -893,7 +1082,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 128 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 1 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x128x32_h128_i1_t1_cq_b0_c0_l1_causal1_masked0_varlen1_sinks1_iphoneos_metallib, sizeof(f_b32x128x32_h128_i1_t1_cq_b0_c0_l1_causal1_masked0_varlen1_sinks1_iphoneos_metallib), NULL, 0);
@@ -904,12 +1093,76 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     dispatch_release(data);
     return library;
 
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 32 && blockDimensions[1] == 128 && blockDimensions[2] == 32 &&
+    headDimension == 128 &&
+    lowPrecisionIntermediates == 1 && isBF16 == 0 &&
+    isCausal == 1 && masked == 0 && isVarlen == 0 &&
+    attentionSinks == 0 && slidingWindow > 0 &&
+    preferAsyncCache == 0 && preferAsyncLoad == 1) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b32x128x32_h128_i1_t1_cq_b0_c0_l1_causal1_masked0_varlen0_sliding1_iphoneos_metallib, sizeof(f_b32x128x32_h128_i1_t1_cq_b0_c0_l1_causal1_masked0_varlen0_sliding1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b32x128x32_h128_i1_t1_cq_b0_c0_l1_causal1_masked0_varlen0_sliding1_macosx_metallib, sizeof(f_b32x128x32_h128_i1_t1_cq_b0_c0_l1_causal1_masked0_varlen0_sliding1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 32 && blockDimensions[1] == 128 && blockDimensions[2] == 32 &&
+    headDimension == 128 &&
+    lowPrecisionIntermediates == 1 && isBF16 == 0 &&
+    isCausal == 1 && masked == 0 && isVarlen == 0 &&
+    attentionSinks == 1 && slidingWindow > 0 &&
+    preferAsyncCache == 0 && preferAsyncLoad == 1) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b32x128x32_h128_i1_t1_cq_b0_c0_l1_causal1_masked0_varlen0_sliding1_sinks1_iphoneos_metallib, sizeof(f_b32x128x32_h128_i1_t1_cq_b0_c0_l1_causal1_masked0_varlen0_sliding1_sinks1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b32x128x32_h128_i1_t1_cq_b0_c0_l1_causal1_masked0_varlen0_sliding1_sinks1_macosx_metallib, sizeof(f_b32x128x32_h128_i1_t1_cq_b0_c0_l1_causal1_masked0_varlen0_sliding1_sinks1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 32 && blockDimensions[1] == 128 && blockDimensions[2] == 32 &&
+    headDimension == 128 &&
+    lowPrecisionIntermediates == 1 && isBF16 == 0 &&
+    isCausal == 1 && masked == 1 && isVarlen == 0 &&
+    attentionSinks == 0 && slidingWindow > 0 &&
+    preferAsyncCache == 0 && preferAsyncLoad == 1) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b32x128x32_h128_i1_t1_cq_b0_c0_l1_causal1_masked1_varlen0_sliding1_iphoneos_metallib, sizeof(f_b32x128x32_h128_i1_t1_cq_b0_c0_l1_causal1_masked1_varlen0_sliding1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b32x128x32_h128_i1_t1_cq_b0_c0_l1_causal1_masked1_varlen0_sliding1_macosx_metallib, sizeof(f_b32x128x32_h128_i1_t1_cq_b0_c0_l1_causal1_masked1_varlen0_sliding1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 32 && blockDimensions[1] == 128 && blockDimensions[2] == 32 &&
+    headDimension == 128 &&
+    lowPrecisionIntermediates == 1 && isBF16 == 0 &&
+    isCausal == 1 && masked == 1 && isVarlen == 0 &&
+    attentionSinks == 1 && slidingWindow > 0 &&
+    preferAsyncCache == 0 && preferAsyncLoad == 1) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b32x128x32_h128_i1_t1_cq_b0_c0_l1_causal1_masked1_varlen0_sliding1_sinks1_iphoneos_metallib, sizeof(f_b32x128x32_h128_i1_t1_cq_b0_c0_l1_causal1_masked1_varlen0_sliding1_sinks1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b32x128x32_h128_i1_t1_cq_b0_c0_l1_causal1_masked1_varlen0_sliding1_sinks1_macosx_metallib, sizeof(f_b32x128x32_h128_i1_t1_cq_b0_c0_l1_causal1_masked1_varlen0_sliding1_sinks1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
   } else if (type.value == AttentionKernelType::backwardQuery &&
     blockDimensions[0] == 32 && blockDimensions[1] == 64 && blockDimensions[2] == 32 &&
     headDimension == 128 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(bq_b32x64x32_h128_i1_t1_c_b0_c0_l1_iphoneos_metallib, sizeof(bq_b32x64x32_h128_i1_t1_c_b0_c0_l1_iphoneos_metallib), NULL, 0);
@@ -925,7 +1178,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 128 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(bkv_b32x64x32_h128_i1_t1_c_b0_c0_l1_iphoneos_metallib, sizeof(bkv_b32x64x32_h128_i1_t1_c_b0_c0_l1_iphoneos_metallib), NULL, 0);
@@ -941,7 +1194,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 160 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x128x32_h160_i1_t1_c_b0_c0_l1_iphoneos_metallib, sizeof(f_b32x128x32_h160_i1_t1_c_b0_c0_l1_iphoneos_metallib), NULL, 0);
@@ -957,7 +1210,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 160 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x128x32_h160_i1_t1_c_b0_c0_l1_sinks1_iphoneos_metallib, sizeof(f_b32x128x32_h160_i1_t1_c_b0_c0_l1_sinks1_iphoneos_metallib), NULL, 0);
@@ -973,7 +1226,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 160 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 1 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x128x32_h160_i1_t1_c_b0_c0_l1_causal1_masked0_varlen0_iphoneos_metallib, sizeof(f_b32x128x32_h160_i1_t1_c_b0_c0_l1_causal1_masked0_varlen0_iphoneos_metallib), NULL, 0);
@@ -989,7 +1242,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 160 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 1 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x128x32_h160_i1_t1_c_b0_c0_l1_causal1_masked0_varlen0_sinks1_iphoneos_metallib, sizeof(f_b32x128x32_h160_i1_t1_c_b0_c0_l1_causal1_masked0_varlen0_sinks1_iphoneos_metallib), NULL, 0);
@@ -1005,7 +1258,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 160 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 0 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x128x32_h160_i1_t1_c_b0_c0_l1_causal0_masked1_varlen0_iphoneos_metallib, sizeof(f_b32x128x32_h160_i1_t1_c_b0_c0_l1_causal0_masked1_varlen0_iphoneos_metallib), NULL, 0);
@@ -1021,7 +1274,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 160 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 0 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x128x32_h160_i1_t1_c_b0_c0_l1_causal0_masked1_varlen0_sinks1_iphoneos_metallib, sizeof(f_b32x128x32_h160_i1_t1_c_b0_c0_l1_causal0_masked1_varlen0_sinks1_iphoneos_metallib), NULL, 0);
@@ -1037,7 +1290,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 160 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 1 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x128x32_h160_i1_t1_c_b0_c0_l1_causal1_masked1_varlen0_iphoneos_metallib, sizeof(f_b32x128x32_h160_i1_t1_c_b0_c0_l1_causal1_masked1_varlen0_iphoneos_metallib), NULL, 0);
@@ -1053,7 +1306,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 160 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 1 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x128x32_h160_i1_t1_c_b0_c0_l1_causal1_masked1_varlen0_sinks1_iphoneos_metallib, sizeof(f_b32x128x32_h160_i1_t1_c_b0_c0_l1_causal1_masked1_varlen0_sinks1_iphoneos_metallib), NULL, 0);
@@ -1069,7 +1322,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 160 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x128x32_h160_i1_t1_c_b0_c0_l1_causal0_masked0_varlen1_iphoneos_metallib, sizeof(f_b32x128x32_h160_i1_t1_c_b0_c0_l1_causal0_masked0_varlen1_iphoneos_metallib), NULL, 0);
@@ -1085,7 +1338,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 160 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x128x32_h160_i1_t1_c_b0_c0_l1_causal0_masked0_varlen1_sinks1_iphoneos_metallib, sizeof(f_b32x128x32_h160_i1_t1_c_b0_c0_l1_causal0_masked0_varlen1_sinks1_iphoneos_metallib), NULL, 0);
@@ -1101,7 +1354,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 160 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 1 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x128x32_h160_i1_t1_c_b0_c0_l1_causal1_masked0_varlen1_iphoneos_metallib, sizeof(f_b32x128x32_h160_i1_t1_c_b0_c0_l1_causal1_masked0_varlen1_iphoneos_metallib), NULL, 0);
@@ -1117,7 +1370,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 160 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 1 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x128x32_h160_i1_t1_c_b0_c0_l1_causal1_masked0_varlen1_sinks1_iphoneos_metallib, sizeof(f_b32x128x32_h160_i1_t1_c_b0_c0_l1_causal1_masked0_varlen1_sinks1_iphoneos_metallib), NULL, 0);
@@ -1128,12 +1381,76 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     dispatch_release(data);
     return library;
 
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 32 && blockDimensions[1] == 128 && blockDimensions[2] == 32 &&
+    headDimension == 160 &&
+    lowPrecisionIntermediates == 1 && isBF16 == 0 &&
+    isCausal == 1 && masked == 0 && isVarlen == 0 &&
+    attentionSinks == 0 && slidingWindow > 0 &&
+    preferAsyncCache == 0 && preferAsyncLoad == 1) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b32x128x32_h160_i1_t1_c_b0_c0_l1_causal1_masked0_varlen0_sliding1_iphoneos_metallib, sizeof(f_b32x128x32_h160_i1_t1_c_b0_c0_l1_causal1_masked0_varlen0_sliding1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b32x128x32_h160_i1_t1_c_b0_c0_l1_causal1_masked0_varlen0_sliding1_macosx_metallib, sizeof(f_b32x128x32_h160_i1_t1_c_b0_c0_l1_causal1_masked0_varlen0_sliding1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 32 && blockDimensions[1] == 128 && blockDimensions[2] == 32 &&
+    headDimension == 160 &&
+    lowPrecisionIntermediates == 1 && isBF16 == 0 &&
+    isCausal == 1 && masked == 0 && isVarlen == 0 &&
+    attentionSinks == 1 && slidingWindow > 0 &&
+    preferAsyncCache == 0 && preferAsyncLoad == 1) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b32x128x32_h160_i1_t1_c_b0_c0_l1_causal1_masked0_varlen0_sliding1_sinks1_iphoneos_metallib, sizeof(f_b32x128x32_h160_i1_t1_c_b0_c0_l1_causal1_masked0_varlen0_sliding1_sinks1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b32x128x32_h160_i1_t1_c_b0_c0_l1_causal1_masked0_varlen0_sliding1_sinks1_macosx_metallib, sizeof(f_b32x128x32_h160_i1_t1_c_b0_c0_l1_causal1_masked0_varlen0_sliding1_sinks1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 32 && blockDimensions[1] == 128 && blockDimensions[2] == 32 &&
+    headDimension == 160 &&
+    lowPrecisionIntermediates == 1 && isBF16 == 0 &&
+    isCausal == 1 && masked == 1 && isVarlen == 0 &&
+    attentionSinks == 0 && slidingWindow > 0 &&
+    preferAsyncCache == 0 && preferAsyncLoad == 1) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b32x128x32_h160_i1_t1_c_b0_c0_l1_causal1_masked1_varlen0_sliding1_iphoneos_metallib, sizeof(f_b32x128x32_h160_i1_t1_c_b0_c0_l1_causal1_masked1_varlen0_sliding1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b32x128x32_h160_i1_t1_c_b0_c0_l1_causal1_masked1_varlen0_sliding1_macosx_metallib, sizeof(f_b32x128x32_h160_i1_t1_c_b0_c0_l1_causal1_masked1_varlen0_sliding1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 32 && blockDimensions[1] == 128 && blockDimensions[2] == 32 &&
+    headDimension == 160 &&
+    lowPrecisionIntermediates == 1 && isBF16 == 0 &&
+    isCausal == 1 && masked == 1 && isVarlen == 0 &&
+    attentionSinks == 1 && slidingWindow > 0 &&
+    preferAsyncCache == 0 && preferAsyncLoad == 1) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b32x128x32_h160_i1_t1_c_b0_c0_l1_causal1_masked1_varlen0_sliding1_sinks1_iphoneos_metallib, sizeof(f_b32x128x32_h160_i1_t1_c_b0_c0_l1_causal1_masked1_varlen0_sliding1_sinks1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b32x128x32_h160_i1_t1_c_b0_c0_l1_causal1_masked1_varlen0_sliding1_sinks1_macosx_metallib, sizeof(f_b32x128x32_h160_i1_t1_c_b0_c0_l1_causal1_masked1_varlen0_sliding1_sinks1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
   } else if (type.value == AttentionKernelType::backwardQuery &&
     blockDimensions[0] == 32 && blockDimensions[1] == 64 && blockDimensions[2] == 32 &&
     headDimension == 160 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(bq_b32x64x32_h160_i1_t1_c_b0_c0_l1_iphoneos_metallib, sizeof(bq_b32x64x32_h160_i1_t1_c_b0_c0_l1_iphoneos_metallib), NULL, 0);
@@ -1149,7 +1466,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 160 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(bkv_b32x64x32_h160_i1_t1_c_b0_c0_l1_iphoneos_metallib, sizeof(bkv_b32x64x32_h160_i1_t1_c_b0_c0_l1_iphoneos_metallib), NULL, 0);
@@ -1165,7 +1482,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 256 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x128x32_h256_i1_t1_c_b0_c0_l1_iphoneos_metallib, sizeof(f_b32x128x32_h256_i1_t1_c_b0_c0_l1_iphoneos_metallib), NULL, 0);
@@ -1181,7 +1498,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 256 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x128x32_h256_i1_t1_c_b0_c0_l1_sinks1_iphoneos_metallib, sizeof(f_b32x128x32_h256_i1_t1_c_b0_c0_l1_sinks1_iphoneos_metallib), NULL, 0);
@@ -1197,7 +1514,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 256 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 1 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x128x32_h256_i1_t1_c_b0_c0_l1_causal1_masked0_varlen0_iphoneos_metallib, sizeof(f_b32x128x32_h256_i1_t1_c_b0_c0_l1_causal1_masked0_varlen0_iphoneos_metallib), NULL, 0);
@@ -1213,7 +1530,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 256 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 1 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x128x32_h256_i1_t1_c_b0_c0_l1_causal1_masked0_varlen0_sinks1_iphoneos_metallib, sizeof(f_b32x128x32_h256_i1_t1_c_b0_c0_l1_causal1_masked0_varlen0_sinks1_iphoneos_metallib), NULL, 0);
@@ -1229,7 +1546,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 256 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 0 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x128x32_h256_i1_t1_c_b0_c0_l1_causal0_masked1_varlen0_iphoneos_metallib, sizeof(f_b32x128x32_h256_i1_t1_c_b0_c0_l1_causal0_masked1_varlen0_iphoneos_metallib), NULL, 0);
@@ -1245,7 +1562,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 256 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 0 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x128x32_h256_i1_t1_c_b0_c0_l1_causal0_masked1_varlen0_sinks1_iphoneos_metallib, sizeof(f_b32x128x32_h256_i1_t1_c_b0_c0_l1_causal0_masked1_varlen0_sinks1_iphoneos_metallib), NULL, 0);
@@ -1261,7 +1578,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 256 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 1 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x128x32_h256_i1_t1_c_b0_c0_l1_causal1_masked1_varlen0_iphoneos_metallib, sizeof(f_b32x128x32_h256_i1_t1_c_b0_c0_l1_causal1_masked1_varlen0_iphoneos_metallib), NULL, 0);
@@ -1277,7 +1594,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 256 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 1 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x128x32_h256_i1_t1_c_b0_c0_l1_causal1_masked1_varlen0_sinks1_iphoneos_metallib, sizeof(f_b32x128x32_h256_i1_t1_c_b0_c0_l1_causal1_masked1_varlen0_sinks1_iphoneos_metallib), NULL, 0);
@@ -1293,7 +1610,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 256 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x128x32_h256_i1_t1_c_b0_c0_l1_causal0_masked0_varlen1_iphoneos_metallib, sizeof(f_b32x128x32_h256_i1_t1_c_b0_c0_l1_causal0_masked0_varlen1_iphoneos_metallib), NULL, 0);
@@ -1309,7 +1626,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 256 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x128x32_h256_i1_t1_c_b0_c0_l1_causal0_masked0_varlen1_sinks1_iphoneos_metallib, sizeof(f_b32x128x32_h256_i1_t1_c_b0_c0_l1_causal0_masked0_varlen1_sinks1_iphoneos_metallib), NULL, 0);
@@ -1325,7 +1642,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 256 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 1 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x128x32_h256_i1_t1_c_b0_c0_l1_causal1_masked0_varlen1_iphoneos_metallib, sizeof(f_b32x128x32_h256_i1_t1_c_b0_c0_l1_causal1_masked0_varlen1_iphoneos_metallib), NULL, 0);
@@ -1341,7 +1658,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 256 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 1 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x128x32_h256_i1_t1_c_b0_c0_l1_causal1_masked0_varlen1_sinks1_iphoneos_metallib, sizeof(f_b32x128x32_h256_i1_t1_c_b0_c0_l1_causal1_masked0_varlen1_sinks1_iphoneos_metallib), NULL, 0);
@@ -1352,12 +1669,76 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     dispatch_release(data);
     return library;
 
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 32 && blockDimensions[1] == 128 && blockDimensions[2] == 32 &&
+    headDimension == 256 &&
+    lowPrecisionIntermediates == 1 && isBF16 == 0 &&
+    isCausal == 1 && masked == 0 && isVarlen == 0 &&
+    attentionSinks == 0 && slidingWindow > 0 &&
+    preferAsyncCache == 0 && preferAsyncLoad == 1) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b32x128x32_h256_i1_t1_c_b0_c0_l1_causal1_masked0_varlen0_sliding1_iphoneos_metallib, sizeof(f_b32x128x32_h256_i1_t1_c_b0_c0_l1_causal1_masked0_varlen0_sliding1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b32x128x32_h256_i1_t1_c_b0_c0_l1_causal1_masked0_varlen0_sliding1_macosx_metallib, sizeof(f_b32x128x32_h256_i1_t1_c_b0_c0_l1_causal1_masked0_varlen0_sliding1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 32 && blockDimensions[1] == 128 && blockDimensions[2] == 32 &&
+    headDimension == 256 &&
+    lowPrecisionIntermediates == 1 && isBF16 == 0 &&
+    isCausal == 1 && masked == 0 && isVarlen == 0 &&
+    attentionSinks == 1 && slidingWindow > 0 &&
+    preferAsyncCache == 0 && preferAsyncLoad == 1) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b32x128x32_h256_i1_t1_c_b0_c0_l1_causal1_masked0_varlen0_sliding1_sinks1_iphoneos_metallib, sizeof(f_b32x128x32_h256_i1_t1_c_b0_c0_l1_causal1_masked0_varlen0_sliding1_sinks1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b32x128x32_h256_i1_t1_c_b0_c0_l1_causal1_masked0_varlen0_sliding1_sinks1_macosx_metallib, sizeof(f_b32x128x32_h256_i1_t1_c_b0_c0_l1_causal1_masked0_varlen0_sliding1_sinks1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 32 && blockDimensions[1] == 128 && blockDimensions[2] == 32 &&
+    headDimension == 256 &&
+    lowPrecisionIntermediates == 1 && isBF16 == 0 &&
+    isCausal == 1 && masked == 1 && isVarlen == 0 &&
+    attentionSinks == 0 && slidingWindow > 0 &&
+    preferAsyncCache == 0 && preferAsyncLoad == 1) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b32x128x32_h256_i1_t1_c_b0_c0_l1_causal1_masked1_varlen0_sliding1_iphoneos_metallib, sizeof(f_b32x128x32_h256_i1_t1_c_b0_c0_l1_causal1_masked1_varlen0_sliding1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b32x128x32_h256_i1_t1_c_b0_c0_l1_causal1_masked1_varlen0_sliding1_macosx_metallib, sizeof(f_b32x128x32_h256_i1_t1_c_b0_c0_l1_causal1_masked1_varlen0_sliding1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 32 && blockDimensions[1] == 128 && blockDimensions[2] == 32 &&
+    headDimension == 256 &&
+    lowPrecisionIntermediates == 1 && isBF16 == 0 &&
+    isCausal == 1 && masked == 1 && isVarlen == 0 &&
+    attentionSinks == 1 && slidingWindow > 0 &&
+    preferAsyncCache == 0 && preferAsyncLoad == 1) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b32x128x32_h256_i1_t1_c_b0_c0_l1_causal1_masked1_varlen0_sliding1_sinks1_iphoneos_metallib, sizeof(f_b32x128x32_h256_i1_t1_c_b0_c0_l1_causal1_masked1_varlen0_sliding1_sinks1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b32x128x32_h256_i1_t1_c_b0_c0_l1_causal1_masked1_varlen0_sliding1_sinks1_macosx_metallib, sizeof(f_b32x128x32_h256_i1_t1_c_b0_c0_l1_causal1_masked1_varlen0_sliding1_sinks1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
   } else if (type.value == AttentionKernelType::backwardQuery &&
     blockDimensions[0] == 32 && blockDimensions[1] == 64 && blockDimensions[2] == 32 &&
     headDimension == 256 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(bq_b32x64x32_h256_i1_t1_c_b0_c0_l1_iphoneos_metallib, sizeof(bq_b32x64x32_h256_i1_t1_c_b0_c0_l1_iphoneos_metallib), NULL, 0);
@@ -1373,7 +1754,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 256 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(bkv_b32x64x32_h256_i1_t1_c_b0_c0_l1_iphoneos_metallib, sizeof(bkv_b32x64x32_h256_i1_t1_c_b0_c0_l1_iphoneos_metallib), NULL, 0);
@@ -1389,7 +1770,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 40 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x128x32_h40_i1_t1_cqo_b0_c1_l0_iphoneos_metallib, sizeof(f_b16x128x32_h40_i1_t1_cqo_b0_c1_l0_iphoneos_metallib), NULL, 0);
@@ -1405,7 +1786,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 40 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x128x32_h40_i1_t1_cqo_b0_c1_l0_sinks1_iphoneos_metallib, sizeof(f_b16x128x32_h40_i1_t1_cqo_b0_c1_l0_sinks1_iphoneos_metallib), NULL, 0);
@@ -1421,7 +1802,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 40 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 1 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x128x32_h40_i1_t1_cqo_b0_c1_l0_causal1_masked0_varlen0_iphoneos_metallib, sizeof(f_b16x128x32_h40_i1_t1_cqo_b0_c1_l0_causal1_masked0_varlen0_iphoneos_metallib), NULL, 0);
@@ -1437,7 +1818,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 40 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 1 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x128x32_h40_i1_t1_cqo_b0_c1_l0_causal1_masked0_varlen0_sinks1_iphoneos_metallib, sizeof(f_b16x128x32_h40_i1_t1_cqo_b0_c1_l0_causal1_masked0_varlen0_sinks1_iphoneos_metallib), NULL, 0);
@@ -1453,7 +1834,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 40 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 0 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x128x32_h40_i1_t1_cqo_b0_c1_l0_causal0_masked1_varlen0_iphoneos_metallib, sizeof(f_b16x128x32_h40_i1_t1_cqo_b0_c1_l0_causal0_masked1_varlen0_iphoneos_metallib), NULL, 0);
@@ -1469,7 +1850,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 40 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 0 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x128x32_h40_i1_t1_cqo_b0_c1_l0_causal0_masked1_varlen0_sinks1_iphoneos_metallib, sizeof(f_b16x128x32_h40_i1_t1_cqo_b0_c1_l0_causal0_masked1_varlen0_sinks1_iphoneos_metallib), NULL, 0);
@@ -1485,7 +1866,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 40 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 1 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x128x32_h40_i1_t1_cqo_b0_c1_l0_causal1_masked1_varlen0_iphoneos_metallib, sizeof(f_b16x128x32_h40_i1_t1_cqo_b0_c1_l0_causal1_masked1_varlen0_iphoneos_metallib), NULL, 0);
@@ -1501,7 +1882,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 40 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 1 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x128x32_h40_i1_t1_cqo_b0_c1_l0_causal1_masked1_varlen0_sinks1_iphoneos_metallib, sizeof(f_b16x128x32_h40_i1_t1_cqo_b0_c1_l0_causal1_masked1_varlen0_sinks1_iphoneos_metallib), NULL, 0);
@@ -1517,7 +1898,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 40 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x128x32_h40_i1_t1_cqo_b0_c1_l0_causal0_masked0_varlen1_iphoneos_metallib, sizeof(f_b16x128x32_h40_i1_t1_cqo_b0_c1_l0_causal0_masked0_varlen1_iphoneos_metallib), NULL, 0);
@@ -1533,7 +1914,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 40 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x128x32_h40_i1_t1_cqo_b0_c1_l0_causal0_masked0_varlen1_sinks1_iphoneos_metallib, sizeof(f_b16x128x32_h40_i1_t1_cqo_b0_c1_l0_causal0_masked0_varlen1_sinks1_iphoneos_metallib), NULL, 0);
@@ -1549,7 +1930,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 40 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 1 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x128x32_h40_i1_t1_cqo_b0_c1_l0_causal1_masked0_varlen1_iphoneos_metallib, sizeof(f_b16x128x32_h40_i1_t1_cqo_b0_c1_l0_causal1_masked0_varlen1_iphoneos_metallib), NULL, 0);
@@ -1565,7 +1946,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 40 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 1 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x128x32_h40_i1_t1_cqo_b0_c1_l0_causal1_masked0_varlen1_sinks1_iphoneos_metallib, sizeof(f_b16x128x32_h40_i1_t1_cqo_b0_c1_l0_causal1_masked0_varlen1_sinks1_iphoneos_metallib), NULL, 0);
@@ -1576,12 +1957,76 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     dispatch_release(data);
     return library;
 
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 16 && blockDimensions[1] == 128 && blockDimensions[2] == 32 &&
+    headDimension == 40 &&
+    lowPrecisionIntermediates == 1 && isBF16 == 0 &&
+    isCausal == 1 && masked == 0 && isVarlen == 0 &&
+    attentionSinks == 0 && slidingWindow > 0 &&
+    preferAsyncCache == 1 && preferAsyncLoad == 0) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b16x128x32_h40_i1_t1_cqo_b0_c1_l0_causal1_masked0_varlen0_sliding1_iphoneos_metallib, sizeof(f_b16x128x32_h40_i1_t1_cqo_b0_c1_l0_causal1_masked0_varlen0_sliding1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b16x128x32_h40_i1_t1_cqo_b0_c1_l0_causal1_masked0_varlen0_sliding1_macosx_metallib, sizeof(f_b16x128x32_h40_i1_t1_cqo_b0_c1_l0_causal1_masked0_varlen0_sliding1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 16 && blockDimensions[1] == 128 && blockDimensions[2] == 32 &&
+    headDimension == 40 &&
+    lowPrecisionIntermediates == 1 && isBF16 == 0 &&
+    isCausal == 1 && masked == 0 && isVarlen == 0 &&
+    attentionSinks == 1 && slidingWindow > 0 &&
+    preferAsyncCache == 1 && preferAsyncLoad == 0) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b16x128x32_h40_i1_t1_cqo_b0_c1_l0_causal1_masked0_varlen0_sliding1_sinks1_iphoneos_metallib, sizeof(f_b16x128x32_h40_i1_t1_cqo_b0_c1_l0_causal1_masked0_varlen0_sliding1_sinks1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b16x128x32_h40_i1_t1_cqo_b0_c1_l0_causal1_masked0_varlen0_sliding1_sinks1_macosx_metallib, sizeof(f_b16x128x32_h40_i1_t1_cqo_b0_c1_l0_causal1_masked0_varlen0_sliding1_sinks1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 16 && blockDimensions[1] == 128 && blockDimensions[2] == 32 &&
+    headDimension == 40 &&
+    lowPrecisionIntermediates == 1 && isBF16 == 0 &&
+    isCausal == 1 && masked == 1 && isVarlen == 0 &&
+    attentionSinks == 0 && slidingWindow > 0 &&
+    preferAsyncCache == 1 && preferAsyncLoad == 0) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b16x128x32_h40_i1_t1_cqo_b0_c1_l0_causal1_masked1_varlen0_sliding1_iphoneos_metallib, sizeof(f_b16x128x32_h40_i1_t1_cqo_b0_c1_l0_causal1_masked1_varlen0_sliding1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b16x128x32_h40_i1_t1_cqo_b0_c1_l0_causal1_masked1_varlen0_sliding1_macosx_metallib, sizeof(f_b16x128x32_h40_i1_t1_cqo_b0_c1_l0_causal1_masked1_varlen0_sliding1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 16 && blockDimensions[1] == 128 && blockDimensions[2] == 32 &&
+    headDimension == 40 &&
+    lowPrecisionIntermediates == 1 && isBF16 == 0 &&
+    isCausal == 1 && masked == 1 && isVarlen == 0 &&
+    attentionSinks == 1 && slidingWindow > 0 &&
+    preferAsyncCache == 1 && preferAsyncLoad == 0) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b16x128x32_h40_i1_t1_cqo_b0_c1_l0_causal1_masked1_varlen0_sliding1_sinks1_iphoneos_metallib, sizeof(f_b16x128x32_h40_i1_t1_cqo_b0_c1_l0_causal1_masked1_varlen0_sliding1_sinks1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b16x128x32_h40_i1_t1_cqo_b0_c1_l0_causal1_masked1_varlen0_sliding1_sinks1_macosx_metallib, sizeof(f_b16x128x32_h40_i1_t1_cqo_b0_c1_l0_causal1_masked1_varlen0_sliding1_sinks1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
   } else if (type.value == AttentionKernelType::backwardQuery &&
     blockDimensions[0] == 16 && blockDimensions[1] == 64 && blockDimensions[2] == 8 &&
     headDimension == 40 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(bq_b16x64x8_h40_i1_t1_cqdq_b0_c1_l0_iphoneos_metallib, sizeof(bq_b16x64x8_h40_i1_t1_cqdq_b0_c1_l0_iphoneos_metallib), NULL, 0);
@@ -1597,7 +2042,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 40 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(bkv_b16x64x8_h40_i1_t1_ckvdvdk_b0_c1_l0_iphoneos_metallib, sizeof(bkv_b16x64x8_h40_i1_t1_ckvdvdk_b0_c1_l0_iphoneos_metallib), NULL, 0);
@@ -1613,7 +2058,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 64 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x128x32_h64_i1_t1_cqo_b0_c1_l0_iphoneos_metallib, sizeof(f_b16x128x32_h64_i1_t1_cqo_b0_c1_l0_iphoneos_metallib), NULL, 0);
@@ -1629,7 +2074,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 64 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x128x32_h64_i1_t1_cqo_b0_c1_l0_sinks1_iphoneos_metallib, sizeof(f_b16x128x32_h64_i1_t1_cqo_b0_c1_l0_sinks1_iphoneos_metallib), NULL, 0);
@@ -1645,7 +2090,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 64 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 1 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x128x32_h64_i1_t1_cqo_b0_c1_l0_causal1_masked0_varlen0_iphoneos_metallib, sizeof(f_b16x128x32_h64_i1_t1_cqo_b0_c1_l0_causal1_masked0_varlen0_iphoneos_metallib), NULL, 0);
@@ -1661,7 +2106,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 64 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 1 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x128x32_h64_i1_t1_cqo_b0_c1_l0_causal1_masked0_varlen0_sinks1_iphoneos_metallib, sizeof(f_b16x128x32_h64_i1_t1_cqo_b0_c1_l0_causal1_masked0_varlen0_sinks1_iphoneos_metallib), NULL, 0);
@@ -1677,7 +2122,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 64 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 0 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x128x32_h64_i1_t1_cqo_b0_c1_l0_causal0_masked1_varlen0_iphoneos_metallib, sizeof(f_b16x128x32_h64_i1_t1_cqo_b0_c1_l0_causal0_masked1_varlen0_iphoneos_metallib), NULL, 0);
@@ -1693,7 +2138,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 64 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 0 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x128x32_h64_i1_t1_cqo_b0_c1_l0_causal0_masked1_varlen0_sinks1_iphoneos_metallib, sizeof(f_b16x128x32_h64_i1_t1_cqo_b0_c1_l0_causal0_masked1_varlen0_sinks1_iphoneos_metallib), NULL, 0);
@@ -1709,7 +2154,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 64 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 1 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x128x32_h64_i1_t1_cqo_b0_c1_l0_causal1_masked1_varlen0_iphoneos_metallib, sizeof(f_b16x128x32_h64_i1_t1_cqo_b0_c1_l0_causal1_masked1_varlen0_iphoneos_metallib), NULL, 0);
@@ -1725,7 +2170,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 64 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 1 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x128x32_h64_i1_t1_cqo_b0_c1_l0_causal1_masked1_varlen0_sinks1_iphoneos_metallib, sizeof(f_b16x128x32_h64_i1_t1_cqo_b0_c1_l0_causal1_masked1_varlen0_sinks1_iphoneos_metallib), NULL, 0);
@@ -1741,7 +2186,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 64 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x128x32_h64_i1_t1_cqo_b0_c1_l0_causal0_masked0_varlen1_iphoneos_metallib, sizeof(f_b16x128x32_h64_i1_t1_cqo_b0_c1_l0_causal0_masked0_varlen1_iphoneos_metallib), NULL, 0);
@@ -1757,7 +2202,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 64 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x128x32_h64_i1_t1_cqo_b0_c1_l0_causal0_masked0_varlen1_sinks1_iphoneos_metallib, sizeof(f_b16x128x32_h64_i1_t1_cqo_b0_c1_l0_causal0_masked0_varlen1_sinks1_iphoneos_metallib), NULL, 0);
@@ -1773,7 +2218,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 64 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 1 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x128x32_h64_i1_t1_cqo_b0_c1_l0_causal1_masked0_varlen1_iphoneos_metallib, sizeof(f_b16x128x32_h64_i1_t1_cqo_b0_c1_l0_causal1_masked0_varlen1_iphoneos_metallib), NULL, 0);
@@ -1789,7 +2234,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 64 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 1 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x128x32_h64_i1_t1_cqo_b0_c1_l0_causal1_masked0_varlen1_sinks1_iphoneos_metallib, sizeof(f_b16x128x32_h64_i1_t1_cqo_b0_c1_l0_causal1_masked0_varlen1_sinks1_iphoneos_metallib), NULL, 0);
@@ -1800,12 +2245,76 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     dispatch_release(data);
     return library;
 
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 16 && blockDimensions[1] == 128 && blockDimensions[2] == 32 &&
+    headDimension == 64 &&
+    lowPrecisionIntermediates == 1 && isBF16 == 0 &&
+    isCausal == 1 && masked == 0 && isVarlen == 0 &&
+    attentionSinks == 0 && slidingWindow > 0 &&
+    preferAsyncCache == 1 && preferAsyncLoad == 0) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b16x128x32_h64_i1_t1_cqo_b0_c1_l0_causal1_masked0_varlen0_sliding1_iphoneos_metallib, sizeof(f_b16x128x32_h64_i1_t1_cqo_b0_c1_l0_causal1_masked0_varlen0_sliding1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b16x128x32_h64_i1_t1_cqo_b0_c1_l0_causal1_masked0_varlen0_sliding1_macosx_metallib, sizeof(f_b16x128x32_h64_i1_t1_cqo_b0_c1_l0_causal1_masked0_varlen0_sliding1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 16 && blockDimensions[1] == 128 && blockDimensions[2] == 32 &&
+    headDimension == 64 &&
+    lowPrecisionIntermediates == 1 && isBF16 == 0 &&
+    isCausal == 1 && masked == 0 && isVarlen == 0 &&
+    attentionSinks == 1 && slidingWindow > 0 &&
+    preferAsyncCache == 1 && preferAsyncLoad == 0) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b16x128x32_h64_i1_t1_cqo_b0_c1_l0_causal1_masked0_varlen0_sliding1_sinks1_iphoneos_metallib, sizeof(f_b16x128x32_h64_i1_t1_cqo_b0_c1_l0_causal1_masked0_varlen0_sliding1_sinks1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b16x128x32_h64_i1_t1_cqo_b0_c1_l0_causal1_masked0_varlen0_sliding1_sinks1_macosx_metallib, sizeof(f_b16x128x32_h64_i1_t1_cqo_b0_c1_l0_causal1_masked0_varlen0_sliding1_sinks1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 16 && blockDimensions[1] == 128 && blockDimensions[2] == 32 &&
+    headDimension == 64 &&
+    lowPrecisionIntermediates == 1 && isBF16 == 0 &&
+    isCausal == 1 && masked == 1 && isVarlen == 0 &&
+    attentionSinks == 0 && slidingWindow > 0 &&
+    preferAsyncCache == 1 && preferAsyncLoad == 0) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b16x128x32_h64_i1_t1_cqo_b0_c1_l0_causal1_masked1_varlen0_sliding1_iphoneos_metallib, sizeof(f_b16x128x32_h64_i1_t1_cqo_b0_c1_l0_causal1_masked1_varlen0_sliding1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b16x128x32_h64_i1_t1_cqo_b0_c1_l0_causal1_masked1_varlen0_sliding1_macosx_metallib, sizeof(f_b16x128x32_h64_i1_t1_cqo_b0_c1_l0_causal1_masked1_varlen0_sliding1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 16 && blockDimensions[1] == 128 && blockDimensions[2] == 32 &&
+    headDimension == 64 &&
+    lowPrecisionIntermediates == 1 && isBF16 == 0 &&
+    isCausal == 1 && masked == 1 && isVarlen == 0 &&
+    attentionSinks == 1 && slidingWindow > 0 &&
+    preferAsyncCache == 1 && preferAsyncLoad == 0) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b16x128x32_h64_i1_t1_cqo_b0_c1_l0_causal1_masked1_varlen0_sliding1_sinks1_iphoneos_metallib, sizeof(f_b16x128x32_h64_i1_t1_cqo_b0_c1_l0_causal1_masked1_varlen0_sliding1_sinks1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b16x128x32_h64_i1_t1_cqo_b0_c1_l0_causal1_masked1_varlen0_sliding1_sinks1_macosx_metallib, sizeof(f_b16x128x32_h64_i1_t1_cqo_b0_c1_l0_causal1_masked1_varlen0_sliding1_sinks1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
   } else if (type.value == AttentionKernelType::backwardQuery &&
     blockDimensions[0] == 16 && blockDimensions[1] == 64 && blockDimensions[2] == 8 &&
     headDimension == 64 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(bq_b16x64x8_h64_i1_t1_cqdq_b0_c1_l0_iphoneos_metallib, sizeof(bq_b16x64x8_h64_i1_t1_cqdq_b0_c1_l0_iphoneos_metallib), NULL, 0);
@@ -1821,7 +2330,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 64 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(bkv_b16x32x16_h64_i1_t1_cvdvdk_b0_c1_l0_iphoneos_metallib, sizeof(bkv_b16x32x16_h64_i1_t1_cvdvdk_b0_c1_l0_iphoneos_metallib), NULL, 0);
@@ -1837,7 +2346,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 80 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x128x32_h80_i1_t1_cqo_b0_c1_l0_iphoneos_metallib, sizeof(f_b16x128x32_h80_i1_t1_cqo_b0_c1_l0_iphoneos_metallib), NULL, 0);
@@ -1853,7 +2362,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 80 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x128x32_h80_i1_t1_cqo_b0_c1_l0_sinks1_iphoneos_metallib, sizeof(f_b16x128x32_h80_i1_t1_cqo_b0_c1_l0_sinks1_iphoneos_metallib), NULL, 0);
@@ -1869,7 +2378,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 80 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 1 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x128x32_h80_i1_t1_cqo_b0_c1_l0_causal1_masked0_varlen0_iphoneos_metallib, sizeof(f_b16x128x32_h80_i1_t1_cqo_b0_c1_l0_causal1_masked0_varlen0_iphoneos_metallib), NULL, 0);
@@ -1885,7 +2394,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 80 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 1 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x128x32_h80_i1_t1_cqo_b0_c1_l0_causal1_masked0_varlen0_sinks1_iphoneos_metallib, sizeof(f_b16x128x32_h80_i1_t1_cqo_b0_c1_l0_causal1_masked0_varlen0_sinks1_iphoneos_metallib), NULL, 0);
@@ -1901,7 +2410,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 80 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 0 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x128x32_h80_i1_t1_cqo_b0_c1_l0_causal0_masked1_varlen0_iphoneos_metallib, sizeof(f_b16x128x32_h80_i1_t1_cqo_b0_c1_l0_causal0_masked1_varlen0_iphoneos_metallib), NULL, 0);
@@ -1917,7 +2426,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 80 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 0 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x128x32_h80_i1_t1_cqo_b0_c1_l0_causal0_masked1_varlen0_sinks1_iphoneos_metallib, sizeof(f_b16x128x32_h80_i1_t1_cqo_b0_c1_l0_causal0_masked1_varlen0_sinks1_iphoneos_metallib), NULL, 0);
@@ -1933,7 +2442,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 80 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 1 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x128x32_h80_i1_t1_cqo_b0_c1_l0_causal1_masked1_varlen0_iphoneos_metallib, sizeof(f_b16x128x32_h80_i1_t1_cqo_b0_c1_l0_causal1_masked1_varlen0_iphoneos_metallib), NULL, 0);
@@ -1949,7 +2458,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 80 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 1 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x128x32_h80_i1_t1_cqo_b0_c1_l0_causal1_masked1_varlen0_sinks1_iphoneos_metallib, sizeof(f_b16x128x32_h80_i1_t1_cqo_b0_c1_l0_causal1_masked1_varlen0_sinks1_iphoneos_metallib), NULL, 0);
@@ -1965,7 +2474,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 80 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x128x32_h80_i1_t1_cqo_b0_c1_l0_causal0_masked0_varlen1_iphoneos_metallib, sizeof(f_b16x128x32_h80_i1_t1_cqo_b0_c1_l0_causal0_masked0_varlen1_iphoneos_metallib), NULL, 0);
@@ -1981,7 +2490,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 80 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x128x32_h80_i1_t1_cqo_b0_c1_l0_causal0_masked0_varlen1_sinks1_iphoneos_metallib, sizeof(f_b16x128x32_h80_i1_t1_cqo_b0_c1_l0_causal0_masked0_varlen1_sinks1_iphoneos_metallib), NULL, 0);
@@ -1997,7 +2506,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 80 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 1 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x128x32_h80_i1_t1_cqo_b0_c1_l0_causal1_masked0_varlen1_iphoneos_metallib, sizeof(f_b16x128x32_h80_i1_t1_cqo_b0_c1_l0_causal1_masked0_varlen1_iphoneos_metallib), NULL, 0);
@@ -2013,7 +2522,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 80 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 1 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x128x32_h80_i1_t1_cqo_b0_c1_l0_causal1_masked0_varlen1_sinks1_iphoneos_metallib, sizeof(f_b16x128x32_h80_i1_t1_cqo_b0_c1_l0_causal1_masked0_varlen1_sinks1_iphoneos_metallib), NULL, 0);
@@ -2024,12 +2533,76 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     dispatch_release(data);
     return library;
 
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 16 && blockDimensions[1] == 128 && blockDimensions[2] == 32 &&
+    headDimension == 80 &&
+    lowPrecisionIntermediates == 1 && isBF16 == 0 &&
+    isCausal == 1 && masked == 0 && isVarlen == 0 &&
+    attentionSinks == 0 && slidingWindow > 0 &&
+    preferAsyncCache == 1 && preferAsyncLoad == 0) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b16x128x32_h80_i1_t1_cqo_b0_c1_l0_causal1_masked0_varlen0_sliding1_iphoneos_metallib, sizeof(f_b16x128x32_h80_i1_t1_cqo_b0_c1_l0_causal1_masked0_varlen0_sliding1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b16x128x32_h80_i1_t1_cqo_b0_c1_l0_causal1_masked0_varlen0_sliding1_macosx_metallib, sizeof(f_b16x128x32_h80_i1_t1_cqo_b0_c1_l0_causal1_masked0_varlen0_sliding1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 16 && blockDimensions[1] == 128 && blockDimensions[2] == 32 &&
+    headDimension == 80 &&
+    lowPrecisionIntermediates == 1 && isBF16 == 0 &&
+    isCausal == 1 && masked == 0 && isVarlen == 0 &&
+    attentionSinks == 1 && slidingWindow > 0 &&
+    preferAsyncCache == 1 && preferAsyncLoad == 0) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b16x128x32_h80_i1_t1_cqo_b0_c1_l0_causal1_masked0_varlen0_sliding1_sinks1_iphoneos_metallib, sizeof(f_b16x128x32_h80_i1_t1_cqo_b0_c1_l0_causal1_masked0_varlen0_sliding1_sinks1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b16x128x32_h80_i1_t1_cqo_b0_c1_l0_causal1_masked0_varlen0_sliding1_sinks1_macosx_metallib, sizeof(f_b16x128x32_h80_i1_t1_cqo_b0_c1_l0_causal1_masked0_varlen0_sliding1_sinks1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 16 && blockDimensions[1] == 128 && blockDimensions[2] == 32 &&
+    headDimension == 80 &&
+    lowPrecisionIntermediates == 1 && isBF16 == 0 &&
+    isCausal == 1 && masked == 1 && isVarlen == 0 &&
+    attentionSinks == 0 && slidingWindow > 0 &&
+    preferAsyncCache == 1 && preferAsyncLoad == 0) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b16x128x32_h80_i1_t1_cqo_b0_c1_l0_causal1_masked1_varlen0_sliding1_iphoneos_metallib, sizeof(f_b16x128x32_h80_i1_t1_cqo_b0_c1_l0_causal1_masked1_varlen0_sliding1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b16x128x32_h80_i1_t1_cqo_b0_c1_l0_causal1_masked1_varlen0_sliding1_macosx_metallib, sizeof(f_b16x128x32_h80_i1_t1_cqo_b0_c1_l0_causal1_masked1_varlen0_sliding1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 16 && blockDimensions[1] == 128 && blockDimensions[2] == 32 &&
+    headDimension == 80 &&
+    lowPrecisionIntermediates == 1 && isBF16 == 0 &&
+    isCausal == 1 && masked == 1 && isVarlen == 0 &&
+    attentionSinks == 1 && slidingWindow > 0 &&
+    preferAsyncCache == 1 && preferAsyncLoad == 0) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b16x128x32_h80_i1_t1_cqo_b0_c1_l0_causal1_masked1_varlen0_sliding1_sinks1_iphoneos_metallib, sizeof(f_b16x128x32_h80_i1_t1_cqo_b0_c1_l0_causal1_masked1_varlen0_sliding1_sinks1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b16x128x32_h80_i1_t1_cqo_b0_c1_l0_causal1_masked1_varlen0_sliding1_sinks1_macosx_metallib, sizeof(f_b16x128x32_h80_i1_t1_cqo_b0_c1_l0_causal1_masked1_varlen0_sliding1_sinks1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
   } else if (type.value == AttentionKernelType::backwardQuery &&
     blockDimensions[0] == 16 && blockDimensions[1] == 64 && blockDimensions[2] == 8 &&
     headDimension == 80 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(bq_b16x64x8_h80_i1_t1_cqdq_b0_c1_l0_iphoneos_metallib, sizeof(bq_b16x64x8_h80_i1_t1_cqdq_b0_c1_l0_iphoneos_metallib), NULL, 0);
@@ -2045,7 +2618,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 80 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(bkv_b16x32x16_h80_i1_t1_cvdvdk_b0_c1_l0_iphoneos_metallib, sizeof(bkv_b16x32x16_h80_i1_t1_cvdvdk_b0_c1_l0_iphoneos_metallib), NULL, 0);
@@ -2061,7 +2634,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 128 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x128x32_h128_i1_t1_co_b0_c1_l0_iphoneos_metallib, sizeof(f_b16x128x32_h128_i1_t1_co_b0_c1_l0_iphoneos_metallib), NULL, 0);
@@ -2077,7 +2650,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 128 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x128x32_h128_i1_t1_co_b0_c1_l0_sinks1_iphoneos_metallib, sizeof(f_b16x128x32_h128_i1_t1_co_b0_c1_l0_sinks1_iphoneos_metallib), NULL, 0);
@@ -2093,7 +2666,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 128 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 1 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x128x32_h128_i1_t1_co_b0_c1_l0_causal1_masked0_varlen0_iphoneos_metallib, sizeof(f_b16x128x32_h128_i1_t1_co_b0_c1_l0_causal1_masked0_varlen0_iphoneos_metallib), NULL, 0);
@@ -2109,7 +2682,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 128 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 1 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x128x32_h128_i1_t1_co_b0_c1_l0_causal1_masked0_varlen0_sinks1_iphoneos_metallib, sizeof(f_b16x128x32_h128_i1_t1_co_b0_c1_l0_causal1_masked0_varlen0_sinks1_iphoneos_metallib), NULL, 0);
@@ -2125,7 +2698,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 128 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 0 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x128x32_h128_i1_t1_co_b0_c1_l0_causal0_masked1_varlen0_iphoneos_metallib, sizeof(f_b16x128x32_h128_i1_t1_co_b0_c1_l0_causal0_masked1_varlen0_iphoneos_metallib), NULL, 0);
@@ -2141,7 +2714,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 128 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 0 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x128x32_h128_i1_t1_co_b0_c1_l0_causal0_masked1_varlen0_sinks1_iphoneos_metallib, sizeof(f_b16x128x32_h128_i1_t1_co_b0_c1_l0_causal0_masked1_varlen0_sinks1_iphoneos_metallib), NULL, 0);
@@ -2157,7 +2730,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 128 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 1 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x128x32_h128_i1_t1_co_b0_c1_l0_causal1_masked1_varlen0_iphoneos_metallib, sizeof(f_b16x128x32_h128_i1_t1_co_b0_c1_l0_causal1_masked1_varlen0_iphoneos_metallib), NULL, 0);
@@ -2173,7 +2746,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 128 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 1 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x128x32_h128_i1_t1_co_b0_c1_l0_causal1_masked1_varlen0_sinks1_iphoneos_metallib, sizeof(f_b16x128x32_h128_i1_t1_co_b0_c1_l0_causal1_masked1_varlen0_sinks1_iphoneos_metallib), NULL, 0);
@@ -2189,7 +2762,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 128 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x128x32_h128_i1_t1_co_b0_c1_l0_causal0_masked0_varlen1_iphoneos_metallib, sizeof(f_b16x128x32_h128_i1_t1_co_b0_c1_l0_causal0_masked0_varlen1_iphoneos_metallib), NULL, 0);
@@ -2205,7 +2778,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 128 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x128x32_h128_i1_t1_co_b0_c1_l0_causal0_masked0_varlen1_sinks1_iphoneos_metallib, sizeof(f_b16x128x32_h128_i1_t1_co_b0_c1_l0_causal0_masked0_varlen1_sinks1_iphoneos_metallib), NULL, 0);
@@ -2221,7 +2794,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 128 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 1 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x128x32_h128_i1_t1_co_b0_c1_l0_causal1_masked0_varlen1_iphoneos_metallib, sizeof(f_b16x128x32_h128_i1_t1_co_b0_c1_l0_causal1_masked0_varlen1_iphoneos_metallib), NULL, 0);
@@ -2237,7 +2810,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 128 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 1 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x128x32_h128_i1_t1_co_b0_c1_l0_causal1_masked0_varlen1_sinks1_iphoneos_metallib, sizeof(f_b16x128x32_h128_i1_t1_co_b0_c1_l0_causal1_masked0_varlen1_sinks1_iphoneos_metallib), NULL, 0);
@@ -2248,12 +2821,76 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     dispatch_release(data);
     return library;
 
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 16 && blockDimensions[1] == 128 && blockDimensions[2] == 32 &&
+    headDimension == 128 &&
+    lowPrecisionIntermediates == 1 && isBF16 == 0 &&
+    isCausal == 1 && masked == 0 && isVarlen == 0 &&
+    attentionSinks == 0 && slidingWindow > 0 &&
+    preferAsyncCache == 1 && preferAsyncLoad == 0) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b16x128x32_h128_i1_t1_co_b0_c1_l0_causal1_masked0_varlen0_sliding1_iphoneos_metallib, sizeof(f_b16x128x32_h128_i1_t1_co_b0_c1_l0_causal1_masked0_varlen0_sliding1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b16x128x32_h128_i1_t1_co_b0_c1_l0_causal1_masked0_varlen0_sliding1_macosx_metallib, sizeof(f_b16x128x32_h128_i1_t1_co_b0_c1_l0_causal1_masked0_varlen0_sliding1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 16 && blockDimensions[1] == 128 && blockDimensions[2] == 32 &&
+    headDimension == 128 &&
+    lowPrecisionIntermediates == 1 && isBF16 == 0 &&
+    isCausal == 1 && masked == 0 && isVarlen == 0 &&
+    attentionSinks == 1 && slidingWindow > 0 &&
+    preferAsyncCache == 1 && preferAsyncLoad == 0) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b16x128x32_h128_i1_t1_co_b0_c1_l0_causal1_masked0_varlen0_sliding1_sinks1_iphoneos_metallib, sizeof(f_b16x128x32_h128_i1_t1_co_b0_c1_l0_causal1_masked0_varlen0_sliding1_sinks1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b16x128x32_h128_i1_t1_co_b0_c1_l0_causal1_masked0_varlen0_sliding1_sinks1_macosx_metallib, sizeof(f_b16x128x32_h128_i1_t1_co_b0_c1_l0_causal1_masked0_varlen0_sliding1_sinks1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 16 && blockDimensions[1] == 128 && blockDimensions[2] == 32 &&
+    headDimension == 128 &&
+    lowPrecisionIntermediates == 1 && isBF16 == 0 &&
+    isCausal == 1 && masked == 1 && isVarlen == 0 &&
+    attentionSinks == 0 && slidingWindow > 0 &&
+    preferAsyncCache == 1 && preferAsyncLoad == 0) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b16x128x32_h128_i1_t1_co_b0_c1_l0_causal1_masked1_varlen0_sliding1_iphoneos_metallib, sizeof(f_b16x128x32_h128_i1_t1_co_b0_c1_l0_causal1_masked1_varlen0_sliding1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b16x128x32_h128_i1_t1_co_b0_c1_l0_causal1_masked1_varlen0_sliding1_macosx_metallib, sizeof(f_b16x128x32_h128_i1_t1_co_b0_c1_l0_causal1_masked1_varlen0_sliding1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 16 && blockDimensions[1] == 128 && blockDimensions[2] == 32 &&
+    headDimension == 128 &&
+    lowPrecisionIntermediates == 1 && isBF16 == 0 &&
+    isCausal == 1 && masked == 1 && isVarlen == 0 &&
+    attentionSinks == 1 && slidingWindow > 0 &&
+    preferAsyncCache == 1 && preferAsyncLoad == 0) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b16x128x32_h128_i1_t1_co_b0_c1_l0_causal1_masked1_varlen0_sliding1_sinks1_iphoneos_metallib, sizeof(f_b16x128x32_h128_i1_t1_co_b0_c1_l0_causal1_masked1_varlen0_sliding1_sinks1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b16x128x32_h128_i1_t1_co_b0_c1_l0_causal1_masked1_varlen0_sliding1_sinks1_macosx_metallib, sizeof(f_b16x128x32_h128_i1_t1_co_b0_c1_l0_causal1_masked1_varlen0_sliding1_sinks1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
   } else if (type.value == AttentionKernelType::backwardQuery &&
     blockDimensions[0] == 16 && blockDimensions[1] == 64 && blockDimensions[2] == 32 &&
     headDimension == 128 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(bq_b16x64x32_h128_i1_t1_cqdq_b0_c1_l0_iphoneos_metallib, sizeof(bq_b16x64x32_h128_i1_t1_cqdq_b0_c1_l0_iphoneos_metallib), NULL, 0);
@@ -2269,7 +2906,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 128 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(bkv_b16x128x16_h128_i1_t1_cdvdk_b0_c1_l0_iphoneos_metallib, sizeof(bkv_b16x128x16_h128_i1_t1_cdvdk_b0_c1_l0_iphoneos_metallib), NULL, 0);
@@ -2285,7 +2922,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 160 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x128x32_h160_i1_t1_co_b0_c1_l0_iphoneos_metallib, sizeof(f_b16x128x32_h160_i1_t1_co_b0_c1_l0_iphoneos_metallib), NULL, 0);
@@ -2301,7 +2938,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 160 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x128x32_h160_i1_t1_co_b0_c1_l0_sinks1_iphoneos_metallib, sizeof(f_b16x128x32_h160_i1_t1_co_b0_c1_l0_sinks1_iphoneos_metallib), NULL, 0);
@@ -2317,7 +2954,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 160 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 1 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x128x32_h160_i1_t1_co_b0_c1_l0_causal1_masked0_varlen0_iphoneos_metallib, sizeof(f_b16x128x32_h160_i1_t1_co_b0_c1_l0_causal1_masked0_varlen0_iphoneos_metallib), NULL, 0);
@@ -2333,7 +2970,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 160 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 1 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x128x32_h160_i1_t1_co_b0_c1_l0_causal1_masked0_varlen0_sinks1_iphoneos_metallib, sizeof(f_b16x128x32_h160_i1_t1_co_b0_c1_l0_causal1_masked0_varlen0_sinks1_iphoneos_metallib), NULL, 0);
@@ -2349,7 +2986,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 160 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 0 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x128x32_h160_i1_t1_co_b0_c1_l0_causal0_masked1_varlen0_iphoneos_metallib, sizeof(f_b16x128x32_h160_i1_t1_co_b0_c1_l0_causal0_masked1_varlen0_iphoneos_metallib), NULL, 0);
@@ -2365,7 +3002,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 160 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 0 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x128x32_h160_i1_t1_co_b0_c1_l0_causal0_masked1_varlen0_sinks1_iphoneos_metallib, sizeof(f_b16x128x32_h160_i1_t1_co_b0_c1_l0_causal0_masked1_varlen0_sinks1_iphoneos_metallib), NULL, 0);
@@ -2381,7 +3018,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 160 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 1 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x128x32_h160_i1_t1_co_b0_c1_l0_causal1_masked1_varlen0_iphoneos_metallib, sizeof(f_b16x128x32_h160_i1_t1_co_b0_c1_l0_causal1_masked1_varlen0_iphoneos_metallib), NULL, 0);
@@ -2397,7 +3034,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 160 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 1 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x128x32_h160_i1_t1_co_b0_c1_l0_causal1_masked1_varlen0_sinks1_iphoneos_metallib, sizeof(f_b16x128x32_h160_i1_t1_co_b0_c1_l0_causal1_masked1_varlen0_sinks1_iphoneos_metallib), NULL, 0);
@@ -2413,7 +3050,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 160 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x128x32_h160_i1_t1_co_b0_c1_l0_causal0_masked0_varlen1_iphoneos_metallib, sizeof(f_b16x128x32_h160_i1_t1_co_b0_c1_l0_causal0_masked0_varlen1_iphoneos_metallib), NULL, 0);
@@ -2429,7 +3066,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 160 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x128x32_h160_i1_t1_co_b0_c1_l0_causal0_masked0_varlen1_sinks1_iphoneos_metallib, sizeof(f_b16x128x32_h160_i1_t1_co_b0_c1_l0_causal0_masked0_varlen1_sinks1_iphoneos_metallib), NULL, 0);
@@ -2445,7 +3082,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 160 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 1 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x128x32_h160_i1_t1_co_b0_c1_l0_causal1_masked0_varlen1_iphoneos_metallib, sizeof(f_b16x128x32_h160_i1_t1_co_b0_c1_l0_causal1_masked0_varlen1_iphoneos_metallib), NULL, 0);
@@ -2461,7 +3098,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 160 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 1 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x128x32_h160_i1_t1_co_b0_c1_l0_causal1_masked0_varlen1_sinks1_iphoneos_metallib, sizeof(f_b16x128x32_h160_i1_t1_co_b0_c1_l0_causal1_masked0_varlen1_sinks1_iphoneos_metallib), NULL, 0);
@@ -2472,12 +3109,76 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     dispatch_release(data);
     return library;
 
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 16 && blockDimensions[1] == 128 && blockDimensions[2] == 32 &&
+    headDimension == 160 &&
+    lowPrecisionIntermediates == 1 && isBF16 == 0 &&
+    isCausal == 1 && masked == 0 && isVarlen == 0 &&
+    attentionSinks == 0 && slidingWindow > 0 &&
+    preferAsyncCache == 1 && preferAsyncLoad == 0) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b16x128x32_h160_i1_t1_co_b0_c1_l0_causal1_masked0_varlen0_sliding1_iphoneos_metallib, sizeof(f_b16x128x32_h160_i1_t1_co_b0_c1_l0_causal1_masked0_varlen0_sliding1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b16x128x32_h160_i1_t1_co_b0_c1_l0_causal1_masked0_varlen0_sliding1_macosx_metallib, sizeof(f_b16x128x32_h160_i1_t1_co_b0_c1_l0_causal1_masked0_varlen0_sliding1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 16 && blockDimensions[1] == 128 && blockDimensions[2] == 32 &&
+    headDimension == 160 &&
+    lowPrecisionIntermediates == 1 && isBF16 == 0 &&
+    isCausal == 1 && masked == 0 && isVarlen == 0 &&
+    attentionSinks == 1 && slidingWindow > 0 &&
+    preferAsyncCache == 1 && preferAsyncLoad == 0) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b16x128x32_h160_i1_t1_co_b0_c1_l0_causal1_masked0_varlen0_sliding1_sinks1_iphoneos_metallib, sizeof(f_b16x128x32_h160_i1_t1_co_b0_c1_l0_causal1_masked0_varlen0_sliding1_sinks1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b16x128x32_h160_i1_t1_co_b0_c1_l0_causal1_masked0_varlen0_sliding1_sinks1_macosx_metallib, sizeof(f_b16x128x32_h160_i1_t1_co_b0_c1_l0_causal1_masked0_varlen0_sliding1_sinks1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 16 && blockDimensions[1] == 128 && blockDimensions[2] == 32 &&
+    headDimension == 160 &&
+    lowPrecisionIntermediates == 1 && isBF16 == 0 &&
+    isCausal == 1 && masked == 1 && isVarlen == 0 &&
+    attentionSinks == 0 && slidingWindow > 0 &&
+    preferAsyncCache == 1 && preferAsyncLoad == 0) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b16x128x32_h160_i1_t1_co_b0_c1_l0_causal1_masked1_varlen0_sliding1_iphoneos_metallib, sizeof(f_b16x128x32_h160_i1_t1_co_b0_c1_l0_causal1_masked1_varlen0_sliding1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b16x128x32_h160_i1_t1_co_b0_c1_l0_causal1_masked1_varlen0_sliding1_macosx_metallib, sizeof(f_b16x128x32_h160_i1_t1_co_b0_c1_l0_causal1_masked1_varlen0_sliding1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 16 && blockDimensions[1] == 128 && blockDimensions[2] == 32 &&
+    headDimension == 160 &&
+    lowPrecisionIntermediates == 1 && isBF16 == 0 &&
+    isCausal == 1 && masked == 1 && isVarlen == 0 &&
+    attentionSinks == 1 && slidingWindow > 0 &&
+    preferAsyncCache == 1 && preferAsyncLoad == 0) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b16x128x32_h160_i1_t1_co_b0_c1_l0_causal1_masked1_varlen0_sliding1_sinks1_iphoneos_metallib, sizeof(f_b16x128x32_h160_i1_t1_co_b0_c1_l0_causal1_masked1_varlen0_sliding1_sinks1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b16x128x32_h160_i1_t1_co_b0_c1_l0_causal1_masked1_varlen0_sliding1_sinks1_macosx_metallib, sizeof(f_b16x128x32_h160_i1_t1_co_b0_c1_l0_causal1_masked1_varlen0_sliding1_sinks1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
   } else if (type.value == AttentionKernelType::backwardQuery &&
     blockDimensions[0] == 16 && blockDimensions[1] == 64 && blockDimensions[2] == 32 &&
     headDimension == 160 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(bq_b16x64x32_h160_i1_t1_cqdq_b0_c1_l0_iphoneos_metallib, sizeof(bq_b16x64x32_h160_i1_t1_cqdq_b0_c1_l0_iphoneos_metallib), NULL, 0);
@@ -2493,7 +3194,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 160 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(bkv_b16x128x16_h160_i1_t1_cdv_b0_c1_l0_iphoneos_metallib, sizeof(bkv_b16x128x16_h160_i1_t1_cdv_b0_c1_l0_iphoneos_metallib), NULL, 0);
@@ -2509,7 +3210,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 256 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x128x32_h256_i1_t1_c_b0_c1_l0_iphoneos_metallib, sizeof(f_b16x128x32_h256_i1_t1_c_b0_c1_l0_iphoneos_metallib), NULL, 0);
@@ -2525,7 +3226,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 256 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x128x32_h256_i1_t1_c_b0_c1_l0_sinks1_iphoneos_metallib, sizeof(f_b16x128x32_h256_i1_t1_c_b0_c1_l0_sinks1_iphoneos_metallib), NULL, 0);
@@ -2541,7 +3242,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 256 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 1 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x128x32_h256_i1_t1_c_b0_c1_l0_causal1_masked0_varlen0_iphoneos_metallib, sizeof(f_b16x128x32_h256_i1_t1_c_b0_c1_l0_causal1_masked0_varlen0_iphoneos_metallib), NULL, 0);
@@ -2557,7 +3258,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 256 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 1 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x128x32_h256_i1_t1_c_b0_c1_l0_causal1_masked0_varlen0_sinks1_iphoneos_metallib, sizeof(f_b16x128x32_h256_i1_t1_c_b0_c1_l0_causal1_masked0_varlen0_sinks1_iphoneos_metallib), NULL, 0);
@@ -2573,7 +3274,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 256 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 0 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x128x32_h256_i1_t1_c_b0_c1_l0_causal0_masked1_varlen0_iphoneos_metallib, sizeof(f_b16x128x32_h256_i1_t1_c_b0_c1_l0_causal0_masked1_varlen0_iphoneos_metallib), NULL, 0);
@@ -2589,7 +3290,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 256 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 0 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x128x32_h256_i1_t1_c_b0_c1_l0_causal0_masked1_varlen0_sinks1_iphoneos_metallib, sizeof(f_b16x128x32_h256_i1_t1_c_b0_c1_l0_causal0_masked1_varlen0_sinks1_iphoneos_metallib), NULL, 0);
@@ -2605,7 +3306,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 256 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 1 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x128x32_h256_i1_t1_c_b0_c1_l0_causal1_masked1_varlen0_iphoneos_metallib, sizeof(f_b16x128x32_h256_i1_t1_c_b0_c1_l0_causal1_masked1_varlen0_iphoneos_metallib), NULL, 0);
@@ -2621,7 +3322,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 256 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 1 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x128x32_h256_i1_t1_c_b0_c1_l0_causal1_masked1_varlen0_sinks1_iphoneos_metallib, sizeof(f_b16x128x32_h256_i1_t1_c_b0_c1_l0_causal1_masked1_varlen0_sinks1_iphoneos_metallib), NULL, 0);
@@ -2637,7 +3338,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 256 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x128x32_h256_i1_t1_c_b0_c1_l0_causal0_masked0_varlen1_iphoneos_metallib, sizeof(f_b16x128x32_h256_i1_t1_c_b0_c1_l0_causal0_masked0_varlen1_iphoneos_metallib), NULL, 0);
@@ -2653,7 +3354,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 256 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x128x32_h256_i1_t1_c_b0_c1_l0_causal0_masked0_varlen1_sinks1_iphoneos_metallib, sizeof(f_b16x128x32_h256_i1_t1_c_b0_c1_l0_causal0_masked0_varlen1_sinks1_iphoneos_metallib), NULL, 0);
@@ -2669,7 +3370,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 256 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 1 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x128x32_h256_i1_t1_c_b0_c1_l0_causal1_masked0_varlen1_iphoneos_metallib, sizeof(f_b16x128x32_h256_i1_t1_c_b0_c1_l0_causal1_masked0_varlen1_iphoneos_metallib), NULL, 0);
@@ -2685,7 +3386,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 256 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 1 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x128x32_h256_i1_t1_c_b0_c1_l0_causal1_masked0_varlen1_sinks1_iphoneos_metallib, sizeof(f_b16x128x32_h256_i1_t1_c_b0_c1_l0_causal1_masked0_varlen1_sinks1_iphoneos_metallib), NULL, 0);
@@ -2696,12 +3397,76 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     dispatch_release(data);
     return library;
 
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 16 && blockDimensions[1] == 128 && blockDimensions[2] == 32 &&
+    headDimension == 256 &&
+    lowPrecisionIntermediates == 1 && isBF16 == 0 &&
+    isCausal == 1 && masked == 0 && isVarlen == 0 &&
+    attentionSinks == 0 && slidingWindow > 0 &&
+    preferAsyncCache == 1 && preferAsyncLoad == 0) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b16x128x32_h256_i1_t1_c_b0_c1_l0_causal1_masked0_varlen0_sliding1_iphoneos_metallib, sizeof(f_b16x128x32_h256_i1_t1_c_b0_c1_l0_causal1_masked0_varlen0_sliding1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b16x128x32_h256_i1_t1_c_b0_c1_l0_causal1_masked0_varlen0_sliding1_macosx_metallib, sizeof(f_b16x128x32_h256_i1_t1_c_b0_c1_l0_causal1_masked0_varlen0_sliding1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 16 && blockDimensions[1] == 128 && blockDimensions[2] == 32 &&
+    headDimension == 256 &&
+    lowPrecisionIntermediates == 1 && isBF16 == 0 &&
+    isCausal == 1 && masked == 0 && isVarlen == 0 &&
+    attentionSinks == 1 && slidingWindow > 0 &&
+    preferAsyncCache == 1 && preferAsyncLoad == 0) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b16x128x32_h256_i1_t1_c_b0_c1_l0_causal1_masked0_varlen0_sliding1_sinks1_iphoneos_metallib, sizeof(f_b16x128x32_h256_i1_t1_c_b0_c1_l0_causal1_masked0_varlen0_sliding1_sinks1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b16x128x32_h256_i1_t1_c_b0_c1_l0_causal1_masked0_varlen0_sliding1_sinks1_macosx_metallib, sizeof(f_b16x128x32_h256_i1_t1_c_b0_c1_l0_causal1_masked0_varlen0_sliding1_sinks1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 16 && blockDimensions[1] == 128 && blockDimensions[2] == 32 &&
+    headDimension == 256 &&
+    lowPrecisionIntermediates == 1 && isBF16 == 0 &&
+    isCausal == 1 && masked == 1 && isVarlen == 0 &&
+    attentionSinks == 0 && slidingWindow > 0 &&
+    preferAsyncCache == 1 && preferAsyncLoad == 0) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b16x128x32_h256_i1_t1_c_b0_c1_l0_causal1_masked1_varlen0_sliding1_iphoneos_metallib, sizeof(f_b16x128x32_h256_i1_t1_c_b0_c1_l0_causal1_masked1_varlen0_sliding1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b16x128x32_h256_i1_t1_c_b0_c1_l0_causal1_masked1_varlen0_sliding1_macosx_metallib, sizeof(f_b16x128x32_h256_i1_t1_c_b0_c1_l0_causal1_masked1_varlen0_sliding1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 16 && blockDimensions[1] == 128 && blockDimensions[2] == 32 &&
+    headDimension == 256 &&
+    lowPrecisionIntermediates == 1 && isBF16 == 0 &&
+    isCausal == 1 && masked == 1 && isVarlen == 0 &&
+    attentionSinks == 1 && slidingWindow > 0 &&
+    preferAsyncCache == 1 && preferAsyncLoad == 0) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b16x128x32_h256_i1_t1_c_b0_c1_l0_causal1_masked1_varlen0_sliding1_sinks1_iphoneos_metallib, sizeof(f_b16x128x32_h256_i1_t1_c_b0_c1_l0_causal1_masked1_varlen0_sliding1_sinks1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b16x128x32_h256_i1_t1_c_b0_c1_l0_causal1_masked1_varlen0_sliding1_sinks1_macosx_metallib, sizeof(f_b16x128x32_h256_i1_t1_c_b0_c1_l0_causal1_masked1_varlen0_sliding1_sinks1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
   } else if (type.value == AttentionKernelType::backwardQuery &&
     blockDimensions[0] == 16 && blockDimensions[1] == 128 && blockDimensions[2] == 32 &&
     headDimension == 256 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(bq_b16x128x32_h256_i1_t1_c_b0_c1_l0_iphoneos_metallib, sizeof(bq_b16x128x32_h256_i1_t1_c_b0_c1_l0_iphoneos_metallib), NULL, 0);
@@ -2717,7 +3482,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 256 &&
     lowPrecisionIntermediates == 1 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(bkv_b16x128x32_h256_i1_t1_c_b0_c1_l0_iphoneos_metallib, sizeof(bkv_b16x128x32_h256_i1_t1_c_b0_c1_l0_iphoneos_metallib), NULL, 0);
@@ -2733,7 +3498,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 40 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x32x40_h40_i1_t0_cq_b0_c0_l1_iphoneos_metallib, sizeof(f_b32x32x40_h40_i1_t0_cq_b0_c0_l1_iphoneos_metallib), NULL, 0);
@@ -2749,7 +3514,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 40 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x32x40_h40_i1_t0_cq_b0_c0_l1_sinks1_iphoneos_metallib, sizeof(f_b32x32x40_h40_i1_t0_cq_b0_c0_l1_sinks1_iphoneos_metallib), NULL, 0);
@@ -2765,7 +3530,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 40 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 1 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x32x40_h40_i1_t0_cq_b0_c0_l1_causal1_masked0_varlen0_iphoneos_metallib, sizeof(f_b32x32x40_h40_i1_t0_cq_b0_c0_l1_causal1_masked0_varlen0_iphoneos_metallib), NULL, 0);
@@ -2781,7 +3546,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 40 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 1 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x32x40_h40_i1_t0_cq_b0_c0_l1_causal1_masked0_varlen0_sinks1_iphoneos_metallib, sizeof(f_b32x32x40_h40_i1_t0_cq_b0_c0_l1_causal1_masked0_varlen0_sinks1_iphoneos_metallib), NULL, 0);
@@ -2797,7 +3562,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 40 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 0 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x32x40_h40_i1_t0_cq_b0_c0_l1_causal0_masked1_varlen0_iphoneos_metallib, sizeof(f_b32x32x40_h40_i1_t0_cq_b0_c0_l1_causal0_masked1_varlen0_iphoneos_metallib), NULL, 0);
@@ -2813,7 +3578,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 40 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 0 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x32x40_h40_i1_t0_cq_b0_c0_l1_causal0_masked1_varlen0_sinks1_iphoneos_metallib, sizeof(f_b32x32x40_h40_i1_t0_cq_b0_c0_l1_causal0_masked1_varlen0_sinks1_iphoneos_metallib), NULL, 0);
@@ -2829,7 +3594,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 40 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 1 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x32x40_h40_i1_t0_cq_b0_c0_l1_causal1_masked1_varlen0_iphoneos_metallib, sizeof(f_b32x32x40_h40_i1_t0_cq_b0_c0_l1_causal1_masked1_varlen0_iphoneos_metallib), NULL, 0);
@@ -2845,7 +3610,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 40 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 1 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x32x40_h40_i1_t0_cq_b0_c0_l1_causal1_masked1_varlen0_sinks1_iphoneos_metallib, sizeof(f_b32x32x40_h40_i1_t0_cq_b0_c0_l1_causal1_masked1_varlen0_sinks1_iphoneos_metallib), NULL, 0);
@@ -2861,7 +3626,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 40 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x32x40_h40_i1_t0_cq_b0_c0_l1_causal0_masked0_varlen1_iphoneos_metallib, sizeof(f_b32x32x40_h40_i1_t0_cq_b0_c0_l1_causal0_masked0_varlen1_iphoneos_metallib), NULL, 0);
@@ -2877,7 +3642,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 40 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x32x40_h40_i1_t0_cq_b0_c0_l1_causal0_masked0_varlen1_sinks1_iphoneos_metallib, sizeof(f_b32x32x40_h40_i1_t0_cq_b0_c0_l1_causal0_masked0_varlen1_sinks1_iphoneos_metallib), NULL, 0);
@@ -2893,7 +3658,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 40 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 1 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x32x40_h40_i1_t0_cq_b0_c0_l1_causal1_masked0_varlen1_iphoneos_metallib, sizeof(f_b32x32x40_h40_i1_t0_cq_b0_c0_l1_causal1_masked0_varlen1_iphoneos_metallib), NULL, 0);
@@ -2909,7 +3674,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 40 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 1 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x32x40_h40_i1_t0_cq_b0_c0_l1_causal1_masked0_varlen1_sinks1_iphoneos_metallib, sizeof(f_b32x32x40_h40_i1_t0_cq_b0_c0_l1_causal1_masked0_varlen1_sinks1_iphoneos_metallib), NULL, 0);
@@ -2920,12 +3685,76 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     dispatch_release(data);
     return library;
 
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 32 && blockDimensions[1] == 32 && blockDimensions[2] == 40 &&
+    headDimension == 40 &&
+    lowPrecisionIntermediates == 0 && isBF16 == 0 &&
+    isCausal == 1 && masked == 0 && isVarlen == 0 &&
+    attentionSinks == 0 && slidingWindow > 0 &&
+    preferAsyncCache == 0 && preferAsyncLoad == 1) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b32x32x40_h40_i1_t0_cq_b0_c0_l1_causal1_masked0_varlen0_sliding1_iphoneos_metallib, sizeof(f_b32x32x40_h40_i1_t0_cq_b0_c0_l1_causal1_masked0_varlen0_sliding1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b32x32x40_h40_i1_t0_cq_b0_c0_l1_causal1_masked0_varlen0_sliding1_macosx_metallib, sizeof(f_b32x32x40_h40_i1_t0_cq_b0_c0_l1_causal1_masked0_varlen0_sliding1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 32 && blockDimensions[1] == 32 && blockDimensions[2] == 40 &&
+    headDimension == 40 &&
+    lowPrecisionIntermediates == 0 && isBF16 == 0 &&
+    isCausal == 1 && masked == 0 && isVarlen == 0 &&
+    attentionSinks == 1 && slidingWindow > 0 &&
+    preferAsyncCache == 0 && preferAsyncLoad == 1) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b32x32x40_h40_i1_t0_cq_b0_c0_l1_causal1_masked0_varlen0_sliding1_sinks1_iphoneos_metallib, sizeof(f_b32x32x40_h40_i1_t0_cq_b0_c0_l1_causal1_masked0_varlen0_sliding1_sinks1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b32x32x40_h40_i1_t0_cq_b0_c0_l1_causal1_masked0_varlen0_sliding1_sinks1_macosx_metallib, sizeof(f_b32x32x40_h40_i1_t0_cq_b0_c0_l1_causal1_masked0_varlen0_sliding1_sinks1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 32 && blockDimensions[1] == 32 && blockDimensions[2] == 40 &&
+    headDimension == 40 &&
+    lowPrecisionIntermediates == 0 && isBF16 == 0 &&
+    isCausal == 1 && masked == 1 && isVarlen == 0 &&
+    attentionSinks == 0 && slidingWindow > 0 &&
+    preferAsyncCache == 0 && preferAsyncLoad == 1) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b32x32x40_h40_i1_t0_cq_b0_c0_l1_causal1_masked1_varlen0_sliding1_iphoneos_metallib, sizeof(f_b32x32x40_h40_i1_t0_cq_b0_c0_l1_causal1_masked1_varlen0_sliding1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b32x32x40_h40_i1_t0_cq_b0_c0_l1_causal1_masked1_varlen0_sliding1_macosx_metallib, sizeof(f_b32x32x40_h40_i1_t0_cq_b0_c0_l1_causal1_masked1_varlen0_sliding1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 32 && blockDimensions[1] == 32 && blockDimensions[2] == 40 &&
+    headDimension == 40 &&
+    lowPrecisionIntermediates == 0 && isBF16 == 0 &&
+    isCausal == 1 && masked == 1 && isVarlen == 0 &&
+    attentionSinks == 1 && slidingWindow > 0 &&
+    preferAsyncCache == 0 && preferAsyncLoad == 1) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b32x32x40_h40_i1_t0_cq_b0_c0_l1_causal1_masked1_varlen0_sliding1_sinks1_iphoneos_metallib, sizeof(f_b32x32x40_h40_i1_t0_cq_b0_c0_l1_causal1_masked1_varlen0_sliding1_sinks1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b32x32x40_h40_i1_t0_cq_b0_c0_l1_causal1_masked1_varlen0_sliding1_sinks1_macosx_metallib, sizeof(f_b32x32x40_h40_i1_t0_cq_b0_c0_l1_causal1_masked1_varlen0_sliding1_sinks1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
   } else if (type.value == AttentionKernelType::backwardQuery &&
     blockDimensions[0] == 32 && blockDimensions[1] == 64 && blockDimensions[2] == 24 &&
     headDimension == 40 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(bq_b32x64x24_h40_i1_t0_cdq_b0_c0_l1_iphoneos_metallib, sizeof(bq_b32x64x24_h40_i1_t0_cdq_b0_c0_l1_iphoneos_metallib), NULL, 0);
@@ -2941,7 +3770,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 40 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(bkv_b32x80x16_h40_i1_t0_cdv_b0_c0_l1_iphoneos_metallib, sizeof(bkv_b32x80x16_h40_i1_t0_cdv_b0_c0_l1_iphoneos_metallib), NULL, 0);
@@ -2957,7 +3786,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 64 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x80x16_h64_i1_t0_c_b0_c0_l1_iphoneos_metallib, sizeof(f_b32x80x16_h64_i1_t0_c_b0_c0_l1_iphoneos_metallib), NULL, 0);
@@ -2973,7 +3802,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 64 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x80x16_h64_i1_t0_c_b0_c0_l1_sinks1_iphoneos_metallib, sizeof(f_b32x80x16_h64_i1_t0_c_b0_c0_l1_sinks1_iphoneos_metallib), NULL, 0);
@@ -2989,7 +3818,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 64 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 1 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x80x16_h64_i1_t0_c_b0_c0_l1_causal1_masked0_varlen0_iphoneos_metallib, sizeof(f_b32x80x16_h64_i1_t0_c_b0_c0_l1_causal1_masked0_varlen0_iphoneos_metallib), NULL, 0);
@@ -3005,7 +3834,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 64 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 1 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x80x16_h64_i1_t0_c_b0_c0_l1_causal1_masked0_varlen0_sinks1_iphoneos_metallib, sizeof(f_b32x80x16_h64_i1_t0_c_b0_c0_l1_causal1_masked0_varlen0_sinks1_iphoneos_metallib), NULL, 0);
@@ -3021,7 +3850,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 64 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 0 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x80x16_h64_i1_t0_c_b0_c0_l1_causal0_masked1_varlen0_iphoneos_metallib, sizeof(f_b32x80x16_h64_i1_t0_c_b0_c0_l1_causal0_masked1_varlen0_iphoneos_metallib), NULL, 0);
@@ -3037,7 +3866,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 64 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 0 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x80x16_h64_i1_t0_c_b0_c0_l1_causal0_masked1_varlen0_sinks1_iphoneos_metallib, sizeof(f_b32x80x16_h64_i1_t0_c_b0_c0_l1_causal0_masked1_varlen0_sinks1_iphoneos_metallib), NULL, 0);
@@ -3053,7 +3882,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 64 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 1 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x80x16_h64_i1_t0_c_b0_c0_l1_causal1_masked1_varlen0_iphoneos_metallib, sizeof(f_b32x80x16_h64_i1_t0_c_b0_c0_l1_causal1_masked1_varlen0_iphoneos_metallib), NULL, 0);
@@ -3069,7 +3898,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 64 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 1 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x80x16_h64_i1_t0_c_b0_c0_l1_causal1_masked1_varlen0_sinks1_iphoneos_metallib, sizeof(f_b32x80x16_h64_i1_t0_c_b0_c0_l1_causal1_masked1_varlen0_sinks1_iphoneos_metallib), NULL, 0);
@@ -3085,7 +3914,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 64 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x80x16_h64_i1_t0_c_b0_c0_l1_causal0_masked0_varlen1_iphoneos_metallib, sizeof(f_b32x80x16_h64_i1_t0_c_b0_c0_l1_causal0_masked0_varlen1_iphoneos_metallib), NULL, 0);
@@ -3101,7 +3930,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 64 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x80x16_h64_i1_t0_c_b0_c0_l1_causal0_masked0_varlen1_sinks1_iphoneos_metallib, sizeof(f_b32x80x16_h64_i1_t0_c_b0_c0_l1_causal0_masked0_varlen1_sinks1_iphoneos_metallib), NULL, 0);
@@ -3117,7 +3946,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 64 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 1 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x80x16_h64_i1_t0_c_b0_c0_l1_causal1_masked0_varlen1_iphoneos_metallib, sizeof(f_b32x80x16_h64_i1_t0_c_b0_c0_l1_causal1_masked0_varlen1_iphoneos_metallib), NULL, 0);
@@ -3133,7 +3962,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 64 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 1 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x80x16_h64_i1_t0_c_b0_c0_l1_causal1_masked0_varlen1_sinks1_iphoneos_metallib, sizeof(f_b32x80x16_h64_i1_t0_c_b0_c0_l1_causal1_masked0_varlen1_sinks1_iphoneos_metallib), NULL, 0);
@@ -3144,12 +3973,76 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     dispatch_release(data);
     return library;
 
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 32 && blockDimensions[1] == 80 && blockDimensions[2] == 16 &&
+    headDimension == 64 &&
+    lowPrecisionIntermediates == 0 && isBF16 == 0 &&
+    isCausal == 1 && masked == 0 && isVarlen == 0 &&
+    attentionSinks == 0 && slidingWindow > 0 &&
+    preferAsyncCache == 0 && preferAsyncLoad == 1) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b32x80x16_h64_i1_t0_c_b0_c0_l1_causal1_masked0_varlen0_sliding1_iphoneos_metallib, sizeof(f_b32x80x16_h64_i1_t0_c_b0_c0_l1_causal1_masked0_varlen0_sliding1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b32x80x16_h64_i1_t0_c_b0_c0_l1_causal1_masked0_varlen0_sliding1_macosx_metallib, sizeof(f_b32x80x16_h64_i1_t0_c_b0_c0_l1_causal1_masked0_varlen0_sliding1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 32 && blockDimensions[1] == 80 && blockDimensions[2] == 16 &&
+    headDimension == 64 &&
+    lowPrecisionIntermediates == 0 && isBF16 == 0 &&
+    isCausal == 1 && masked == 0 && isVarlen == 0 &&
+    attentionSinks == 1 && slidingWindow > 0 &&
+    preferAsyncCache == 0 && preferAsyncLoad == 1) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b32x80x16_h64_i1_t0_c_b0_c0_l1_causal1_masked0_varlen0_sliding1_sinks1_iphoneos_metallib, sizeof(f_b32x80x16_h64_i1_t0_c_b0_c0_l1_causal1_masked0_varlen0_sliding1_sinks1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b32x80x16_h64_i1_t0_c_b0_c0_l1_causal1_masked0_varlen0_sliding1_sinks1_macosx_metallib, sizeof(f_b32x80x16_h64_i1_t0_c_b0_c0_l1_causal1_masked0_varlen0_sliding1_sinks1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 32 && blockDimensions[1] == 80 && blockDimensions[2] == 16 &&
+    headDimension == 64 &&
+    lowPrecisionIntermediates == 0 && isBF16 == 0 &&
+    isCausal == 1 && masked == 1 && isVarlen == 0 &&
+    attentionSinks == 0 && slidingWindow > 0 &&
+    preferAsyncCache == 0 && preferAsyncLoad == 1) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b32x80x16_h64_i1_t0_c_b0_c0_l1_causal1_masked1_varlen0_sliding1_iphoneos_metallib, sizeof(f_b32x80x16_h64_i1_t0_c_b0_c0_l1_causal1_masked1_varlen0_sliding1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b32x80x16_h64_i1_t0_c_b0_c0_l1_causal1_masked1_varlen0_sliding1_macosx_metallib, sizeof(f_b32x80x16_h64_i1_t0_c_b0_c0_l1_causal1_masked1_varlen0_sliding1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 32 && blockDimensions[1] == 80 && blockDimensions[2] == 16 &&
+    headDimension == 64 &&
+    lowPrecisionIntermediates == 0 && isBF16 == 0 &&
+    isCausal == 1 && masked == 1 && isVarlen == 0 &&
+    attentionSinks == 1 && slidingWindow > 0 &&
+    preferAsyncCache == 0 && preferAsyncLoad == 1) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b32x80x16_h64_i1_t0_c_b0_c0_l1_causal1_masked1_varlen0_sliding1_sinks1_iphoneos_metallib, sizeof(f_b32x80x16_h64_i1_t0_c_b0_c0_l1_causal1_masked1_varlen0_sliding1_sinks1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b32x80x16_h64_i1_t0_c_b0_c0_l1_causal1_masked1_varlen0_sliding1_sinks1_macosx_metallib, sizeof(f_b32x80x16_h64_i1_t0_c_b0_c0_l1_causal1_masked1_varlen0_sliding1_sinks1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
   } else if (type.value == AttentionKernelType::backwardQuery &&
     blockDimensions[0] == 32 && blockDimensions[1] == 80 && blockDimensions[2] == 16 &&
     headDimension == 64 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(bq_b32x80x16_h64_i1_t0_c_b0_c0_l1_iphoneos_metallib, sizeof(bq_b32x80x16_h64_i1_t0_c_b0_c0_l1_iphoneos_metallib), NULL, 0);
@@ -3165,7 +4058,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 64 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(bkv_b32x80x16_h64_i1_t0_c_b0_c0_l1_iphoneos_metallib, sizeof(bkv_b32x80x16_h64_i1_t0_c_b0_c0_l1_iphoneos_metallib), NULL, 0);
@@ -3181,7 +4074,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 80 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x80x16_h80_i1_t0_c_b0_c0_l1_iphoneos_metallib, sizeof(f_b32x80x16_h80_i1_t0_c_b0_c0_l1_iphoneos_metallib), NULL, 0);
@@ -3197,7 +4090,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 80 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x80x16_h80_i1_t0_c_b0_c0_l1_sinks1_iphoneos_metallib, sizeof(f_b32x80x16_h80_i1_t0_c_b0_c0_l1_sinks1_iphoneos_metallib), NULL, 0);
@@ -3213,7 +4106,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 80 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 1 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x80x16_h80_i1_t0_c_b0_c0_l1_causal1_masked0_varlen0_iphoneos_metallib, sizeof(f_b32x80x16_h80_i1_t0_c_b0_c0_l1_causal1_masked0_varlen0_iphoneos_metallib), NULL, 0);
@@ -3229,7 +4122,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 80 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 1 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x80x16_h80_i1_t0_c_b0_c0_l1_causal1_masked0_varlen0_sinks1_iphoneos_metallib, sizeof(f_b32x80x16_h80_i1_t0_c_b0_c0_l1_causal1_masked0_varlen0_sinks1_iphoneos_metallib), NULL, 0);
@@ -3245,7 +4138,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 80 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 0 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x80x16_h80_i1_t0_c_b0_c0_l1_causal0_masked1_varlen0_iphoneos_metallib, sizeof(f_b32x80x16_h80_i1_t0_c_b0_c0_l1_causal0_masked1_varlen0_iphoneos_metallib), NULL, 0);
@@ -3261,7 +4154,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 80 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 0 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x80x16_h80_i1_t0_c_b0_c0_l1_causal0_masked1_varlen0_sinks1_iphoneos_metallib, sizeof(f_b32x80x16_h80_i1_t0_c_b0_c0_l1_causal0_masked1_varlen0_sinks1_iphoneos_metallib), NULL, 0);
@@ -3277,7 +4170,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 80 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 1 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x80x16_h80_i1_t0_c_b0_c0_l1_causal1_masked1_varlen0_iphoneos_metallib, sizeof(f_b32x80x16_h80_i1_t0_c_b0_c0_l1_causal1_masked1_varlen0_iphoneos_metallib), NULL, 0);
@@ -3293,7 +4186,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 80 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 1 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x80x16_h80_i1_t0_c_b0_c0_l1_causal1_masked1_varlen0_sinks1_iphoneos_metallib, sizeof(f_b32x80x16_h80_i1_t0_c_b0_c0_l1_causal1_masked1_varlen0_sinks1_iphoneos_metallib), NULL, 0);
@@ -3309,7 +4202,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 80 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x80x16_h80_i1_t0_c_b0_c0_l1_causal0_masked0_varlen1_iphoneos_metallib, sizeof(f_b32x80x16_h80_i1_t0_c_b0_c0_l1_causal0_masked0_varlen1_iphoneos_metallib), NULL, 0);
@@ -3325,7 +4218,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 80 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x80x16_h80_i1_t0_c_b0_c0_l1_causal0_masked0_varlen1_sinks1_iphoneos_metallib, sizeof(f_b32x80x16_h80_i1_t0_c_b0_c0_l1_causal0_masked0_varlen1_sinks1_iphoneos_metallib), NULL, 0);
@@ -3341,7 +4234,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 80 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 1 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x80x16_h80_i1_t0_c_b0_c0_l1_causal1_masked0_varlen1_iphoneos_metallib, sizeof(f_b32x80x16_h80_i1_t0_c_b0_c0_l1_causal1_masked0_varlen1_iphoneos_metallib), NULL, 0);
@@ -3357,7 +4250,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 80 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 1 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x80x16_h80_i1_t0_c_b0_c0_l1_causal1_masked0_varlen1_sinks1_iphoneos_metallib, sizeof(f_b32x80x16_h80_i1_t0_c_b0_c0_l1_causal1_masked0_varlen1_sinks1_iphoneos_metallib), NULL, 0);
@@ -3368,12 +4261,76 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     dispatch_release(data);
     return library;
 
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 32 && blockDimensions[1] == 80 && blockDimensions[2] == 16 &&
+    headDimension == 80 &&
+    lowPrecisionIntermediates == 0 && isBF16 == 0 &&
+    isCausal == 1 && masked == 0 && isVarlen == 0 &&
+    attentionSinks == 0 && slidingWindow > 0 &&
+    preferAsyncCache == 0 && preferAsyncLoad == 1) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b32x80x16_h80_i1_t0_c_b0_c0_l1_causal1_masked0_varlen0_sliding1_iphoneos_metallib, sizeof(f_b32x80x16_h80_i1_t0_c_b0_c0_l1_causal1_masked0_varlen0_sliding1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b32x80x16_h80_i1_t0_c_b0_c0_l1_causal1_masked0_varlen0_sliding1_macosx_metallib, sizeof(f_b32x80x16_h80_i1_t0_c_b0_c0_l1_causal1_masked0_varlen0_sliding1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 32 && blockDimensions[1] == 80 && blockDimensions[2] == 16 &&
+    headDimension == 80 &&
+    lowPrecisionIntermediates == 0 && isBF16 == 0 &&
+    isCausal == 1 && masked == 0 && isVarlen == 0 &&
+    attentionSinks == 1 && slidingWindow > 0 &&
+    preferAsyncCache == 0 && preferAsyncLoad == 1) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b32x80x16_h80_i1_t0_c_b0_c0_l1_causal1_masked0_varlen0_sliding1_sinks1_iphoneos_metallib, sizeof(f_b32x80x16_h80_i1_t0_c_b0_c0_l1_causal1_masked0_varlen0_sliding1_sinks1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b32x80x16_h80_i1_t0_c_b0_c0_l1_causal1_masked0_varlen0_sliding1_sinks1_macosx_metallib, sizeof(f_b32x80x16_h80_i1_t0_c_b0_c0_l1_causal1_masked0_varlen0_sliding1_sinks1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 32 && blockDimensions[1] == 80 && blockDimensions[2] == 16 &&
+    headDimension == 80 &&
+    lowPrecisionIntermediates == 0 && isBF16 == 0 &&
+    isCausal == 1 && masked == 1 && isVarlen == 0 &&
+    attentionSinks == 0 && slidingWindow > 0 &&
+    preferAsyncCache == 0 && preferAsyncLoad == 1) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b32x80x16_h80_i1_t0_c_b0_c0_l1_causal1_masked1_varlen0_sliding1_iphoneos_metallib, sizeof(f_b32x80x16_h80_i1_t0_c_b0_c0_l1_causal1_masked1_varlen0_sliding1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b32x80x16_h80_i1_t0_c_b0_c0_l1_causal1_masked1_varlen0_sliding1_macosx_metallib, sizeof(f_b32x80x16_h80_i1_t0_c_b0_c0_l1_causal1_masked1_varlen0_sliding1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 32 && blockDimensions[1] == 80 && blockDimensions[2] == 16 &&
+    headDimension == 80 &&
+    lowPrecisionIntermediates == 0 && isBF16 == 0 &&
+    isCausal == 1 && masked == 1 && isVarlen == 0 &&
+    attentionSinks == 1 && slidingWindow > 0 &&
+    preferAsyncCache == 0 && preferAsyncLoad == 1) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b32x80x16_h80_i1_t0_c_b0_c0_l1_causal1_masked1_varlen0_sliding1_sinks1_iphoneos_metallib, sizeof(f_b32x80x16_h80_i1_t0_c_b0_c0_l1_causal1_masked1_varlen0_sliding1_sinks1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b32x80x16_h80_i1_t0_c_b0_c0_l1_causal1_masked1_varlen0_sliding1_sinks1_macosx_metallib, sizeof(f_b32x80x16_h80_i1_t0_c_b0_c0_l1_causal1_masked1_varlen0_sliding1_sinks1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
   } else if (type.value == AttentionKernelType::backwardQuery &&
     blockDimensions[0] == 32 && blockDimensions[1] == 80 && blockDimensions[2] == 16 &&
     headDimension == 80 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(bq_b32x80x16_h80_i1_t0_c_b0_c0_l1_iphoneos_metallib, sizeof(bq_b32x80x16_h80_i1_t0_c_b0_c0_l1_iphoneos_metallib), NULL, 0);
@@ -3389,7 +4346,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 80 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(bkv_b32x80x16_h80_i1_t0_c_b0_c0_l1_iphoneos_metallib, sizeof(bkv_b32x80x16_h80_i1_t0_c_b0_c0_l1_iphoneos_metallib), NULL, 0);
@@ -3405,7 +4362,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 128 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x80x16_h128_i1_t0_c_b0_c0_l1_iphoneos_metallib, sizeof(f_b32x80x16_h128_i1_t0_c_b0_c0_l1_iphoneos_metallib), NULL, 0);
@@ -3421,7 +4378,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 128 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x80x16_h128_i1_t0_c_b0_c0_l1_sinks1_iphoneos_metallib, sizeof(f_b32x80x16_h128_i1_t0_c_b0_c0_l1_sinks1_iphoneos_metallib), NULL, 0);
@@ -3437,7 +4394,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 128 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 1 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x80x16_h128_i1_t0_c_b0_c0_l1_causal1_masked0_varlen0_iphoneos_metallib, sizeof(f_b32x80x16_h128_i1_t0_c_b0_c0_l1_causal1_masked0_varlen0_iphoneos_metallib), NULL, 0);
@@ -3453,7 +4410,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 128 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 1 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x80x16_h128_i1_t0_c_b0_c0_l1_causal1_masked0_varlen0_sinks1_iphoneos_metallib, sizeof(f_b32x80x16_h128_i1_t0_c_b0_c0_l1_causal1_masked0_varlen0_sinks1_iphoneos_metallib), NULL, 0);
@@ -3469,7 +4426,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 128 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 0 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x80x16_h128_i1_t0_c_b0_c0_l1_causal0_masked1_varlen0_iphoneos_metallib, sizeof(f_b32x80x16_h128_i1_t0_c_b0_c0_l1_causal0_masked1_varlen0_iphoneos_metallib), NULL, 0);
@@ -3485,7 +4442,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 128 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 0 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x80x16_h128_i1_t0_c_b0_c0_l1_causal0_masked1_varlen0_sinks1_iphoneos_metallib, sizeof(f_b32x80x16_h128_i1_t0_c_b0_c0_l1_causal0_masked1_varlen0_sinks1_iphoneos_metallib), NULL, 0);
@@ -3501,7 +4458,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 128 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 1 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x80x16_h128_i1_t0_c_b0_c0_l1_causal1_masked1_varlen0_iphoneos_metallib, sizeof(f_b32x80x16_h128_i1_t0_c_b0_c0_l1_causal1_masked1_varlen0_iphoneos_metallib), NULL, 0);
@@ -3517,7 +4474,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 128 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 1 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x80x16_h128_i1_t0_c_b0_c0_l1_causal1_masked1_varlen0_sinks1_iphoneos_metallib, sizeof(f_b32x80x16_h128_i1_t0_c_b0_c0_l1_causal1_masked1_varlen0_sinks1_iphoneos_metallib), NULL, 0);
@@ -3533,7 +4490,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 128 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x80x16_h128_i1_t0_c_b0_c0_l1_causal0_masked0_varlen1_iphoneos_metallib, sizeof(f_b32x80x16_h128_i1_t0_c_b0_c0_l1_causal0_masked0_varlen1_iphoneos_metallib), NULL, 0);
@@ -3549,7 +4506,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 128 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x80x16_h128_i1_t0_c_b0_c0_l1_causal0_masked0_varlen1_sinks1_iphoneos_metallib, sizeof(f_b32x80x16_h128_i1_t0_c_b0_c0_l1_causal0_masked0_varlen1_sinks1_iphoneos_metallib), NULL, 0);
@@ -3565,7 +4522,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 128 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 1 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x80x16_h128_i1_t0_c_b0_c0_l1_causal1_masked0_varlen1_iphoneos_metallib, sizeof(f_b32x80x16_h128_i1_t0_c_b0_c0_l1_causal1_masked0_varlen1_iphoneos_metallib), NULL, 0);
@@ -3581,7 +4538,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 128 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 1 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x80x16_h128_i1_t0_c_b0_c0_l1_causal1_masked0_varlen1_sinks1_iphoneos_metallib, sizeof(f_b32x80x16_h128_i1_t0_c_b0_c0_l1_causal1_masked0_varlen1_sinks1_iphoneos_metallib), NULL, 0);
@@ -3592,12 +4549,76 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     dispatch_release(data);
     return library;
 
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 32 && blockDimensions[1] == 80 && blockDimensions[2] == 16 &&
+    headDimension == 128 &&
+    lowPrecisionIntermediates == 0 && isBF16 == 0 &&
+    isCausal == 1 && masked == 0 && isVarlen == 0 &&
+    attentionSinks == 0 && slidingWindow > 0 &&
+    preferAsyncCache == 0 && preferAsyncLoad == 1) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b32x80x16_h128_i1_t0_c_b0_c0_l1_causal1_masked0_varlen0_sliding1_iphoneos_metallib, sizeof(f_b32x80x16_h128_i1_t0_c_b0_c0_l1_causal1_masked0_varlen0_sliding1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b32x80x16_h128_i1_t0_c_b0_c0_l1_causal1_masked0_varlen0_sliding1_macosx_metallib, sizeof(f_b32x80x16_h128_i1_t0_c_b0_c0_l1_causal1_masked0_varlen0_sliding1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 32 && blockDimensions[1] == 80 && blockDimensions[2] == 16 &&
+    headDimension == 128 &&
+    lowPrecisionIntermediates == 0 && isBF16 == 0 &&
+    isCausal == 1 && masked == 0 && isVarlen == 0 &&
+    attentionSinks == 1 && slidingWindow > 0 &&
+    preferAsyncCache == 0 && preferAsyncLoad == 1) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b32x80x16_h128_i1_t0_c_b0_c0_l1_causal1_masked0_varlen0_sliding1_sinks1_iphoneos_metallib, sizeof(f_b32x80x16_h128_i1_t0_c_b0_c0_l1_causal1_masked0_varlen0_sliding1_sinks1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b32x80x16_h128_i1_t0_c_b0_c0_l1_causal1_masked0_varlen0_sliding1_sinks1_macosx_metallib, sizeof(f_b32x80x16_h128_i1_t0_c_b0_c0_l1_causal1_masked0_varlen0_sliding1_sinks1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 32 && blockDimensions[1] == 80 && blockDimensions[2] == 16 &&
+    headDimension == 128 &&
+    lowPrecisionIntermediates == 0 && isBF16 == 0 &&
+    isCausal == 1 && masked == 1 && isVarlen == 0 &&
+    attentionSinks == 0 && slidingWindow > 0 &&
+    preferAsyncCache == 0 && preferAsyncLoad == 1) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b32x80x16_h128_i1_t0_c_b0_c0_l1_causal1_masked1_varlen0_sliding1_iphoneos_metallib, sizeof(f_b32x80x16_h128_i1_t0_c_b0_c0_l1_causal1_masked1_varlen0_sliding1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b32x80x16_h128_i1_t0_c_b0_c0_l1_causal1_masked1_varlen0_sliding1_macosx_metallib, sizeof(f_b32x80x16_h128_i1_t0_c_b0_c0_l1_causal1_masked1_varlen0_sliding1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 32 && blockDimensions[1] == 80 && blockDimensions[2] == 16 &&
+    headDimension == 128 &&
+    lowPrecisionIntermediates == 0 && isBF16 == 0 &&
+    isCausal == 1 && masked == 1 && isVarlen == 0 &&
+    attentionSinks == 1 && slidingWindow > 0 &&
+    preferAsyncCache == 0 && preferAsyncLoad == 1) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b32x80x16_h128_i1_t0_c_b0_c0_l1_causal1_masked1_varlen0_sliding1_sinks1_iphoneos_metallib, sizeof(f_b32x80x16_h128_i1_t0_c_b0_c0_l1_causal1_masked1_varlen0_sliding1_sinks1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b32x80x16_h128_i1_t0_c_b0_c0_l1_causal1_masked1_varlen0_sliding1_sinks1_macosx_metallib, sizeof(f_b32x80x16_h128_i1_t0_c_b0_c0_l1_causal1_masked1_varlen0_sliding1_sinks1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
   } else if (type.value == AttentionKernelType::backwardQuery &&
     blockDimensions[0] == 32 && blockDimensions[1] == 80 && blockDimensions[2] == 16 &&
     headDimension == 128 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(bq_b32x80x16_h128_i1_t0_c_b0_c0_l1_iphoneos_metallib, sizeof(bq_b32x80x16_h128_i1_t0_c_b0_c0_l1_iphoneos_metallib), NULL, 0);
@@ -3613,7 +4634,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 128 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(bkv_b32x80x16_h128_i1_t0_c_b0_c0_l1_iphoneos_metallib, sizeof(bkv_b32x80x16_h128_i1_t0_c_b0_c0_l1_iphoneos_metallib), NULL, 0);
@@ -3629,7 +4650,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 160 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x80x16_h160_i1_t0_c_b0_c0_l1_iphoneos_metallib, sizeof(f_b32x80x16_h160_i1_t0_c_b0_c0_l1_iphoneos_metallib), NULL, 0);
@@ -3645,7 +4666,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 160 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x80x16_h160_i1_t0_c_b0_c0_l1_sinks1_iphoneos_metallib, sizeof(f_b32x80x16_h160_i1_t0_c_b0_c0_l1_sinks1_iphoneos_metallib), NULL, 0);
@@ -3661,7 +4682,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 160 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 1 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x80x16_h160_i1_t0_c_b0_c0_l1_causal1_masked0_varlen0_iphoneos_metallib, sizeof(f_b32x80x16_h160_i1_t0_c_b0_c0_l1_causal1_masked0_varlen0_iphoneos_metallib), NULL, 0);
@@ -3677,7 +4698,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 160 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 1 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x80x16_h160_i1_t0_c_b0_c0_l1_causal1_masked0_varlen0_sinks1_iphoneos_metallib, sizeof(f_b32x80x16_h160_i1_t0_c_b0_c0_l1_causal1_masked0_varlen0_sinks1_iphoneos_metallib), NULL, 0);
@@ -3693,7 +4714,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 160 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 0 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x80x16_h160_i1_t0_c_b0_c0_l1_causal0_masked1_varlen0_iphoneos_metallib, sizeof(f_b32x80x16_h160_i1_t0_c_b0_c0_l1_causal0_masked1_varlen0_iphoneos_metallib), NULL, 0);
@@ -3709,7 +4730,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 160 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 0 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x80x16_h160_i1_t0_c_b0_c0_l1_causal0_masked1_varlen0_sinks1_iphoneos_metallib, sizeof(f_b32x80x16_h160_i1_t0_c_b0_c0_l1_causal0_masked1_varlen0_sinks1_iphoneos_metallib), NULL, 0);
@@ -3725,7 +4746,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 160 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 1 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x80x16_h160_i1_t0_c_b0_c0_l1_causal1_masked1_varlen0_iphoneos_metallib, sizeof(f_b32x80x16_h160_i1_t0_c_b0_c0_l1_causal1_masked1_varlen0_iphoneos_metallib), NULL, 0);
@@ -3741,7 +4762,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 160 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 1 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x80x16_h160_i1_t0_c_b0_c0_l1_causal1_masked1_varlen0_sinks1_iphoneos_metallib, sizeof(f_b32x80x16_h160_i1_t0_c_b0_c0_l1_causal1_masked1_varlen0_sinks1_iphoneos_metallib), NULL, 0);
@@ -3757,7 +4778,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 160 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x80x16_h160_i1_t0_c_b0_c0_l1_causal0_masked0_varlen1_iphoneos_metallib, sizeof(f_b32x80x16_h160_i1_t0_c_b0_c0_l1_causal0_masked0_varlen1_iphoneos_metallib), NULL, 0);
@@ -3773,7 +4794,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 160 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x80x16_h160_i1_t0_c_b0_c0_l1_causal0_masked0_varlen1_sinks1_iphoneos_metallib, sizeof(f_b32x80x16_h160_i1_t0_c_b0_c0_l1_causal0_masked0_varlen1_sinks1_iphoneos_metallib), NULL, 0);
@@ -3789,7 +4810,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 160 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 1 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x80x16_h160_i1_t0_c_b0_c0_l1_causal1_masked0_varlen1_iphoneos_metallib, sizeof(f_b32x80x16_h160_i1_t0_c_b0_c0_l1_causal1_masked0_varlen1_iphoneos_metallib), NULL, 0);
@@ -3805,7 +4826,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 160 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 1 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x80x16_h160_i1_t0_c_b0_c0_l1_causal1_masked0_varlen1_sinks1_iphoneos_metallib, sizeof(f_b32x80x16_h160_i1_t0_c_b0_c0_l1_causal1_masked0_varlen1_sinks1_iphoneos_metallib), NULL, 0);
@@ -3816,12 +4837,76 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     dispatch_release(data);
     return library;
 
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 32 && blockDimensions[1] == 80 && blockDimensions[2] == 16 &&
+    headDimension == 160 &&
+    lowPrecisionIntermediates == 0 && isBF16 == 0 &&
+    isCausal == 1 && masked == 0 && isVarlen == 0 &&
+    attentionSinks == 0 && slidingWindow > 0 &&
+    preferAsyncCache == 0 && preferAsyncLoad == 1) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b32x80x16_h160_i1_t0_c_b0_c0_l1_causal1_masked0_varlen0_sliding1_iphoneos_metallib, sizeof(f_b32x80x16_h160_i1_t0_c_b0_c0_l1_causal1_masked0_varlen0_sliding1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b32x80x16_h160_i1_t0_c_b0_c0_l1_causal1_masked0_varlen0_sliding1_macosx_metallib, sizeof(f_b32x80x16_h160_i1_t0_c_b0_c0_l1_causal1_masked0_varlen0_sliding1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 32 && blockDimensions[1] == 80 && blockDimensions[2] == 16 &&
+    headDimension == 160 &&
+    lowPrecisionIntermediates == 0 && isBF16 == 0 &&
+    isCausal == 1 && masked == 0 && isVarlen == 0 &&
+    attentionSinks == 1 && slidingWindow > 0 &&
+    preferAsyncCache == 0 && preferAsyncLoad == 1) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b32x80x16_h160_i1_t0_c_b0_c0_l1_causal1_masked0_varlen0_sliding1_sinks1_iphoneos_metallib, sizeof(f_b32x80x16_h160_i1_t0_c_b0_c0_l1_causal1_masked0_varlen0_sliding1_sinks1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b32x80x16_h160_i1_t0_c_b0_c0_l1_causal1_masked0_varlen0_sliding1_sinks1_macosx_metallib, sizeof(f_b32x80x16_h160_i1_t0_c_b0_c0_l1_causal1_masked0_varlen0_sliding1_sinks1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 32 && blockDimensions[1] == 80 && blockDimensions[2] == 16 &&
+    headDimension == 160 &&
+    lowPrecisionIntermediates == 0 && isBF16 == 0 &&
+    isCausal == 1 && masked == 1 && isVarlen == 0 &&
+    attentionSinks == 0 && slidingWindow > 0 &&
+    preferAsyncCache == 0 && preferAsyncLoad == 1) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b32x80x16_h160_i1_t0_c_b0_c0_l1_causal1_masked1_varlen0_sliding1_iphoneos_metallib, sizeof(f_b32x80x16_h160_i1_t0_c_b0_c0_l1_causal1_masked1_varlen0_sliding1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b32x80x16_h160_i1_t0_c_b0_c0_l1_causal1_masked1_varlen0_sliding1_macosx_metallib, sizeof(f_b32x80x16_h160_i1_t0_c_b0_c0_l1_causal1_masked1_varlen0_sliding1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 32 && blockDimensions[1] == 80 && blockDimensions[2] == 16 &&
+    headDimension == 160 &&
+    lowPrecisionIntermediates == 0 && isBF16 == 0 &&
+    isCausal == 1 && masked == 1 && isVarlen == 0 &&
+    attentionSinks == 1 && slidingWindow > 0 &&
+    preferAsyncCache == 0 && preferAsyncLoad == 1) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b32x80x16_h160_i1_t0_c_b0_c0_l1_causal1_masked1_varlen0_sliding1_sinks1_iphoneos_metallib, sizeof(f_b32x80x16_h160_i1_t0_c_b0_c0_l1_causal1_masked1_varlen0_sliding1_sinks1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b32x80x16_h160_i1_t0_c_b0_c0_l1_causal1_masked1_varlen0_sliding1_sinks1_macosx_metallib, sizeof(f_b32x80x16_h160_i1_t0_c_b0_c0_l1_causal1_masked1_varlen0_sliding1_sinks1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
   } else if (type.value == AttentionKernelType::backwardQuery &&
     blockDimensions[0] == 32 && blockDimensions[1] == 80 && blockDimensions[2] == 16 &&
     headDimension == 160 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(bq_b32x80x16_h160_i1_t0_c_b0_c0_l1_iphoneos_metallib, sizeof(bq_b32x80x16_h160_i1_t0_c_b0_c0_l1_iphoneos_metallib), NULL, 0);
@@ -3837,7 +4922,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 160 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(bkv_b32x80x16_h160_i1_t0_c_b0_c0_l1_iphoneos_metallib, sizeof(bkv_b32x80x16_h160_i1_t0_c_b0_c0_l1_iphoneos_metallib), NULL, 0);
@@ -3853,7 +4938,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 256 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x80x16_h256_i1_t0_c_b0_c0_l1_iphoneos_metallib, sizeof(f_b32x80x16_h256_i1_t0_c_b0_c0_l1_iphoneos_metallib), NULL, 0);
@@ -3869,7 +4954,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 256 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x80x16_h256_i1_t0_c_b0_c0_l1_sinks1_iphoneos_metallib, sizeof(f_b32x80x16_h256_i1_t0_c_b0_c0_l1_sinks1_iphoneos_metallib), NULL, 0);
@@ -3885,7 +4970,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 256 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 1 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x80x16_h256_i1_t0_c_b0_c0_l1_causal1_masked0_varlen0_iphoneos_metallib, sizeof(f_b32x80x16_h256_i1_t0_c_b0_c0_l1_causal1_masked0_varlen0_iphoneos_metallib), NULL, 0);
@@ -3901,7 +4986,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 256 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 1 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x80x16_h256_i1_t0_c_b0_c0_l1_causal1_masked0_varlen0_sinks1_iphoneos_metallib, sizeof(f_b32x80x16_h256_i1_t0_c_b0_c0_l1_causal1_masked0_varlen0_sinks1_iphoneos_metallib), NULL, 0);
@@ -3917,7 +5002,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 256 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 0 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x80x16_h256_i1_t0_c_b0_c0_l1_causal0_masked1_varlen0_iphoneos_metallib, sizeof(f_b32x80x16_h256_i1_t0_c_b0_c0_l1_causal0_masked1_varlen0_iphoneos_metallib), NULL, 0);
@@ -3933,7 +5018,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 256 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 0 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x80x16_h256_i1_t0_c_b0_c0_l1_causal0_masked1_varlen0_sinks1_iphoneos_metallib, sizeof(f_b32x80x16_h256_i1_t0_c_b0_c0_l1_causal0_masked1_varlen0_sinks1_iphoneos_metallib), NULL, 0);
@@ -3949,7 +5034,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 256 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 1 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x80x16_h256_i1_t0_c_b0_c0_l1_causal1_masked1_varlen0_iphoneos_metallib, sizeof(f_b32x80x16_h256_i1_t0_c_b0_c0_l1_causal1_masked1_varlen0_iphoneos_metallib), NULL, 0);
@@ -3965,7 +5050,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 256 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 1 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x80x16_h256_i1_t0_c_b0_c0_l1_causal1_masked1_varlen0_sinks1_iphoneos_metallib, sizeof(f_b32x80x16_h256_i1_t0_c_b0_c0_l1_causal1_masked1_varlen0_sinks1_iphoneos_metallib), NULL, 0);
@@ -3981,7 +5066,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 256 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x80x16_h256_i1_t0_c_b0_c0_l1_causal0_masked0_varlen1_iphoneos_metallib, sizeof(f_b32x80x16_h256_i1_t0_c_b0_c0_l1_causal0_masked0_varlen1_iphoneos_metallib), NULL, 0);
@@ -3997,7 +5082,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 256 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x80x16_h256_i1_t0_c_b0_c0_l1_causal0_masked0_varlen1_sinks1_iphoneos_metallib, sizeof(f_b32x80x16_h256_i1_t0_c_b0_c0_l1_causal0_masked0_varlen1_sinks1_iphoneos_metallib), NULL, 0);
@@ -4013,7 +5098,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 256 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 1 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x80x16_h256_i1_t0_c_b0_c0_l1_causal1_masked0_varlen1_iphoneos_metallib, sizeof(f_b32x80x16_h256_i1_t0_c_b0_c0_l1_causal1_masked0_varlen1_iphoneos_metallib), NULL, 0);
@@ -4029,7 +5114,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 256 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 1 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x80x16_h256_i1_t0_c_b0_c0_l1_causal1_masked0_varlen1_sinks1_iphoneos_metallib, sizeof(f_b32x80x16_h256_i1_t0_c_b0_c0_l1_causal1_masked0_varlen1_sinks1_iphoneos_metallib), NULL, 0);
@@ -4040,12 +5125,76 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     dispatch_release(data);
     return library;
 
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 32 && blockDimensions[1] == 80 && blockDimensions[2] == 16 &&
+    headDimension == 256 &&
+    lowPrecisionIntermediates == 0 && isBF16 == 0 &&
+    isCausal == 1 && masked == 0 && isVarlen == 0 &&
+    attentionSinks == 0 && slidingWindow > 0 &&
+    preferAsyncCache == 0 && preferAsyncLoad == 1) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b32x80x16_h256_i1_t0_c_b0_c0_l1_causal1_masked0_varlen0_sliding1_iphoneos_metallib, sizeof(f_b32x80x16_h256_i1_t0_c_b0_c0_l1_causal1_masked0_varlen0_sliding1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b32x80x16_h256_i1_t0_c_b0_c0_l1_causal1_masked0_varlen0_sliding1_macosx_metallib, sizeof(f_b32x80x16_h256_i1_t0_c_b0_c0_l1_causal1_masked0_varlen0_sliding1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 32 && blockDimensions[1] == 80 && blockDimensions[2] == 16 &&
+    headDimension == 256 &&
+    lowPrecisionIntermediates == 0 && isBF16 == 0 &&
+    isCausal == 1 && masked == 0 && isVarlen == 0 &&
+    attentionSinks == 1 && slidingWindow > 0 &&
+    preferAsyncCache == 0 && preferAsyncLoad == 1) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b32x80x16_h256_i1_t0_c_b0_c0_l1_causal1_masked0_varlen0_sliding1_sinks1_iphoneos_metallib, sizeof(f_b32x80x16_h256_i1_t0_c_b0_c0_l1_causal1_masked0_varlen0_sliding1_sinks1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b32x80x16_h256_i1_t0_c_b0_c0_l1_causal1_masked0_varlen0_sliding1_sinks1_macosx_metallib, sizeof(f_b32x80x16_h256_i1_t0_c_b0_c0_l1_causal1_masked0_varlen0_sliding1_sinks1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 32 && blockDimensions[1] == 80 && blockDimensions[2] == 16 &&
+    headDimension == 256 &&
+    lowPrecisionIntermediates == 0 && isBF16 == 0 &&
+    isCausal == 1 && masked == 1 && isVarlen == 0 &&
+    attentionSinks == 0 && slidingWindow > 0 &&
+    preferAsyncCache == 0 && preferAsyncLoad == 1) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b32x80x16_h256_i1_t0_c_b0_c0_l1_causal1_masked1_varlen0_sliding1_iphoneos_metallib, sizeof(f_b32x80x16_h256_i1_t0_c_b0_c0_l1_causal1_masked1_varlen0_sliding1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b32x80x16_h256_i1_t0_c_b0_c0_l1_causal1_masked1_varlen0_sliding1_macosx_metallib, sizeof(f_b32x80x16_h256_i1_t0_c_b0_c0_l1_causal1_masked1_varlen0_sliding1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 32 && blockDimensions[1] == 80 && blockDimensions[2] == 16 &&
+    headDimension == 256 &&
+    lowPrecisionIntermediates == 0 && isBF16 == 0 &&
+    isCausal == 1 && masked == 1 && isVarlen == 0 &&
+    attentionSinks == 1 && slidingWindow > 0 &&
+    preferAsyncCache == 0 && preferAsyncLoad == 1) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b32x80x16_h256_i1_t0_c_b0_c0_l1_causal1_masked1_varlen0_sliding1_sinks1_iphoneos_metallib, sizeof(f_b32x80x16_h256_i1_t0_c_b0_c0_l1_causal1_masked1_varlen0_sliding1_sinks1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b32x80x16_h256_i1_t0_c_b0_c0_l1_causal1_masked1_varlen0_sliding1_sinks1_macosx_metallib, sizeof(f_b32x80x16_h256_i1_t0_c_b0_c0_l1_causal1_masked1_varlen0_sliding1_sinks1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
   } else if (type.value == AttentionKernelType::backwardQuery &&
     blockDimensions[0] == 32 && blockDimensions[1] == 80 && blockDimensions[2] == 16 &&
     headDimension == 256 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(bq_b32x80x16_h256_i1_t0_c_b0_c0_l1_iphoneos_metallib, sizeof(bq_b32x80x16_h256_i1_t0_c_b0_c0_l1_iphoneos_metallib), NULL, 0);
@@ -4061,7 +5210,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 256 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(bkv_b32x80x16_h256_i1_t0_c_b0_c0_l1_iphoneos_metallib, sizeof(bkv_b32x80x16_h256_i1_t0_c_b0_c0_l1_iphoneos_metallib), NULL, 0);
@@ -4077,7 +5226,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 40 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x32x40_h40_i1_t0_cq_b1_c0_l1_iphoneos_metallib, sizeof(f_b32x32x40_h40_i1_t0_cq_b1_c0_l1_iphoneos_metallib), NULL, 0);
@@ -4093,7 +5242,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 40 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x32x40_h40_i1_t0_cq_b1_c0_l1_sinks1_iphoneos_metallib, sizeof(f_b32x32x40_h40_i1_t0_cq_b1_c0_l1_sinks1_iphoneos_metallib), NULL, 0);
@@ -4109,7 +5258,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 40 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 1 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x32x40_h40_i1_t0_cq_b1_c0_l1_causal1_masked0_varlen0_iphoneos_metallib, sizeof(f_b32x32x40_h40_i1_t0_cq_b1_c0_l1_causal1_masked0_varlen0_iphoneos_metallib), NULL, 0);
@@ -4125,7 +5274,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 40 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 1 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x32x40_h40_i1_t0_cq_b1_c0_l1_causal1_masked0_varlen0_sinks1_iphoneos_metallib, sizeof(f_b32x32x40_h40_i1_t0_cq_b1_c0_l1_causal1_masked0_varlen0_sinks1_iphoneos_metallib), NULL, 0);
@@ -4141,7 +5290,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 40 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 0 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x32x40_h40_i1_t0_cq_b1_c0_l1_causal0_masked1_varlen0_iphoneos_metallib, sizeof(f_b32x32x40_h40_i1_t0_cq_b1_c0_l1_causal0_masked1_varlen0_iphoneos_metallib), NULL, 0);
@@ -4157,7 +5306,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 40 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 0 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x32x40_h40_i1_t0_cq_b1_c0_l1_causal0_masked1_varlen0_sinks1_iphoneos_metallib, sizeof(f_b32x32x40_h40_i1_t0_cq_b1_c0_l1_causal0_masked1_varlen0_sinks1_iphoneos_metallib), NULL, 0);
@@ -4173,7 +5322,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 40 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 1 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x32x40_h40_i1_t0_cq_b1_c0_l1_causal1_masked1_varlen0_iphoneos_metallib, sizeof(f_b32x32x40_h40_i1_t0_cq_b1_c0_l1_causal1_masked1_varlen0_iphoneos_metallib), NULL, 0);
@@ -4189,7 +5338,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 40 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 1 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x32x40_h40_i1_t0_cq_b1_c0_l1_causal1_masked1_varlen0_sinks1_iphoneos_metallib, sizeof(f_b32x32x40_h40_i1_t0_cq_b1_c0_l1_causal1_masked1_varlen0_sinks1_iphoneos_metallib), NULL, 0);
@@ -4205,7 +5354,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 40 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 0 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x32x40_h40_i1_t0_cq_b1_c0_l1_causal0_masked0_varlen1_iphoneos_metallib, sizeof(f_b32x32x40_h40_i1_t0_cq_b1_c0_l1_causal0_masked0_varlen1_iphoneos_metallib), NULL, 0);
@@ -4221,7 +5370,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 40 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 0 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x32x40_h40_i1_t0_cq_b1_c0_l1_causal0_masked0_varlen1_sinks1_iphoneos_metallib, sizeof(f_b32x32x40_h40_i1_t0_cq_b1_c0_l1_causal0_masked0_varlen1_sinks1_iphoneos_metallib), NULL, 0);
@@ -4237,7 +5386,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 40 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 1 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x32x40_h40_i1_t0_cq_b1_c0_l1_causal1_masked0_varlen1_iphoneos_metallib, sizeof(f_b32x32x40_h40_i1_t0_cq_b1_c0_l1_causal1_masked0_varlen1_iphoneos_metallib), NULL, 0);
@@ -4253,7 +5402,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 40 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 1 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x32x40_h40_i1_t0_cq_b1_c0_l1_causal1_masked0_varlen1_sinks1_iphoneos_metallib, sizeof(f_b32x32x40_h40_i1_t0_cq_b1_c0_l1_causal1_masked0_varlen1_sinks1_iphoneos_metallib), NULL, 0);
@@ -4264,12 +5413,76 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     dispatch_release(data);
     return library;
 
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 32 && blockDimensions[1] == 32 && blockDimensions[2] == 40 &&
+    headDimension == 40 &&
+    lowPrecisionIntermediates == 0 && isBF16 == 1 &&
+    isCausal == 1 && masked == 0 && isVarlen == 0 &&
+    attentionSinks == 0 && slidingWindow > 0 &&
+    preferAsyncCache == 0 && preferAsyncLoad == 1) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b32x32x40_h40_i1_t0_cq_b1_c0_l1_causal1_masked0_varlen0_sliding1_iphoneos_metallib, sizeof(f_b32x32x40_h40_i1_t0_cq_b1_c0_l1_causal1_masked0_varlen0_sliding1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b32x32x40_h40_i1_t0_cq_b1_c0_l1_causal1_masked0_varlen0_sliding1_macosx_metallib, sizeof(f_b32x32x40_h40_i1_t0_cq_b1_c0_l1_causal1_masked0_varlen0_sliding1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 32 && blockDimensions[1] == 32 && blockDimensions[2] == 40 &&
+    headDimension == 40 &&
+    lowPrecisionIntermediates == 0 && isBF16 == 1 &&
+    isCausal == 1 && masked == 0 && isVarlen == 0 &&
+    attentionSinks == 1 && slidingWindow > 0 &&
+    preferAsyncCache == 0 && preferAsyncLoad == 1) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b32x32x40_h40_i1_t0_cq_b1_c0_l1_causal1_masked0_varlen0_sliding1_sinks1_iphoneos_metallib, sizeof(f_b32x32x40_h40_i1_t0_cq_b1_c0_l1_causal1_masked0_varlen0_sliding1_sinks1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b32x32x40_h40_i1_t0_cq_b1_c0_l1_causal1_masked0_varlen0_sliding1_sinks1_macosx_metallib, sizeof(f_b32x32x40_h40_i1_t0_cq_b1_c0_l1_causal1_masked0_varlen0_sliding1_sinks1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 32 && blockDimensions[1] == 32 && blockDimensions[2] == 40 &&
+    headDimension == 40 &&
+    lowPrecisionIntermediates == 0 && isBF16 == 1 &&
+    isCausal == 1 && masked == 1 && isVarlen == 0 &&
+    attentionSinks == 0 && slidingWindow > 0 &&
+    preferAsyncCache == 0 && preferAsyncLoad == 1) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b32x32x40_h40_i1_t0_cq_b1_c0_l1_causal1_masked1_varlen0_sliding1_iphoneos_metallib, sizeof(f_b32x32x40_h40_i1_t0_cq_b1_c0_l1_causal1_masked1_varlen0_sliding1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b32x32x40_h40_i1_t0_cq_b1_c0_l1_causal1_masked1_varlen0_sliding1_macosx_metallib, sizeof(f_b32x32x40_h40_i1_t0_cq_b1_c0_l1_causal1_masked1_varlen0_sliding1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 32 && blockDimensions[1] == 32 && blockDimensions[2] == 40 &&
+    headDimension == 40 &&
+    lowPrecisionIntermediates == 0 && isBF16 == 1 &&
+    isCausal == 1 && masked == 1 && isVarlen == 0 &&
+    attentionSinks == 1 && slidingWindow > 0 &&
+    preferAsyncCache == 0 && preferAsyncLoad == 1) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b32x32x40_h40_i1_t0_cq_b1_c0_l1_causal1_masked1_varlen0_sliding1_sinks1_iphoneos_metallib, sizeof(f_b32x32x40_h40_i1_t0_cq_b1_c0_l1_causal1_masked1_varlen0_sliding1_sinks1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b32x32x40_h40_i1_t0_cq_b1_c0_l1_causal1_masked1_varlen0_sliding1_sinks1_macosx_metallib, sizeof(f_b32x32x40_h40_i1_t0_cq_b1_c0_l1_causal1_masked1_varlen0_sliding1_sinks1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
   } else if (type.value == AttentionKernelType::backwardQuery &&
     blockDimensions[0] == 32 && blockDimensions[1] == 64 && blockDimensions[2] == 24 &&
     headDimension == 40 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(bq_b32x64x24_h40_i1_t0_cdq_b1_c0_l1_iphoneos_metallib, sizeof(bq_b32x64x24_h40_i1_t0_cdq_b1_c0_l1_iphoneos_metallib), NULL, 0);
@@ -4285,7 +5498,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 40 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(bkv_b32x80x16_h40_i1_t0_cdv_b1_c0_l1_iphoneos_metallib, sizeof(bkv_b32x80x16_h40_i1_t0_cdv_b1_c0_l1_iphoneos_metallib), NULL, 0);
@@ -4301,7 +5514,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 64 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x80x16_h64_i1_t0_c_b1_c0_l1_iphoneos_metallib, sizeof(f_b32x80x16_h64_i1_t0_c_b1_c0_l1_iphoneos_metallib), NULL, 0);
@@ -4317,7 +5530,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 64 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x80x16_h64_i1_t0_c_b1_c0_l1_sinks1_iphoneos_metallib, sizeof(f_b32x80x16_h64_i1_t0_c_b1_c0_l1_sinks1_iphoneos_metallib), NULL, 0);
@@ -4333,7 +5546,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 64 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 1 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x80x16_h64_i1_t0_c_b1_c0_l1_causal1_masked0_varlen0_iphoneos_metallib, sizeof(f_b32x80x16_h64_i1_t0_c_b1_c0_l1_causal1_masked0_varlen0_iphoneos_metallib), NULL, 0);
@@ -4349,7 +5562,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 64 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 1 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x80x16_h64_i1_t0_c_b1_c0_l1_causal1_masked0_varlen0_sinks1_iphoneos_metallib, sizeof(f_b32x80x16_h64_i1_t0_c_b1_c0_l1_causal1_masked0_varlen0_sinks1_iphoneos_metallib), NULL, 0);
@@ -4365,7 +5578,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 64 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 0 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x80x16_h64_i1_t0_c_b1_c0_l1_causal0_masked1_varlen0_iphoneos_metallib, sizeof(f_b32x80x16_h64_i1_t0_c_b1_c0_l1_causal0_masked1_varlen0_iphoneos_metallib), NULL, 0);
@@ -4381,7 +5594,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 64 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 0 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x80x16_h64_i1_t0_c_b1_c0_l1_causal0_masked1_varlen0_sinks1_iphoneos_metallib, sizeof(f_b32x80x16_h64_i1_t0_c_b1_c0_l1_causal0_masked1_varlen0_sinks1_iphoneos_metallib), NULL, 0);
@@ -4397,7 +5610,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 64 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 1 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x80x16_h64_i1_t0_c_b1_c0_l1_causal1_masked1_varlen0_iphoneos_metallib, sizeof(f_b32x80x16_h64_i1_t0_c_b1_c0_l1_causal1_masked1_varlen0_iphoneos_metallib), NULL, 0);
@@ -4413,7 +5626,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 64 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 1 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x80x16_h64_i1_t0_c_b1_c0_l1_causal1_masked1_varlen0_sinks1_iphoneos_metallib, sizeof(f_b32x80x16_h64_i1_t0_c_b1_c0_l1_causal1_masked1_varlen0_sinks1_iphoneos_metallib), NULL, 0);
@@ -4429,7 +5642,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 64 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 0 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x80x16_h64_i1_t0_c_b1_c0_l1_causal0_masked0_varlen1_iphoneos_metallib, sizeof(f_b32x80x16_h64_i1_t0_c_b1_c0_l1_causal0_masked0_varlen1_iphoneos_metallib), NULL, 0);
@@ -4445,7 +5658,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 64 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 0 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x80x16_h64_i1_t0_c_b1_c0_l1_causal0_masked0_varlen1_sinks1_iphoneos_metallib, sizeof(f_b32x80x16_h64_i1_t0_c_b1_c0_l1_causal0_masked0_varlen1_sinks1_iphoneos_metallib), NULL, 0);
@@ -4461,7 +5674,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 64 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 1 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x80x16_h64_i1_t0_c_b1_c0_l1_causal1_masked0_varlen1_iphoneos_metallib, sizeof(f_b32x80x16_h64_i1_t0_c_b1_c0_l1_causal1_masked0_varlen1_iphoneos_metallib), NULL, 0);
@@ -4477,7 +5690,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 64 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 1 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x80x16_h64_i1_t0_c_b1_c0_l1_causal1_masked0_varlen1_sinks1_iphoneos_metallib, sizeof(f_b32x80x16_h64_i1_t0_c_b1_c0_l1_causal1_masked0_varlen1_sinks1_iphoneos_metallib), NULL, 0);
@@ -4488,12 +5701,76 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     dispatch_release(data);
     return library;
 
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 32 && blockDimensions[1] == 80 && blockDimensions[2] == 16 &&
+    headDimension == 64 &&
+    lowPrecisionIntermediates == 0 && isBF16 == 1 &&
+    isCausal == 1 && masked == 0 && isVarlen == 0 &&
+    attentionSinks == 0 && slidingWindow > 0 &&
+    preferAsyncCache == 0 && preferAsyncLoad == 1) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b32x80x16_h64_i1_t0_c_b1_c0_l1_causal1_masked0_varlen0_sliding1_iphoneos_metallib, sizeof(f_b32x80x16_h64_i1_t0_c_b1_c0_l1_causal1_masked0_varlen0_sliding1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b32x80x16_h64_i1_t0_c_b1_c0_l1_causal1_masked0_varlen0_sliding1_macosx_metallib, sizeof(f_b32x80x16_h64_i1_t0_c_b1_c0_l1_causal1_masked0_varlen0_sliding1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 32 && blockDimensions[1] == 80 && blockDimensions[2] == 16 &&
+    headDimension == 64 &&
+    lowPrecisionIntermediates == 0 && isBF16 == 1 &&
+    isCausal == 1 && masked == 0 && isVarlen == 0 &&
+    attentionSinks == 1 && slidingWindow > 0 &&
+    preferAsyncCache == 0 && preferAsyncLoad == 1) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b32x80x16_h64_i1_t0_c_b1_c0_l1_causal1_masked0_varlen0_sliding1_sinks1_iphoneos_metallib, sizeof(f_b32x80x16_h64_i1_t0_c_b1_c0_l1_causal1_masked0_varlen0_sliding1_sinks1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b32x80x16_h64_i1_t0_c_b1_c0_l1_causal1_masked0_varlen0_sliding1_sinks1_macosx_metallib, sizeof(f_b32x80x16_h64_i1_t0_c_b1_c0_l1_causal1_masked0_varlen0_sliding1_sinks1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 32 && blockDimensions[1] == 80 && blockDimensions[2] == 16 &&
+    headDimension == 64 &&
+    lowPrecisionIntermediates == 0 && isBF16 == 1 &&
+    isCausal == 1 && masked == 1 && isVarlen == 0 &&
+    attentionSinks == 0 && slidingWindow > 0 &&
+    preferAsyncCache == 0 && preferAsyncLoad == 1) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b32x80x16_h64_i1_t0_c_b1_c0_l1_causal1_masked1_varlen0_sliding1_iphoneos_metallib, sizeof(f_b32x80x16_h64_i1_t0_c_b1_c0_l1_causal1_masked1_varlen0_sliding1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b32x80x16_h64_i1_t0_c_b1_c0_l1_causal1_masked1_varlen0_sliding1_macosx_metallib, sizeof(f_b32x80x16_h64_i1_t0_c_b1_c0_l1_causal1_masked1_varlen0_sliding1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 32 && blockDimensions[1] == 80 && blockDimensions[2] == 16 &&
+    headDimension == 64 &&
+    lowPrecisionIntermediates == 0 && isBF16 == 1 &&
+    isCausal == 1 && masked == 1 && isVarlen == 0 &&
+    attentionSinks == 1 && slidingWindow > 0 &&
+    preferAsyncCache == 0 && preferAsyncLoad == 1) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b32x80x16_h64_i1_t0_c_b1_c0_l1_causal1_masked1_varlen0_sliding1_sinks1_iphoneos_metallib, sizeof(f_b32x80x16_h64_i1_t0_c_b1_c0_l1_causal1_masked1_varlen0_sliding1_sinks1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b32x80x16_h64_i1_t0_c_b1_c0_l1_causal1_masked1_varlen0_sliding1_sinks1_macosx_metallib, sizeof(f_b32x80x16_h64_i1_t0_c_b1_c0_l1_causal1_masked1_varlen0_sliding1_sinks1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
   } else if (type.value == AttentionKernelType::backwardQuery &&
     blockDimensions[0] == 32 && blockDimensions[1] == 80 && blockDimensions[2] == 16 &&
     headDimension == 64 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(bq_b32x80x16_h64_i1_t0_c_b1_c0_l1_iphoneos_metallib, sizeof(bq_b32x80x16_h64_i1_t0_c_b1_c0_l1_iphoneos_metallib), NULL, 0);
@@ -4509,7 +5786,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 64 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(bkv_b32x80x16_h64_i1_t0_c_b1_c0_l1_iphoneos_metallib, sizeof(bkv_b32x80x16_h64_i1_t0_c_b1_c0_l1_iphoneos_metallib), NULL, 0);
@@ -4525,7 +5802,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 80 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x80x16_h80_i1_t0_c_b1_c0_l1_iphoneos_metallib, sizeof(f_b32x80x16_h80_i1_t0_c_b1_c0_l1_iphoneos_metallib), NULL, 0);
@@ -4541,7 +5818,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 80 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x80x16_h80_i1_t0_c_b1_c0_l1_sinks1_iphoneos_metallib, sizeof(f_b32x80x16_h80_i1_t0_c_b1_c0_l1_sinks1_iphoneos_metallib), NULL, 0);
@@ -4557,7 +5834,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 80 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 1 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x80x16_h80_i1_t0_c_b1_c0_l1_causal1_masked0_varlen0_iphoneos_metallib, sizeof(f_b32x80x16_h80_i1_t0_c_b1_c0_l1_causal1_masked0_varlen0_iphoneos_metallib), NULL, 0);
@@ -4573,7 +5850,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 80 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 1 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x80x16_h80_i1_t0_c_b1_c0_l1_causal1_masked0_varlen0_sinks1_iphoneos_metallib, sizeof(f_b32x80x16_h80_i1_t0_c_b1_c0_l1_causal1_masked0_varlen0_sinks1_iphoneos_metallib), NULL, 0);
@@ -4589,7 +5866,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 80 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 0 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x80x16_h80_i1_t0_c_b1_c0_l1_causal0_masked1_varlen0_iphoneos_metallib, sizeof(f_b32x80x16_h80_i1_t0_c_b1_c0_l1_causal0_masked1_varlen0_iphoneos_metallib), NULL, 0);
@@ -4605,7 +5882,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 80 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 0 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x80x16_h80_i1_t0_c_b1_c0_l1_causal0_masked1_varlen0_sinks1_iphoneos_metallib, sizeof(f_b32x80x16_h80_i1_t0_c_b1_c0_l1_causal0_masked1_varlen0_sinks1_iphoneos_metallib), NULL, 0);
@@ -4621,7 +5898,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 80 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 1 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x80x16_h80_i1_t0_c_b1_c0_l1_causal1_masked1_varlen0_iphoneos_metallib, sizeof(f_b32x80x16_h80_i1_t0_c_b1_c0_l1_causal1_masked1_varlen0_iphoneos_metallib), NULL, 0);
@@ -4637,7 +5914,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 80 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 1 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x80x16_h80_i1_t0_c_b1_c0_l1_causal1_masked1_varlen0_sinks1_iphoneos_metallib, sizeof(f_b32x80x16_h80_i1_t0_c_b1_c0_l1_causal1_masked1_varlen0_sinks1_iphoneos_metallib), NULL, 0);
@@ -4653,7 +5930,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 80 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 0 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x80x16_h80_i1_t0_c_b1_c0_l1_causal0_masked0_varlen1_iphoneos_metallib, sizeof(f_b32x80x16_h80_i1_t0_c_b1_c0_l1_causal0_masked0_varlen1_iphoneos_metallib), NULL, 0);
@@ -4669,7 +5946,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 80 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 0 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x80x16_h80_i1_t0_c_b1_c0_l1_causal0_masked0_varlen1_sinks1_iphoneos_metallib, sizeof(f_b32x80x16_h80_i1_t0_c_b1_c0_l1_causal0_masked0_varlen1_sinks1_iphoneos_metallib), NULL, 0);
@@ -4685,7 +5962,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 80 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 1 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x80x16_h80_i1_t0_c_b1_c0_l1_causal1_masked0_varlen1_iphoneos_metallib, sizeof(f_b32x80x16_h80_i1_t0_c_b1_c0_l1_causal1_masked0_varlen1_iphoneos_metallib), NULL, 0);
@@ -4701,7 +5978,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 80 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 1 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x80x16_h80_i1_t0_c_b1_c0_l1_causal1_masked0_varlen1_sinks1_iphoneos_metallib, sizeof(f_b32x80x16_h80_i1_t0_c_b1_c0_l1_causal1_masked0_varlen1_sinks1_iphoneos_metallib), NULL, 0);
@@ -4712,12 +5989,76 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     dispatch_release(data);
     return library;
 
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 32 && blockDimensions[1] == 80 && blockDimensions[2] == 16 &&
+    headDimension == 80 &&
+    lowPrecisionIntermediates == 0 && isBF16 == 1 &&
+    isCausal == 1 && masked == 0 && isVarlen == 0 &&
+    attentionSinks == 0 && slidingWindow > 0 &&
+    preferAsyncCache == 0 && preferAsyncLoad == 1) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b32x80x16_h80_i1_t0_c_b1_c0_l1_causal1_masked0_varlen0_sliding1_iphoneos_metallib, sizeof(f_b32x80x16_h80_i1_t0_c_b1_c0_l1_causal1_masked0_varlen0_sliding1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b32x80x16_h80_i1_t0_c_b1_c0_l1_causal1_masked0_varlen0_sliding1_macosx_metallib, sizeof(f_b32x80x16_h80_i1_t0_c_b1_c0_l1_causal1_masked0_varlen0_sliding1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 32 && blockDimensions[1] == 80 && blockDimensions[2] == 16 &&
+    headDimension == 80 &&
+    lowPrecisionIntermediates == 0 && isBF16 == 1 &&
+    isCausal == 1 && masked == 0 && isVarlen == 0 &&
+    attentionSinks == 1 && slidingWindow > 0 &&
+    preferAsyncCache == 0 && preferAsyncLoad == 1) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b32x80x16_h80_i1_t0_c_b1_c0_l1_causal1_masked0_varlen0_sliding1_sinks1_iphoneos_metallib, sizeof(f_b32x80x16_h80_i1_t0_c_b1_c0_l1_causal1_masked0_varlen0_sliding1_sinks1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b32x80x16_h80_i1_t0_c_b1_c0_l1_causal1_masked0_varlen0_sliding1_sinks1_macosx_metallib, sizeof(f_b32x80x16_h80_i1_t0_c_b1_c0_l1_causal1_masked0_varlen0_sliding1_sinks1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 32 && blockDimensions[1] == 80 && blockDimensions[2] == 16 &&
+    headDimension == 80 &&
+    lowPrecisionIntermediates == 0 && isBF16 == 1 &&
+    isCausal == 1 && masked == 1 && isVarlen == 0 &&
+    attentionSinks == 0 && slidingWindow > 0 &&
+    preferAsyncCache == 0 && preferAsyncLoad == 1) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b32x80x16_h80_i1_t0_c_b1_c0_l1_causal1_masked1_varlen0_sliding1_iphoneos_metallib, sizeof(f_b32x80x16_h80_i1_t0_c_b1_c0_l1_causal1_masked1_varlen0_sliding1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b32x80x16_h80_i1_t0_c_b1_c0_l1_causal1_masked1_varlen0_sliding1_macosx_metallib, sizeof(f_b32x80x16_h80_i1_t0_c_b1_c0_l1_causal1_masked1_varlen0_sliding1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 32 && blockDimensions[1] == 80 && blockDimensions[2] == 16 &&
+    headDimension == 80 &&
+    lowPrecisionIntermediates == 0 && isBF16 == 1 &&
+    isCausal == 1 && masked == 1 && isVarlen == 0 &&
+    attentionSinks == 1 && slidingWindow > 0 &&
+    preferAsyncCache == 0 && preferAsyncLoad == 1) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b32x80x16_h80_i1_t0_c_b1_c0_l1_causal1_masked1_varlen0_sliding1_sinks1_iphoneos_metallib, sizeof(f_b32x80x16_h80_i1_t0_c_b1_c0_l1_causal1_masked1_varlen0_sliding1_sinks1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b32x80x16_h80_i1_t0_c_b1_c0_l1_causal1_masked1_varlen0_sliding1_sinks1_macosx_metallib, sizeof(f_b32x80x16_h80_i1_t0_c_b1_c0_l1_causal1_masked1_varlen0_sliding1_sinks1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
   } else if (type.value == AttentionKernelType::backwardQuery &&
     blockDimensions[0] == 32 && blockDimensions[1] == 80 && blockDimensions[2] == 16 &&
     headDimension == 80 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(bq_b32x80x16_h80_i1_t0_c_b1_c0_l1_iphoneos_metallib, sizeof(bq_b32x80x16_h80_i1_t0_c_b1_c0_l1_iphoneos_metallib), NULL, 0);
@@ -4733,7 +6074,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 80 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(bkv_b32x80x16_h80_i1_t0_c_b1_c0_l1_iphoneos_metallib, sizeof(bkv_b32x80x16_h80_i1_t0_c_b1_c0_l1_iphoneos_metallib), NULL, 0);
@@ -4749,7 +6090,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 128 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x80x16_h128_i1_t0_c_b1_c0_l1_iphoneos_metallib, sizeof(f_b32x80x16_h128_i1_t0_c_b1_c0_l1_iphoneos_metallib), NULL, 0);
@@ -4765,7 +6106,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 128 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x80x16_h128_i1_t0_c_b1_c0_l1_sinks1_iphoneos_metallib, sizeof(f_b32x80x16_h128_i1_t0_c_b1_c0_l1_sinks1_iphoneos_metallib), NULL, 0);
@@ -4781,7 +6122,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 128 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 1 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x80x16_h128_i1_t0_c_b1_c0_l1_causal1_masked0_varlen0_iphoneos_metallib, sizeof(f_b32x80x16_h128_i1_t0_c_b1_c0_l1_causal1_masked0_varlen0_iphoneos_metallib), NULL, 0);
@@ -4797,7 +6138,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 128 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 1 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x80x16_h128_i1_t0_c_b1_c0_l1_causal1_masked0_varlen0_sinks1_iphoneos_metallib, sizeof(f_b32x80x16_h128_i1_t0_c_b1_c0_l1_causal1_masked0_varlen0_sinks1_iphoneos_metallib), NULL, 0);
@@ -4813,7 +6154,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 128 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 0 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x80x16_h128_i1_t0_c_b1_c0_l1_causal0_masked1_varlen0_iphoneos_metallib, sizeof(f_b32x80x16_h128_i1_t0_c_b1_c0_l1_causal0_masked1_varlen0_iphoneos_metallib), NULL, 0);
@@ -4829,7 +6170,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 128 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 0 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x80x16_h128_i1_t0_c_b1_c0_l1_causal0_masked1_varlen0_sinks1_iphoneos_metallib, sizeof(f_b32x80x16_h128_i1_t0_c_b1_c0_l1_causal0_masked1_varlen0_sinks1_iphoneos_metallib), NULL, 0);
@@ -4845,7 +6186,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 128 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 1 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x80x16_h128_i1_t0_c_b1_c0_l1_causal1_masked1_varlen0_iphoneos_metallib, sizeof(f_b32x80x16_h128_i1_t0_c_b1_c0_l1_causal1_masked1_varlen0_iphoneos_metallib), NULL, 0);
@@ -4861,7 +6202,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 128 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 1 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x80x16_h128_i1_t0_c_b1_c0_l1_causal1_masked1_varlen0_sinks1_iphoneos_metallib, sizeof(f_b32x80x16_h128_i1_t0_c_b1_c0_l1_causal1_masked1_varlen0_sinks1_iphoneos_metallib), NULL, 0);
@@ -4877,7 +6218,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 128 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 0 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x80x16_h128_i1_t0_c_b1_c0_l1_causal0_masked0_varlen1_iphoneos_metallib, sizeof(f_b32x80x16_h128_i1_t0_c_b1_c0_l1_causal0_masked0_varlen1_iphoneos_metallib), NULL, 0);
@@ -4893,7 +6234,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 128 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 0 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x80x16_h128_i1_t0_c_b1_c0_l1_causal0_masked0_varlen1_sinks1_iphoneos_metallib, sizeof(f_b32x80x16_h128_i1_t0_c_b1_c0_l1_causal0_masked0_varlen1_sinks1_iphoneos_metallib), NULL, 0);
@@ -4909,7 +6250,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 128 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 1 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x80x16_h128_i1_t0_c_b1_c0_l1_causal1_masked0_varlen1_iphoneos_metallib, sizeof(f_b32x80x16_h128_i1_t0_c_b1_c0_l1_causal1_masked0_varlen1_iphoneos_metallib), NULL, 0);
@@ -4925,7 +6266,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 128 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 1 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x80x16_h128_i1_t0_c_b1_c0_l1_causal1_masked0_varlen1_sinks1_iphoneos_metallib, sizeof(f_b32x80x16_h128_i1_t0_c_b1_c0_l1_causal1_masked0_varlen1_sinks1_iphoneos_metallib), NULL, 0);
@@ -4936,12 +6277,76 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     dispatch_release(data);
     return library;
 
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 32 && blockDimensions[1] == 80 && blockDimensions[2] == 16 &&
+    headDimension == 128 &&
+    lowPrecisionIntermediates == 0 && isBF16 == 1 &&
+    isCausal == 1 && masked == 0 && isVarlen == 0 &&
+    attentionSinks == 0 && slidingWindow > 0 &&
+    preferAsyncCache == 0 && preferAsyncLoad == 1) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b32x80x16_h128_i1_t0_c_b1_c0_l1_causal1_masked0_varlen0_sliding1_iphoneos_metallib, sizeof(f_b32x80x16_h128_i1_t0_c_b1_c0_l1_causal1_masked0_varlen0_sliding1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b32x80x16_h128_i1_t0_c_b1_c0_l1_causal1_masked0_varlen0_sliding1_macosx_metallib, sizeof(f_b32x80x16_h128_i1_t0_c_b1_c0_l1_causal1_masked0_varlen0_sliding1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 32 && blockDimensions[1] == 80 && blockDimensions[2] == 16 &&
+    headDimension == 128 &&
+    lowPrecisionIntermediates == 0 && isBF16 == 1 &&
+    isCausal == 1 && masked == 0 && isVarlen == 0 &&
+    attentionSinks == 1 && slidingWindow > 0 &&
+    preferAsyncCache == 0 && preferAsyncLoad == 1) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b32x80x16_h128_i1_t0_c_b1_c0_l1_causal1_masked0_varlen0_sliding1_sinks1_iphoneos_metallib, sizeof(f_b32x80x16_h128_i1_t0_c_b1_c0_l1_causal1_masked0_varlen0_sliding1_sinks1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b32x80x16_h128_i1_t0_c_b1_c0_l1_causal1_masked0_varlen0_sliding1_sinks1_macosx_metallib, sizeof(f_b32x80x16_h128_i1_t0_c_b1_c0_l1_causal1_masked0_varlen0_sliding1_sinks1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 32 && blockDimensions[1] == 80 && blockDimensions[2] == 16 &&
+    headDimension == 128 &&
+    lowPrecisionIntermediates == 0 && isBF16 == 1 &&
+    isCausal == 1 && masked == 1 && isVarlen == 0 &&
+    attentionSinks == 0 && slidingWindow > 0 &&
+    preferAsyncCache == 0 && preferAsyncLoad == 1) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b32x80x16_h128_i1_t0_c_b1_c0_l1_causal1_masked1_varlen0_sliding1_iphoneos_metallib, sizeof(f_b32x80x16_h128_i1_t0_c_b1_c0_l1_causal1_masked1_varlen0_sliding1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b32x80x16_h128_i1_t0_c_b1_c0_l1_causal1_masked1_varlen0_sliding1_macosx_metallib, sizeof(f_b32x80x16_h128_i1_t0_c_b1_c0_l1_causal1_masked1_varlen0_sliding1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 32 && blockDimensions[1] == 80 && blockDimensions[2] == 16 &&
+    headDimension == 128 &&
+    lowPrecisionIntermediates == 0 && isBF16 == 1 &&
+    isCausal == 1 && masked == 1 && isVarlen == 0 &&
+    attentionSinks == 1 && slidingWindow > 0 &&
+    preferAsyncCache == 0 && preferAsyncLoad == 1) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b32x80x16_h128_i1_t0_c_b1_c0_l1_causal1_masked1_varlen0_sliding1_sinks1_iphoneos_metallib, sizeof(f_b32x80x16_h128_i1_t0_c_b1_c0_l1_causal1_masked1_varlen0_sliding1_sinks1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b32x80x16_h128_i1_t0_c_b1_c0_l1_causal1_masked1_varlen0_sliding1_sinks1_macosx_metallib, sizeof(f_b32x80x16_h128_i1_t0_c_b1_c0_l1_causal1_masked1_varlen0_sliding1_sinks1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
   } else if (type.value == AttentionKernelType::backwardQuery &&
     blockDimensions[0] == 32 && blockDimensions[1] == 80 && blockDimensions[2] == 16 &&
     headDimension == 128 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(bq_b32x80x16_h128_i1_t0_c_b1_c0_l1_iphoneos_metallib, sizeof(bq_b32x80x16_h128_i1_t0_c_b1_c0_l1_iphoneos_metallib), NULL, 0);
@@ -4957,7 +6362,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 128 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(bkv_b32x80x16_h128_i1_t0_c_b1_c0_l1_iphoneos_metallib, sizeof(bkv_b32x80x16_h128_i1_t0_c_b1_c0_l1_iphoneos_metallib), NULL, 0);
@@ -4973,7 +6378,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 160 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x80x16_h160_i1_t0_c_b1_c0_l1_iphoneos_metallib, sizeof(f_b32x80x16_h160_i1_t0_c_b1_c0_l1_iphoneos_metallib), NULL, 0);
@@ -4989,7 +6394,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 160 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x80x16_h160_i1_t0_c_b1_c0_l1_sinks1_iphoneos_metallib, sizeof(f_b32x80x16_h160_i1_t0_c_b1_c0_l1_sinks1_iphoneos_metallib), NULL, 0);
@@ -5005,7 +6410,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 160 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 1 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x80x16_h160_i1_t0_c_b1_c0_l1_causal1_masked0_varlen0_iphoneos_metallib, sizeof(f_b32x80x16_h160_i1_t0_c_b1_c0_l1_causal1_masked0_varlen0_iphoneos_metallib), NULL, 0);
@@ -5021,7 +6426,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 160 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 1 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x80x16_h160_i1_t0_c_b1_c0_l1_causal1_masked0_varlen0_sinks1_iphoneos_metallib, sizeof(f_b32x80x16_h160_i1_t0_c_b1_c0_l1_causal1_masked0_varlen0_sinks1_iphoneos_metallib), NULL, 0);
@@ -5037,7 +6442,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 160 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 0 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x80x16_h160_i1_t0_c_b1_c0_l1_causal0_masked1_varlen0_iphoneos_metallib, sizeof(f_b32x80x16_h160_i1_t0_c_b1_c0_l1_causal0_masked1_varlen0_iphoneos_metallib), NULL, 0);
@@ -5053,7 +6458,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 160 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 0 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x80x16_h160_i1_t0_c_b1_c0_l1_causal0_masked1_varlen0_sinks1_iphoneos_metallib, sizeof(f_b32x80x16_h160_i1_t0_c_b1_c0_l1_causal0_masked1_varlen0_sinks1_iphoneos_metallib), NULL, 0);
@@ -5069,7 +6474,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 160 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 1 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x80x16_h160_i1_t0_c_b1_c0_l1_causal1_masked1_varlen0_iphoneos_metallib, sizeof(f_b32x80x16_h160_i1_t0_c_b1_c0_l1_causal1_masked1_varlen0_iphoneos_metallib), NULL, 0);
@@ -5085,7 +6490,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 160 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 1 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x80x16_h160_i1_t0_c_b1_c0_l1_causal1_masked1_varlen0_sinks1_iphoneos_metallib, sizeof(f_b32x80x16_h160_i1_t0_c_b1_c0_l1_causal1_masked1_varlen0_sinks1_iphoneos_metallib), NULL, 0);
@@ -5101,7 +6506,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 160 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 0 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x80x16_h160_i1_t0_c_b1_c0_l1_causal0_masked0_varlen1_iphoneos_metallib, sizeof(f_b32x80x16_h160_i1_t0_c_b1_c0_l1_causal0_masked0_varlen1_iphoneos_metallib), NULL, 0);
@@ -5117,7 +6522,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 160 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 0 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x80x16_h160_i1_t0_c_b1_c0_l1_causal0_masked0_varlen1_sinks1_iphoneos_metallib, sizeof(f_b32x80x16_h160_i1_t0_c_b1_c0_l1_causal0_masked0_varlen1_sinks1_iphoneos_metallib), NULL, 0);
@@ -5133,7 +6538,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 160 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 1 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x80x16_h160_i1_t0_c_b1_c0_l1_causal1_masked0_varlen1_iphoneos_metallib, sizeof(f_b32x80x16_h160_i1_t0_c_b1_c0_l1_causal1_masked0_varlen1_iphoneos_metallib), NULL, 0);
@@ -5149,7 +6554,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 160 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 1 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x80x16_h160_i1_t0_c_b1_c0_l1_causal1_masked0_varlen1_sinks1_iphoneos_metallib, sizeof(f_b32x80x16_h160_i1_t0_c_b1_c0_l1_causal1_masked0_varlen1_sinks1_iphoneos_metallib), NULL, 0);
@@ -5160,12 +6565,76 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     dispatch_release(data);
     return library;
 
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 32 && blockDimensions[1] == 80 && blockDimensions[2] == 16 &&
+    headDimension == 160 &&
+    lowPrecisionIntermediates == 0 && isBF16 == 1 &&
+    isCausal == 1 && masked == 0 && isVarlen == 0 &&
+    attentionSinks == 0 && slidingWindow > 0 &&
+    preferAsyncCache == 0 && preferAsyncLoad == 1) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b32x80x16_h160_i1_t0_c_b1_c0_l1_causal1_masked0_varlen0_sliding1_iphoneos_metallib, sizeof(f_b32x80x16_h160_i1_t0_c_b1_c0_l1_causal1_masked0_varlen0_sliding1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b32x80x16_h160_i1_t0_c_b1_c0_l1_causal1_masked0_varlen0_sliding1_macosx_metallib, sizeof(f_b32x80x16_h160_i1_t0_c_b1_c0_l1_causal1_masked0_varlen0_sliding1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 32 && blockDimensions[1] == 80 && blockDimensions[2] == 16 &&
+    headDimension == 160 &&
+    lowPrecisionIntermediates == 0 && isBF16 == 1 &&
+    isCausal == 1 && masked == 0 && isVarlen == 0 &&
+    attentionSinks == 1 && slidingWindow > 0 &&
+    preferAsyncCache == 0 && preferAsyncLoad == 1) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b32x80x16_h160_i1_t0_c_b1_c0_l1_causal1_masked0_varlen0_sliding1_sinks1_iphoneos_metallib, sizeof(f_b32x80x16_h160_i1_t0_c_b1_c0_l1_causal1_masked0_varlen0_sliding1_sinks1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b32x80x16_h160_i1_t0_c_b1_c0_l1_causal1_masked0_varlen0_sliding1_sinks1_macosx_metallib, sizeof(f_b32x80x16_h160_i1_t0_c_b1_c0_l1_causal1_masked0_varlen0_sliding1_sinks1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 32 && blockDimensions[1] == 80 && blockDimensions[2] == 16 &&
+    headDimension == 160 &&
+    lowPrecisionIntermediates == 0 && isBF16 == 1 &&
+    isCausal == 1 && masked == 1 && isVarlen == 0 &&
+    attentionSinks == 0 && slidingWindow > 0 &&
+    preferAsyncCache == 0 && preferAsyncLoad == 1) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b32x80x16_h160_i1_t0_c_b1_c0_l1_causal1_masked1_varlen0_sliding1_iphoneos_metallib, sizeof(f_b32x80x16_h160_i1_t0_c_b1_c0_l1_causal1_masked1_varlen0_sliding1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b32x80x16_h160_i1_t0_c_b1_c0_l1_causal1_masked1_varlen0_sliding1_macosx_metallib, sizeof(f_b32x80x16_h160_i1_t0_c_b1_c0_l1_causal1_masked1_varlen0_sliding1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 32 && blockDimensions[1] == 80 && blockDimensions[2] == 16 &&
+    headDimension == 160 &&
+    lowPrecisionIntermediates == 0 && isBF16 == 1 &&
+    isCausal == 1 && masked == 1 && isVarlen == 0 &&
+    attentionSinks == 1 && slidingWindow > 0 &&
+    preferAsyncCache == 0 && preferAsyncLoad == 1) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b32x80x16_h160_i1_t0_c_b1_c0_l1_causal1_masked1_varlen0_sliding1_sinks1_iphoneos_metallib, sizeof(f_b32x80x16_h160_i1_t0_c_b1_c0_l1_causal1_masked1_varlen0_sliding1_sinks1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b32x80x16_h160_i1_t0_c_b1_c0_l1_causal1_masked1_varlen0_sliding1_sinks1_macosx_metallib, sizeof(f_b32x80x16_h160_i1_t0_c_b1_c0_l1_causal1_masked1_varlen0_sliding1_sinks1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
   } else if (type.value == AttentionKernelType::backwardQuery &&
     blockDimensions[0] == 32 && blockDimensions[1] == 80 && blockDimensions[2] == 16 &&
     headDimension == 160 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(bq_b32x80x16_h160_i1_t0_c_b1_c0_l1_iphoneos_metallib, sizeof(bq_b32x80x16_h160_i1_t0_c_b1_c0_l1_iphoneos_metallib), NULL, 0);
@@ -5181,7 +6650,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 160 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(bkv_b32x80x16_h160_i1_t0_c_b1_c0_l1_iphoneos_metallib, sizeof(bkv_b32x80x16_h160_i1_t0_c_b1_c0_l1_iphoneos_metallib), NULL, 0);
@@ -5197,7 +6666,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 256 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x80x16_h256_i1_t0_c_b1_c0_l1_iphoneos_metallib, sizeof(f_b32x80x16_h256_i1_t0_c_b1_c0_l1_iphoneos_metallib), NULL, 0);
@@ -5213,7 +6682,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 256 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x80x16_h256_i1_t0_c_b1_c0_l1_sinks1_iphoneos_metallib, sizeof(f_b32x80x16_h256_i1_t0_c_b1_c0_l1_sinks1_iphoneos_metallib), NULL, 0);
@@ -5229,7 +6698,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 256 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 1 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x80x16_h256_i1_t0_c_b1_c0_l1_causal1_masked0_varlen0_iphoneos_metallib, sizeof(f_b32x80x16_h256_i1_t0_c_b1_c0_l1_causal1_masked0_varlen0_iphoneos_metallib), NULL, 0);
@@ -5245,7 +6714,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 256 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 1 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x80x16_h256_i1_t0_c_b1_c0_l1_causal1_masked0_varlen0_sinks1_iphoneos_metallib, sizeof(f_b32x80x16_h256_i1_t0_c_b1_c0_l1_causal1_masked0_varlen0_sinks1_iphoneos_metallib), NULL, 0);
@@ -5261,7 +6730,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 256 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 0 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x80x16_h256_i1_t0_c_b1_c0_l1_causal0_masked1_varlen0_iphoneos_metallib, sizeof(f_b32x80x16_h256_i1_t0_c_b1_c0_l1_causal0_masked1_varlen0_iphoneos_metallib), NULL, 0);
@@ -5277,7 +6746,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 256 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 0 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x80x16_h256_i1_t0_c_b1_c0_l1_causal0_masked1_varlen0_sinks1_iphoneos_metallib, sizeof(f_b32x80x16_h256_i1_t0_c_b1_c0_l1_causal0_masked1_varlen0_sinks1_iphoneos_metallib), NULL, 0);
@@ -5293,7 +6762,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 256 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 1 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x80x16_h256_i1_t0_c_b1_c0_l1_causal1_masked1_varlen0_iphoneos_metallib, sizeof(f_b32x80x16_h256_i1_t0_c_b1_c0_l1_causal1_masked1_varlen0_iphoneos_metallib), NULL, 0);
@@ -5309,7 +6778,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 256 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 1 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x80x16_h256_i1_t0_c_b1_c0_l1_causal1_masked1_varlen0_sinks1_iphoneos_metallib, sizeof(f_b32x80x16_h256_i1_t0_c_b1_c0_l1_causal1_masked1_varlen0_sinks1_iphoneos_metallib), NULL, 0);
@@ -5325,7 +6794,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 256 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 0 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x80x16_h256_i1_t0_c_b1_c0_l1_causal0_masked0_varlen1_iphoneos_metallib, sizeof(f_b32x80x16_h256_i1_t0_c_b1_c0_l1_causal0_masked0_varlen1_iphoneos_metallib), NULL, 0);
@@ -5341,7 +6810,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 256 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 0 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x80x16_h256_i1_t0_c_b1_c0_l1_causal0_masked0_varlen1_sinks1_iphoneos_metallib, sizeof(f_b32x80x16_h256_i1_t0_c_b1_c0_l1_causal0_masked0_varlen1_sinks1_iphoneos_metallib), NULL, 0);
@@ -5357,7 +6826,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 256 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 1 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x80x16_h256_i1_t0_c_b1_c0_l1_causal1_masked0_varlen1_iphoneos_metallib, sizeof(f_b32x80x16_h256_i1_t0_c_b1_c0_l1_causal1_masked0_varlen1_iphoneos_metallib), NULL, 0);
@@ -5373,7 +6842,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 256 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 1 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b32x80x16_h256_i1_t0_c_b1_c0_l1_causal1_masked0_varlen1_sinks1_iphoneos_metallib, sizeof(f_b32x80x16_h256_i1_t0_c_b1_c0_l1_causal1_masked0_varlen1_sinks1_iphoneos_metallib), NULL, 0);
@@ -5384,12 +6853,76 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     dispatch_release(data);
     return library;
 
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 32 && blockDimensions[1] == 80 && blockDimensions[2] == 16 &&
+    headDimension == 256 &&
+    lowPrecisionIntermediates == 0 && isBF16 == 1 &&
+    isCausal == 1 && masked == 0 && isVarlen == 0 &&
+    attentionSinks == 0 && slidingWindow > 0 &&
+    preferAsyncCache == 0 && preferAsyncLoad == 1) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b32x80x16_h256_i1_t0_c_b1_c0_l1_causal1_masked0_varlen0_sliding1_iphoneos_metallib, sizeof(f_b32x80x16_h256_i1_t0_c_b1_c0_l1_causal1_masked0_varlen0_sliding1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b32x80x16_h256_i1_t0_c_b1_c0_l1_causal1_masked0_varlen0_sliding1_macosx_metallib, sizeof(f_b32x80x16_h256_i1_t0_c_b1_c0_l1_causal1_masked0_varlen0_sliding1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 32 && blockDimensions[1] == 80 && blockDimensions[2] == 16 &&
+    headDimension == 256 &&
+    lowPrecisionIntermediates == 0 && isBF16 == 1 &&
+    isCausal == 1 && masked == 0 && isVarlen == 0 &&
+    attentionSinks == 1 && slidingWindow > 0 &&
+    preferAsyncCache == 0 && preferAsyncLoad == 1) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b32x80x16_h256_i1_t0_c_b1_c0_l1_causal1_masked0_varlen0_sliding1_sinks1_iphoneos_metallib, sizeof(f_b32x80x16_h256_i1_t0_c_b1_c0_l1_causal1_masked0_varlen0_sliding1_sinks1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b32x80x16_h256_i1_t0_c_b1_c0_l1_causal1_masked0_varlen0_sliding1_sinks1_macosx_metallib, sizeof(f_b32x80x16_h256_i1_t0_c_b1_c0_l1_causal1_masked0_varlen0_sliding1_sinks1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 32 && blockDimensions[1] == 80 && blockDimensions[2] == 16 &&
+    headDimension == 256 &&
+    lowPrecisionIntermediates == 0 && isBF16 == 1 &&
+    isCausal == 1 && masked == 1 && isVarlen == 0 &&
+    attentionSinks == 0 && slidingWindow > 0 &&
+    preferAsyncCache == 0 && preferAsyncLoad == 1) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b32x80x16_h256_i1_t0_c_b1_c0_l1_causal1_masked1_varlen0_sliding1_iphoneos_metallib, sizeof(f_b32x80x16_h256_i1_t0_c_b1_c0_l1_causal1_masked1_varlen0_sliding1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b32x80x16_h256_i1_t0_c_b1_c0_l1_causal1_masked1_varlen0_sliding1_macosx_metallib, sizeof(f_b32x80x16_h256_i1_t0_c_b1_c0_l1_causal1_masked1_varlen0_sliding1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 32 && blockDimensions[1] == 80 && blockDimensions[2] == 16 &&
+    headDimension == 256 &&
+    lowPrecisionIntermediates == 0 && isBF16 == 1 &&
+    isCausal == 1 && masked == 1 && isVarlen == 0 &&
+    attentionSinks == 1 && slidingWindow > 0 &&
+    preferAsyncCache == 0 && preferAsyncLoad == 1) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b32x80x16_h256_i1_t0_c_b1_c0_l1_causal1_masked1_varlen0_sliding1_sinks1_iphoneos_metallib, sizeof(f_b32x80x16_h256_i1_t0_c_b1_c0_l1_causal1_masked1_varlen0_sliding1_sinks1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b32x80x16_h256_i1_t0_c_b1_c0_l1_causal1_masked1_varlen0_sliding1_sinks1_macosx_metallib, sizeof(f_b32x80x16_h256_i1_t0_c_b1_c0_l1_causal1_masked1_varlen0_sliding1_sinks1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
   } else if (type.value == AttentionKernelType::backwardQuery &&
     blockDimensions[0] == 32 && blockDimensions[1] == 80 && blockDimensions[2] == 16 &&
     headDimension == 256 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(bq_b32x80x16_h256_i1_t0_c_b1_c0_l1_iphoneos_metallib, sizeof(bq_b32x80x16_h256_i1_t0_c_b1_c0_l1_iphoneos_metallib), NULL, 0);
@@ -5405,7 +6938,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 256 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 0 && preferAsyncLoad == 1) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(bkv_b32x80x16_h256_i1_t0_c_b1_c0_l1_iphoneos_metallib, sizeof(bkv_b32x80x16_h256_i1_t0_c_b1_c0_l1_iphoneos_metallib), NULL, 0);
@@ -5421,7 +6954,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 40 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x32x8_h40_i1_t0_cqo_b0_c1_l0_iphoneos_metallib, sizeof(f_b16x32x8_h40_i1_t0_cqo_b0_c1_l0_iphoneos_metallib), NULL, 0);
@@ -5437,7 +6970,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 40 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x32x8_h40_i1_t0_cqo_b0_c1_l0_sinks1_iphoneos_metallib, sizeof(f_b16x32x8_h40_i1_t0_cqo_b0_c1_l0_sinks1_iphoneos_metallib), NULL, 0);
@@ -5453,7 +6986,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 40 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 1 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x32x8_h40_i1_t0_cqo_b0_c1_l0_causal1_masked0_varlen0_iphoneos_metallib, sizeof(f_b16x32x8_h40_i1_t0_cqo_b0_c1_l0_causal1_masked0_varlen0_iphoneos_metallib), NULL, 0);
@@ -5469,7 +7002,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 40 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 1 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x32x8_h40_i1_t0_cqo_b0_c1_l0_causal1_masked0_varlen0_sinks1_iphoneos_metallib, sizeof(f_b16x32x8_h40_i1_t0_cqo_b0_c1_l0_causal1_masked0_varlen0_sinks1_iphoneos_metallib), NULL, 0);
@@ -5485,7 +7018,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 40 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 0 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x32x8_h40_i1_t0_cqo_b0_c1_l0_causal0_masked1_varlen0_iphoneos_metallib, sizeof(f_b16x32x8_h40_i1_t0_cqo_b0_c1_l0_causal0_masked1_varlen0_iphoneos_metallib), NULL, 0);
@@ -5501,7 +7034,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 40 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 0 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x32x8_h40_i1_t0_cqo_b0_c1_l0_causal0_masked1_varlen0_sinks1_iphoneos_metallib, sizeof(f_b16x32x8_h40_i1_t0_cqo_b0_c1_l0_causal0_masked1_varlen0_sinks1_iphoneos_metallib), NULL, 0);
@@ -5517,7 +7050,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 40 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 1 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x32x8_h40_i1_t0_cqo_b0_c1_l0_causal1_masked1_varlen0_iphoneos_metallib, sizeof(f_b16x32x8_h40_i1_t0_cqo_b0_c1_l0_causal1_masked1_varlen0_iphoneos_metallib), NULL, 0);
@@ -5533,7 +7066,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 40 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 1 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x32x8_h40_i1_t0_cqo_b0_c1_l0_causal1_masked1_varlen0_sinks1_iphoneos_metallib, sizeof(f_b16x32x8_h40_i1_t0_cqo_b0_c1_l0_causal1_masked1_varlen0_sinks1_iphoneos_metallib), NULL, 0);
@@ -5549,7 +7082,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 40 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x32x8_h40_i1_t0_cqo_b0_c1_l0_causal0_masked0_varlen1_iphoneos_metallib, sizeof(f_b16x32x8_h40_i1_t0_cqo_b0_c1_l0_causal0_masked0_varlen1_iphoneos_metallib), NULL, 0);
@@ -5565,7 +7098,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 40 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x32x8_h40_i1_t0_cqo_b0_c1_l0_causal0_masked0_varlen1_sinks1_iphoneos_metallib, sizeof(f_b16x32x8_h40_i1_t0_cqo_b0_c1_l0_causal0_masked0_varlen1_sinks1_iphoneos_metallib), NULL, 0);
@@ -5581,7 +7114,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 40 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 1 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x32x8_h40_i1_t0_cqo_b0_c1_l0_causal1_masked0_varlen1_iphoneos_metallib, sizeof(f_b16x32x8_h40_i1_t0_cqo_b0_c1_l0_causal1_masked0_varlen1_iphoneos_metallib), NULL, 0);
@@ -5597,7 +7130,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 40 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 1 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x32x8_h40_i1_t0_cqo_b0_c1_l0_causal1_masked0_varlen1_sinks1_iphoneos_metallib, sizeof(f_b16x32x8_h40_i1_t0_cqo_b0_c1_l0_causal1_masked0_varlen1_sinks1_iphoneos_metallib), NULL, 0);
@@ -5608,12 +7141,76 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     dispatch_release(data);
     return library;
 
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 16 && blockDimensions[1] == 32 && blockDimensions[2] == 8 &&
+    headDimension == 40 &&
+    lowPrecisionIntermediates == 0 && isBF16 == 0 &&
+    isCausal == 1 && masked == 0 && isVarlen == 0 &&
+    attentionSinks == 0 && slidingWindow > 0 &&
+    preferAsyncCache == 1 && preferAsyncLoad == 0) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b16x32x8_h40_i1_t0_cqo_b0_c1_l0_causal1_masked0_varlen0_sliding1_iphoneos_metallib, sizeof(f_b16x32x8_h40_i1_t0_cqo_b0_c1_l0_causal1_masked0_varlen0_sliding1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b16x32x8_h40_i1_t0_cqo_b0_c1_l0_causal1_masked0_varlen0_sliding1_macosx_metallib, sizeof(f_b16x32x8_h40_i1_t0_cqo_b0_c1_l0_causal1_masked0_varlen0_sliding1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 16 && blockDimensions[1] == 32 && blockDimensions[2] == 8 &&
+    headDimension == 40 &&
+    lowPrecisionIntermediates == 0 && isBF16 == 0 &&
+    isCausal == 1 && masked == 0 && isVarlen == 0 &&
+    attentionSinks == 1 && slidingWindow > 0 &&
+    preferAsyncCache == 1 && preferAsyncLoad == 0) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b16x32x8_h40_i1_t0_cqo_b0_c1_l0_causal1_masked0_varlen0_sliding1_sinks1_iphoneos_metallib, sizeof(f_b16x32x8_h40_i1_t0_cqo_b0_c1_l0_causal1_masked0_varlen0_sliding1_sinks1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b16x32x8_h40_i1_t0_cqo_b0_c1_l0_causal1_masked0_varlen0_sliding1_sinks1_macosx_metallib, sizeof(f_b16x32x8_h40_i1_t0_cqo_b0_c1_l0_causal1_masked0_varlen0_sliding1_sinks1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 16 && blockDimensions[1] == 32 && blockDimensions[2] == 8 &&
+    headDimension == 40 &&
+    lowPrecisionIntermediates == 0 && isBF16 == 0 &&
+    isCausal == 1 && masked == 1 && isVarlen == 0 &&
+    attentionSinks == 0 && slidingWindow > 0 &&
+    preferAsyncCache == 1 && preferAsyncLoad == 0) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b16x32x8_h40_i1_t0_cqo_b0_c1_l0_causal1_masked1_varlen0_sliding1_iphoneos_metallib, sizeof(f_b16x32x8_h40_i1_t0_cqo_b0_c1_l0_causal1_masked1_varlen0_sliding1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b16x32x8_h40_i1_t0_cqo_b0_c1_l0_causal1_masked1_varlen0_sliding1_macosx_metallib, sizeof(f_b16x32x8_h40_i1_t0_cqo_b0_c1_l0_causal1_masked1_varlen0_sliding1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 16 && blockDimensions[1] == 32 && blockDimensions[2] == 8 &&
+    headDimension == 40 &&
+    lowPrecisionIntermediates == 0 && isBF16 == 0 &&
+    isCausal == 1 && masked == 1 && isVarlen == 0 &&
+    attentionSinks == 1 && slidingWindow > 0 &&
+    preferAsyncCache == 1 && preferAsyncLoad == 0) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b16x32x8_h40_i1_t0_cqo_b0_c1_l0_causal1_masked1_varlen0_sliding1_sinks1_iphoneos_metallib, sizeof(f_b16x32x8_h40_i1_t0_cqo_b0_c1_l0_causal1_masked1_varlen0_sliding1_sinks1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b16x32x8_h40_i1_t0_cqo_b0_c1_l0_causal1_masked1_varlen0_sliding1_sinks1_macosx_metallib, sizeof(f_b16x32x8_h40_i1_t0_cqo_b0_c1_l0_causal1_masked1_varlen0_sliding1_sinks1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
   } else if (type.value == AttentionKernelType::backwardQuery &&
     blockDimensions[0] == 16 && blockDimensions[1] == 64 && blockDimensions[2] == 32 &&
     headDimension == 40 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(bq_b16x64x32_h40_i1_t0_cqdq_b0_c1_l0_iphoneos_metallib, sizeof(bq_b16x64x32_h40_i1_t0_cqdq_b0_c1_l0_iphoneos_metallib), NULL, 0);
@@ -5629,7 +7226,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 40 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(bkv_b16x32x16_h40_i1_t0_cvdvdk_b0_c1_l0_iphoneos_metallib, sizeof(bkv_b16x32x16_h40_i1_t0_cvdvdk_b0_c1_l0_iphoneos_metallib), NULL, 0);
@@ -5645,7 +7242,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 64 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x64x16_h64_i1_t0_co_b0_c1_l0_iphoneos_metallib, sizeof(f_b16x64x16_h64_i1_t0_co_b0_c1_l0_iphoneos_metallib), NULL, 0);
@@ -5661,7 +7258,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 64 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x64x16_h64_i1_t0_co_b0_c1_l0_sinks1_iphoneos_metallib, sizeof(f_b16x64x16_h64_i1_t0_co_b0_c1_l0_sinks1_iphoneos_metallib), NULL, 0);
@@ -5677,7 +7274,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 64 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 1 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x64x16_h64_i1_t0_co_b0_c1_l0_causal1_masked0_varlen0_iphoneos_metallib, sizeof(f_b16x64x16_h64_i1_t0_co_b0_c1_l0_causal1_masked0_varlen0_iphoneos_metallib), NULL, 0);
@@ -5693,7 +7290,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 64 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 1 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x64x16_h64_i1_t0_co_b0_c1_l0_causal1_masked0_varlen0_sinks1_iphoneos_metallib, sizeof(f_b16x64x16_h64_i1_t0_co_b0_c1_l0_causal1_masked0_varlen0_sinks1_iphoneos_metallib), NULL, 0);
@@ -5709,7 +7306,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 64 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 0 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x64x16_h64_i1_t0_co_b0_c1_l0_causal0_masked1_varlen0_iphoneos_metallib, sizeof(f_b16x64x16_h64_i1_t0_co_b0_c1_l0_causal0_masked1_varlen0_iphoneos_metallib), NULL, 0);
@@ -5725,7 +7322,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 64 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 0 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x64x16_h64_i1_t0_co_b0_c1_l0_causal0_masked1_varlen0_sinks1_iphoneos_metallib, sizeof(f_b16x64x16_h64_i1_t0_co_b0_c1_l0_causal0_masked1_varlen0_sinks1_iphoneos_metallib), NULL, 0);
@@ -5741,7 +7338,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 64 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 1 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x64x16_h64_i1_t0_co_b0_c1_l0_causal1_masked1_varlen0_iphoneos_metallib, sizeof(f_b16x64x16_h64_i1_t0_co_b0_c1_l0_causal1_masked1_varlen0_iphoneos_metallib), NULL, 0);
@@ -5757,7 +7354,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 64 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 1 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x64x16_h64_i1_t0_co_b0_c1_l0_causal1_masked1_varlen0_sinks1_iphoneos_metallib, sizeof(f_b16x64x16_h64_i1_t0_co_b0_c1_l0_causal1_masked1_varlen0_sinks1_iphoneos_metallib), NULL, 0);
@@ -5773,7 +7370,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 64 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x64x16_h64_i1_t0_co_b0_c1_l0_causal0_masked0_varlen1_iphoneos_metallib, sizeof(f_b16x64x16_h64_i1_t0_co_b0_c1_l0_causal0_masked0_varlen1_iphoneos_metallib), NULL, 0);
@@ -5789,7 +7386,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 64 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x64x16_h64_i1_t0_co_b0_c1_l0_causal0_masked0_varlen1_sinks1_iphoneos_metallib, sizeof(f_b16x64x16_h64_i1_t0_co_b0_c1_l0_causal0_masked0_varlen1_sinks1_iphoneos_metallib), NULL, 0);
@@ -5805,7 +7402,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 64 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 1 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x64x16_h64_i1_t0_co_b0_c1_l0_causal1_masked0_varlen1_iphoneos_metallib, sizeof(f_b16x64x16_h64_i1_t0_co_b0_c1_l0_causal1_masked0_varlen1_iphoneos_metallib), NULL, 0);
@@ -5821,7 +7418,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 64 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 1 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x64x16_h64_i1_t0_co_b0_c1_l0_causal1_masked0_varlen1_sinks1_iphoneos_metallib, sizeof(f_b16x64x16_h64_i1_t0_co_b0_c1_l0_causal1_masked0_varlen1_sinks1_iphoneos_metallib), NULL, 0);
@@ -5832,12 +7429,76 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     dispatch_release(data);
     return library;
 
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 16 && blockDimensions[1] == 64 && blockDimensions[2] == 16 &&
+    headDimension == 64 &&
+    lowPrecisionIntermediates == 0 && isBF16 == 0 &&
+    isCausal == 1 && masked == 0 && isVarlen == 0 &&
+    attentionSinks == 0 && slidingWindow > 0 &&
+    preferAsyncCache == 1 && preferAsyncLoad == 0) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b16x64x16_h64_i1_t0_co_b0_c1_l0_causal1_masked0_varlen0_sliding1_iphoneos_metallib, sizeof(f_b16x64x16_h64_i1_t0_co_b0_c1_l0_causal1_masked0_varlen0_sliding1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b16x64x16_h64_i1_t0_co_b0_c1_l0_causal1_masked0_varlen0_sliding1_macosx_metallib, sizeof(f_b16x64x16_h64_i1_t0_co_b0_c1_l0_causal1_masked0_varlen0_sliding1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 16 && blockDimensions[1] == 64 && blockDimensions[2] == 16 &&
+    headDimension == 64 &&
+    lowPrecisionIntermediates == 0 && isBF16 == 0 &&
+    isCausal == 1 && masked == 0 && isVarlen == 0 &&
+    attentionSinks == 1 && slidingWindow > 0 &&
+    preferAsyncCache == 1 && preferAsyncLoad == 0) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b16x64x16_h64_i1_t0_co_b0_c1_l0_causal1_masked0_varlen0_sliding1_sinks1_iphoneos_metallib, sizeof(f_b16x64x16_h64_i1_t0_co_b0_c1_l0_causal1_masked0_varlen0_sliding1_sinks1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b16x64x16_h64_i1_t0_co_b0_c1_l0_causal1_masked0_varlen0_sliding1_sinks1_macosx_metallib, sizeof(f_b16x64x16_h64_i1_t0_co_b0_c1_l0_causal1_masked0_varlen0_sliding1_sinks1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 16 && blockDimensions[1] == 64 && blockDimensions[2] == 16 &&
+    headDimension == 64 &&
+    lowPrecisionIntermediates == 0 && isBF16 == 0 &&
+    isCausal == 1 && masked == 1 && isVarlen == 0 &&
+    attentionSinks == 0 && slidingWindow > 0 &&
+    preferAsyncCache == 1 && preferAsyncLoad == 0) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b16x64x16_h64_i1_t0_co_b0_c1_l0_causal1_masked1_varlen0_sliding1_iphoneos_metallib, sizeof(f_b16x64x16_h64_i1_t0_co_b0_c1_l0_causal1_masked1_varlen0_sliding1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b16x64x16_h64_i1_t0_co_b0_c1_l0_causal1_masked1_varlen0_sliding1_macosx_metallib, sizeof(f_b16x64x16_h64_i1_t0_co_b0_c1_l0_causal1_masked1_varlen0_sliding1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 16 && blockDimensions[1] == 64 && blockDimensions[2] == 16 &&
+    headDimension == 64 &&
+    lowPrecisionIntermediates == 0 && isBF16 == 0 &&
+    isCausal == 1 && masked == 1 && isVarlen == 0 &&
+    attentionSinks == 1 && slidingWindow > 0 &&
+    preferAsyncCache == 1 && preferAsyncLoad == 0) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b16x64x16_h64_i1_t0_co_b0_c1_l0_causal1_masked1_varlen0_sliding1_sinks1_iphoneos_metallib, sizeof(f_b16x64x16_h64_i1_t0_co_b0_c1_l0_causal1_masked1_varlen0_sliding1_sinks1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b16x64x16_h64_i1_t0_co_b0_c1_l0_causal1_masked1_varlen0_sliding1_sinks1_macosx_metallib, sizeof(f_b16x64x16_h64_i1_t0_co_b0_c1_l0_causal1_masked1_varlen0_sliding1_sinks1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
   } else if (type.value == AttentionKernelType::backwardQuery &&
     blockDimensions[0] == 16 && blockDimensions[1] == 64 && blockDimensions[2] == 32 &&
     headDimension == 64 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(bq_b16x64x32_h64_i1_t0_cqdq_b0_c1_l0_iphoneos_metallib, sizeof(bq_b16x64x32_h64_i1_t0_cqdq_b0_c1_l0_iphoneos_metallib), NULL, 0);
@@ -5853,7 +7514,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 64 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(bkv_b16x32x16_h64_i1_t0_cvdvdk_b0_c1_l0_iphoneos_metallib, sizeof(bkv_b16x32x16_h64_i1_t0_cvdvdk_b0_c1_l0_iphoneos_metallib), NULL, 0);
@@ -5869,7 +7530,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 80 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x64x16_h80_i1_t0_co_b0_c1_l0_iphoneos_metallib, sizeof(f_b16x64x16_h80_i1_t0_co_b0_c1_l0_iphoneos_metallib), NULL, 0);
@@ -5885,7 +7546,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 80 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x64x16_h80_i1_t0_co_b0_c1_l0_sinks1_iphoneos_metallib, sizeof(f_b16x64x16_h80_i1_t0_co_b0_c1_l0_sinks1_iphoneos_metallib), NULL, 0);
@@ -5901,7 +7562,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 80 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 1 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x64x16_h80_i1_t0_co_b0_c1_l0_causal1_masked0_varlen0_iphoneos_metallib, sizeof(f_b16x64x16_h80_i1_t0_co_b0_c1_l0_causal1_masked0_varlen0_iphoneos_metallib), NULL, 0);
@@ -5917,7 +7578,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 80 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 1 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x64x16_h80_i1_t0_co_b0_c1_l0_causal1_masked0_varlen0_sinks1_iphoneos_metallib, sizeof(f_b16x64x16_h80_i1_t0_co_b0_c1_l0_causal1_masked0_varlen0_sinks1_iphoneos_metallib), NULL, 0);
@@ -5933,7 +7594,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 80 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 0 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x64x16_h80_i1_t0_co_b0_c1_l0_causal0_masked1_varlen0_iphoneos_metallib, sizeof(f_b16x64x16_h80_i1_t0_co_b0_c1_l0_causal0_masked1_varlen0_iphoneos_metallib), NULL, 0);
@@ -5949,7 +7610,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 80 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 0 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x64x16_h80_i1_t0_co_b0_c1_l0_causal0_masked1_varlen0_sinks1_iphoneos_metallib, sizeof(f_b16x64x16_h80_i1_t0_co_b0_c1_l0_causal0_masked1_varlen0_sinks1_iphoneos_metallib), NULL, 0);
@@ -5965,7 +7626,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 80 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 1 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x64x16_h80_i1_t0_co_b0_c1_l0_causal1_masked1_varlen0_iphoneos_metallib, sizeof(f_b16x64x16_h80_i1_t0_co_b0_c1_l0_causal1_masked1_varlen0_iphoneos_metallib), NULL, 0);
@@ -5981,7 +7642,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 80 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 1 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x64x16_h80_i1_t0_co_b0_c1_l0_causal1_masked1_varlen0_sinks1_iphoneos_metallib, sizeof(f_b16x64x16_h80_i1_t0_co_b0_c1_l0_causal1_masked1_varlen0_sinks1_iphoneos_metallib), NULL, 0);
@@ -5997,7 +7658,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 80 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x64x16_h80_i1_t0_co_b0_c1_l0_causal0_masked0_varlen1_iphoneos_metallib, sizeof(f_b16x64x16_h80_i1_t0_co_b0_c1_l0_causal0_masked0_varlen1_iphoneos_metallib), NULL, 0);
@@ -6013,7 +7674,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 80 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x64x16_h80_i1_t0_co_b0_c1_l0_causal0_masked0_varlen1_sinks1_iphoneos_metallib, sizeof(f_b16x64x16_h80_i1_t0_co_b0_c1_l0_causal0_masked0_varlen1_sinks1_iphoneos_metallib), NULL, 0);
@@ -6029,7 +7690,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 80 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 1 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x64x16_h80_i1_t0_co_b0_c1_l0_causal1_masked0_varlen1_iphoneos_metallib, sizeof(f_b16x64x16_h80_i1_t0_co_b0_c1_l0_causal1_masked0_varlen1_iphoneos_metallib), NULL, 0);
@@ -6045,7 +7706,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 80 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 1 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x64x16_h80_i1_t0_co_b0_c1_l0_causal1_masked0_varlen1_sinks1_iphoneos_metallib, sizeof(f_b16x64x16_h80_i1_t0_co_b0_c1_l0_causal1_masked0_varlen1_sinks1_iphoneos_metallib), NULL, 0);
@@ -6056,12 +7717,76 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     dispatch_release(data);
     return library;
 
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 16 && blockDimensions[1] == 64 && blockDimensions[2] == 16 &&
+    headDimension == 80 &&
+    lowPrecisionIntermediates == 0 && isBF16 == 0 &&
+    isCausal == 1 && masked == 0 && isVarlen == 0 &&
+    attentionSinks == 0 && slidingWindow > 0 &&
+    preferAsyncCache == 1 && preferAsyncLoad == 0) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b16x64x16_h80_i1_t0_co_b0_c1_l0_causal1_masked0_varlen0_sliding1_iphoneos_metallib, sizeof(f_b16x64x16_h80_i1_t0_co_b0_c1_l0_causal1_masked0_varlen0_sliding1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b16x64x16_h80_i1_t0_co_b0_c1_l0_causal1_masked0_varlen0_sliding1_macosx_metallib, sizeof(f_b16x64x16_h80_i1_t0_co_b0_c1_l0_causal1_masked0_varlen0_sliding1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 16 && blockDimensions[1] == 64 && blockDimensions[2] == 16 &&
+    headDimension == 80 &&
+    lowPrecisionIntermediates == 0 && isBF16 == 0 &&
+    isCausal == 1 && masked == 0 && isVarlen == 0 &&
+    attentionSinks == 1 && slidingWindow > 0 &&
+    preferAsyncCache == 1 && preferAsyncLoad == 0) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b16x64x16_h80_i1_t0_co_b0_c1_l0_causal1_masked0_varlen0_sliding1_sinks1_iphoneos_metallib, sizeof(f_b16x64x16_h80_i1_t0_co_b0_c1_l0_causal1_masked0_varlen0_sliding1_sinks1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b16x64x16_h80_i1_t0_co_b0_c1_l0_causal1_masked0_varlen0_sliding1_sinks1_macosx_metallib, sizeof(f_b16x64x16_h80_i1_t0_co_b0_c1_l0_causal1_masked0_varlen0_sliding1_sinks1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 16 && blockDimensions[1] == 64 && blockDimensions[2] == 16 &&
+    headDimension == 80 &&
+    lowPrecisionIntermediates == 0 && isBF16 == 0 &&
+    isCausal == 1 && masked == 1 && isVarlen == 0 &&
+    attentionSinks == 0 && slidingWindow > 0 &&
+    preferAsyncCache == 1 && preferAsyncLoad == 0) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b16x64x16_h80_i1_t0_co_b0_c1_l0_causal1_masked1_varlen0_sliding1_iphoneos_metallib, sizeof(f_b16x64x16_h80_i1_t0_co_b0_c1_l0_causal1_masked1_varlen0_sliding1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b16x64x16_h80_i1_t0_co_b0_c1_l0_causal1_masked1_varlen0_sliding1_macosx_metallib, sizeof(f_b16x64x16_h80_i1_t0_co_b0_c1_l0_causal1_masked1_varlen0_sliding1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 16 && blockDimensions[1] == 64 && blockDimensions[2] == 16 &&
+    headDimension == 80 &&
+    lowPrecisionIntermediates == 0 && isBF16 == 0 &&
+    isCausal == 1 && masked == 1 && isVarlen == 0 &&
+    attentionSinks == 1 && slidingWindow > 0 &&
+    preferAsyncCache == 1 && preferAsyncLoad == 0) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b16x64x16_h80_i1_t0_co_b0_c1_l0_causal1_masked1_varlen0_sliding1_sinks1_iphoneos_metallib, sizeof(f_b16x64x16_h80_i1_t0_co_b0_c1_l0_causal1_masked1_varlen0_sliding1_sinks1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b16x64x16_h80_i1_t0_co_b0_c1_l0_causal1_masked1_varlen0_sliding1_sinks1_macosx_metallib, sizeof(f_b16x64x16_h80_i1_t0_co_b0_c1_l0_causal1_masked1_varlen0_sliding1_sinks1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
   } else if (type.value == AttentionKernelType::backwardQuery &&
     blockDimensions[0] == 16 && blockDimensions[1] == 64 && blockDimensions[2] == 32 &&
     headDimension == 80 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(bq_b16x64x32_h80_i1_t0_cqdq_b0_c1_l0_iphoneos_metallib, sizeof(bq_b16x64x32_h80_i1_t0_cqdq_b0_c1_l0_iphoneos_metallib), NULL, 0);
@@ -6077,7 +7802,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 80 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(bkv_b16x128x16_h80_i1_t0_cdvdk_b0_c1_l0_iphoneos_metallib, sizeof(bkv_b16x128x16_h80_i1_t0_cdvdk_b0_c1_l0_iphoneos_metallib), NULL, 0);
@@ -6093,7 +7818,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 128 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x64x16_h128_i1_t0_co_b0_c1_l0_iphoneos_metallib, sizeof(f_b16x64x16_h128_i1_t0_co_b0_c1_l0_iphoneos_metallib), NULL, 0);
@@ -6109,7 +7834,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 128 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x64x16_h128_i1_t0_co_b0_c1_l0_sinks1_iphoneos_metallib, sizeof(f_b16x64x16_h128_i1_t0_co_b0_c1_l0_sinks1_iphoneos_metallib), NULL, 0);
@@ -6125,7 +7850,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 128 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 1 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x64x16_h128_i1_t0_co_b0_c1_l0_causal1_masked0_varlen0_iphoneos_metallib, sizeof(f_b16x64x16_h128_i1_t0_co_b0_c1_l0_causal1_masked0_varlen0_iphoneos_metallib), NULL, 0);
@@ -6141,7 +7866,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 128 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 1 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x64x16_h128_i1_t0_co_b0_c1_l0_causal1_masked0_varlen0_sinks1_iphoneos_metallib, sizeof(f_b16x64x16_h128_i1_t0_co_b0_c1_l0_causal1_masked0_varlen0_sinks1_iphoneos_metallib), NULL, 0);
@@ -6157,7 +7882,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 128 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 0 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x64x16_h128_i1_t0_co_b0_c1_l0_causal0_masked1_varlen0_iphoneos_metallib, sizeof(f_b16x64x16_h128_i1_t0_co_b0_c1_l0_causal0_masked1_varlen0_iphoneos_metallib), NULL, 0);
@@ -6173,7 +7898,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 128 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 0 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x64x16_h128_i1_t0_co_b0_c1_l0_causal0_masked1_varlen0_sinks1_iphoneos_metallib, sizeof(f_b16x64x16_h128_i1_t0_co_b0_c1_l0_causal0_masked1_varlen0_sinks1_iphoneos_metallib), NULL, 0);
@@ -6189,7 +7914,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 128 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 1 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x64x16_h128_i1_t0_co_b0_c1_l0_causal1_masked1_varlen0_iphoneos_metallib, sizeof(f_b16x64x16_h128_i1_t0_co_b0_c1_l0_causal1_masked1_varlen0_iphoneos_metallib), NULL, 0);
@@ -6205,7 +7930,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 128 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 1 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x64x16_h128_i1_t0_co_b0_c1_l0_causal1_masked1_varlen0_sinks1_iphoneos_metallib, sizeof(f_b16x64x16_h128_i1_t0_co_b0_c1_l0_causal1_masked1_varlen0_sinks1_iphoneos_metallib), NULL, 0);
@@ -6221,7 +7946,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 128 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x64x16_h128_i1_t0_co_b0_c1_l0_causal0_masked0_varlen1_iphoneos_metallib, sizeof(f_b16x64x16_h128_i1_t0_co_b0_c1_l0_causal0_masked0_varlen1_iphoneos_metallib), NULL, 0);
@@ -6237,7 +7962,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 128 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x64x16_h128_i1_t0_co_b0_c1_l0_causal0_masked0_varlen1_sinks1_iphoneos_metallib, sizeof(f_b16x64x16_h128_i1_t0_co_b0_c1_l0_causal0_masked0_varlen1_sinks1_iphoneos_metallib), NULL, 0);
@@ -6253,7 +7978,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 128 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 1 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x64x16_h128_i1_t0_co_b0_c1_l0_causal1_masked0_varlen1_iphoneos_metallib, sizeof(f_b16x64x16_h128_i1_t0_co_b0_c1_l0_causal1_masked0_varlen1_iphoneos_metallib), NULL, 0);
@@ -6269,7 +7994,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 128 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 1 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x64x16_h128_i1_t0_co_b0_c1_l0_causal1_masked0_varlen1_sinks1_iphoneos_metallib, sizeof(f_b16x64x16_h128_i1_t0_co_b0_c1_l0_causal1_masked0_varlen1_sinks1_iphoneos_metallib), NULL, 0);
@@ -6280,12 +8005,76 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     dispatch_release(data);
     return library;
 
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 16 && blockDimensions[1] == 64 && blockDimensions[2] == 16 &&
+    headDimension == 128 &&
+    lowPrecisionIntermediates == 0 && isBF16 == 0 &&
+    isCausal == 1 && masked == 0 && isVarlen == 0 &&
+    attentionSinks == 0 && slidingWindow > 0 &&
+    preferAsyncCache == 1 && preferAsyncLoad == 0) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b16x64x16_h128_i1_t0_co_b0_c1_l0_causal1_masked0_varlen0_sliding1_iphoneos_metallib, sizeof(f_b16x64x16_h128_i1_t0_co_b0_c1_l0_causal1_masked0_varlen0_sliding1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b16x64x16_h128_i1_t0_co_b0_c1_l0_causal1_masked0_varlen0_sliding1_macosx_metallib, sizeof(f_b16x64x16_h128_i1_t0_co_b0_c1_l0_causal1_masked0_varlen0_sliding1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 16 && blockDimensions[1] == 64 && blockDimensions[2] == 16 &&
+    headDimension == 128 &&
+    lowPrecisionIntermediates == 0 && isBF16 == 0 &&
+    isCausal == 1 && masked == 0 && isVarlen == 0 &&
+    attentionSinks == 1 && slidingWindow > 0 &&
+    preferAsyncCache == 1 && preferAsyncLoad == 0) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b16x64x16_h128_i1_t0_co_b0_c1_l0_causal1_masked0_varlen0_sliding1_sinks1_iphoneos_metallib, sizeof(f_b16x64x16_h128_i1_t0_co_b0_c1_l0_causal1_masked0_varlen0_sliding1_sinks1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b16x64x16_h128_i1_t0_co_b0_c1_l0_causal1_masked0_varlen0_sliding1_sinks1_macosx_metallib, sizeof(f_b16x64x16_h128_i1_t0_co_b0_c1_l0_causal1_masked0_varlen0_sliding1_sinks1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 16 && blockDimensions[1] == 64 && blockDimensions[2] == 16 &&
+    headDimension == 128 &&
+    lowPrecisionIntermediates == 0 && isBF16 == 0 &&
+    isCausal == 1 && masked == 1 && isVarlen == 0 &&
+    attentionSinks == 0 && slidingWindow > 0 &&
+    preferAsyncCache == 1 && preferAsyncLoad == 0) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b16x64x16_h128_i1_t0_co_b0_c1_l0_causal1_masked1_varlen0_sliding1_iphoneos_metallib, sizeof(f_b16x64x16_h128_i1_t0_co_b0_c1_l0_causal1_masked1_varlen0_sliding1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b16x64x16_h128_i1_t0_co_b0_c1_l0_causal1_masked1_varlen0_sliding1_macosx_metallib, sizeof(f_b16x64x16_h128_i1_t0_co_b0_c1_l0_causal1_masked1_varlen0_sliding1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 16 && blockDimensions[1] == 64 && blockDimensions[2] == 16 &&
+    headDimension == 128 &&
+    lowPrecisionIntermediates == 0 && isBF16 == 0 &&
+    isCausal == 1 && masked == 1 && isVarlen == 0 &&
+    attentionSinks == 1 && slidingWindow > 0 &&
+    preferAsyncCache == 1 && preferAsyncLoad == 0) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b16x64x16_h128_i1_t0_co_b0_c1_l0_causal1_masked1_varlen0_sliding1_sinks1_iphoneos_metallib, sizeof(f_b16x64x16_h128_i1_t0_co_b0_c1_l0_causal1_masked1_varlen0_sliding1_sinks1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b16x64x16_h128_i1_t0_co_b0_c1_l0_causal1_masked1_varlen0_sliding1_sinks1_macosx_metallib, sizeof(f_b16x64x16_h128_i1_t0_co_b0_c1_l0_causal1_masked1_varlen0_sliding1_sinks1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
   } else if (type.value == AttentionKernelType::backwardQuery &&
     blockDimensions[0] == 16 && blockDimensions[1] == 64 && blockDimensions[2] == 32 &&
     headDimension == 128 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(bq_b16x64x32_h128_i1_t0_cqdq_b0_c1_l0_iphoneos_metallib, sizeof(bq_b16x64x32_h128_i1_t0_cqdq_b0_c1_l0_iphoneos_metallib), NULL, 0);
@@ -6301,7 +8090,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 128 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(bkv_b16x128x16_h128_i1_t0_cdvdk_b0_c1_l0_iphoneos_metallib, sizeof(bkv_b16x128x16_h128_i1_t0_cdvdk_b0_c1_l0_iphoneos_metallib), NULL, 0);
@@ -6317,7 +8106,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 160 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x64x16_h160_i1_t0_co_b0_c1_l0_iphoneos_metallib, sizeof(f_b16x64x16_h160_i1_t0_co_b0_c1_l0_iphoneos_metallib), NULL, 0);
@@ -6333,7 +8122,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 160 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x64x16_h160_i1_t0_co_b0_c1_l0_sinks1_iphoneos_metallib, sizeof(f_b16x64x16_h160_i1_t0_co_b0_c1_l0_sinks1_iphoneos_metallib), NULL, 0);
@@ -6349,7 +8138,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 160 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 1 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x64x16_h160_i1_t0_co_b0_c1_l0_causal1_masked0_varlen0_iphoneos_metallib, sizeof(f_b16x64x16_h160_i1_t0_co_b0_c1_l0_causal1_masked0_varlen0_iphoneos_metallib), NULL, 0);
@@ -6365,7 +8154,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 160 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 1 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x64x16_h160_i1_t0_co_b0_c1_l0_causal1_masked0_varlen0_sinks1_iphoneos_metallib, sizeof(f_b16x64x16_h160_i1_t0_co_b0_c1_l0_causal1_masked0_varlen0_sinks1_iphoneos_metallib), NULL, 0);
@@ -6381,7 +8170,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 160 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 0 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x64x16_h160_i1_t0_co_b0_c1_l0_causal0_masked1_varlen0_iphoneos_metallib, sizeof(f_b16x64x16_h160_i1_t0_co_b0_c1_l0_causal0_masked1_varlen0_iphoneos_metallib), NULL, 0);
@@ -6397,7 +8186,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 160 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 0 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x64x16_h160_i1_t0_co_b0_c1_l0_causal0_masked1_varlen0_sinks1_iphoneos_metallib, sizeof(f_b16x64x16_h160_i1_t0_co_b0_c1_l0_causal0_masked1_varlen0_sinks1_iphoneos_metallib), NULL, 0);
@@ -6413,7 +8202,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 160 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 1 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x64x16_h160_i1_t0_co_b0_c1_l0_causal1_masked1_varlen0_iphoneos_metallib, sizeof(f_b16x64x16_h160_i1_t0_co_b0_c1_l0_causal1_masked1_varlen0_iphoneos_metallib), NULL, 0);
@@ -6429,7 +8218,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 160 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 1 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x64x16_h160_i1_t0_co_b0_c1_l0_causal1_masked1_varlen0_sinks1_iphoneos_metallib, sizeof(f_b16x64x16_h160_i1_t0_co_b0_c1_l0_causal1_masked1_varlen0_sinks1_iphoneos_metallib), NULL, 0);
@@ -6445,7 +8234,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 160 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x64x16_h160_i1_t0_co_b0_c1_l0_causal0_masked0_varlen1_iphoneos_metallib, sizeof(f_b16x64x16_h160_i1_t0_co_b0_c1_l0_causal0_masked0_varlen1_iphoneos_metallib), NULL, 0);
@@ -6461,7 +8250,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 160 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x64x16_h160_i1_t0_co_b0_c1_l0_causal0_masked0_varlen1_sinks1_iphoneos_metallib, sizeof(f_b16x64x16_h160_i1_t0_co_b0_c1_l0_causal0_masked0_varlen1_sinks1_iphoneos_metallib), NULL, 0);
@@ -6477,7 +8266,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 160 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 1 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x64x16_h160_i1_t0_co_b0_c1_l0_causal1_masked0_varlen1_iphoneos_metallib, sizeof(f_b16x64x16_h160_i1_t0_co_b0_c1_l0_causal1_masked0_varlen1_iphoneos_metallib), NULL, 0);
@@ -6493,7 +8282,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 160 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 1 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x64x16_h160_i1_t0_co_b0_c1_l0_causal1_masked0_varlen1_sinks1_iphoneos_metallib, sizeof(f_b16x64x16_h160_i1_t0_co_b0_c1_l0_causal1_masked0_varlen1_sinks1_iphoneos_metallib), NULL, 0);
@@ -6504,12 +8293,76 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     dispatch_release(data);
     return library;
 
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 16 && blockDimensions[1] == 64 && blockDimensions[2] == 16 &&
+    headDimension == 160 &&
+    lowPrecisionIntermediates == 0 && isBF16 == 0 &&
+    isCausal == 1 && masked == 0 && isVarlen == 0 &&
+    attentionSinks == 0 && slidingWindow > 0 &&
+    preferAsyncCache == 1 && preferAsyncLoad == 0) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b16x64x16_h160_i1_t0_co_b0_c1_l0_causal1_masked0_varlen0_sliding1_iphoneos_metallib, sizeof(f_b16x64x16_h160_i1_t0_co_b0_c1_l0_causal1_masked0_varlen0_sliding1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b16x64x16_h160_i1_t0_co_b0_c1_l0_causal1_masked0_varlen0_sliding1_macosx_metallib, sizeof(f_b16x64x16_h160_i1_t0_co_b0_c1_l0_causal1_masked0_varlen0_sliding1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 16 && blockDimensions[1] == 64 && blockDimensions[2] == 16 &&
+    headDimension == 160 &&
+    lowPrecisionIntermediates == 0 && isBF16 == 0 &&
+    isCausal == 1 && masked == 0 && isVarlen == 0 &&
+    attentionSinks == 1 && slidingWindow > 0 &&
+    preferAsyncCache == 1 && preferAsyncLoad == 0) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b16x64x16_h160_i1_t0_co_b0_c1_l0_causal1_masked0_varlen0_sliding1_sinks1_iphoneos_metallib, sizeof(f_b16x64x16_h160_i1_t0_co_b0_c1_l0_causal1_masked0_varlen0_sliding1_sinks1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b16x64x16_h160_i1_t0_co_b0_c1_l0_causal1_masked0_varlen0_sliding1_sinks1_macosx_metallib, sizeof(f_b16x64x16_h160_i1_t0_co_b0_c1_l0_causal1_masked0_varlen0_sliding1_sinks1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 16 && blockDimensions[1] == 64 && blockDimensions[2] == 16 &&
+    headDimension == 160 &&
+    lowPrecisionIntermediates == 0 && isBF16 == 0 &&
+    isCausal == 1 && masked == 1 && isVarlen == 0 &&
+    attentionSinks == 0 && slidingWindow > 0 &&
+    preferAsyncCache == 1 && preferAsyncLoad == 0) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b16x64x16_h160_i1_t0_co_b0_c1_l0_causal1_masked1_varlen0_sliding1_iphoneos_metallib, sizeof(f_b16x64x16_h160_i1_t0_co_b0_c1_l0_causal1_masked1_varlen0_sliding1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b16x64x16_h160_i1_t0_co_b0_c1_l0_causal1_masked1_varlen0_sliding1_macosx_metallib, sizeof(f_b16x64x16_h160_i1_t0_co_b0_c1_l0_causal1_masked1_varlen0_sliding1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 16 && blockDimensions[1] == 64 && blockDimensions[2] == 16 &&
+    headDimension == 160 &&
+    lowPrecisionIntermediates == 0 && isBF16 == 0 &&
+    isCausal == 1 && masked == 1 && isVarlen == 0 &&
+    attentionSinks == 1 && slidingWindow > 0 &&
+    preferAsyncCache == 1 && preferAsyncLoad == 0) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b16x64x16_h160_i1_t0_co_b0_c1_l0_causal1_masked1_varlen0_sliding1_sinks1_iphoneos_metallib, sizeof(f_b16x64x16_h160_i1_t0_co_b0_c1_l0_causal1_masked1_varlen0_sliding1_sinks1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b16x64x16_h160_i1_t0_co_b0_c1_l0_causal1_masked1_varlen0_sliding1_sinks1_macosx_metallib, sizeof(f_b16x64x16_h160_i1_t0_co_b0_c1_l0_causal1_masked1_varlen0_sliding1_sinks1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
   } else if (type.value == AttentionKernelType::backwardQuery &&
     blockDimensions[0] == 16 && blockDimensions[1] == 64 && blockDimensions[2] == 32 &&
     headDimension == 160 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(bq_b16x64x32_h160_i1_t0_cqdq_b0_c1_l0_iphoneos_metallib, sizeof(bq_b16x64x32_h160_i1_t0_cqdq_b0_c1_l0_iphoneos_metallib), NULL, 0);
@@ -6525,7 +8378,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 160 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(bkv_b16x128x16_h160_i1_t0_cdv_b0_c1_l0_iphoneos_metallib, sizeof(bkv_b16x128x16_h160_i1_t0_cdv_b0_c1_l0_iphoneos_metallib), NULL, 0);
@@ -6541,7 +8394,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 256 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x128x16_h256_i1_t0_c_b0_c1_l0_iphoneos_metallib, sizeof(f_b16x128x16_h256_i1_t0_c_b0_c1_l0_iphoneos_metallib), NULL, 0);
@@ -6557,7 +8410,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 256 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x128x16_h256_i1_t0_c_b0_c1_l0_sinks1_iphoneos_metallib, sizeof(f_b16x128x16_h256_i1_t0_c_b0_c1_l0_sinks1_iphoneos_metallib), NULL, 0);
@@ -6573,7 +8426,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 256 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 1 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x128x16_h256_i1_t0_c_b0_c1_l0_causal1_masked0_varlen0_iphoneos_metallib, sizeof(f_b16x128x16_h256_i1_t0_c_b0_c1_l0_causal1_masked0_varlen0_iphoneos_metallib), NULL, 0);
@@ -6589,7 +8442,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 256 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 1 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x128x16_h256_i1_t0_c_b0_c1_l0_causal1_masked0_varlen0_sinks1_iphoneos_metallib, sizeof(f_b16x128x16_h256_i1_t0_c_b0_c1_l0_causal1_masked0_varlen0_sinks1_iphoneos_metallib), NULL, 0);
@@ -6605,7 +8458,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 256 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 0 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x128x16_h256_i1_t0_c_b0_c1_l0_causal0_masked1_varlen0_iphoneos_metallib, sizeof(f_b16x128x16_h256_i1_t0_c_b0_c1_l0_causal0_masked1_varlen0_iphoneos_metallib), NULL, 0);
@@ -6621,7 +8474,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 256 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 0 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x128x16_h256_i1_t0_c_b0_c1_l0_causal0_masked1_varlen0_sinks1_iphoneos_metallib, sizeof(f_b16x128x16_h256_i1_t0_c_b0_c1_l0_causal0_masked1_varlen0_sinks1_iphoneos_metallib), NULL, 0);
@@ -6637,7 +8490,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 256 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 1 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x128x16_h256_i1_t0_c_b0_c1_l0_causal1_masked1_varlen0_iphoneos_metallib, sizeof(f_b16x128x16_h256_i1_t0_c_b0_c1_l0_causal1_masked1_varlen0_iphoneos_metallib), NULL, 0);
@@ -6653,7 +8506,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 256 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 1 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x128x16_h256_i1_t0_c_b0_c1_l0_causal1_masked1_varlen0_sinks1_iphoneos_metallib, sizeof(f_b16x128x16_h256_i1_t0_c_b0_c1_l0_causal1_masked1_varlen0_sinks1_iphoneos_metallib), NULL, 0);
@@ -6669,7 +8522,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 256 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x128x16_h256_i1_t0_c_b0_c1_l0_causal0_masked0_varlen1_iphoneos_metallib, sizeof(f_b16x128x16_h256_i1_t0_c_b0_c1_l0_causal0_masked0_varlen1_iphoneos_metallib), NULL, 0);
@@ -6685,7 +8538,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 256 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x128x16_h256_i1_t0_c_b0_c1_l0_causal0_masked0_varlen1_sinks1_iphoneos_metallib, sizeof(f_b16x128x16_h256_i1_t0_c_b0_c1_l0_causal0_masked0_varlen1_sinks1_iphoneos_metallib), NULL, 0);
@@ -6701,7 +8554,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 256 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 1 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x128x16_h256_i1_t0_c_b0_c1_l0_causal1_masked0_varlen1_iphoneos_metallib, sizeof(f_b16x128x16_h256_i1_t0_c_b0_c1_l0_causal1_masked0_varlen1_iphoneos_metallib), NULL, 0);
@@ -6717,7 +8570,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 256 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 1 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x128x16_h256_i1_t0_c_b0_c1_l0_causal1_masked0_varlen1_sinks1_iphoneos_metallib, sizeof(f_b16x128x16_h256_i1_t0_c_b0_c1_l0_causal1_masked0_varlen1_sinks1_iphoneos_metallib), NULL, 0);
@@ -6728,12 +8581,76 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     dispatch_release(data);
     return library;
 
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 16 && blockDimensions[1] == 128 && blockDimensions[2] == 16 &&
+    headDimension == 256 &&
+    lowPrecisionIntermediates == 0 && isBF16 == 0 &&
+    isCausal == 1 && masked == 0 && isVarlen == 0 &&
+    attentionSinks == 0 && slidingWindow > 0 &&
+    preferAsyncCache == 1 && preferAsyncLoad == 0) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b16x128x16_h256_i1_t0_c_b0_c1_l0_causal1_masked0_varlen0_sliding1_iphoneos_metallib, sizeof(f_b16x128x16_h256_i1_t0_c_b0_c1_l0_causal1_masked0_varlen0_sliding1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b16x128x16_h256_i1_t0_c_b0_c1_l0_causal1_masked0_varlen0_sliding1_macosx_metallib, sizeof(f_b16x128x16_h256_i1_t0_c_b0_c1_l0_causal1_masked0_varlen0_sliding1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 16 && blockDimensions[1] == 128 && blockDimensions[2] == 16 &&
+    headDimension == 256 &&
+    lowPrecisionIntermediates == 0 && isBF16 == 0 &&
+    isCausal == 1 && masked == 0 && isVarlen == 0 &&
+    attentionSinks == 1 && slidingWindow > 0 &&
+    preferAsyncCache == 1 && preferAsyncLoad == 0) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b16x128x16_h256_i1_t0_c_b0_c1_l0_causal1_masked0_varlen0_sliding1_sinks1_iphoneos_metallib, sizeof(f_b16x128x16_h256_i1_t0_c_b0_c1_l0_causal1_masked0_varlen0_sliding1_sinks1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b16x128x16_h256_i1_t0_c_b0_c1_l0_causal1_masked0_varlen0_sliding1_sinks1_macosx_metallib, sizeof(f_b16x128x16_h256_i1_t0_c_b0_c1_l0_causal1_masked0_varlen0_sliding1_sinks1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 16 && blockDimensions[1] == 128 && blockDimensions[2] == 16 &&
+    headDimension == 256 &&
+    lowPrecisionIntermediates == 0 && isBF16 == 0 &&
+    isCausal == 1 && masked == 1 && isVarlen == 0 &&
+    attentionSinks == 0 && slidingWindow > 0 &&
+    preferAsyncCache == 1 && preferAsyncLoad == 0) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b16x128x16_h256_i1_t0_c_b0_c1_l0_causal1_masked1_varlen0_sliding1_iphoneos_metallib, sizeof(f_b16x128x16_h256_i1_t0_c_b0_c1_l0_causal1_masked1_varlen0_sliding1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b16x128x16_h256_i1_t0_c_b0_c1_l0_causal1_masked1_varlen0_sliding1_macosx_metallib, sizeof(f_b16x128x16_h256_i1_t0_c_b0_c1_l0_causal1_masked1_varlen0_sliding1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 16 && blockDimensions[1] == 128 && blockDimensions[2] == 16 &&
+    headDimension == 256 &&
+    lowPrecisionIntermediates == 0 && isBF16 == 0 &&
+    isCausal == 1 && masked == 1 && isVarlen == 0 &&
+    attentionSinks == 1 && slidingWindow > 0 &&
+    preferAsyncCache == 1 && preferAsyncLoad == 0) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b16x128x16_h256_i1_t0_c_b0_c1_l0_causal1_masked1_varlen0_sliding1_sinks1_iphoneos_metallib, sizeof(f_b16x128x16_h256_i1_t0_c_b0_c1_l0_causal1_masked1_varlen0_sliding1_sinks1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b16x128x16_h256_i1_t0_c_b0_c1_l0_causal1_masked1_varlen0_sliding1_sinks1_macosx_metallib, sizeof(f_b16x128x16_h256_i1_t0_c_b0_c1_l0_causal1_masked1_varlen0_sliding1_sinks1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
   } else if (type.value == AttentionKernelType::backwardQuery &&
     blockDimensions[0] == 16 && blockDimensions[1] == 128 && blockDimensions[2] == 16 &&
     headDimension == 256 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(bq_b16x128x16_h256_i1_t0_c_b0_c1_l0_iphoneos_metallib, sizeof(bq_b16x128x16_h256_i1_t0_c_b0_c1_l0_iphoneos_metallib), NULL, 0);
@@ -6749,7 +8666,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 256 &&
     lowPrecisionIntermediates == 0 && isBF16 == 0 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(bkv_b16x128x16_h256_i1_t0_c_b0_c1_l0_iphoneos_metallib, sizeof(bkv_b16x128x16_h256_i1_t0_c_b0_c1_l0_iphoneos_metallib), NULL, 0);
@@ -6765,7 +8682,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 40 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x32x8_h40_i1_t0_cqo_b1_c1_l0_iphoneos_metallib, sizeof(f_b16x32x8_h40_i1_t0_cqo_b1_c1_l0_iphoneos_metallib), NULL, 0);
@@ -6781,7 +8698,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 40 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x32x8_h40_i1_t0_cqo_b1_c1_l0_sinks1_iphoneos_metallib, sizeof(f_b16x32x8_h40_i1_t0_cqo_b1_c1_l0_sinks1_iphoneos_metallib), NULL, 0);
@@ -6797,7 +8714,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 40 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 1 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x32x8_h40_i1_t0_cqo_b1_c1_l0_causal1_masked0_varlen0_iphoneos_metallib, sizeof(f_b16x32x8_h40_i1_t0_cqo_b1_c1_l0_causal1_masked0_varlen0_iphoneos_metallib), NULL, 0);
@@ -6813,7 +8730,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 40 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 1 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x32x8_h40_i1_t0_cqo_b1_c1_l0_causal1_masked0_varlen0_sinks1_iphoneos_metallib, sizeof(f_b16x32x8_h40_i1_t0_cqo_b1_c1_l0_causal1_masked0_varlen0_sinks1_iphoneos_metallib), NULL, 0);
@@ -6829,7 +8746,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 40 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 0 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x32x8_h40_i1_t0_cqo_b1_c1_l0_causal0_masked1_varlen0_iphoneos_metallib, sizeof(f_b16x32x8_h40_i1_t0_cqo_b1_c1_l0_causal0_masked1_varlen0_iphoneos_metallib), NULL, 0);
@@ -6845,7 +8762,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 40 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 0 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x32x8_h40_i1_t0_cqo_b1_c1_l0_causal0_masked1_varlen0_sinks1_iphoneos_metallib, sizeof(f_b16x32x8_h40_i1_t0_cqo_b1_c1_l0_causal0_masked1_varlen0_sinks1_iphoneos_metallib), NULL, 0);
@@ -6861,7 +8778,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 40 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 1 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x32x8_h40_i1_t0_cqo_b1_c1_l0_causal1_masked1_varlen0_iphoneos_metallib, sizeof(f_b16x32x8_h40_i1_t0_cqo_b1_c1_l0_causal1_masked1_varlen0_iphoneos_metallib), NULL, 0);
@@ -6877,7 +8794,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 40 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 1 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x32x8_h40_i1_t0_cqo_b1_c1_l0_causal1_masked1_varlen0_sinks1_iphoneos_metallib, sizeof(f_b16x32x8_h40_i1_t0_cqo_b1_c1_l0_causal1_masked1_varlen0_sinks1_iphoneos_metallib), NULL, 0);
@@ -6893,7 +8810,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 40 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 0 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x32x8_h40_i1_t0_cqo_b1_c1_l0_causal0_masked0_varlen1_iphoneos_metallib, sizeof(f_b16x32x8_h40_i1_t0_cqo_b1_c1_l0_causal0_masked0_varlen1_iphoneos_metallib), NULL, 0);
@@ -6909,7 +8826,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 40 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 0 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x32x8_h40_i1_t0_cqo_b1_c1_l0_causal0_masked0_varlen1_sinks1_iphoneos_metallib, sizeof(f_b16x32x8_h40_i1_t0_cqo_b1_c1_l0_causal0_masked0_varlen1_sinks1_iphoneos_metallib), NULL, 0);
@@ -6925,7 +8842,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 40 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 1 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x32x8_h40_i1_t0_cqo_b1_c1_l0_causal1_masked0_varlen1_iphoneos_metallib, sizeof(f_b16x32x8_h40_i1_t0_cqo_b1_c1_l0_causal1_masked0_varlen1_iphoneos_metallib), NULL, 0);
@@ -6941,7 +8858,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 40 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 1 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x32x8_h40_i1_t0_cqo_b1_c1_l0_causal1_masked0_varlen1_sinks1_iphoneos_metallib, sizeof(f_b16x32x8_h40_i1_t0_cqo_b1_c1_l0_causal1_masked0_varlen1_sinks1_iphoneos_metallib), NULL, 0);
@@ -6952,12 +8869,76 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     dispatch_release(data);
     return library;
 
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 16 && blockDimensions[1] == 32 && blockDimensions[2] == 8 &&
+    headDimension == 40 &&
+    lowPrecisionIntermediates == 0 && isBF16 == 1 &&
+    isCausal == 1 && masked == 0 && isVarlen == 0 &&
+    attentionSinks == 0 && slidingWindow > 0 &&
+    preferAsyncCache == 1 && preferAsyncLoad == 0) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b16x32x8_h40_i1_t0_cqo_b1_c1_l0_causal1_masked0_varlen0_sliding1_iphoneos_metallib, sizeof(f_b16x32x8_h40_i1_t0_cqo_b1_c1_l0_causal1_masked0_varlen0_sliding1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b16x32x8_h40_i1_t0_cqo_b1_c1_l0_causal1_masked0_varlen0_sliding1_macosx_metallib, sizeof(f_b16x32x8_h40_i1_t0_cqo_b1_c1_l0_causal1_masked0_varlen0_sliding1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 16 && blockDimensions[1] == 32 && blockDimensions[2] == 8 &&
+    headDimension == 40 &&
+    lowPrecisionIntermediates == 0 && isBF16 == 1 &&
+    isCausal == 1 && masked == 0 && isVarlen == 0 &&
+    attentionSinks == 1 && slidingWindow > 0 &&
+    preferAsyncCache == 1 && preferAsyncLoad == 0) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b16x32x8_h40_i1_t0_cqo_b1_c1_l0_causal1_masked0_varlen0_sliding1_sinks1_iphoneos_metallib, sizeof(f_b16x32x8_h40_i1_t0_cqo_b1_c1_l0_causal1_masked0_varlen0_sliding1_sinks1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b16x32x8_h40_i1_t0_cqo_b1_c1_l0_causal1_masked0_varlen0_sliding1_sinks1_macosx_metallib, sizeof(f_b16x32x8_h40_i1_t0_cqo_b1_c1_l0_causal1_masked0_varlen0_sliding1_sinks1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 16 && blockDimensions[1] == 32 && blockDimensions[2] == 8 &&
+    headDimension == 40 &&
+    lowPrecisionIntermediates == 0 && isBF16 == 1 &&
+    isCausal == 1 && masked == 1 && isVarlen == 0 &&
+    attentionSinks == 0 && slidingWindow > 0 &&
+    preferAsyncCache == 1 && preferAsyncLoad == 0) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b16x32x8_h40_i1_t0_cqo_b1_c1_l0_causal1_masked1_varlen0_sliding1_iphoneos_metallib, sizeof(f_b16x32x8_h40_i1_t0_cqo_b1_c1_l0_causal1_masked1_varlen0_sliding1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b16x32x8_h40_i1_t0_cqo_b1_c1_l0_causal1_masked1_varlen0_sliding1_macosx_metallib, sizeof(f_b16x32x8_h40_i1_t0_cqo_b1_c1_l0_causal1_masked1_varlen0_sliding1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 16 && blockDimensions[1] == 32 && blockDimensions[2] == 8 &&
+    headDimension == 40 &&
+    lowPrecisionIntermediates == 0 && isBF16 == 1 &&
+    isCausal == 1 && masked == 1 && isVarlen == 0 &&
+    attentionSinks == 1 && slidingWindow > 0 &&
+    preferAsyncCache == 1 && preferAsyncLoad == 0) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b16x32x8_h40_i1_t0_cqo_b1_c1_l0_causal1_masked1_varlen0_sliding1_sinks1_iphoneos_metallib, sizeof(f_b16x32x8_h40_i1_t0_cqo_b1_c1_l0_causal1_masked1_varlen0_sliding1_sinks1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b16x32x8_h40_i1_t0_cqo_b1_c1_l0_causal1_masked1_varlen0_sliding1_sinks1_macosx_metallib, sizeof(f_b16x32x8_h40_i1_t0_cqo_b1_c1_l0_causal1_masked1_varlen0_sliding1_sinks1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
   } else if (type.value == AttentionKernelType::backwardQuery &&
     blockDimensions[0] == 16 && blockDimensions[1] == 64 && blockDimensions[2] == 32 &&
     headDimension == 40 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(bq_b16x64x32_h40_i1_t0_cqdq_b1_c1_l0_iphoneos_metallib, sizeof(bq_b16x64x32_h40_i1_t0_cqdq_b1_c1_l0_iphoneos_metallib), NULL, 0);
@@ -6973,7 +8954,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 40 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(bkv_b16x32x16_h40_i1_t0_cvdvdk_b1_c1_l0_iphoneos_metallib, sizeof(bkv_b16x32x16_h40_i1_t0_cvdvdk_b1_c1_l0_iphoneos_metallib), NULL, 0);
@@ -6989,7 +8970,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 64 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x64x16_h64_i1_t0_co_b1_c1_l0_iphoneos_metallib, sizeof(f_b16x64x16_h64_i1_t0_co_b1_c1_l0_iphoneos_metallib), NULL, 0);
@@ -7005,7 +8986,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 64 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x64x16_h64_i1_t0_co_b1_c1_l0_sinks1_iphoneos_metallib, sizeof(f_b16x64x16_h64_i1_t0_co_b1_c1_l0_sinks1_iphoneos_metallib), NULL, 0);
@@ -7021,7 +9002,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 64 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 1 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x64x16_h64_i1_t0_co_b1_c1_l0_causal1_masked0_varlen0_iphoneos_metallib, sizeof(f_b16x64x16_h64_i1_t0_co_b1_c1_l0_causal1_masked0_varlen0_iphoneos_metallib), NULL, 0);
@@ -7037,7 +9018,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 64 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 1 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x64x16_h64_i1_t0_co_b1_c1_l0_causal1_masked0_varlen0_sinks1_iphoneos_metallib, sizeof(f_b16x64x16_h64_i1_t0_co_b1_c1_l0_causal1_masked0_varlen0_sinks1_iphoneos_metallib), NULL, 0);
@@ -7053,7 +9034,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 64 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 0 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x64x16_h64_i1_t0_co_b1_c1_l0_causal0_masked1_varlen0_iphoneos_metallib, sizeof(f_b16x64x16_h64_i1_t0_co_b1_c1_l0_causal0_masked1_varlen0_iphoneos_metallib), NULL, 0);
@@ -7069,7 +9050,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 64 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 0 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x64x16_h64_i1_t0_co_b1_c1_l0_causal0_masked1_varlen0_sinks1_iphoneos_metallib, sizeof(f_b16x64x16_h64_i1_t0_co_b1_c1_l0_causal0_masked1_varlen0_sinks1_iphoneos_metallib), NULL, 0);
@@ -7085,7 +9066,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 64 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 1 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x64x16_h64_i1_t0_co_b1_c1_l0_causal1_masked1_varlen0_iphoneos_metallib, sizeof(f_b16x64x16_h64_i1_t0_co_b1_c1_l0_causal1_masked1_varlen0_iphoneos_metallib), NULL, 0);
@@ -7101,7 +9082,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 64 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 1 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x64x16_h64_i1_t0_co_b1_c1_l0_causal1_masked1_varlen0_sinks1_iphoneos_metallib, sizeof(f_b16x64x16_h64_i1_t0_co_b1_c1_l0_causal1_masked1_varlen0_sinks1_iphoneos_metallib), NULL, 0);
@@ -7117,7 +9098,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 64 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 0 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x64x16_h64_i1_t0_co_b1_c1_l0_causal0_masked0_varlen1_iphoneos_metallib, sizeof(f_b16x64x16_h64_i1_t0_co_b1_c1_l0_causal0_masked0_varlen1_iphoneos_metallib), NULL, 0);
@@ -7133,7 +9114,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 64 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 0 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x64x16_h64_i1_t0_co_b1_c1_l0_causal0_masked0_varlen1_sinks1_iphoneos_metallib, sizeof(f_b16x64x16_h64_i1_t0_co_b1_c1_l0_causal0_masked0_varlen1_sinks1_iphoneos_metallib), NULL, 0);
@@ -7149,7 +9130,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 64 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 1 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x64x16_h64_i1_t0_co_b1_c1_l0_causal1_masked0_varlen1_iphoneos_metallib, sizeof(f_b16x64x16_h64_i1_t0_co_b1_c1_l0_causal1_masked0_varlen1_iphoneos_metallib), NULL, 0);
@@ -7165,7 +9146,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 64 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 1 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x64x16_h64_i1_t0_co_b1_c1_l0_causal1_masked0_varlen1_sinks1_iphoneos_metallib, sizeof(f_b16x64x16_h64_i1_t0_co_b1_c1_l0_causal1_masked0_varlen1_sinks1_iphoneos_metallib), NULL, 0);
@@ -7176,12 +9157,76 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     dispatch_release(data);
     return library;
 
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 16 && blockDimensions[1] == 64 && blockDimensions[2] == 16 &&
+    headDimension == 64 &&
+    lowPrecisionIntermediates == 0 && isBF16 == 1 &&
+    isCausal == 1 && masked == 0 && isVarlen == 0 &&
+    attentionSinks == 0 && slidingWindow > 0 &&
+    preferAsyncCache == 1 && preferAsyncLoad == 0) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b16x64x16_h64_i1_t0_co_b1_c1_l0_causal1_masked0_varlen0_sliding1_iphoneos_metallib, sizeof(f_b16x64x16_h64_i1_t0_co_b1_c1_l0_causal1_masked0_varlen0_sliding1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b16x64x16_h64_i1_t0_co_b1_c1_l0_causal1_masked0_varlen0_sliding1_macosx_metallib, sizeof(f_b16x64x16_h64_i1_t0_co_b1_c1_l0_causal1_masked0_varlen0_sliding1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 16 && blockDimensions[1] == 64 && blockDimensions[2] == 16 &&
+    headDimension == 64 &&
+    lowPrecisionIntermediates == 0 && isBF16 == 1 &&
+    isCausal == 1 && masked == 0 && isVarlen == 0 &&
+    attentionSinks == 1 && slidingWindow > 0 &&
+    preferAsyncCache == 1 && preferAsyncLoad == 0) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b16x64x16_h64_i1_t0_co_b1_c1_l0_causal1_masked0_varlen0_sliding1_sinks1_iphoneos_metallib, sizeof(f_b16x64x16_h64_i1_t0_co_b1_c1_l0_causal1_masked0_varlen0_sliding1_sinks1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b16x64x16_h64_i1_t0_co_b1_c1_l0_causal1_masked0_varlen0_sliding1_sinks1_macosx_metallib, sizeof(f_b16x64x16_h64_i1_t0_co_b1_c1_l0_causal1_masked0_varlen0_sliding1_sinks1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 16 && blockDimensions[1] == 64 && blockDimensions[2] == 16 &&
+    headDimension == 64 &&
+    lowPrecisionIntermediates == 0 && isBF16 == 1 &&
+    isCausal == 1 && masked == 1 && isVarlen == 0 &&
+    attentionSinks == 0 && slidingWindow > 0 &&
+    preferAsyncCache == 1 && preferAsyncLoad == 0) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b16x64x16_h64_i1_t0_co_b1_c1_l0_causal1_masked1_varlen0_sliding1_iphoneos_metallib, sizeof(f_b16x64x16_h64_i1_t0_co_b1_c1_l0_causal1_masked1_varlen0_sliding1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b16x64x16_h64_i1_t0_co_b1_c1_l0_causal1_masked1_varlen0_sliding1_macosx_metallib, sizeof(f_b16x64x16_h64_i1_t0_co_b1_c1_l0_causal1_masked1_varlen0_sliding1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 16 && blockDimensions[1] == 64 && blockDimensions[2] == 16 &&
+    headDimension == 64 &&
+    lowPrecisionIntermediates == 0 && isBF16 == 1 &&
+    isCausal == 1 && masked == 1 && isVarlen == 0 &&
+    attentionSinks == 1 && slidingWindow > 0 &&
+    preferAsyncCache == 1 && preferAsyncLoad == 0) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b16x64x16_h64_i1_t0_co_b1_c1_l0_causal1_masked1_varlen0_sliding1_sinks1_iphoneos_metallib, sizeof(f_b16x64x16_h64_i1_t0_co_b1_c1_l0_causal1_masked1_varlen0_sliding1_sinks1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b16x64x16_h64_i1_t0_co_b1_c1_l0_causal1_masked1_varlen0_sliding1_sinks1_macosx_metallib, sizeof(f_b16x64x16_h64_i1_t0_co_b1_c1_l0_causal1_masked1_varlen0_sliding1_sinks1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
   } else if (type.value == AttentionKernelType::backwardQuery &&
     blockDimensions[0] == 16 && blockDimensions[1] == 64 && blockDimensions[2] == 32 &&
     headDimension == 64 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(bq_b16x64x32_h64_i1_t0_cqdq_b1_c1_l0_iphoneos_metallib, sizeof(bq_b16x64x32_h64_i1_t0_cqdq_b1_c1_l0_iphoneos_metallib), NULL, 0);
@@ -7197,7 +9242,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 64 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(bkv_b16x32x16_h64_i1_t0_cvdvdk_b1_c1_l0_iphoneos_metallib, sizeof(bkv_b16x32x16_h64_i1_t0_cvdvdk_b1_c1_l0_iphoneos_metallib), NULL, 0);
@@ -7213,7 +9258,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 80 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x64x16_h80_i1_t0_co_b1_c1_l0_iphoneos_metallib, sizeof(f_b16x64x16_h80_i1_t0_co_b1_c1_l0_iphoneos_metallib), NULL, 0);
@@ -7229,7 +9274,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 80 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x64x16_h80_i1_t0_co_b1_c1_l0_sinks1_iphoneos_metallib, sizeof(f_b16x64x16_h80_i1_t0_co_b1_c1_l0_sinks1_iphoneos_metallib), NULL, 0);
@@ -7245,7 +9290,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 80 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 1 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x64x16_h80_i1_t0_co_b1_c1_l0_causal1_masked0_varlen0_iphoneos_metallib, sizeof(f_b16x64x16_h80_i1_t0_co_b1_c1_l0_causal1_masked0_varlen0_iphoneos_metallib), NULL, 0);
@@ -7261,7 +9306,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 80 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 1 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x64x16_h80_i1_t0_co_b1_c1_l0_causal1_masked0_varlen0_sinks1_iphoneos_metallib, sizeof(f_b16x64x16_h80_i1_t0_co_b1_c1_l0_causal1_masked0_varlen0_sinks1_iphoneos_metallib), NULL, 0);
@@ -7277,7 +9322,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 80 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 0 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x64x16_h80_i1_t0_co_b1_c1_l0_causal0_masked1_varlen0_iphoneos_metallib, sizeof(f_b16x64x16_h80_i1_t0_co_b1_c1_l0_causal0_masked1_varlen0_iphoneos_metallib), NULL, 0);
@@ -7293,7 +9338,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 80 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 0 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x64x16_h80_i1_t0_co_b1_c1_l0_causal0_masked1_varlen0_sinks1_iphoneos_metallib, sizeof(f_b16x64x16_h80_i1_t0_co_b1_c1_l0_causal0_masked1_varlen0_sinks1_iphoneos_metallib), NULL, 0);
@@ -7309,7 +9354,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 80 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 1 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x64x16_h80_i1_t0_co_b1_c1_l0_causal1_masked1_varlen0_iphoneos_metallib, sizeof(f_b16x64x16_h80_i1_t0_co_b1_c1_l0_causal1_masked1_varlen0_iphoneos_metallib), NULL, 0);
@@ -7325,7 +9370,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 80 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 1 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x64x16_h80_i1_t0_co_b1_c1_l0_causal1_masked1_varlen0_sinks1_iphoneos_metallib, sizeof(f_b16x64x16_h80_i1_t0_co_b1_c1_l0_causal1_masked1_varlen0_sinks1_iphoneos_metallib), NULL, 0);
@@ -7341,7 +9386,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 80 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 0 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x64x16_h80_i1_t0_co_b1_c1_l0_causal0_masked0_varlen1_iphoneos_metallib, sizeof(f_b16x64x16_h80_i1_t0_co_b1_c1_l0_causal0_masked0_varlen1_iphoneos_metallib), NULL, 0);
@@ -7357,7 +9402,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 80 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 0 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x64x16_h80_i1_t0_co_b1_c1_l0_causal0_masked0_varlen1_sinks1_iphoneos_metallib, sizeof(f_b16x64x16_h80_i1_t0_co_b1_c1_l0_causal0_masked0_varlen1_sinks1_iphoneos_metallib), NULL, 0);
@@ -7373,7 +9418,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 80 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 1 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x64x16_h80_i1_t0_co_b1_c1_l0_causal1_masked0_varlen1_iphoneos_metallib, sizeof(f_b16x64x16_h80_i1_t0_co_b1_c1_l0_causal1_masked0_varlen1_iphoneos_metallib), NULL, 0);
@@ -7389,7 +9434,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 80 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 1 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x64x16_h80_i1_t0_co_b1_c1_l0_causal1_masked0_varlen1_sinks1_iphoneos_metallib, sizeof(f_b16x64x16_h80_i1_t0_co_b1_c1_l0_causal1_masked0_varlen1_sinks1_iphoneos_metallib), NULL, 0);
@@ -7400,12 +9445,76 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     dispatch_release(data);
     return library;
 
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 16 && blockDimensions[1] == 64 && blockDimensions[2] == 16 &&
+    headDimension == 80 &&
+    lowPrecisionIntermediates == 0 && isBF16 == 1 &&
+    isCausal == 1 && masked == 0 && isVarlen == 0 &&
+    attentionSinks == 0 && slidingWindow > 0 &&
+    preferAsyncCache == 1 && preferAsyncLoad == 0) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b16x64x16_h80_i1_t0_co_b1_c1_l0_causal1_masked0_varlen0_sliding1_iphoneos_metallib, sizeof(f_b16x64x16_h80_i1_t0_co_b1_c1_l0_causal1_masked0_varlen0_sliding1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b16x64x16_h80_i1_t0_co_b1_c1_l0_causal1_masked0_varlen0_sliding1_macosx_metallib, sizeof(f_b16x64x16_h80_i1_t0_co_b1_c1_l0_causal1_masked0_varlen0_sliding1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 16 && blockDimensions[1] == 64 && blockDimensions[2] == 16 &&
+    headDimension == 80 &&
+    lowPrecisionIntermediates == 0 && isBF16 == 1 &&
+    isCausal == 1 && masked == 0 && isVarlen == 0 &&
+    attentionSinks == 1 && slidingWindow > 0 &&
+    preferAsyncCache == 1 && preferAsyncLoad == 0) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b16x64x16_h80_i1_t0_co_b1_c1_l0_causal1_masked0_varlen0_sliding1_sinks1_iphoneos_metallib, sizeof(f_b16x64x16_h80_i1_t0_co_b1_c1_l0_causal1_masked0_varlen0_sliding1_sinks1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b16x64x16_h80_i1_t0_co_b1_c1_l0_causal1_masked0_varlen0_sliding1_sinks1_macosx_metallib, sizeof(f_b16x64x16_h80_i1_t0_co_b1_c1_l0_causal1_masked0_varlen0_sliding1_sinks1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 16 && blockDimensions[1] == 64 && blockDimensions[2] == 16 &&
+    headDimension == 80 &&
+    lowPrecisionIntermediates == 0 && isBF16 == 1 &&
+    isCausal == 1 && masked == 1 && isVarlen == 0 &&
+    attentionSinks == 0 && slidingWindow > 0 &&
+    preferAsyncCache == 1 && preferAsyncLoad == 0) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b16x64x16_h80_i1_t0_co_b1_c1_l0_causal1_masked1_varlen0_sliding1_iphoneos_metallib, sizeof(f_b16x64x16_h80_i1_t0_co_b1_c1_l0_causal1_masked1_varlen0_sliding1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b16x64x16_h80_i1_t0_co_b1_c1_l0_causal1_masked1_varlen0_sliding1_macosx_metallib, sizeof(f_b16x64x16_h80_i1_t0_co_b1_c1_l0_causal1_masked1_varlen0_sliding1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 16 && blockDimensions[1] == 64 && blockDimensions[2] == 16 &&
+    headDimension == 80 &&
+    lowPrecisionIntermediates == 0 && isBF16 == 1 &&
+    isCausal == 1 && masked == 1 && isVarlen == 0 &&
+    attentionSinks == 1 && slidingWindow > 0 &&
+    preferAsyncCache == 1 && preferAsyncLoad == 0) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b16x64x16_h80_i1_t0_co_b1_c1_l0_causal1_masked1_varlen0_sliding1_sinks1_iphoneos_metallib, sizeof(f_b16x64x16_h80_i1_t0_co_b1_c1_l0_causal1_masked1_varlen0_sliding1_sinks1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b16x64x16_h80_i1_t0_co_b1_c1_l0_causal1_masked1_varlen0_sliding1_sinks1_macosx_metallib, sizeof(f_b16x64x16_h80_i1_t0_co_b1_c1_l0_causal1_masked1_varlen0_sliding1_sinks1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
   } else if (type.value == AttentionKernelType::backwardQuery &&
     blockDimensions[0] == 16 && blockDimensions[1] == 64 && blockDimensions[2] == 32 &&
     headDimension == 80 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(bq_b16x64x32_h80_i1_t0_cqdq_b1_c1_l0_iphoneos_metallib, sizeof(bq_b16x64x32_h80_i1_t0_cqdq_b1_c1_l0_iphoneos_metallib), NULL, 0);
@@ -7421,7 +9530,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 80 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(bkv_b16x128x16_h80_i1_t0_cdvdk_b1_c1_l0_iphoneos_metallib, sizeof(bkv_b16x128x16_h80_i1_t0_cdvdk_b1_c1_l0_iphoneos_metallib), NULL, 0);
@@ -7437,7 +9546,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 128 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x64x16_h128_i1_t0_co_b1_c1_l0_iphoneos_metallib, sizeof(f_b16x64x16_h128_i1_t0_co_b1_c1_l0_iphoneos_metallib), NULL, 0);
@@ -7453,7 +9562,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 128 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x64x16_h128_i1_t0_co_b1_c1_l0_sinks1_iphoneos_metallib, sizeof(f_b16x64x16_h128_i1_t0_co_b1_c1_l0_sinks1_iphoneos_metallib), NULL, 0);
@@ -7469,7 +9578,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 128 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 1 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x64x16_h128_i1_t0_co_b1_c1_l0_causal1_masked0_varlen0_iphoneos_metallib, sizeof(f_b16x64x16_h128_i1_t0_co_b1_c1_l0_causal1_masked0_varlen0_iphoneos_metallib), NULL, 0);
@@ -7485,7 +9594,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 128 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 1 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x64x16_h128_i1_t0_co_b1_c1_l0_causal1_masked0_varlen0_sinks1_iphoneos_metallib, sizeof(f_b16x64x16_h128_i1_t0_co_b1_c1_l0_causal1_masked0_varlen0_sinks1_iphoneos_metallib), NULL, 0);
@@ -7501,7 +9610,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 128 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 0 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x64x16_h128_i1_t0_co_b1_c1_l0_causal0_masked1_varlen0_iphoneos_metallib, sizeof(f_b16x64x16_h128_i1_t0_co_b1_c1_l0_causal0_masked1_varlen0_iphoneos_metallib), NULL, 0);
@@ -7517,7 +9626,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 128 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 0 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x64x16_h128_i1_t0_co_b1_c1_l0_causal0_masked1_varlen0_sinks1_iphoneos_metallib, sizeof(f_b16x64x16_h128_i1_t0_co_b1_c1_l0_causal0_masked1_varlen0_sinks1_iphoneos_metallib), NULL, 0);
@@ -7533,7 +9642,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 128 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 1 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x64x16_h128_i1_t0_co_b1_c1_l0_causal1_masked1_varlen0_iphoneos_metallib, sizeof(f_b16x64x16_h128_i1_t0_co_b1_c1_l0_causal1_masked1_varlen0_iphoneos_metallib), NULL, 0);
@@ -7549,7 +9658,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 128 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 1 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x64x16_h128_i1_t0_co_b1_c1_l0_causal1_masked1_varlen0_sinks1_iphoneos_metallib, sizeof(f_b16x64x16_h128_i1_t0_co_b1_c1_l0_causal1_masked1_varlen0_sinks1_iphoneos_metallib), NULL, 0);
@@ -7565,7 +9674,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 128 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 0 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x64x16_h128_i1_t0_co_b1_c1_l0_causal0_masked0_varlen1_iphoneos_metallib, sizeof(f_b16x64x16_h128_i1_t0_co_b1_c1_l0_causal0_masked0_varlen1_iphoneos_metallib), NULL, 0);
@@ -7581,7 +9690,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 128 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 0 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x64x16_h128_i1_t0_co_b1_c1_l0_causal0_masked0_varlen1_sinks1_iphoneos_metallib, sizeof(f_b16x64x16_h128_i1_t0_co_b1_c1_l0_causal0_masked0_varlen1_sinks1_iphoneos_metallib), NULL, 0);
@@ -7597,7 +9706,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 128 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 1 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x64x16_h128_i1_t0_co_b1_c1_l0_causal1_masked0_varlen1_iphoneos_metallib, sizeof(f_b16x64x16_h128_i1_t0_co_b1_c1_l0_causal1_masked0_varlen1_iphoneos_metallib), NULL, 0);
@@ -7613,7 +9722,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 128 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 1 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x64x16_h128_i1_t0_co_b1_c1_l0_causal1_masked0_varlen1_sinks1_iphoneos_metallib, sizeof(f_b16x64x16_h128_i1_t0_co_b1_c1_l0_causal1_masked0_varlen1_sinks1_iphoneos_metallib), NULL, 0);
@@ -7624,12 +9733,76 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     dispatch_release(data);
     return library;
 
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 16 && blockDimensions[1] == 64 && blockDimensions[2] == 16 &&
+    headDimension == 128 &&
+    lowPrecisionIntermediates == 0 && isBF16 == 1 &&
+    isCausal == 1 && masked == 0 && isVarlen == 0 &&
+    attentionSinks == 0 && slidingWindow > 0 &&
+    preferAsyncCache == 1 && preferAsyncLoad == 0) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b16x64x16_h128_i1_t0_co_b1_c1_l0_causal1_masked0_varlen0_sliding1_iphoneos_metallib, sizeof(f_b16x64x16_h128_i1_t0_co_b1_c1_l0_causal1_masked0_varlen0_sliding1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b16x64x16_h128_i1_t0_co_b1_c1_l0_causal1_masked0_varlen0_sliding1_macosx_metallib, sizeof(f_b16x64x16_h128_i1_t0_co_b1_c1_l0_causal1_masked0_varlen0_sliding1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 16 && blockDimensions[1] == 64 && blockDimensions[2] == 16 &&
+    headDimension == 128 &&
+    lowPrecisionIntermediates == 0 && isBF16 == 1 &&
+    isCausal == 1 && masked == 0 && isVarlen == 0 &&
+    attentionSinks == 1 && slidingWindow > 0 &&
+    preferAsyncCache == 1 && preferAsyncLoad == 0) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b16x64x16_h128_i1_t0_co_b1_c1_l0_causal1_masked0_varlen0_sliding1_sinks1_iphoneos_metallib, sizeof(f_b16x64x16_h128_i1_t0_co_b1_c1_l0_causal1_masked0_varlen0_sliding1_sinks1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b16x64x16_h128_i1_t0_co_b1_c1_l0_causal1_masked0_varlen0_sliding1_sinks1_macosx_metallib, sizeof(f_b16x64x16_h128_i1_t0_co_b1_c1_l0_causal1_masked0_varlen0_sliding1_sinks1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 16 && blockDimensions[1] == 64 && blockDimensions[2] == 16 &&
+    headDimension == 128 &&
+    lowPrecisionIntermediates == 0 && isBF16 == 1 &&
+    isCausal == 1 && masked == 1 && isVarlen == 0 &&
+    attentionSinks == 0 && slidingWindow > 0 &&
+    preferAsyncCache == 1 && preferAsyncLoad == 0) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b16x64x16_h128_i1_t0_co_b1_c1_l0_causal1_masked1_varlen0_sliding1_iphoneos_metallib, sizeof(f_b16x64x16_h128_i1_t0_co_b1_c1_l0_causal1_masked1_varlen0_sliding1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b16x64x16_h128_i1_t0_co_b1_c1_l0_causal1_masked1_varlen0_sliding1_macosx_metallib, sizeof(f_b16x64x16_h128_i1_t0_co_b1_c1_l0_causal1_masked1_varlen0_sliding1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 16 && blockDimensions[1] == 64 && blockDimensions[2] == 16 &&
+    headDimension == 128 &&
+    lowPrecisionIntermediates == 0 && isBF16 == 1 &&
+    isCausal == 1 && masked == 1 && isVarlen == 0 &&
+    attentionSinks == 1 && slidingWindow > 0 &&
+    preferAsyncCache == 1 && preferAsyncLoad == 0) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b16x64x16_h128_i1_t0_co_b1_c1_l0_causal1_masked1_varlen0_sliding1_sinks1_iphoneos_metallib, sizeof(f_b16x64x16_h128_i1_t0_co_b1_c1_l0_causal1_masked1_varlen0_sliding1_sinks1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b16x64x16_h128_i1_t0_co_b1_c1_l0_causal1_masked1_varlen0_sliding1_sinks1_macosx_metallib, sizeof(f_b16x64x16_h128_i1_t0_co_b1_c1_l0_causal1_masked1_varlen0_sliding1_sinks1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
   } else if (type.value == AttentionKernelType::backwardQuery &&
     blockDimensions[0] == 16 && blockDimensions[1] == 64 && blockDimensions[2] == 32 &&
     headDimension == 128 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(bq_b16x64x32_h128_i1_t0_cqdq_b1_c1_l0_iphoneos_metallib, sizeof(bq_b16x64x32_h128_i1_t0_cqdq_b1_c1_l0_iphoneos_metallib), NULL, 0);
@@ -7645,7 +9818,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 128 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(bkv_b16x128x16_h128_i1_t0_cdvdk_b1_c1_l0_iphoneos_metallib, sizeof(bkv_b16x128x16_h128_i1_t0_cdvdk_b1_c1_l0_iphoneos_metallib), NULL, 0);
@@ -7661,7 +9834,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 160 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x64x16_h160_i1_t0_co_b1_c1_l0_iphoneos_metallib, sizeof(f_b16x64x16_h160_i1_t0_co_b1_c1_l0_iphoneos_metallib), NULL, 0);
@@ -7677,7 +9850,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 160 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x64x16_h160_i1_t0_co_b1_c1_l0_sinks1_iphoneos_metallib, sizeof(f_b16x64x16_h160_i1_t0_co_b1_c1_l0_sinks1_iphoneos_metallib), NULL, 0);
@@ -7693,7 +9866,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 160 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 1 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x64x16_h160_i1_t0_co_b1_c1_l0_causal1_masked0_varlen0_iphoneos_metallib, sizeof(f_b16x64x16_h160_i1_t0_co_b1_c1_l0_causal1_masked0_varlen0_iphoneos_metallib), NULL, 0);
@@ -7709,7 +9882,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 160 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 1 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x64x16_h160_i1_t0_co_b1_c1_l0_causal1_masked0_varlen0_sinks1_iphoneos_metallib, sizeof(f_b16x64x16_h160_i1_t0_co_b1_c1_l0_causal1_masked0_varlen0_sinks1_iphoneos_metallib), NULL, 0);
@@ -7725,7 +9898,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 160 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 0 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x64x16_h160_i1_t0_co_b1_c1_l0_causal0_masked1_varlen0_iphoneos_metallib, sizeof(f_b16x64x16_h160_i1_t0_co_b1_c1_l0_causal0_masked1_varlen0_iphoneos_metallib), NULL, 0);
@@ -7741,7 +9914,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 160 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 0 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x64x16_h160_i1_t0_co_b1_c1_l0_causal0_masked1_varlen0_sinks1_iphoneos_metallib, sizeof(f_b16x64x16_h160_i1_t0_co_b1_c1_l0_causal0_masked1_varlen0_sinks1_iphoneos_metallib), NULL, 0);
@@ -7757,7 +9930,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 160 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 1 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x64x16_h160_i1_t0_co_b1_c1_l0_causal1_masked1_varlen0_iphoneos_metallib, sizeof(f_b16x64x16_h160_i1_t0_co_b1_c1_l0_causal1_masked1_varlen0_iphoneos_metallib), NULL, 0);
@@ -7773,7 +9946,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 160 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 1 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x64x16_h160_i1_t0_co_b1_c1_l0_causal1_masked1_varlen0_sinks1_iphoneos_metallib, sizeof(f_b16x64x16_h160_i1_t0_co_b1_c1_l0_causal1_masked1_varlen0_sinks1_iphoneos_metallib), NULL, 0);
@@ -7789,7 +9962,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 160 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 0 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x64x16_h160_i1_t0_co_b1_c1_l0_causal0_masked0_varlen1_iphoneos_metallib, sizeof(f_b16x64x16_h160_i1_t0_co_b1_c1_l0_causal0_masked0_varlen1_iphoneos_metallib), NULL, 0);
@@ -7805,7 +9978,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 160 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 0 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x64x16_h160_i1_t0_co_b1_c1_l0_causal0_masked0_varlen1_sinks1_iphoneos_metallib, sizeof(f_b16x64x16_h160_i1_t0_co_b1_c1_l0_causal0_masked0_varlen1_sinks1_iphoneos_metallib), NULL, 0);
@@ -7821,7 +9994,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 160 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 1 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x64x16_h160_i1_t0_co_b1_c1_l0_causal1_masked0_varlen1_iphoneos_metallib, sizeof(f_b16x64x16_h160_i1_t0_co_b1_c1_l0_causal1_masked0_varlen1_iphoneos_metallib), NULL, 0);
@@ -7837,7 +10010,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 160 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 1 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x64x16_h160_i1_t0_co_b1_c1_l0_causal1_masked0_varlen1_sinks1_iphoneos_metallib, sizeof(f_b16x64x16_h160_i1_t0_co_b1_c1_l0_causal1_masked0_varlen1_sinks1_iphoneos_metallib), NULL, 0);
@@ -7848,12 +10021,76 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     dispatch_release(data);
     return library;
 
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 16 && blockDimensions[1] == 64 && blockDimensions[2] == 16 &&
+    headDimension == 160 &&
+    lowPrecisionIntermediates == 0 && isBF16 == 1 &&
+    isCausal == 1 && masked == 0 && isVarlen == 0 &&
+    attentionSinks == 0 && slidingWindow > 0 &&
+    preferAsyncCache == 1 && preferAsyncLoad == 0) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b16x64x16_h160_i1_t0_co_b1_c1_l0_causal1_masked0_varlen0_sliding1_iphoneos_metallib, sizeof(f_b16x64x16_h160_i1_t0_co_b1_c1_l0_causal1_masked0_varlen0_sliding1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b16x64x16_h160_i1_t0_co_b1_c1_l0_causal1_masked0_varlen0_sliding1_macosx_metallib, sizeof(f_b16x64x16_h160_i1_t0_co_b1_c1_l0_causal1_masked0_varlen0_sliding1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 16 && blockDimensions[1] == 64 && blockDimensions[2] == 16 &&
+    headDimension == 160 &&
+    lowPrecisionIntermediates == 0 && isBF16 == 1 &&
+    isCausal == 1 && masked == 0 && isVarlen == 0 &&
+    attentionSinks == 1 && slidingWindow > 0 &&
+    preferAsyncCache == 1 && preferAsyncLoad == 0) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b16x64x16_h160_i1_t0_co_b1_c1_l0_causal1_masked0_varlen0_sliding1_sinks1_iphoneos_metallib, sizeof(f_b16x64x16_h160_i1_t0_co_b1_c1_l0_causal1_masked0_varlen0_sliding1_sinks1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b16x64x16_h160_i1_t0_co_b1_c1_l0_causal1_masked0_varlen0_sliding1_sinks1_macosx_metallib, sizeof(f_b16x64x16_h160_i1_t0_co_b1_c1_l0_causal1_masked0_varlen0_sliding1_sinks1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 16 && blockDimensions[1] == 64 && blockDimensions[2] == 16 &&
+    headDimension == 160 &&
+    lowPrecisionIntermediates == 0 && isBF16 == 1 &&
+    isCausal == 1 && masked == 1 && isVarlen == 0 &&
+    attentionSinks == 0 && slidingWindow > 0 &&
+    preferAsyncCache == 1 && preferAsyncLoad == 0) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b16x64x16_h160_i1_t0_co_b1_c1_l0_causal1_masked1_varlen0_sliding1_iphoneos_metallib, sizeof(f_b16x64x16_h160_i1_t0_co_b1_c1_l0_causal1_masked1_varlen0_sliding1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b16x64x16_h160_i1_t0_co_b1_c1_l0_causal1_masked1_varlen0_sliding1_macosx_metallib, sizeof(f_b16x64x16_h160_i1_t0_co_b1_c1_l0_causal1_masked1_varlen0_sliding1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 16 && blockDimensions[1] == 64 && blockDimensions[2] == 16 &&
+    headDimension == 160 &&
+    lowPrecisionIntermediates == 0 && isBF16 == 1 &&
+    isCausal == 1 && masked == 1 && isVarlen == 0 &&
+    attentionSinks == 1 && slidingWindow > 0 &&
+    preferAsyncCache == 1 && preferAsyncLoad == 0) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b16x64x16_h160_i1_t0_co_b1_c1_l0_causal1_masked1_varlen0_sliding1_sinks1_iphoneos_metallib, sizeof(f_b16x64x16_h160_i1_t0_co_b1_c1_l0_causal1_masked1_varlen0_sliding1_sinks1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b16x64x16_h160_i1_t0_co_b1_c1_l0_causal1_masked1_varlen0_sliding1_sinks1_macosx_metallib, sizeof(f_b16x64x16_h160_i1_t0_co_b1_c1_l0_causal1_masked1_varlen0_sliding1_sinks1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
   } else if (type.value == AttentionKernelType::backwardQuery &&
     blockDimensions[0] == 16 && blockDimensions[1] == 64 && blockDimensions[2] == 32 &&
     headDimension == 160 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(bq_b16x64x32_h160_i1_t0_cqdq_b1_c1_l0_iphoneos_metallib, sizeof(bq_b16x64x32_h160_i1_t0_cqdq_b1_c1_l0_iphoneos_metallib), NULL, 0);
@@ -7869,7 +10106,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 160 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(bkv_b16x128x16_h160_i1_t0_cdv_b1_c1_l0_iphoneos_metallib, sizeof(bkv_b16x128x16_h160_i1_t0_cdv_b1_c1_l0_iphoneos_metallib), NULL, 0);
@@ -7885,7 +10122,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 256 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x128x16_h256_i1_t0_c_b1_c1_l0_iphoneos_metallib, sizeof(f_b16x128x16_h256_i1_t0_c_b1_c1_l0_iphoneos_metallib), NULL, 0);
@@ -7901,7 +10138,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 256 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x128x16_h256_i1_t0_c_b1_c1_l0_sinks1_iphoneos_metallib, sizeof(f_b16x128x16_h256_i1_t0_c_b1_c1_l0_sinks1_iphoneos_metallib), NULL, 0);
@@ -7917,7 +10154,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 256 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 1 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x128x16_h256_i1_t0_c_b1_c1_l0_causal1_masked0_varlen0_iphoneos_metallib, sizeof(f_b16x128x16_h256_i1_t0_c_b1_c1_l0_causal1_masked0_varlen0_iphoneos_metallib), NULL, 0);
@@ -7933,7 +10170,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 256 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 1 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x128x16_h256_i1_t0_c_b1_c1_l0_causal1_masked0_varlen0_sinks1_iphoneos_metallib, sizeof(f_b16x128x16_h256_i1_t0_c_b1_c1_l0_causal1_masked0_varlen0_sinks1_iphoneos_metallib), NULL, 0);
@@ -7949,7 +10186,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 256 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 0 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x128x16_h256_i1_t0_c_b1_c1_l0_causal0_masked1_varlen0_iphoneos_metallib, sizeof(f_b16x128x16_h256_i1_t0_c_b1_c1_l0_causal0_masked1_varlen0_iphoneos_metallib), NULL, 0);
@@ -7965,7 +10202,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 256 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 0 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x128x16_h256_i1_t0_c_b1_c1_l0_causal0_masked1_varlen0_sinks1_iphoneos_metallib, sizeof(f_b16x128x16_h256_i1_t0_c_b1_c1_l0_causal0_masked1_varlen0_sinks1_iphoneos_metallib), NULL, 0);
@@ -7981,7 +10218,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 256 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 1 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x128x16_h256_i1_t0_c_b1_c1_l0_causal1_masked1_varlen0_iphoneos_metallib, sizeof(f_b16x128x16_h256_i1_t0_c_b1_c1_l0_causal1_masked1_varlen0_iphoneos_metallib), NULL, 0);
@@ -7997,7 +10234,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 256 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 1 && masked == 1 && isVarlen == 0 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x128x16_h256_i1_t0_c_b1_c1_l0_causal1_masked1_varlen0_sinks1_iphoneos_metallib, sizeof(f_b16x128x16_h256_i1_t0_c_b1_c1_l0_causal1_masked1_varlen0_sinks1_iphoneos_metallib), NULL, 0);
@@ -8013,7 +10250,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 256 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 0 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x128x16_h256_i1_t0_c_b1_c1_l0_causal0_masked0_varlen1_iphoneos_metallib, sizeof(f_b16x128x16_h256_i1_t0_c_b1_c1_l0_causal0_masked0_varlen1_iphoneos_metallib), NULL, 0);
@@ -8029,7 +10266,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 256 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 0 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x128x16_h256_i1_t0_c_b1_c1_l0_causal0_masked0_varlen1_sinks1_iphoneos_metallib, sizeof(f_b16x128x16_h256_i1_t0_c_b1_c1_l0_causal0_masked0_varlen1_sinks1_iphoneos_metallib), NULL, 0);
@@ -8045,7 +10282,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 256 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 1 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x128x16_h256_i1_t0_c_b1_c1_l0_causal1_masked0_varlen1_iphoneos_metallib, sizeof(f_b16x128x16_h256_i1_t0_c_b1_c1_l0_causal1_masked0_varlen1_iphoneos_metallib), NULL, 0);
@@ -8061,7 +10298,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 256 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 1 && masked == 0 && isVarlen == 1 &&
-    attentionSinks == 1 &&
+    attentionSinks == 1 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(f_b16x128x16_h256_i1_t0_c_b1_c1_l0_causal1_masked0_varlen1_sinks1_iphoneos_metallib, sizeof(f_b16x128x16_h256_i1_t0_c_b1_c1_l0_causal1_masked0_varlen1_sinks1_iphoneos_metallib), NULL, 0);
@@ -8072,12 +10309,76 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     dispatch_release(data);
     return library;
 
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 16 && blockDimensions[1] == 128 && blockDimensions[2] == 16 &&
+    headDimension == 256 &&
+    lowPrecisionIntermediates == 0 && isBF16 == 1 &&
+    isCausal == 1 && masked == 0 && isVarlen == 0 &&
+    attentionSinks == 0 && slidingWindow > 0 &&
+    preferAsyncCache == 1 && preferAsyncLoad == 0) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b16x128x16_h256_i1_t0_c_b1_c1_l0_causal1_masked0_varlen0_sliding1_iphoneos_metallib, sizeof(f_b16x128x16_h256_i1_t0_c_b1_c1_l0_causal1_masked0_varlen0_sliding1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b16x128x16_h256_i1_t0_c_b1_c1_l0_causal1_masked0_varlen0_sliding1_macosx_metallib, sizeof(f_b16x128x16_h256_i1_t0_c_b1_c1_l0_causal1_masked0_varlen0_sliding1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 16 && blockDimensions[1] == 128 && blockDimensions[2] == 16 &&
+    headDimension == 256 &&
+    lowPrecisionIntermediates == 0 && isBF16 == 1 &&
+    isCausal == 1 && masked == 0 && isVarlen == 0 &&
+    attentionSinks == 1 && slidingWindow > 0 &&
+    preferAsyncCache == 1 && preferAsyncLoad == 0) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b16x128x16_h256_i1_t0_c_b1_c1_l0_causal1_masked0_varlen0_sliding1_sinks1_iphoneos_metallib, sizeof(f_b16x128x16_h256_i1_t0_c_b1_c1_l0_causal1_masked0_varlen0_sliding1_sinks1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b16x128x16_h256_i1_t0_c_b1_c1_l0_causal1_masked0_varlen0_sliding1_sinks1_macosx_metallib, sizeof(f_b16x128x16_h256_i1_t0_c_b1_c1_l0_causal1_masked0_varlen0_sliding1_sinks1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 16 && blockDimensions[1] == 128 && blockDimensions[2] == 16 &&
+    headDimension == 256 &&
+    lowPrecisionIntermediates == 0 && isBF16 == 1 &&
+    isCausal == 1 && masked == 1 && isVarlen == 0 &&
+    attentionSinks == 0 && slidingWindow > 0 &&
+    preferAsyncCache == 1 && preferAsyncLoad == 0) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b16x128x16_h256_i1_t0_c_b1_c1_l0_causal1_masked1_varlen0_sliding1_iphoneos_metallib, sizeof(f_b16x128x16_h256_i1_t0_c_b1_c1_l0_causal1_masked1_varlen0_sliding1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b16x128x16_h256_i1_t0_c_b1_c1_l0_causal1_masked1_varlen0_sliding1_macosx_metallib, sizeof(f_b16x128x16_h256_i1_t0_c_b1_c1_l0_causal1_masked1_varlen0_sliding1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
+  } else if (type.value == AttentionKernelType::forward &&
+    blockDimensions[0] == 16 && blockDimensions[1] == 128 && blockDimensions[2] == 16 &&
+    headDimension == 256 &&
+    lowPrecisionIntermediates == 0 && isBF16 == 1 &&
+    isCausal == 1 && masked == 1 && isVarlen == 0 &&
+    attentionSinks == 1 && slidingWindow > 0 &&
+    preferAsyncCache == 1 && preferAsyncLoad == 0) {
+#if TARGET_OS_IPHONE
+    dispatch_data_t data = dispatch_data_create(f_b16x128x16_h256_i1_t0_c_b1_c1_l0_causal1_masked1_varlen0_sliding1_sinks1_iphoneos_metallib, sizeof(f_b16x128x16_h256_i1_t0_c_b1_c1_l0_causal1_masked1_varlen0_sliding1_sinks1_iphoneos_metallib), NULL, 0);
+#else
+    dispatch_data_t data = dispatch_data_create(f_b16x128x16_h256_i1_t0_c_b1_c1_l0_causal1_masked1_varlen0_sliding1_sinks1_macosx_metallib, sizeof(f_b16x128x16_h256_i1_t0_c_b1_c1_l0_causal1_masked1_varlen0_sliding1_sinks1_macosx_metallib), NULL, 0);
+#endif
+    auto library = device->newLibrary(data, error);
+    dispatch_release(data);
+    return library;
+
   } else if (type.value == AttentionKernelType::backwardQuery &&
     blockDimensions[0] == 16 && blockDimensions[1] == 128 && blockDimensions[2] == 16 &&
     headDimension == 256 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(bq_b16x128x16_h256_i1_t0_c_b1_c1_l0_iphoneos_metallib, sizeof(bq_b16x128x16_h256_i1_t0_c_b1_c1_l0_iphoneos_metallib), NULL, 0);
@@ -8093,7 +10394,7 @@ MTL::Library* AttentionKernel::findPrecompiledLibrary(AttentionKernelDescriptor 
     headDimension == 256 &&
     lowPrecisionIntermediates == 0 && isBF16 == 1 &&
     isCausal == 0 && masked == 0 && isVarlen == 0 &&
-    attentionSinks == 0 &&
+    attentionSinks == 0 && slidingWindow == 0 &&
     preferAsyncCache == 1 && preferAsyncLoad == 0) {
 #if TARGET_OS_IPHONE
     dispatch_data_t data = dispatch_data_create(bkv_b16x128x16_h256_i1_t0_c_b1_c1_l0_iphoneos_metallib, sizeof(bkv_b16x128x16_h256_i1_t0_c_b1_c1_l0_iphoneos_metallib), NULL, 0);

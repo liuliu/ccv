@@ -132,12 +132,11 @@ AttentionKernelDescriptor AttentionDescriptor::kernelDescriptor(MTL::Device *con
     return output;
   };
 
-  const bool groupedQuery =
-      type.value == AttentionKernelType::backwardKeyValue && Hq != Hk;
+  const uint32_t slidingWindowKernelVariant = slidingWindow > 0;
   if (device && device->supportsFamily(MTL::GPUFamily(1009))) {
-    return AttentionKernelDescriptor(createBlockDimensions(), createCacheState(), createHeadDimension(), createMemoryPrecisions(), true, false, createRegisterPrecisions(device), createTransposeState(), createLeadingDimensions(), type, isCausal, masked, isVarlen, attentionSinks, slidingWindow, groupedQuery);
+    return AttentionKernelDescriptor(createBlockDimensions(), createCacheState(), createHeadDimension(), createMemoryPrecisions(), true, false, createRegisterPrecisions(device), createTransposeState(), createLeadingDimensions(), type, isCausal, masked, isVarlen, attentionSinks, slidingWindowKernelVariant);
   } else {
-    return AttentionKernelDescriptor(createBlockDimensions(), createCacheState(), createHeadDimension(), createMemoryPrecisions(), false, true, createRegisterPrecisions(device), createTransposeState(), createLeadingDimensions(), type, isCausal, masked, isVarlen, attentionSinks, slidingWindow, groupedQuery);
+    return AttentionKernelDescriptor(createBlockDimensions(), createCacheState(), createHeadDimension(), createMemoryPrecisions(), false, true, createRegisterPrecisions(device), createTransposeState(), createLeadingDimensions(), type, isCausal, masked, isVarlen, attentionSinks, slidingWindowKernelVariant);
   }
 }
 
@@ -157,6 +156,10 @@ std::pair<AttentionKernelDescriptor, PipelineValue<AttentionKernel> *> Attention
     constants->setConstantValue(&HHkRatio, MTL::DataTypeUInt, 3);
     float scale = this->scale;
     constants->setConstantValue(&scale, MTL::DataTypeFloat, 4);
+    if (type.value == AttentionKernelType::forward && slidingWindow > 0) {
+      uint32_t slidingWindowValue = slidingWindow;
+      constants->setConstantValue(&slidingWindowValue, MTL::DataTypeUInt, 27);
+    }
     std::vector<AttentionOperand> operands;
     switch (type.value) {
     case AttentionKernelType::forward:
@@ -240,6 +243,10 @@ std::pair<AttentionKernelDescriptor, PipelineValue<AttentionKernel> *> Attention
     const uint32_t blockMaskBatchStride = masked && maskBatchStride > 0 ? qTiles * kTiles : 0;
     constants->setConstantValue(&maskBatchStride, MTL::DataTypeUInt, NS::UInteger(25));
     constants->setConstantValue(&blockMaskBatchStride, MTL::DataTypeUInt, NS::UInteger(26));
+    if (slidingWindow > 0) {
+      uint32_t slidingWindowValue = slidingWindow;
+      constants->setConstantValue(&slidingWindowValue, MTL::DataTypeUInt, 27);
+    }
 
     NS::String* swiftName = NS::String::string("generate_attention_block_mask", NS::UTF8StringEncoding);
     NS::Error* error = nil;
