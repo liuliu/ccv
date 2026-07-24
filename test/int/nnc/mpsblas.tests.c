@@ -6418,9 +6418,9 @@ TEST_CASE("scaled dot product attention grouped-query gradient with quantized NA
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SCALED_DOT_PRODUCT_ATTENTION_FORWARD, CCV_NNC_BACKEND_MPS) &&
 		ccv_nnc_cmd_ok(CCV_NNC_SCALED_DOT_PRODUCT_ATTENTION_BACKWARD, CCV_NNC_BACKEND_MPS));
-	const int B = 2;
-	const int R = 127;
-	const int C = 95;
+	const int B = 1;
+	const int R = 31;
+	const int C = 1038;
 	const int Hq = 8;
 	const int Hk = 2;
 	const int D = 128;
@@ -6448,7 +6448,7 @@ TEST_CASE("scaled dot product attention grouped-query gradient with quantized NA
 	for (int i = 0; i < kv_count; ++i)
 	{
 		k_tensor->data.f32[i] = dsfmt_genrand_open_close(&dsfmt) - 0.5;
-		v_tensor->data.f32[i] = dsfmt_genrand_open_close(&dsfmt) - 0.5;
+		v_tensor->data.f32[i] = 64 + dsfmt_genrand_open_close(&dsfmt) - 0.5;
 	}
 	ccv_float_to_half_precision(q_tensor->data.f32, (uint16_t*)q_tensor_f16->data.f16, q_count);
 	ccv_float_to_half_precision(k_tensor->data.f32, (uint16_t*)k_tensor_f16->data.f16, kv_count);
@@ -6510,13 +6510,20 @@ TEST_CASE("scaled dot product attention grouped-query gradient with quantized NA
 	float dq_max_relative_diff = 0;
 	float dk_max_relative_diff = 0;
 	float dv_max_relative_diff = 0;
+	float dv_reference_max = 0;
+	float dv_gpu_max = 0;
 	for (int i = 0; i < q_count; ++i)
 	{
+		REQUIRE(isfinite(dq_gpu_f32[i]), "quantized grouped-query dQ should stay finite at %d", i);
 		const float denom = fmaxf(fmaxf(fabsf(dq_tensor->data.f32[i]), fabsf(dq_gpu_f32[i])), 1.0f);
 		dq_max_relative_diff = fmaxf(dq_max_relative_diff, fabsf(dq_tensor->data.f32[i] - dq_gpu_f32[i]) / denom);
 	}
 	for (int i = 0; i < kv_count; ++i)
 	{
+		REQUIRE(isfinite(dk_gpu_f32[i]), "quantized grouped-query dK should stay finite at %d", i);
+		REQUIRE(isfinite(dv_gpu_f32[i]), "quantized grouped-query dV should stay finite at %d", i);
+		dv_reference_max = fmaxf(dv_reference_max, fabsf(dv_tensor->data.f32[i]));
+		dv_gpu_max = fmaxf(dv_gpu_max, fabsf(dv_gpu_f32[i]));
 		float denom = fmaxf(fmaxf(fabsf(dk_tensor->data.f32[i]), fabsf(dk_gpu_f32[i])), 1.0f);
 		dk_max_relative_diff = fmaxf(dk_max_relative_diff, fabsf(dk_tensor->data.f32[i] - dk_gpu_f32[i]) / denom);
 		denom = fmaxf(fmaxf(fabsf(dv_tensor->data.f32[i]), fabsf(dv_gpu_f32[i])), 1.0f);
@@ -6525,6 +6532,7 @@ TEST_CASE("scaled dot product attention grouped-query gradient with quantized NA
 	REQUIRE(dq_max_relative_diff <= 8e-2, "quantized grouped-query dQ should match CPU reference (max relative diff %g)", dq_max_relative_diff);
 	REQUIRE(dk_max_relative_diff <= 1.2e-1, "quantized grouped-query dK should match CPU reference (max relative diff %g)", dk_max_relative_diff);
 	REQUIRE(dv_max_relative_diff <= 1e-1, "quantized grouped-query dV should match CPU reference (max relative diff %g)", dv_max_relative_diff);
+	REQUIRE(dv_gpu_max >= dv_reference_max * 0.5, "quantized grouped-query dV should not collapse to zero (%g versus reference %g)", dv_gpu_max, dv_reference_max);
 
 	ccfree(dq_gpu_f32);
 	ccfree(dk_gpu_f32);
@@ -7345,6 +7353,13 @@ TEST_CASE("scaled dot product attention grouped-query gradient with mps")
 		ccv_nnc_tensor_t* const copy_of_gpu_dk_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, B, C, Hk, D), 0);
 		ccv_nnc_tensor_t* const copy_of_gpu_dv_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, B, C, Hk, D), 0);
 		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(gpu_dq_tensor, gpu_dk_tensor, gpu_dv_tensor), TENSOR_LIST(copy_of_gpu_dq_tensor, copy_of_gpu_dk_tensor, copy_of_gpu_dv_tensor), 0);
+		for (int i = 0; i < B * R * Hq * D; ++i)
+			REQUIRE(isfinite(copy_of_gpu_dq_tensor->data.f32[i]), "grouped-query dQ should stay finite at %d", i);
+		for (int i = 0; i < B * C * Hk * D; ++i)
+		{
+			REQUIRE(isfinite(copy_of_gpu_dk_tensor->data.f32[i]), "grouped-query dK should stay finite at %d", i);
+			REQUIRE(isfinite(copy_of_gpu_dv_tensor->data.f32[i]), "grouped-query dV should stay finite at %d", i);
+		}
 		REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, copy_of_gpu_dq_tensor->data.f32, dq_tensor->data.f32, B * R * Hq * D, 5e-3, "grouped-query dQ should match the CPU reference");
 		REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, copy_of_gpu_dk_tensor->data.f32, dk_tensor->data.f32, B * C * Hk * D, 1e-2, "grouped-query dK should match the CPU reference");
 		REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, copy_of_gpu_dv_tensor->data.f32, dv_tensor->data.f32, B * C * Hk * D, 1e-2, "grouped-query dV should match the CPU reference");

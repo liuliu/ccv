@@ -1180,6 +1180,7 @@ std::string NAInt8AttentionKernel::createComputeD() const noexcept {
   source.SetValue("HEAD_DIMENSION", std::to_string(headDimension));
   source.SetValue("COMPUTE_D_THREADS", std::to_string(computeDThreads));
   source.SetValue("DOT_SCALE_DERIVATIVE", dot_product_scale(scale, true));
+  source.SetValue("V_MEAN_HEAD", Hq == Hk ? "head" : "head / " + std::to_string(Hq / Hk));
   source += R"(
 
 kernel void compute_d(
@@ -1195,7 +1196,7 @@ kernel void compute_d(
   O_buf += tgid.z * O_batch_stride;
   dO_buf += tgid.z * dO_batch_stride;
   D_buf += (tgid.z * Hq + head) * R;
-  V_mean_buf += tgid.z * V_mean_batch_stride + head * {{HEAD_DIMENSION}};
+  V_mean_buf += tgid.z * V_mean_batch_stride + {{V_MEAN_HEAD}} * {{HEAD_DIMENSION}};
   const uint offset = row * K_Hq + head * {{HEAD_DIMENSION}};
   float D_accumulator = 0.0f;
   for (uint d = lane_id; d < {{HEAD_DIMENSION}}; d += {{COMPUTE_D_THREADS}}) {
@@ -1523,6 +1524,30 @@ void NAInt8AttentionKernel::loopBackwardKeyValue(CodeWriter& source) const noexc
   source.SetValue("QUERY_HEAD_RATIO", std::to_string(Hq / Hk));
   source.SetValue("DOT_SCALE", dot_product_scale(scale));
   source.SetValue("DOT_SCALE_DERIVATIVE", dot_product_scale(scale, true));
+  source.SetValue("P_QUANTIZATION_SCALE", Hq == Hk ? "127.0f" : "P_quantization_scale");
+  source.SetValue("P_DEQUANTIZATION_SCALE", Hq == Hk ? "dO_scale_recip_127" : "dO_scale * P_max * (1.0f / 127.0f)");
+  const auto appendDynamicProbabilityScale =
+  [=](CodeWriter& source, bool remainder) {
+    if (Hq == Hk) {
+      return;
+    }
+    source.SetValue("P_MAX_REMAINDER_CONDITION", remainder ?
+        " && cST.get_multidimensional_index(k)[0] < (int)KV_R_remainder" : "");
+    source += R"(
+    float P_log2_max = -INFINITY;
+    #pragma clang loop unroll(full)
+    for (unsigned short k = 0; k < cST.get_capacity(); ++k) {
+      if (cST.is_valid_element(k){{P_MAX_REMAINDER_CONDITION}}) {
+        auto idx = cST.get_multidimensional_index(k);
+        const float P_log2 = (float)cST[k] * (k_scale * q_scale * {{DOT_SCALE}}) - (float)L[r + idx[0]];
+        P_log2_max = max(P_log2_max, P_log2);
+      }
+    }
+    P_log2_max = simd_max(P_log2_max);
+    const float P_max = fast::exp2(min(P_log2_max, 0.0f));
+    const float P_quantization_scale = P_max > 0 ? 127.0f / P_max : 0.0f;
+)";
+  };
   if (blockDimensions[2] % 32 == 0) {
     source.SetValue("BLOCK_DIMENSIONS_HEAD_OR_DYNAMIC_LENGTH_V", std::to_string(blockDimensions[2]));
   } else {
@@ -1643,13 +1668,14 @@ void NAInt8AttentionKernel::loopBackwardKeyValue(CodeWriter& source) const noexc
     matmul_kqt_op.run(mV_{{LOOP_INDEX}}, mdO_{{LOOP_INDEX}}, cDP);
 )";
     }
+    appendDynamicProbabilityScale(source, false);
     source += R"(
     #pragma clang loop unroll(full)
     for (unsigned short k = 0; k < cP_q.get_capacity(); ++k) {
       if (cP_q.is_valid_element(k)) {
         auto idx = cP_q.get_multidimensional_index(k);
         const float P = fast::exp2((float)cST[k] * (k_scale * q_scale * {{DOT_SCALE}}) - (float)L[r + idx[0]]);
-        const int quantized = (int)rint(P * 127.0f);
+        const int quantized = (int)rint(P * {{P_QUANTIZATION_SCALE}});
         cP_q[k] = (int8_t)clamp(quantized, 0, 127);
         const float dS = P * ((float)cDP[k] * (v_scale * dO_scale * {{DOT_SCALE_DERIVATIVE}}) - (float)D[r + idx[0]]);
         cDS[k] = ({{D_MEMORY_NAME}})(dS * q_scale);
@@ -1668,7 +1694,7 @@ void NAInt8AttentionKernel::loopBackwardKeyValue(CodeWriter& source) const noexc
 )";
     for (unsigned short i = 0; i < kBlocks; ++i) {
       source.SetValue("LOOP_INDEX", std::to_string(i));
-      source += "        cDV_{{LOOP_INDEX}}[k] += ({{ACCUM_MEMORY_NAME}})((float)cDV_q_{{LOOP_INDEX}}[k] * dO_scale_recip_127);\n";
+      source += "        cDV_{{LOOP_INDEX}}[k] += ({{ACCUM_MEMORY_NAME}})((float)cDV_q_{{LOOP_INDEX}}[k] * {{P_DEQUANTIZATION_SCALE}});\n";
     }
     source += R"(
       }
@@ -1697,6 +1723,7 @@ void NAInt8AttentionKernel::loopBackwardKeyValue(CodeWriter& source) const noexc
     matmul_kqt_op.run(mV_{{LOOP_INDEX}}, mdO_{{LOOP_INDEX}}, cDP);
 )";
     }
+    appendDynamicProbabilityScale(source, true);
     source += R"(
     #pragma clang loop unroll(full)
     for (unsigned short k = 0; k < cP_q.get_capacity(); ++k) {
@@ -1707,7 +1734,7 @@ void NAInt8AttentionKernel::loopBackwardKeyValue(CodeWriter& source) const noexc
           cDS[k] = 0;
         } else {
           const float P = fast::exp2((float)cST[k] * (k_scale * q_scale * {{DOT_SCALE}}) - (float)L[r + idx[0]]);
-          const int quantized = (int)rint(P * 127.0f);
+          const int quantized = (int)rint(P * {{P_QUANTIZATION_SCALE}});
           cP_q[k] = (int8_t)clamp(quantized, 0, 127);
           const float dS = P * ((float)cDP[k] * (v_scale * dO_scale * {{DOT_SCALE_DERIVATIVE}}) - (float)D[r + idx[0]]);
           cDS[k] = ({{D_MEMORY_NAME}})(dS * q_scale);
@@ -1727,7 +1754,7 @@ void NAInt8AttentionKernel::loopBackwardKeyValue(CodeWriter& source) const noexc
 )";
     for (unsigned short i = 0; i < kBlocks; ++i) {
       source.SetValue("LOOP_INDEX", std::to_string(i));
-      source += "        cDV_{{LOOP_INDEX}}[k] += ({{ACCUM_MEMORY_NAME}})((float)cDV_q_{{LOOP_INDEX}}[k] * dO_scale_recip_127);\n";
+      source += "        cDV_{{LOOP_INDEX}}[k] += ({{ACCUM_MEMORY_NAME}})((float)cDV_q_{{LOOP_INDEX}}[k] * {{P_DEQUANTIZATION_SCALE}});\n";
     }
     source += R"(
       }
@@ -1839,13 +1866,15 @@ void NAInt8AttentionKernel::loopBackwardKeyValue(CodeWriter& source) const noexc
     auto mQ = Q.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>(query_head * {{HEAD_DIMENSION}}, r);
     auto mdO = dO.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>(query_head * {{HEAD_DIMENSION}}, r);
     matmul_kqt_op.run(mK, mQ, cST);
-    matmul_kqt_op.run(mV, mdO, cDP);
+    matmul_kqt_op.run(mV, mdO, cDP);)";
+  appendDynamicProbabilityScale(source, false);
+  source += R"(
     #pragma clang loop unroll(full)
     for (unsigned short k = 0; k < cP_q.get_capacity(); ++k) {
       if (cP_q.is_valid_element(k)) {
         auto idx = cP_q.get_multidimensional_index(k);
         const float P = fast::exp2((float)cST[k] * (k_scale * q_scale * {{DOT_SCALE}}) - (float)L[r + idx[0]]);
-        const int quantized = (int)rint(P * 127.0f);
+        const int quantized = (int)rint(P * {{P_QUANTIZATION_SCALE}});
         cP_q[k] = (int8_t)clamp(quantized, 0, 127);
         const float dS = P * ((float)cDP[k] * (v_scale * dO_scale * {{DOT_SCALE_DERIVATIVE}}) - (float)D[r + idx[0]]);
         cDS[k] = ({{D_MEMORY_NAME}})(dS * q_scale);
@@ -1856,7 +1885,7 @@ void NAInt8AttentionKernel::loopBackwardKeyValue(CodeWriter& source) const noexc
     #pragma clang loop unroll(full)
     for (unsigned short k = 0; k < cDV.get_capacity(); ++k) {
       if (cDV.is_valid_element(k)) {
-        cDV[k] += ({{ACCUM_MEMORY_NAME}})((float)cDV_q[k] * dO_scale_recip_127);
+        cDV[k] += ({{ACCUM_MEMORY_NAME}})((float)cDV_q[k] * {{P_DEQUANTIZATION_SCALE}});
       }
     }
   }
@@ -1875,7 +1904,9 @@ void NAInt8AttentionKernel::loopBackwardKeyValue(CodeWriter& source) const noexc
     auto mQ = Q.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>(query_head * {{HEAD_DIMENSION}}, r);
     auto mdO = dO.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>(query_head * {{HEAD_DIMENSION}}, r);
     matmul_kqt_op.run(mK, mQ, cST);
-    matmul_kqt_op.run(mV, mdO, cDP);
+    matmul_kqt_op.run(mV, mdO, cDP);)";
+  appendDynamicProbabilityScale(source, true);
+  source += R"(
     #pragma clang loop unroll(full)
     for (unsigned short k = 0; k < cP_q.get_capacity(); ++k) {
       if (cP_q.is_valid_element(k)) {
@@ -1885,7 +1916,7 @@ void NAInt8AttentionKernel::loopBackwardKeyValue(CodeWriter& source) const noexc
           cDS[k] = 0;
         } else {
           const float P = fast::exp2((float)cST[k] * (k_scale * q_scale * {{DOT_SCALE}}) - (float)L[r + idx[0]]);
-          const int quantized = (int)rint(P * 127.0f);
+          const int quantized = (int)rint(P * {{P_QUANTIZATION_SCALE}});
           cP_q[k] = (int8_t)clamp(quantized, 0, 127);
           const float dS = P * ((float)cDP[k] * (v_scale * dO_scale * {{DOT_SCALE_DERIVATIVE}}) - (float)D[r + idx[0]]);
           cDS[k] = ({{D_MEMORY_NAME}})(dS * q_scale);
@@ -1897,7 +1928,7 @@ void NAInt8AttentionKernel::loopBackwardKeyValue(CodeWriter& source) const noexc
     #pragma clang loop unroll(full)
     for (unsigned short k = 0; k < cDV.get_capacity(); ++k) {
       if (cDV.is_valid_element(k)) {
-        cDV[k] += ({{ACCUM_MEMORY_NAME}})((float)cDV_q[k] * dO_scale_recip_127);
+        cDV[k] += ({{ACCUM_MEMORY_NAME}})((float)cDV_q[k] * {{P_DEQUANTIZATION_SCALE}});
       }
     }
   }
