@@ -65,7 +65,6 @@ static int _ccv_nnc_scaled_dot_product_arg_partition_forw(const ccv_nnc_cmd_t cm
 	const int head_w_nd = ccv_nnc_tensor_nd(head_w->info.dim);
 	const int selected_nd = ccv_nnc_tensor_nd(selected->info.dim);
 	assert(q_nd == 3);
-	assert(k_nd == 2);
 	assert(head_w_nd == 2);
 	assert(selected_nd == 2);
 	const int T = q->info.dim[0];
@@ -76,13 +75,26 @@ static int _ccv_nnc_scaled_dot_product_arg_partition_forw(const ccv_nnc_cmd_t cm
 	const float scale = cmd.info.scaled_dot_product_arg_partition.scale;
 	const int is_causal = cmd.info.scaled_dot_product_arg_partition.is_causal;
 	const int compression_ratio = cmd.info.scaled_dot_product_arg_partition.compression_ratio;
-	assert(k->info.dim[1] == D);
+	assert(C == 0 || k_nd == 2);
+	assert(C == 0 || k->info.dim[1] == D);
 	assert(head_w->info.dim[0] == T);
 	assert(head_w->info.dim[1] == H);
 	assert(selected->info.dim[0] == T);
 	assert(selected->info.dim[1] == kth);
 	assert(kth > 0);
 	assert(compression_ratio > 0);
+	if (C <= kth)
+	{
+		int t, c;
+		for (t = 0; t < T; t++)
+		{
+			int* const selected_t = selected->data.i32 + t * kth;
+			const int visible = _ccv_nnc_sdpap_visible_count(T, C, t, is_causal, compression_ratio);
+			for (c = 0; c < kth; c++)
+				selected_t[c] = c < visible ? c : -1;
+		}
+		return CCV_NNC_EXEC_SUCCESS;
+	}
 	float* const top_scores = (float*)ccv_nnc_stream_context_get_workspace(stream_context, sizeof(float) * kth + sizeof(int) * kth, CCV_TENSOR_CPU_MEMORY);
 	int* const top_indices = (int*)(top_scores + kth);
 	int t, h, d, c;

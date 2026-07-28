@@ -9090,13 +9090,32 @@ TEST_CASE("scaled dot product arg partition causal compression cpu reference")
 	k->data.f32[2] = 3;
 	ccv_nnc_cmd_exec(CMD_SCALED_DOT_PRODUCT_ARG_PARTITION_FORWARD(3, 1, 1, 4), ccv_nnc_no_hint, 0, TENSOR_LIST(q, k, head_w), TENSOR_LIST(selected), 0);
 	const int expected[] = {
-		1, 0, -1,
-		1, 0, -1,
-		1, 0, -1,
-		1, 0, -1,
-		2, 1, 0,
+		0, 1, -1,
+		0, 1, -1,
+		0, 1, -1,
+		0, 1, -1,
+		0, 1, 2,
 	};
-	REQUIRE_ARRAY_EQ(int, selected->data.i32, expected, 15, "causal compression should pad rows with too few visible compressed ids");
+	REQUIRE_ARRAY_EQ(int, selected->data.i32, expected, 15, "causal compression should return every visible row chronologically when all rows fit");
+	ccv_nnc_tensor_free(q);
+	ccv_nnc_tensor_free(k);
+	ccv_nnc_tensor_free(head_w);
+	ccv_nnc_tensor_free(selected);
+}
+
+TEST_CASE("scaled dot product arg partition cpu reference pads an empty key set")
+{
+	ccv_nnc_tensor_t* const q = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 3, 2, 4), 0);
+	ccv_nnc_tensor_t* const k = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 0, 4), 0);
+	ccv_nnc_tensor_t* const head_w = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 3, 2), 0);
+	ccv_nnc_tensor_t* const selected = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, 3, 5), 0);
+	REQUIRE_EQ(CCV_NNC_EXEC_SUCCESS, ccv_nnc_cmd_exec(CMD_SCALED_DOT_PRODUCT_ARG_PARTITION_FORWARD(5, 1, 1, 4), ccv_nnc_no_hint, 0, TENSOR_LIST(q, k, head_w), TENSOR_LIST(selected), 0), "arg partition should accept an empty key set");
+	const int expected[] = {
+		-1, -1, -1, -1, -1,
+		-1, -1, -1, -1, -1,
+		-1, -1, -1, -1, -1,
+	};
+	REQUIRE_ARRAY_EQ(int, selected->data.i32, expected, 15, "an empty key set should produce only terminators");
 	ccv_nnc_tensor_free(q);
 	ccv_nnc_tensor_free(k);
 	ccv_nnc_tensor_free(head_w);
@@ -9124,6 +9143,8 @@ static void _mps_scaled_dot_product_arg_partition_fill_stable(ccv_nnc_tensor_t* 
 
 static void _mps_scaled_dot_product_arg_partition_from_float(const int datatype, const float* const source, ccv_nnc_tensor_t* const tensor, const int count)
 {
+	if (count == 0)
+		return;
 	if (datatype == CCV_32F)
 		memcpy(tensor->data.f32, source, sizeof(float) * count);
 	else if (datatype == CCV_16F)
@@ -9136,6 +9157,8 @@ static void _mps_scaled_dot_product_arg_partition_from_float(const int datatype,
 
 static void _mps_scaled_dot_product_arg_partition_to_float(const int datatype, const ccv_nnc_tensor_t* const tensor, float* const destination, const int count)
 {
+	if (count == 0)
+		return;
 	if (datatype == CCV_32F)
 		memcpy(destination, tensor->data.f32, sizeof(float) * count);
 	else if (datatype == CCV_16F)
@@ -9229,6 +9252,15 @@ TEST_CASE("scaled dot product arg partition with MPSGraph")
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SCALED_DOT_PRODUCT_ARG_PARTITION_FORWARD, CCV_NNC_BACKEND_MPS));
 	REQUIRE_EQ(_mps_scaled_dot_product_arg_partition_compare(5, 6, 2, 4, 8, 1, 4, CCV_32F, 1, 0), 0, "MPSGraph selected ids should match CPU reference");
 	REQUIRE_EQ(_mps_scaled_dot_product_arg_partition_compare(10, 2, 2, 4, 3, 1, 4, CCV_32F, 1, 0), 0, "MPSGraph selected ids should pad zero-visible causal compression rows");
+	REQUIRE_EQ(_mps_scaled_dot_product_arg_partition_compare(5, 0, 2, 4, 3, 1, 4, CCV_32F, 1, 0), 0, "MPSGraph selected ids should pad an empty compressed key set");
+}
+
+TEST_CASE("scaled dot product arg partition enumeration with MFA")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SCALED_DOT_PRODUCT_ARG_PARTITION_FORWARD, CCV_NNC_BACKEND_MPS));
+	REQUIRE_EQ(_mps_scaled_dot_product_arg_partition_compare(5, 6, 2, 4, 8, 1, 4, CCV_32F, 0, 1), 0, "MFA should enumerate every visible compressed row");
+	REQUIRE_EQ(_mps_scaled_dot_product_arg_partition_compare(3, 2, 2, 4, 4, 0, 4, CCV_32F, 0, 1), 0, "MFA should enumerate non-causal compressed rows");
+	REQUIRE_EQ(_mps_scaled_dot_product_arg_partition_compare(5, 0, 2, 4, 3, 1, 4, CCV_32F, 0, 1), 0, "MFA should pad an empty compressed key set");
 }
 
 TEST_CASE("scaled dot product arg partition with MFA DS4-native shape")

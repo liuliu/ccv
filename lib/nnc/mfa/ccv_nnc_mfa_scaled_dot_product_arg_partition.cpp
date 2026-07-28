@@ -3,6 +3,9 @@
 #include "kernels/NAScaledDotProductArgPartitionKernel.hpp"
 #include "kernels/NAScaledDotProductArgPartitionKernelDescriptor.hpp"
 #include "kernels/ScaledDotProductArgPartitionDescriptor.hpp"
+#include "kernels/ScaledDotProductArgPartitionEnumerateDescriptor.hpp"
+#include "kernels/ScaledDotProductArgPartitionEnumerateKernel.hpp"
+#include "kernels/ScaledDotProductArgPartitionEnumerateKernelDescriptor.hpp"
 #include "kernels/ScaledDotProductArgPartitionKernel.hpp"
 #include "kernels/ScaledDotProductArgPartitionKernelDescriptor.hpp"
 #include <algorithm>
@@ -25,6 +28,46 @@ void ccv_nnc_mfa_prepare_scaled_dot_product_arg_partition(mfa::context* context,
 {
   (void)context;
   (void)params;
+}
+
+void ccv_nnc_mfa_prepare_scaled_dot_product_arg_partition_enumerate(mfa::context* context, ccv_nnc_mfa_scaled_dot_product_arg_partition_enumerate_params_t params)
+{
+  (void)context;
+  (void)params;
+}
+
+void ccv_nnc_mfa_encode_scaled_dot_product_arg_partition_enumerate(ccv_nnc_mfa_context_t* context, ccv_nnc_mfa_scaled_dot_product_arg_partition_enumerate_params_t params, MTL::CommandBatch* command_batch, MTL::Buffer** tensors, size_t* tensor_offsets)
+{
+  CCV_NNC_MFA_PRECONDITION(params.T > 0);
+  CCV_NNC_MFA_PRECONDITION(params.C <= params.kth);
+  CCV_NNC_MFA_PRECONDITION(params.kth > 0);
+  CCV_NNC_MFA_PRECONDITION(params.compression_ratio > 0);
+  CCV_NNC_MFA_PRECONDITION(tensors[0] != nullptr);
+  CCV_NNC_MFA_PRECONDITION(tensors[1] == nullptr);
+
+  ScaledDotProductArgPartitionEnumerateDescriptor descriptor;
+  descriptor.T = params.T;
+  descriptor.C = params.C;
+  descriptor.kth = params.kth;
+  descriptor.compressionRatio = params.compression_ratio;
+  descriptor.isCausal = params.is_causal != 0;
+
+  auto pool = NS::AutoreleasePool::alloc()->init();
+  auto& shaderCache = context->kernel_cache;
+  DeviceProperties dprops = DeviceProperties();
+  auto pipelineValue = shaderCache.findKernel<ScaledDotProductArgPartitionEnumerateKernel, ScaledDotProductArgPartitionEnumerateDescriptor, ScaledDotProductArgPartitionEnumerateKernelDescriptor>(descriptor, context->device.get(), dprops);
+  pool->drain();
+  auto kernel = pipelineValue->kernel;
+  auto pipeline = pipelineValue->pipeline;
+
+  auto encoder = command_batch->startCommand();
+  encoder->setComputePipelineState(pipeline.get());
+  encoder->useResource(tensors[0], MTL::ResourceUsageWrite);
+  encoder->setBuffer(tensors[0], tensor_offsets[0], 0);
+  const MTL::Size gridSize = kernel->gridSize(params.T, params.kth);
+  CCV_NNC_MFA_PRECONDITION(gridSize.width > 0);
+  encoder->dispatchThreadgroups(gridSize, kernel->threadgroupSize);
+  command_batch->finishCommand(encoder);
 }
 
 void ccv_nnc_mfa_encode_scaled_dot_product_arg_partition(ccv_nnc_mfa_context_t* context, ccv_nnc_mfa_scaled_dot_product_arg_partition_params_t params, MTL::CommandBatch* command_batch, MTL::Buffer** tensors, size_t* tensor_offsets)

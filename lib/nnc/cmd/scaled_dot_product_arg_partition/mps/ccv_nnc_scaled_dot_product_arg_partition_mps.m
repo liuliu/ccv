@@ -7,6 +7,64 @@
 #include "nnc/mps/ccv_nnc_mps.h"
 #endif
 
+static int _ccv_nnc_scaled_dot_product_arg_partition_enumerate(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, const int T, const int C, const int kth, const int compression_ratio, ccv_nnc_stream_context_t* const stream_context)
+{
+	ccv_nnc_tensor_view_t* const selected = (ccv_nnc_tensor_view_t*)outputs[0];
+	@autoreleasepool {
+		ccv_nnc_mfa_context_t* const context = ccv_nnc_default_mfa_context();
+		if (ccv_nnc_mfa_context_supported(context) && !(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA))
+		{
+			const ccv_nnc_mfa_scaled_dot_product_arg_partition_enumerate_params_t params = {
+				.T = (uint32_t)T,
+				.C = (uint32_t)C,
+				.kth = (uint32_t)kth,
+				.compression_ratio = (uint32_t)compression_ratio,
+				.is_causal = (uint8_t)(cmd.info.scaled_dot_product_arg_partition.is_causal != 0),
+			};
+			ccv_nnc_mfa_prepare_scaled_dot_product_arg_partition_enumerate(context, params);
+			mtl_command_batch_t* const command_batch = ccv_nnc_stream_context_start_command_batch(stream_context);
+			mtl_buffer_t* tensors[2] = {
+				mpgetbuffer(outputs[0]),
+				NULL,
+			};
+			size_t tensor_offsets[1] = {
+				selected->dataof,
+			};
+			ccv_nnc_mfa_encode_scaled_dot_product_arg_partition_enumerate(context, params, command_batch, tensors, tensor_offsets);
+			ccv_nnc_stream_context_finish_command_batch(stream_context, command_batch);
+			return CCV_NNC_EXEC_SUCCESS;
+		}
+		MPSCommandBuffer* const command_buffer = ccv_nnc_stream_context_start_mps_command_buffer(stream_context);
+		ccv_nnc_mps_graph_key_t key = ccv_nnc_mps_graph_key_new(cmd, 0, hint, flags, inputs, input_size, outputs, output_size);
+		MPSGraphExecutable* const executable = ccv_nnc_mps_graph_executable_cache(key, 0, ^void (MPSGraph* graph, NSMutableArray<MPSGraphTensor*>* input_tensors, NSMutableArray<MPSGraphShapedType*>* input_shapes, NSMutableArray<MPSGraphTensor*>* result_tensors) {
+			NSArray<NSNumber*>* const shape = @[@(T), @(kth)];
+			MPSGraphTensor* const position = [graph coordinateAlongAxis:1 withShape:shape name:nil];
+			MPSGraphTensor* valid;
+			if (cmd.info.scaled_dot_product_arg_partition.is_causal)
+			{
+				MPSGraphTensor* const token = [graph coordinateAlongAxis:0 withShape:shape name:nil];
+				MPSGraphTensor* const token_f = [graph castTensor:token toType:MPSDataTypeFloat32 name:nil];
+				MPSGraphTensor* const position_f = [graph castTensor:position toType:MPSDataTypeFloat32 name:nil];
+				MPSGraphTensor* const q_start = [graph constantWithScalar:(float)(C * compression_ratio - T + 1) dataType:MPSDataTypeFloat32];
+				MPSGraphTensor* const ratio = [graph constantWithScalar:(float)compression_ratio dataType:MPSDataTypeFloat32];
+				MPSGraphTensor* visible = [graph floorWithTensor:[graph divisionWithPrimaryTensor:[graph additionWithPrimaryTensor:token_f secondaryTensor:q_start name:nil] secondaryTensor:ratio name:nil] name:nil];
+				visible = [graph maximumWithPrimaryTensor:visible secondaryTensor:[graph constantWithScalar:0.0f dataType:MPSDataTypeFloat32] name:nil];
+				visible = [graph minimumWithPrimaryTensor:visible secondaryTensor:[graph constantWithScalar:(float)C dataType:MPSDataTypeFloat32] name:nil];
+				valid = [graph lessThanWithPrimaryTensor:position_f secondaryTensor:visible name:nil];
+			} else {
+				MPSGraphTensor* const position_f = [graph castTensor:position toType:MPSDataTypeFloat32 name:nil];
+				valid = [graph lessThanWithPrimaryTensor:position_f secondaryTensor:[graph constantWithScalar:(float)C dataType:MPSDataTypeFloat32] name:nil];
+			}
+			MPSGraphTensor* const position_i32 = [graph castTensor:position toType:MPSDataTypeInt32 name:nil];
+			MPSGraphTensor* const minus_one = [graph constantWithScalar:-1.0f dataType:MPSDataTypeInt32];
+			[result_tensors addObject:[graph selectWithPredicateTensor:valid truePredicateTensor:position_i32 falsePredicateTensor:minus_one name:nil]];
+		});
+		ccv_nnc_mps_graph_executable_result(executable, command_buffer, @[], &selected, (int*[]){ selected->info.dim }, (int*[]){ selected->stride }, 1, 0);
+		ccv_nnc_stream_context_finish_mps_command_buffer(stream_context, command_buffer);
+	}
+	return CCV_NNC_EXEC_SUCCESS;
+}
+
 static int _ccv_nnc_scaled_dot_product_arg_partition_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
 {
 	assert(input_size == 3);
@@ -25,7 +83,6 @@ static int _ccv_nnc_scaled_dot_product_arg_partition_forw(const ccv_nnc_cmd_t cm
 	const int head_w_nd = ccv_nnc_tensor_nd(head_w->info.dim);
 	const int selected_nd = ccv_nnc_tensor_nd(selected->info.dim);
 	assert(q_nd == 3);
-	assert(k_nd == 2);
 	assert(head_w_nd == 2);
 	assert(selected_nd == 2);
 	const int T = q->info.dim[0];
@@ -34,13 +91,16 @@ static int _ccv_nnc_scaled_dot_product_arg_partition_forw(const ccv_nnc_cmd_t cm
 	const int C = k->info.dim[0];
 	const int kth = cmd.info.scaled_dot_product_arg_partition.kth;
 	const int compression_ratio = cmd.info.scaled_dot_product_arg_partition.compression_ratio;
-	assert(k->info.dim[1] == D);
+	assert(C == 0 || k_nd == 2);
+	assert(C == 0 || k->info.dim[1] == D);
 	assert(head_w->info.dim[0] == T);
 	assert(head_w->info.dim[1] == H);
 	assert(selected->info.dim[0] == T);
 	assert(selected->info.dim[1] == kth);
 	assert(kth > 0);
 	assert(compression_ratio > 0);
+	if (C <= kth)
+		return _ccv_nnc_scaled_dot_product_arg_partition_enumerate(cmd, hint, flags, inputs, input_size, outputs, output_size, T, C, kth, compression_ratio, stream_context);
 	@autoreleasepool {
 		bool use_mfa = true;
 		ccv_nnc_mfa_context_t* context = ccv_nnc_default_mfa_context();
