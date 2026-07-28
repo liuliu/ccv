@@ -123,6 +123,8 @@ static int _ccv_nnc_transpose(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 		{
 			const ccv_nnc_tensor_view_t* const a = (const ccv_nnc_tensor_view_t*)inputs[i];
 			ccv_nnc_tensor_view_t* const b = (ccv_nnc_tensor_view_t*)outputs[i];
+			if (ccv_nnc_tensor_count(a->info) == 0 || ccv_nnc_tensor_count(b->info) == 0)
+				continue;
 			ccv_nnc_mps_graph_key_t key = ccv_nnc_mps_graph_key_new(cmd, 0, hint, flags, inputs + i, 1, outputs + i, 1);
 			int indices[1];
 			MPSGraphExecutable* executable = ccv_nnc_mps_graph_executable_cache(key, indices, ^void (MPSGraph* graph, NSMutableArray<MPSGraphTensor*>* inputTensors, NSMutableArray<MPSGraphShapedType*>* inputShapedTypes, NSMutableArray<MPSGraphTensor*>* resultTensors) {
