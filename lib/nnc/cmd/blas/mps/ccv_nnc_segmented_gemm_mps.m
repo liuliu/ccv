@@ -128,6 +128,10 @@ static int _ccv_nnc_segmented_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_h
 	assert(a_rows == b_rows);
 	assert(a_cols == w_rows);
 	assert(w_cols == b_cols);
+	const int bincount = (int)ccv_nnc_tensor_count(indices->info);
+	assert(ccv_nnc_tensor_count(counts->info) == bincount);
+	assert(CCV_IS_TENSOR_CONTIGUOUS(indices));
+	assert(CCV_IS_TENSOR_CONTIGUOUS(counts));
 	int adim[CCV_NNC_MAX_DIM_ALLOC];
 	int astride[CCV_NNC_MAX_DIM_ALLOC] = {0};
 	memcpy(adim, a->info.dim, sizeof(adim));
@@ -322,14 +326,15 @@ static int _ccv_nnc_segmented_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_h
 		{
 			ccv_nnc_mfa_segmented_scaled_gemm_params_t params = {
 				.data_type = mtl_data_type,
-				.M = (uint32_t)(b_rows + ccv_max(w_batch_size - 2, 0)) / ccv_max(w_batch_size - 1, 1),
+				.M = (uint32_t)(b_rows + ccv_max(bincount - 2, 0)) / ccv_max(bincount - 1, 1),
 				.N = (uint32_t)b_cols,
 				.K = (uint32_t)w_rows,
 				.originalM = (uint32_t)b_rows,
 				.fused_bias = (bias ? 1 : 0),
 				.use_neural_accelerators = 1,
 				.loadM = !!(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M),
-				.segments = w_batch_size,
+				.expert_count = w_batch_size,
+				.bincount = bincount,
 			};
 			ccv_nnc_mfa_prepare_segmented_scaled_gemm(context, params);
 			size_t scratch_offset = ccv_nnc_mfa_segmented_scaled_gemm_reserved_scratch_size(params);
@@ -345,7 +350,7 @@ static int _ccv_nnc_segmented_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_h
 					.row_length = (uint32_t)w_rows,
 					.rows_per_expert = (uint32_t)b_cols,
 					.expert_count = (uint32_t)w_batch_size,
-					.segment_count = (uint32_t)w_batch_size,
+					.bincount = (uint32_t)bincount,
 				};
 				const size_t decode_scratch_size = ccv_nnc_mfa_dequantize_8i_rowwise_x_selected_reserved_scratch_size(w_decode_params);
 				scratch_offset = ccv_max(scratch_offset, decode_scratch_size);
@@ -400,7 +405,7 @@ static int _ccv_nnc_segmented_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_h
 		// On supported devices, use Metal directly.
 		ccv_nnc_mfa_segmented_gemm_params_t params = {
 			.data_type = mtl_data_type,
-			.M = (uint32_t)(b_rows + ccv_max(w_batch_size - 2, 0)) / ccv_max(w_batch_size - 1, 1), // C_rows, this is estimated. We estimate it to be b rows / segments.
+			.M = (uint32_t)(b_rows + ccv_max(bincount - 2, 0)) / ccv_max(bincount - 1, 1), // C_rows, estimated from the average rows per routing bin.
 			.N = (uint32_t)b_cols, // C_cols
 			.K = (uint32_t)w_rows, // B_rows
 			.originalM = (uint32_t)b_rows, // C_rows
@@ -411,7 +416,8 @@ static int _ccv_nnc_segmented_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_h
 			.register_float = (is_downcast ? 0 : 1),
 			.use_neural_accelerators = !(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS) && ccv_nnc_mfa_has_neural_accelerators(context) && (mtl_data_type != 121 || ccv_nnc_mfa_neural_accelerators_support_bfloat(context)),
 
-			.segments = w_batch_size,
+			.expert_count = w_batch_size,
+			.bincount = bincount,
 		};
 		mtl_buffer_t* scratch = 0;
 		const size_t scratch_offset = ccv_nnc_mfa_segmented_gemm_reserved_scratch_size(params);

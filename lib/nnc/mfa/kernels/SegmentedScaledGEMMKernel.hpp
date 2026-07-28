@@ -21,7 +21,7 @@ struct SegmentedScaledGEMMKernel {
   SegmentedScaledGEMMKernel(SegmentedScaledGEMMKernelDescriptor descriptor, MTL::Device* const device);
 
   uint16_t threadgroupSize(MTL::ComputePipelineState* const pipelineState) const noexcept;
-  uint32_t maxTileRecords(uint32_t originalM, uint32_t segments) const noexcept;
+  uint32_t maxTileRecords(uint32_t originalM, uint32_t bincount) const noexcept;
 
   std::string createSource() const noexcept;
 };

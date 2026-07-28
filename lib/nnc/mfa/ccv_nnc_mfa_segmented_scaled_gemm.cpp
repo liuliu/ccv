@@ -68,8 +68,8 @@ static ccv_nnc_mfa_segmented_scaled_gemm_plan_layout_t plan_layout(ccv_nnc_mfa_s
 {
   const ccv_nnc_mfa_activation_quant_layout_t a_layout = activation_quant_layout(params);
   const size_t records_offset = align_up(a_layout.scratch_bytes, 256);
-  const size_t records_per_segment = (params.originalM + kSegmentedScaledGEMMBlockM - 1) / kSegmentedScaledGEMMBlockM;
-  const size_t records = (size_t)params.segments * (records_per_segment > 0 ? records_per_segment : (size_t)1);
+  const size_t records_per_bin = (params.originalM + kSegmentedScaledGEMMBlockM - 1) / kSegmentedScaledGEMMBlockM;
+  const size_t records = (size_t)params.bincount * (records_per_bin > 0 ? records_per_bin : (size_t)1);
   const size_t records_bytes = align_up(records * sizeof(simd::uint4), 256);
   const size_t dispatch_offset = records_offset + records_bytes;
   return (ccv_nnc_mfa_segmented_scaled_gemm_plan_layout_t){
@@ -118,7 +118,9 @@ void ccv_nnc_mfa_encode_segmented_scaled_gemm(
 
   SegmentedScaledGEMMDescriptor segmentedDesc;
   segmentedDesc.ioPrecision = io_precision(params.data_type);
-  segmentedDesc.matrixDimensions = simd::uint4 { params.originalM, params.N, params.K, params.segments };
+  segmentedDesc.matrixDimensions = simd::uint3 { params.originalM, params.N, params.K };
+  segmentedDesc.expertCount = params.expert_count;
+  segmentedDesc.binCount = params.bincount;
   segmentedDesc.useBias = params.fused_bias;
   segmentedDesc.loadM = params.loadM;
 
@@ -135,7 +137,7 @@ void ccv_nnc_mfa_encode_segmented_scaled_gemm(
   const ccv_nnc_mfa_activation_quant_layout_t a_layout = activation_quant_layout(params);
   const ccv_nnc_mfa_segmented_scaled_gemm_plan_layout_t p_layout = plan_layout(params);
   auto scratch = context->request_scratch(p_layout.scratch_bytes);
-  const size_t b_scale_offset = rowwise_8i_scale_offset((size_t)params.segments * params.N, params.K);
+  const size_t b_scale_offset = rowwise_8i_scale_offset((size_t)params.expert_count * params.N, params.K);
 
   {
     auto encoder = command_batch->startCommand();
@@ -164,7 +166,7 @@ void ccv_nnc_mfa_encode_segmented_scaled_gemm(
     encoder->setBuffer(scratch, p_layout.records_offset, 2);
     encoder->setBuffer(scratch, p_layout.dispatch_offset, 3);
     if (segmentedDesc.loadM) {
-      const uint32_t maxTileRecords = segmentedKernel->maxTileRecords(params.originalM, params.segments);
+      const uint32_t maxTileRecords = segmentedKernel->maxTileRecords(params.originalM, params.bincount);
       encoder->setBytes(&maxTileRecords, sizeof(maxTileRecords), 4);
     }
     encoder->dispatchThreadgroups(MTL::Size(1, 1, 1), MTL::Size(256, 1, 1));

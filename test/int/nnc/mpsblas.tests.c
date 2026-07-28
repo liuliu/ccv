@@ -1515,36 +1515,41 @@ static float _mps_segmented_scaled_gemm_a_value(const int row, const int k)
 	return (float)(((row * 17 + k * 13) % 61) - 30) / 128.0f;
 }
 
-static float _mps_segmented_scaled_gemm_w_value(const int segment, const int col, const int k)
+static float _mps_segmented_scaled_gemm_w_value(const int expert, const int col, const int k)
 {
-	return (float)(((segment * 23 + col * 11 + k * 7) % 67) - 33) / 256.0f;
+	return (float)(((expert * 23 + col * 11 + k * 7) % 67) - 33) / 256.0f;
 }
 
-static float _mps_segmented_scaled_gemm_bias_value(const int segment, const int col)
+static float _mps_segmented_scaled_gemm_bias_value(const int expert, const int col)
 {
-	return (float)(((segment * 5 + col * 3) % 29) - 14) / 256.0f;
+	return (float)(((expert * 5 + col * 3) % 29) - 14) / 256.0f;
 }
 
-static int _mps_segmented_scaled_gemm_validate_format_shape(const int datatype, const int use_bias, const int force_fallback, const int format, const int total_m, double* const max_abs_ref, double* const max_rel_ref)
+static int _mps_segmented_scaled_gemm_validate_format_shape_experts(const int datatype, const int use_bias, const int force_fallback, const int format, const int total_m, const int expert_count, const int bincount, const int guard_output, double* const max_abs_ref, double* const max_rel_ref)
 {
 	const int n_dim = 128;
 	const int k_dim = 256;
-	const int segments = format ? 4 : 3;
-	const int counts_data_3[] = {
-		ccv_min(total_m, 129),
-		ccv_min(ccv_max(total_m - 129, 0), 131),
-		ccv_max(total_m - 260, 0),
-	};
-	const int indices_data_3[] = {1, 0, 2};
-	const int counts_data_4[] = {
-		ccv_min(total_m, 129),
-		0,
-		ccv_min(ccv_max(total_m - 129, 0), 131),
-		ccv_max(total_m - 260, 0),
-	};
-	const int indices_data_4[] = {2, 1, 0, 3};
-	const int* const counts_data = format ? counts_data_4 : counts_data_3;
-	const int* const indices_data = format ? indices_data_4 : indices_data_3;
+	assert(bincount > 0);
+	assert(expert_count >= bincount);
+	int* const counts_data = (int*)cccalloc(expert_count, sizeof(int));
+	int* const indices_data = (int*)ccmalloc(sizeof(int) * expert_count);
+	int remaining = total_m;
+	int i;
+	for (i = 0; i < bincount; i++)
+	{
+		const int remaining_bins = bincount - i;
+		counts_data[i] = (remaining + remaining_bins - 1) / remaining_bins;
+		remaining -= counts_data[i];
+		indices_data[i] = (i * 13 + 7) % expert_count;
+	}
+	// These entries are outside the declared views. They make an accidental
+	// expert-count loop deterministic and expose writes beyond the output view.
+	for (i = bincount; i < expert_count; i++)
+	{
+		counts_data[i] = guard_output;
+		indices_data[i] = i;
+	}
+	const int output_storage_rows = total_m + (guard_output ? expert_count - bincount : 0);
 	const ccv_nnc_tensor_param_t ha_params = {
 		.type = CCV_TENSOR_CPU_MEMORY,
 		.format = CCV_TENSOR_FORMAT_NHWC,
@@ -1555,13 +1560,13 @@ static int _mps_segmented_scaled_gemm_validate_format_shape(const int datatype, 
 		.type = CCV_TENSOR_CPU_MEMORY,
 		.format = CCV_TENSOR_FORMAT_NHWC,
 		.datatype = datatype,
-		.dim = { segments, n_dim, k_dim, 0 },
+		.dim = { expert_count, n_dim, k_dim, 0 },
 	};
 	const ccv_nnc_tensor_param_t hbias_params = {
 		.type = CCV_TENSOR_CPU_MEMORY,
 		.format = CCV_TENSOR_FORMAT_NHWC,
 		.datatype = datatype,
-		.dim = { segments, n_dim, 0 },
+		.dim = { expert_count, n_dim, 0 },
 	};
 	const ccv_nnc_tensor_param_t ga_params = {
 		.type = CCV_TENSOR_GPU_MEMORY | 000,
@@ -1573,13 +1578,13 @@ static int _mps_segmented_scaled_gemm_validate_format_shape(const int datatype, 
 		.type = CCV_TENSOR_GPU_MEMORY | 000,
 		.format = CCV_TENSOR_FORMAT_NHWC,
 		.datatype = datatype,
-		.dim = { segments, n_dim, k_dim, 0 },
+		.dim = { expert_count, n_dim, k_dim, 0 },
 	};
 	const ccv_nnc_tensor_param_t gbias_params = {
 		.type = CCV_TENSOR_GPU_MEMORY | 000,
 		.format = CCV_TENSOR_FORMAT_NHWC,
 		.datatype = datatype,
-		.dim = { segments, n_dim, 0 },
+		.dim = { expert_count, n_dim, 0 },
 	};
 	const ccv_nnc_tensor_param_t gb_params = {
 		.type = CCV_TENSOR_GPU_MEMORY | 000,
@@ -1593,101 +1598,129 @@ static int _mps_segmented_scaled_gemm_validate_format_shape(const int datatype, 
 		.datatype = datatype,
 		.dim = { total_m, n_dim, 0 },
 	};
+	const ccv_nnc_tensor_param_t gb_storage_params = {
+		.type = CCV_TENSOR_GPU_MEMORY | 000,
+		.format = CCV_TENSOR_FORMAT_NHWC,
+		.datatype = datatype,
+		.dim = { output_storage_rows, n_dim, 0 },
+	};
+	const ccv_nnc_tensor_param_t hb_storage_params = {
+		.type = CCV_TENSOR_CPU_MEMORY,
+		.format = CCV_TENSOR_FORMAT_NHWC,
+		.datatype = datatype,
+		.dim = { output_storage_rows, n_dim, 0 },
+	};
 	ccv_nnc_tensor_t* const ha = ccv_nnc_tensor_new(0, ha_params, 0);
-	ccv_nnc_tensor_t* const hindices = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, segments), 0);
-	ccv_nnc_tensor_t* const hcounts = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, segments), 0);
+	ccv_nnc_tensor_t* const hindices_storage = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, expert_count), 0);
+	ccv_nnc_tensor_t* const hcounts_storage = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, expert_count), 0);
+	ccv_nnc_tensor_view_t* const hindices = ccv_nnc_tensor_view_new(hindices_storage, CPU_TENSOR_NHWC(32S, bincount), ccv_nnc_no_ofs, DIM_ALLOC(1));
+	ccv_nnc_tensor_view_t* const hcounts = ccv_nnc_tensor_view_new(hcounts_storage, CPU_TENSOR_NHWC(32S, bincount), ccv_nnc_no_ofs, DIM_ALLOC(1));
 	ccv_nnc_tensor_t* const hwd = ccv_nnc_tensor_new(0, hwd_params, 0);
 	ccv_nnc_tensor_t* const hwq = ccv_nnc_tensor_new(0, format ? ccv_nnc_tensor_8i_rowwise_x(hwd_params, format) : ccv_nnc_tensor_8i_rowwise(hwd_params), 0);
 	ccv_nnc_tensor_t* const hbias = use_bias ? ccv_nnc_tensor_new(0, hbias_params, 0) : 0;
 	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, ga_params, 0);
-	ccv_nnc_tensor_t* const indices = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32S, segments), 0);
-	ccv_nnc_tensor_t* const counts = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32S, segments), 0);
+	ccv_nnc_tensor_t* const indices_storage = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32S, expert_count), 0);
+	ccv_nnc_tensor_t* const counts_storage = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32S, expert_count), 0);
+	ccv_nnc_tensor_view_t* const indices = ccv_nnc_tensor_view_new(indices_storage, GPU_TENSOR_NHWC(000, 32S, bincount), ccv_nnc_no_ofs, DIM_ALLOC(1));
+	ccv_nnc_tensor_view_t* const counts = ccv_nnc_tensor_view_new(counts_storage, GPU_TENSOR_NHWC(000, 32S, bincount), ccv_nnc_no_ofs, DIM_ALLOC(1));
 	ccv_nnc_tensor_t* const w = ccv_nnc_tensor_new(0, format ? ccv_nnc_tensor_8i_rowwise_x(gw_params, format) : ccv_nnc_tensor_8i_rowwise(gw_params), 0);
 	ccv_nnc_tensor_t* const bias = use_bias ? ccv_nnc_tensor_new(0, gbias_params, 0) : 0;
-	ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, gb_params, 0);
-	ccv_nnc_tensor_t* const hb = ccv_nnc_tensor_new(0, hb_params, 0);
+	ccv_nnc_tensor_t* const b_storage = ccv_nnc_tensor_new(0, gb_storage_params, 0);
+	ccv_nnc_tensor_view_t* const b = ccv_nnc_tensor_view_new(b_storage, gb_params, ccv_nnc_no_ofs, DIM_ALLOC(n_dim, 1));
+	ccv_nnc_tensor_t* const hb_storage = ccv_nnc_tensor_new(0, hb_storage_params, 0);
 	float* const a_values = (float*)ccmalloc(sizeof(float) * total_m * k_dim);
-	float* const w_values = (float*)ccmalloc(sizeof(float) * segments * n_dim * k_dim);
-	float* const bias_values = use_bias ? (float*)ccmalloc(sizeof(float) * segments * n_dim) : 0;
-	int i, j, k;
+	float* const w_values = (float*)ccmalloc(sizeof(float) * expert_count * n_dim * k_dim);
+	float* const bias_values = use_bias ? (float*)ccmalloc(sizeof(float) * expert_count * n_dim) : 0;
+	int j, k;
 	for (i = 0; i < total_m; i++)
 		for (k = 0; k < k_dim; k++)
 			a_values[i * k_dim + k] = _mps_segmented_scaled_gemm_a_value(i, k);
-	for (i = 0; i < segments; i++)
+	for (i = 0; i < expert_count; i++)
 		for (j = 0; j < n_dim; j++)
 			for (k = 0; k < k_dim; k++)
 				w_values[((i * n_dim) + j) * k_dim + k] = _mps_segmented_scaled_gemm_w_value(i, j, k);
 	if (use_bias)
-		for (i = 0; i < segments; i++)
+		for (i = 0; i < expert_count; i++)
 			for (j = 0; j < n_dim; j++)
 				bias_values[i * n_dim + j] = _mps_segmented_scaled_gemm_bias_value(i, j);
 	if (datatype == CCV_16F)
 	{
 		ccv_float_to_half_precision(a_values, (uint16_t*)ha->data.u8, total_m * k_dim);
-		ccv_float_to_half_precision(w_values, (uint16_t*)hwd->data.u8, segments * n_dim * k_dim);
+		ccv_float_to_half_precision(w_values, (uint16_t*)hwd->data.u8, expert_count * n_dim * k_dim);
 		if (use_bias)
-			ccv_float_to_half_precision(bias_values, (uint16_t*)hbias->data.u8, segments * n_dim);
+			ccv_float_to_half_precision(bias_values, (uint16_t*)hbias->data.u8, expert_count * n_dim);
 	} else if (datatype == CCV_16BF) {
 		ccv_float_to_bfloat(a_values, (uint16_t*)ha->data.u8, total_m * k_dim);
-		ccv_float_to_bfloat(w_values, (uint16_t*)hwd->data.u8, segments * n_dim * k_dim);
+		ccv_float_to_bfloat(w_values, (uint16_t*)hwd->data.u8, expert_count * n_dim * k_dim);
 		if (use_bias)
-			ccv_float_to_bfloat(bias_values, (uint16_t*)hbias->data.u8, segments * n_dim);
+			ccv_float_to_bfloat(bias_values, (uint16_t*)hbias->data.u8, expert_count * n_dim);
 	} else {
 		memcpy(ha->data.f32, a_values, sizeof(float) * total_m * k_dim);
-		memcpy(hwd->data.f32, w_values, sizeof(float) * segments * n_dim * k_dim);
+		memcpy(hwd->data.f32, w_values, sizeof(float) * expert_count * n_dim * k_dim);
 		if (use_bias)
-			memcpy(hbias->data.f32, bias_values, sizeof(float) * segments * n_dim);
+			memcpy(hbias->data.f32, bias_values, sizeof(float) * expert_count * n_dim);
 	}
-	memcpy(hindices->data.i32, indices_data, sizeof(int) * segments);
-	memcpy(hcounts->data.i32, counts_data, sizeof(int) * segments);
-	const size_t qsize = format ? ccv_nnc_quantize_8i_rowwise_x(hwd->data.u8, datatype, CCV_TENSOR_CPU_MEMORY, (size_t)segments * n_dim * k_dim, k_dim, format, 0, 0, hwq->data.u8, ccv_nnc_tensor_data_size_without_padding(hwq->info)) : ccv_nnc_quantize_8i_rowwise(hwd->data.u8, datatype, CCV_TENSOR_CPU_MEMORY, (size_t)segments * n_dim * k_dim, k_dim, 0, 0, hwq->data.u8, ccv_nnc_tensor_data_size_without_padding(hwq->info));
+	memcpy(hindices_storage->data.i32, indices_data, sizeof(int) * expert_count);
+	memcpy(hcounts_storage->data.i32, counts_data, sizeof(int) * expert_count);
+	const size_t qsize = format ? ccv_nnc_quantize_8i_rowwise_x(hwd->data.u8, datatype, CCV_TENSOR_CPU_MEMORY, (size_t)expert_count * n_dim * k_dim, k_dim, format, 0, 0, hwq->data.u8, ccv_nnc_tensor_data_size_without_padding(hwq->info)) : ccv_nnc_quantize_8i_rowwise(hwd->data.u8, datatype, CCV_TENSOR_CPU_MEMORY, (size_t)expert_count * n_dim * k_dim, k_dim, 0, 0, hwq->data.u8, ccv_nnc_tensor_data_size_without_padding(hwq->info));
 	if (qsize != ccv_nnc_tensor_data_size_without_padding(hwq->info))
 		return -1;
 	if (format)
-		ccv_nnc_dequantize_8i_rowwise_x(hwq->data.u8, datatype, CCV_TENSOR_CPU_MEMORY, qsize, k_dim, format, hwd->data.u8, (size_t)segments * n_dim * k_dim);
-	if (use_bias)
-		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha, hindices, hcounts, hwq, hbias), TENSOR_LIST(a, indices, counts, w, bias), 0);
+		ccv_nnc_dequantize_8i_rowwise_x(hwq->data.u8, datatype, CCV_TENSOR_CPU_MEMORY, qsize, k_dim, format, hwd->data.u8, (size_t)expert_count * n_dim * k_dim);
+	const float guard_value = 7;
+	float* const guard_values = (float*)ccmalloc(sizeof(float) * output_storage_rows * n_dim);
+	for (i = 0; i < output_storage_rows * n_dim; i++)
+		guard_values[i] = guard_value;
+	if (datatype == CCV_16F)
+		ccv_float_to_half_precision(guard_values, (uint16_t*)hb_storage->data.u8, output_storage_rows * n_dim);
+	else if (datatype == CCV_16BF)
+		ccv_float_to_bfloat(guard_values, (uint16_t*)hb_storage->data.u8, output_storage_rows * n_dim);
 	else
-		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha, hindices, hcounts, hwq), TENSOR_LIST(a, indices, counts, w), 0);
+		memcpy(hb_storage->data.f32, guard_values, sizeof(float) * output_storage_rows * n_dim);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(hb_storage), TENSOR_LIST(b_storage), 0);
+	if (use_bias)
+		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha, hindices_storage, hcounts_storage, hwq, hbias), TENSOR_LIST(a, indices_storage, counts_storage, w, bias), 0);
+	else
+		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha, hindices_storage, hcounts_storage, hwq), TENSOR_LIST(a, indices_storage, counts_storage, w), 0);
 	const uint64_t old_flags = ccv_nnc_flags();
 	if (force_fallback)
 		ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS);
 	int exec_status;
 	if (use_bias)
-		exec_status = ccv_nnc_cmd_exec(CMD_SEGMENTED_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(1, 2)), ccv_nnc_no_hint, 0, TENSOR_LIST(a, indices, counts, w, bias), TENSOR_LIST(b), 0);
+		exec_status = ccv_nnc_cmd_exec(CMD_SEGMENTED_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(1, 2)), ccv_nnc_no_hint, 0, TENSOR_LIST(a, (ccv_nnc_tensor_t*)indices, (ccv_nnc_tensor_t*)counts, w, bias), TENSOR_LIST((ccv_nnc_tensor_t*)b), 0);
 	else
-		exec_status = ccv_nnc_cmd_exec(CMD_SEGMENTED_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(1, 2)), ccv_nnc_no_hint, 0, TENSOR_LIST(a, indices, counts, w), TENSOR_LIST(b), 0);
+		exec_status = ccv_nnc_cmd_exec(CMD_SEGMENTED_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(1, 2)), ccv_nnc_no_hint, 0, TENSOR_LIST(a, (ccv_nnc_tensor_t*)indices, (ccv_nnc_tensor_t*)counts, w), TENSOR_LIST((ccv_nnc_tensor_t*)b), 0);
 	if (force_fallback && !(old_flags & CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS))
 		ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS);
-	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(b), TENSOR_LIST(hb), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(b_storage), TENSOR_LIST(hb_storage), 0);
 
 	float* const a_ref = (float*)ccmalloc(sizeof(float) * total_m * k_dim);
-	float* const w_ref = (float*)ccmalloc(sizeof(float) * segments * n_dim * k_dim);
-	float* const bias_ref = use_bias ? (float*)ccmalloc(sizeof(float) * segments * n_dim) : 0;
+	float* const w_ref = (float*)ccmalloc(sizeof(float) * expert_count * n_dim * k_dim);
+	float* const bias_ref = use_bias ? (float*)ccmalloc(sizeof(float) * expert_count * n_dim) : 0;
 	float* const actual = (float*)ccmalloc(sizeof(float) * total_m * n_dim);
 	ccv_nnc_tensor_t* const ha_ref = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, total_m, k_dim), 0);
-	ccv_nnc_tensor_t* const hw_ref = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, segments, n_dim, k_dim), 0);
-	ccv_nnc_tensor_t* const hbias_ref = use_bias ? ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, segments, n_dim), 0) : 0;
+	ccv_nnc_tensor_t* const hw_ref = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, expert_count, n_dim, k_dim), 0);
+	ccv_nnc_tensor_t* const hbias_ref = use_bias ? ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, expert_count, n_dim), 0) : 0;
 	ccv_nnc_tensor_t* const bt = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, total_m, n_dim), 0);
 	if (force_fallback)
 		_mps_forward_scaled_gemm_to_float(datatype, ha->data.u8, total_m * k_dim, a_ref);
 	else
 		_mps_forward_scaled_gemm_quantized_reference(datatype, ha->data.u8, total_m, k_dim, a_ref);
 	if (format)
-		_mps_forward_scaled_gemm_to_float(datatype, hwd->data.u8, segments * n_dim * k_dim, w_ref);
+		_mps_forward_scaled_gemm_to_float(datatype, hwd->data.u8, expert_count * n_dim * k_dim, w_ref);
 	else
-		_mps_forward_scaled_gemm_quantized_reference(datatype, hwd->data.u8, segments * n_dim, k_dim, w_ref);
+		_mps_forward_scaled_gemm_quantized_reference(datatype, hwd->data.u8, expert_count * n_dim, k_dim, w_ref);
 	if (use_bias)
-		_mps_forward_scaled_gemm_to_float(datatype, hbias->data.u8, segments * n_dim, bias_ref);
-	_mps_forward_scaled_gemm_to_float(datatype, hb->data.u8, total_m * n_dim, actual);
+		_mps_forward_scaled_gemm_to_float(datatype, hbias->data.u8, expert_count * n_dim, bias_ref);
+	_mps_forward_scaled_gemm_to_float(datatype, hb_storage->data.u8, total_m * n_dim, actual);
 	memcpy(ha_ref->data.f32, a_ref, sizeof(float) * total_m * k_dim);
-	memcpy(hw_ref->data.f32, w_ref, sizeof(float) * segments * n_dim * k_dim);
+	memcpy(hw_ref->data.f32, w_ref, sizeof(float) * expert_count * n_dim * k_dim);
 	if (use_bias)
-		memcpy(hbias_ref->data.f32, bias_ref, sizeof(float) * segments * n_dim);
+		memcpy(hbias_ref->data.f32, bias_ref, sizeof(float) * expert_count * n_dim);
 	if (use_bias)
-		ccv_nnc_cmd_exec(CMD_SEGMENTED_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(1, 2)), ccv_nnc_no_hint, 0, TENSOR_LIST(ha_ref, hindices, hcounts, hw_ref, hbias_ref), TENSOR_LIST(bt), 0);
+		ccv_nnc_cmd_exec(CMD_SEGMENTED_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(1, 2)), ccv_nnc_no_hint, 0, TENSOR_LIST(ha_ref, (ccv_nnc_tensor_t*)hindices, (ccv_nnc_tensor_t*)hcounts, hw_ref, hbias_ref), TENSOR_LIST(bt), 0);
 	else
-		ccv_nnc_cmd_exec(CMD_SEGMENTED_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(1, 2)), ccv_nnc_no_hint, 0, TENSOR_LIST(ha_ref, hindices, hcounts, hw_ref), TENSOR_LIST(bt), 0);
+		ccv_nnc_cmd_exec(CMD_SEGMENTED_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(1, 2)), ccv_nnc_no_hint, 0, TENSOR_LIST(ha_ref, (ccv_nnc_tensor_t*)hindices, (ccv_nnc_tensor_t*)hcounts, hw_ref), TENSOR_LIST(bt), 0);
 	double max_abs = 0;
 	double max_rel = 0;
 	for (i = 0; i < total_m * n_dim; i++)
@@ -1701,6 +1734,19 @@ static int _mps_segmented_scaled_gemm_validate_format_shape(const int datatype, 
 		*max_abs_ref = max_abs;
 	if (max_rel_ref)
 		*max_rel_ref = max_rel;
+	int guard_status = 0;
+	if (guard_output)
+	{
+		float* const guarded = (float*)ccmalloc(sizeof(float) * (output_storage_rows - total_m) * n_dim);
+		_mps_forward_scaled_gemm_to_float(datatype, hb_storage->data.u8 + ccv_nnc_tensor_data_size(hb_params), (output_storage_rows - total_m) * n_dim, guarded);
+		for (i = 0; i < (output_storage_rows - total_m) * n_dim; i++)
+			if (guarded[i] != guard_value)
+			{
+				guard_status = -2;
+				break;
+			}
+		ccfree(guarded);
+	}
 	ccv_nnc_tensor_free(bt);
 	if (hbias_ref)
 		ccv_nnc_tensor_free(hbias_ref);
@@ -1715,22 +1761,36 @@ static int _mps_segmented_scaled_gemm_validate_format_shape(const int datatype, 
 	ccfree(w_values);
 	if (bias_values)
 		ccfree(bias_values);
-	ccv_nnc_tensor_free(hb);
-	ccv_nnc_tensor_free(b);
+	ccfree(guard_values);
+	ccv_nnc_tensor_free(hb_storage);
+	ccv_nnc_tensor_view_free(b);
+	ccv_nnc_tensor_free(b_storage);
 	if (bias)
 		ccv_nnc_tensor_free(bias);
 	ccv_nnc_tensor_free(w);
-	ccv_nnc_tensor_free(counts);
-	ccv_nnc_tensor_free(indices);
+	ccv_nnc_tensor_view_free(counts);
+	ccv_nnc_tensor_view_free(indices);
+	ccv_nnc_tensor_free(counts_storage);
+	ccv_nnc_tensor_free(indices_storage);
 	ccv_nnc_tensor_free(a);
 	if (hbias)
 		ccv_nnc_tensor_free(hbias);
 	ccv_nnc_tensor_free(hwq);
 	ccv_nnc_tensor_free(hwd);
-	ccv_nnc_tensor_free(hcounts);
-	ccv_nnc_tensor_free(hindices);
+	ccv_nnc_tensor_view_free(hcounts);
+	ccv_nnc_tensor_view_free(hindices);
+	ccv_nnc_tensor_free(hcounts_storage);
+	ccv_nnc_tensor_free(hindices_storage);
 	ccv_nnc_tensor_free(ha);
-	return exec_status;
+	ccfree(indices_data);
+	ccfree(counts_data);
+	return exec_status != CCV_NNC_EXEC_SUCCESS ? exec_status : guard_status;
+}
+
+static int _mps_segmented_scaled_gemm_validate_format_shape(const int datatype, const int use_bias, const int force_fallback, const int format, const int total_m, double* const max_abs_ref, double* const max_rel_ref)
+{
+	const int expert_count = format ? 4 : 3;
+	return _mps_segmented_scaled_gemm_validate_format_shape_experts(datatype, use_bias, force_fallback, format, total_m, expert_count, expert_count, 0, max_abs_ref, max_rel_ref);
 }
 
 static int _mps_segmented_scaled_gemm_validate_format(const int datatype, const int use_bias, const int force_fallback, const int format, double* const max_abs_ref, double* const max_rel_ref)
@@ -1929,6 +1989,17 @@ TEST_CASE("mps segmented gemm with row-wise 8i-x weight NA")
 		REQUIRE_EQ(_mps_segmented_scaled_gemm_validate_format(CCV_16F, 0, 0, formats[i], &max_abs, &max_rel), 0, "segmented row-wise 8i-x NA validation should run for format=%d", formats[i]);
 		REQUIRE(max_rel < 3e-3, "segmented row-wise 8i-x fp16 should match selected-decode quantized reference for format=%d, max_abs=%g max_rel=%g", formats[i], max_abs, max_rel);
 	}
+}
+
+TEST_CASE("mps segmented gemm uses the declared bincount with a larger expert table")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SEGMENTED_GEMM_FORWARD, CCV_NNC_BACKEND_MPS));
+	double max_abs = 0;
+	double max_rel = 0;
+	const int status = _mps_segmented_scaled_gemm_validate_format_shape_experts(
+		CCV_16F, 0, 0, 0, 18, 256, 18, 1, &max_abs, &max_rel);
+	REQUIRE_EQ(status, 0, "segmented row-wise 8i should not read routing metadata or write output rows beyond the declared 18 bins");
+	REQUIRE(max_rel < 3e-3, "segmented row-wise 8i with 18 bins should match the quantized reference, max_abs=%g max_rel=%g", max_abs, max_rel);
 }
 
 TEST_CASE("mps segmented gemm with row-wise 8i-x weight fallback dequantize")

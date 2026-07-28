@@ -7,6 +7,8 @@
 bool SegmentedGEMMPrologueDescriptor::operator==(const SegmentedGEMMPrologueDescriptor& rhs) const {
   return
   simd_all(matrixDimensions == rhs.matrixDimensions) &&
+  expertCount == rhs.expertCount &&
+  binCount == rhs.binCount &&
   simd_all(blockDimensions == rhs.blockDimensions) &&
   memoryPrecisions == rhs.memoryPrecisions &&
   threadgroupSize == rhs.threadgroupSize &&
@@ -21,7 +23,8 @@ std::size_t std::hash<SegmentedGEMMPrologueDescriptor>::operator()(const Segment
   using namespace ccv::nnc::mfa::hash;
   combine_32(seed, hash.matrixDimensions[0]);
   combine_32(seed, hash.matrixDimensions[1]);
-  combine_32(seed, hash.matrixDimensions[2]);
+  combine_32(seed, hash.expertCount);
+  combine_32(seed, hash.binCount);
   combine_32(seed, hash.blockDimensions[0]);
   combine_32(seed, hash.blockDimensions[1]);
   combine_32(seed, hash.blockDimensions[2]);
@@ -54,12 +57,14 @@ std::pair<SegmentedGEMMPrologueKernelDescriptor, PipelineValue<SegmentedGEMMProl
     // Set the function constants.
     auto constants = NS::TransferPtr
     (MTL::FunctionConstantValues::alloc()->init());
-    uint32_t M = this->matrixDimensions[0];
-    uint32_t N = this->matrixDimensions[1];
-    uint32_t K = this->matrixDimensions[2];
-    constants->setConstantValue(&M, MTL::DataTypeUInt, NS::UInteger(0));
+    uint32_t binCount = this->binCount;
+    uint32_t N = this->matrixDimensions[0];
+    uint32_t K = this->matrixDimensions[1];
+    uint32_t expertCount = this->expertCount;
+    constants->setConstantValue(&binCount, MTL::DataTypeUInt, NS::UInteger(0));
     constants->setConstantValue(&N, MTL::DataTypeUInt, 1);
     constants->setConstantValue(&K, MTL::DataTypeUInt, 2);
+    constants->setConstantValue(&expertCount, MTL::DataTypeUInt, 8);
 
     uint32_t MBlock = this->blockDimensions[0];
     uint32_t NBlock = this->blockDimensions[1];
@@ -88,8 +93,8 @@ std::pair<SegmentedGEMMPrologueKernelDescriptor, PipelineValue<SegmentedGEMMProl
     icbDesc->setInheritPipelineState(false);
     icbDesc->setInheritBuffers(false);
     icbDesc->setMaxKernelBufferBindCount(5);
-    auto indirectCommandBuffer1 = NS::TransferPtr(device->newIndirectCommandBuffer(icbDesc.get(), M, MTL::ResourceStorageModePrivate));
-    auto indirectCommandBuffer2 = this->splitK > 1 ? NS::TransferPtr(device->newIndirectCommandBuffer(icbDesc.get(), M, MTL::ResourceStorageModePrivate)) : NS::SharedPtr<MTL::IndirectCommandBuffer>();
+    auto indirectCommandBuffer1 = NS::TransferPtr(device->newIndirectCommandBuffer(icbDesc.get(), binCount, MTL::ResourceStorageModePrivate));
+    auto indirectCommandBuffer2 = this->splitK > 1 ? NS::TransferPtr(device->newIndirectCommandBuffer(icbDesc.get(), binCount, MTL::ResourceStorageModePrivate)) : NS::SharedPtr<MTL::IndirectCommandBuffer>();
     return std::make_tuple(function, pipeline, indirectCommandBuffer1, indirectCommandBuffer2);
   };
   auto kernelDesc = SegmentedGEMMPrologueKernelDescriptor(this->memoryPrecisions, this->useBias, this->splitK);

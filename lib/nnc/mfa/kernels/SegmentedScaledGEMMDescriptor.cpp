@@ -22,7 +22,8 @@ bool SegmentedScaledGEMMDescriptor::operator==(const SegmentedScaledGEMMDescript
     (loadM || matrixDimensions[0] == rhs.matrixDimensions[0]) &&
     matrixDimensions[1] == rhs.matrixDimensions[1] &&
     matrixDimensions[2] == rhs.matrixDimensions[2] &&
-    matrixDimensions[3] == rhs.matrixDimensions[3] &&
+    expertCount == rhs.expertCount &&
+    binCount == rhs.binCount &&
     useBias == rhs.useBias;
 }
 
@@ -34,7 +35,8 @@ std::size_t std::hash<SegmentedScaledGEMMDescriptor>::operator()(const Segmented
   combine_32(seed, hash.loadM ? 0 : hash.matrixDimensions[0]);
   combine_32(seed, hash.matrixDimensions[1]);
   combine_32(seed, hash.matrixDimensions[2]);
-  combine_32(seed, hash.matrixDimensions[3]);
+  combine_32(seed, hash.expertCount);
+  combine_32(seed, hash.binCount);
   combine_32(seed, hash.useBias ? 1 : 0);
   combine_32(seed, hash.loadM ? 1 : 0);
   return seed;
@@ -75,18 +77,20 @@ std::pair<SegmentedScaledGEMMKernelDescriptor, PipelineValue<SegmentedScaledGEMM
     auto constants = NS::TransferPtr(MTL::FunctionConstantValues::alloc()->init());
     const uint32_t N = matrixDimensions[1];
     const uint32_t K = matrixDimensions[2];
-    const uint32_t segments = matrixDimensions[3];
+    const uint32_t expertCount = this->expertCount;
+    const uint32_t binCount = this->binCount;
     const uint32_t MBlock = kernel->blockDimensions[0];
     const uint32_t NBlock = kernel->blockDimensions[1];
     const uint32_t KBlock = kernel->blockDimensions[2];
     constants->setConstantValue(&N, MTL::DataTypeUInt, NS::UInteger(0));
     constants->setConstantValue(&K, MTL::DataTypeUInt, NS::UInteger(1));
-    constants->setConstantValue(&segments, MTL::DataTypeUInt, NS::UInteger(2));
+    constants->setConstantValue(&expertCount, MTL::DataTypeUInt, NS::UInteger(2));
     constants->setConstantValue(&MBlock, MTL::DataTypeUInt, NS::UInteger(3));
     constants->setConstantValue(&NBlock, MTL::DataTypeUInt, NS::UInteger(4));
     constants->setConstantValue(&KBlock, MTL::DataTypeUInt, NS::UInteger(5));
+    constants->setConstantValue(&binCount, MTL::DataTypeUInt, NS::UInteger(7));
     if (!loadM) {
-      const uint32_t maxRecords = kernel->maxTileRecords(matrixDimensions[0], segments);
+      const uint32_t maxRecords = kernel->maxTileRecords(matrixDimensions[0], binCount);
       constants->setConstantValue(&maxRecords, MTL::DataTypeUInt, NS::UInteger(6));
     }
     auto functionName = NS::String::string(functionNameString, NS::UTF8StringEncoding);

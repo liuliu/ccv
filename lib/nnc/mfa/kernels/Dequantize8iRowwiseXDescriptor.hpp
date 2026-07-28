@@ -47,7 +47,7 @@ struct Dequantize8iRowwiseXSelectedDescriptor {
 	uint32_t rowLength;
 	uint32_t rowsPerExpert;
 	uint32_t expertCount;
-	uint32_t segmentCount;
+	uint32_t binCount;
 
 	bool operator==(const Dequantize8iRowwiseXSelectedDescriptor& rhs) const;
 

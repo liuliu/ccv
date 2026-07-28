@@ -85,11 +85,12 @@ void ccv_nnc_mfa_encode_segmented_gemm(mfa::context* context, ccv_nnc_mfa_segmen
   }
   CCV_NNC_MFA_PRECONDITION((num_tensors == 5) || (num_tensors == 6))
   SegmentedGEMMPrologueDescriptor prologueDesc;
-  prologueDesc.matrixDimensions = simd::uint3 {
-    params.segments,
+  prologueDesc.matrixDimensions = simd::uint2 {
     params.N,
     params.K,
   };
+  prologueDesc.expertCount = params.expert_count;
+  prologueDesc.binCount = params.bincount;
   switch (params.data_type) {
     case MTL::DataTypeHalf: {
       prologueDesc.memoryPrecisions = {
@@ -231,7 +232,7 @@ void ccv_nnc_mfa_encode_segmented_gemm(mfa::context* context, ccv_nnc_mfa_segmen
       encoder->setBuffer(scratch, 0, num_tensors + 1);
     }
     MTL::Size gridSize(1, 1, 1);
-    MTL::Size groupSize(int64_t(params.segments), 1, 1);
+    MTL::Size groupSize(int64_t(params.bincount), 1, 1);
     // Dispatch the required number of threads.
     encoder->dispatchThreadgroups(gridSize, groupSize);
     // Finish the command.
@@ -250,7 +251,7 @@ void ccv_nnc_mfa_encode_segmented_gemm(mfa::context* context, ccv_nnc_mfa_segmen
       gemmEncoder->useResource(tensors[5], MTL::ResourceUsageRead);
     }
     gemmEncoder->useResource(indirectCommandBuffer1.get(), MTL::ResourceUsageRead);
-    gemmEncoder->executeCommandsInBuffer(indirectCommandBuffer1.get(), NS::Range::Make(0, params.segments));
+    gemmEncoder->executeCommandsInBuffer(indirectCommandBuffer1.get(), NS::Range::Make(0, params.bincount));
     command_batch->finishCommand(gemmEncoder);
     if (prologueDesc.splitK > 1) {
       auto reduceSumEncoder = command_batch->startCommand();
@@ -258,7 +259,7 @@ void ccv_nnc_mfa_encode_segmented_gemm(mfa::context* context, ccv_nnc_mfa_segmen
       reduceSumEncoder->useResource(scratch, MTL::ResourceUsageRead);
       reduceSumEncoder->useResource(tensors[4], MTL::ResourceUsageWrite);
       reduceSumEncoder->useResource(indirectCommandBuffer2.get(), MTL::ResourceUsageRead);
-      reduceSumEncoder->executeCommandsInBuffer(indirectCommandBuffer2.get(), NS::Range::Make(0, params.segments));
+      reduceSumEncoder->executeCommandsInBuffer(indirectCommandBuffer2.get(), NS::Range::Make(0, params.bincount));
       command_batch->finishCommand(reduceSumEncoder);
     }
   } else {
@@ -323,7 +324,7 @@ void ccv_nnc_mfa_encode_segmented_gemm(mfa::context* context, ccv_nnc_mfa_segmen
     encoder->useResource(argumentBuffer.get(), MTL::ResourceUsageRead);
     encoder->setBuffer(argumentBuffer.get(), 0, num_tensors);
     MTL::Size gridSize(1, 1, 1);
-    MTL::Size groupSize(int64_t(params.segments), 1, 1);
+    MTL::Size groupSize(int64_t(params.bincount), 1, 1);
     // Dispatch the required number of threads.
     encoder->dispatchThreadgroups(gridSize, groupSize);
     // Finish the command.
@@ -338,7 +339,7 @@ void ccv_nnc_mfa_encode_segmented_gemm(mfa::context* context, ccv_nnc_mfa_segmen
       gemmEncoder->useResource(tensors[5], MTL::ResourceUsageRead);
     }
     gemmEncoder->useResource(indirectCommandBuffer.get(), MTL::ResourceUsageRead);
-    gemmEncoder->executeCommandsInBuffer(indirectCommandBuffer.get(), NS::Range::Make(0, params.segments));
+    gemmEncoder->executeCommandsInBuffer(indirectCommandBuffer.get(), NS::Range::Make(0, params.bincount));
     command_batch->finishCommand(gemmEncoder);
   }
 }

@@ -168,7 +168,7 @@ bool Dequantize8iRowwiseXSelectedDescriptor::operator==(const Dequantize8iRowwis
 	rowLength == rhs.rowLength &&
 	rowsPerExpert == rhs.rowsPerExpert &&
 	expertCount == rhs.expertCount &&
-	segmentCount == rhs.segmentCount;
+	binCount == rhs.binCount;
 }
 
 uint32_t Dequantize8iRowwiseXSelectedDescriptor::groupSize() const noexcept {
@@ -228,7 +228,7 @@ std::size_t std::hash<Dequantize8iRowwiseXSelectedDescriptor>::operator()(const 
 	std::size_t seed = 0;
 	seed = combine_64(seed, pack_64(simd::uint2 { hash.format, hash.scaleSize }));
 	seed = combine_64(seed, pack_64(simd::uint2 { hash.rowLength, hash.rowsPerExpert }));
-	seed = combine_64(seed, pack_64(simd::uint2 { hash.expertCount, hash.segmentCount }));
+	seed = combine_64(seed, pack_64(simd::uint2 { hash.expertCount, hash.binCount }));
 	return seed;
 }
 
@@ -263,7 +263,7 @@ std::pair<Dequantize8iRowwiseXKernelDescriptor, PipelineValue<Dequantize8iRowwis
 		const uint32_t dispatchItemsPerExpert = this->dispatchItemsPerExpert();
 		const uint32_t rowsPerExpert = this->rowsPerExpert;
 		const uint32_t expertCount = this->expertCount;
-		const uint32_t segmentCount = this->segmentCount;
+		const uint32_t binCount = this->binCount;
 		constants->setConstantValue(&rowLength, MTL::DataTypeUInt, NS::UInteger(0));
 		constants->setConstantValue(&groupSize, MTL::DataTypeUInt, NS::UInteger(1));
 		constants->setConstantValue(&groupsPerRow, MTL::DataTypeUInt, NS::UInteger(2));
@@ -272,7 +272,7 @@ std::pair<Dequantize8iRowwiseXKernelDescriptor, PipelineValue<Dequantize8iRowwis
 		constants->setConstantValue(&dispatchItemsPerExpert, MTL::DataTypeUInt, NS::UInteger(11));
 		constants->setConstantValue(&rowsPerExpert, MTL::DataTypeUInt, NS::UInteger(12));
 		constants->setConstantValue(&expertCount, MTL::DataTypeUInt, NS::UInteger(13));
-		constants->setConstantValue(&segmentCount, MTL::DataTypeUInt, NS::UInteger(14));
+		constants->setConstantValue(&binCount, MTL::DataTypeUInt, NS::UInteger(14));
 
 		NS::String* swiftName = NS::String::string(functionName, NS::UTF8StringEncoding);
 		NS::Error* error = nil;

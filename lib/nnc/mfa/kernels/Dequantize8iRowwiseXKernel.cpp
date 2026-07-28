@@ -844,9 +844,9 @@ kernel void dequantize_8i_rowwise_x_selected_plan(
   if (lid != 0)
     return;
   uint active_count = 0;
-  for (uint segment = 0; segment < segment_count; ++segment) {
-    const int count = counts[segment];
-    const int expert_i = indices[segment];
+  for (uint bin = 0; bin < bincount; ++bin) {
+    const int count = counts[bin];
+    const int expert_i = indices[bin];
     if (count > 0 && expert_i >= 0 && expert_i < (int)expert_count)
       active_experts[active_count++] = (uint)expert_i;
   }
@@ -875,6 +875,6 @@ std::string Dequantize8iRowwiseXKernel::createConstants() const noexcept
 	defines += "constant uint selected_dispatch_items_per_expert [[function_constant(11)]];\n";
 	defines += "constant uint rows_per_expert [[function_constant(12)]];\n";
 	defines += "constant uint expert_count [[function_constant(13)]];\n";
-	defines += "constant uint segment_count [[function_constant(14)]];\n";
+	defines += "constant uint bincount [[function_constant(14)]];\n";
 	return defines;
 }

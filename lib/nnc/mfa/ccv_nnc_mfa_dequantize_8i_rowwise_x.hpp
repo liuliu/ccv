@@ -13,8 +13,8 @@ typedef struct {
 	uint32_t format;
 	uint64_t row_length;
 	uint64_t rows_per_expert;
-	uint64_t expert_count;
-	uint64_t segment_count;
+	uint64_t expert_count; // Number of expert weight matrices.
+	uint64_t bincount; // Number of entries in indices and counts.
 } ccv_nnc_mfa_dequantize_8i_rowwise_x_selected_params_t;
 
 #ifdef __cplusplus

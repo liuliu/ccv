@@ -13,8 +13,9 @@ typedef struct {
   uint8_t fused_bias;
   uint8_t register_float;
   uint8_t use_neural_accelerators;
-  
-  uint32_t segments;
+
+  uint32_t expert_count; // Number of expert weight matrices.
+  uint32_t bincount; // Number of entries in indices and counts.
 } ccv_nnc_mfa_segmented_gemm_params_t;
 
 #ifdef __cplusplus

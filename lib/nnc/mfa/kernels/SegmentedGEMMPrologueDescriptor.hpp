@@ -11,9 +11,8 @@ struct SegmentedGEMMPrologueKernelDescriptor;
 struct SegmentedGEMMPrologueKernel;
 
 struct SegmentedGEMMPrologueDescriptor {
-  /// The dimensions of the input and output matrices.
-  /// - Parameter M: Number of output columns (ignored).
-  /// - Parameter N: Number of output rows.
+  /// The dimensions shared by each expert matrix.
+  /// - Parameter N: Number of output columns.
   /// - Parameter K: Number of loop iterations for the dot products.
   ///
   /// For all practical purposes, one can assume matrix dimensions are 32-bit.
@@ -23,7 +22,10 @@ struct SegmentedGEMMPrologueDescriptor {
   /// in any reasonable application. Handling larger allocations likely
   /// requires consideration of more failure points than just integer
   /// overflows.
-  simd::uint3 matrixDimensions;
+  simd::uint2 matrixDimensions;
+
+  uint32_t expertCount;
+  uint32_t binCount;
 
   simd::ushort3 blockDimensions;
   

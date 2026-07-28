@@ -25,10 +25,10 @@ uint16_t SegmentedScaledGEMMKernel::threadgroupSize(MTL::ComputePipelineState* c
   return pipelineState->threadExecutionWidth() * executionSIMDGroups;
 }
 
-uint32_t SegmentedScaledGEMMKernel::maxTileRecords(uint32_t originalM, uint32_t segments) const noexcept
+uint32_t SegmentedScaledGEMMKernel::maxTileRecords(uint32_t originalM, uint32_t bincount) const noexcept
 {
-  const uint32_t tilesPerSegment = (originalM + blockDimensions[0] - 1) / blockDimensions[0];
-  return segments * (tilesPerSegment > 0 ? tilesPerSegment : 1u);
+  const uint32_t tilesPerBin = (originalM + blockDimensions[0] - 1) / blockDimensions[0];
+  return bincount * (tilesPerBin > 0 ? tilesPerBin : 1u);
 }
 
 std::string SegmentedScaledGEMMKernel::createSource() const noexcept
@@ -59,10 +59,11 @@ struct TileRecord {
 
 constant uint N [[function_constant(0)]];
 constant uint K [[function_constant(1)]];
-constant uint segments [[function_constant(2)]];
+constant uint expert_count [[function_constant(2)]];
 constant uint M_block [[function_constant(3)]];
 constant uint N_block [[function_constant(4)]];
 constant uint K_block [[function_constant(5)]];
+constant uint bincount [[function_constant(7)]];
 {{MAX_TILE_RECORDS_CONSTANT}}
 kernel void segmented_scaled_gemm_plan(
     device const int* indices [[buffer(0)]],
@@ -75,11 +76,11 @@ kernel void segmented_scaled_gemm_plan(
     return;
   uint row_offset = 0;
   uint record_count = 0;
-  for (uint segment = 0; segment < segments; ++segment) {
-    const int count_i = counts[segment];
-    const int expert_i = indices[segment];
+  for (uint bin = 0; bin < bincount; ++bin) {
+    const int count_i = counts[bin];
+    const int expert_i = indices[bin];
     const uint count = count_i > 0 ? (uint)count_i : 0u;
-    if (count > 0 && expert_i >= 0 && expert_i < (int)segments) {
+    if (count > 0 && expert_i >= 0 && expert_i < (int)expert_count) {
       for (uint local = 0; local < count; local += M_block) {
         if (record_count < max_tile_records) {
           records[record_count] = TileRecord {

@@ -41,7 +41,7 @@ struct Arguments {
   compute_pipeline_state pipeline2 [[id(3)]];
 };
 
-constant uint M [[function_constant(0)]];
+constant uint bincount [[function_constant(0)]];
 constant uint N [[function_constant(1)]];
 constant uint K [[function_constant(2)]];
 
@@ -51,6 +51,7 @@ constant uint N_block [[function_constant(4)]];
 constant uint threadgroup_size [[function_constant(5)]];
 constant uint threadgroup_memory_allocation [[function_constant(6)]];
 constant bool morton_order [[function_constant(7)]];
+constant uint expert_count [[function_constant(8)]];
 
 kernel void segmented_gemm_prologue(device {{MEMORY_NAME_A}} *A [[buffer(0)]],
                  device int *indices [[buffer(1)]],
@@ -82,7 +83,7 @@ kernel void segmented_gemm_prologue(device {{MEMORY_NAME_A}} *A [[buffer(0)]],
                  uint gid [[thread_position_in_grid]]
 )
 {
-  if (gid >= M)
+  if (gid >= bincount)
     return;
   if (counts[gid] <= 0)
     return;
@@ -91,6 +92,8 @@ kernel void segmented_gemm_prologue(device {{MEMORY_NAME_A}} *A [[buffer(0)]],
     offset += counts[i];
   compute_command cmd = compute_command(args->icb1, gid);
   const int idx = indices[gid];
+  if (idx < 0 || idx >= (int)expert_count)
+    return;
   const int count = counts[gid];
   cmd.reset();
   cmd.set_compute_pipeline_state(args->pipeline1);

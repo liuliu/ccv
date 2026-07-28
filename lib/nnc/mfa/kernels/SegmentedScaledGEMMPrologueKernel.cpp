@@ -31,12 +31,13 @@ struct Offsets {
   uint B_scale_offset;
 };
 
-constant uint segments [[function_constant(0)]];
+constant uint bincount [[function_constant(0)]];
 constant uint N [[function_constant(1)]];
 constant uint K [[function_constant(2)]];
 constant uint M_block [[function_constant(3)]];
 constant uint N_block [[function_constant(4)]];
 constant uint threadgroup_size [[function_constant(5)]];
+constant uint expert_count [[function_constant(6)]];
 
 kernel void segmented_scaled_gemm_prologue(device char *A_storage [[buffer(0)]],
                  device int *indices [[buffer(1)]],
@@ -58,7 +59,7 @@ kernel void segmented_scaled_gemm_prologue(device char *A_storage [[buffer(0)]],
   source += R"(
                  uint gid [[thread_position_in_grid]])
 {
-  if (gid >= segments)
+  if (gid >= bincount)
     return;
   if (counts[gid] <= 0)
     return;
@@ -67,6 +68,8 @@ kernel void segmented_scaled_gemm_prologue(device char *A_storage [[buffer(0)]],
     offset += counts[i];
   compute_command cmd = compute_command(args->icb1, gid);
   const int idx = indices[gid];
+  if (idx < 0 || idx >= (int)expert_count)
+    return;
   const int count = counts[gid];
   device int8_t *A = reinterpret_cast<device int8_t *>(A_storage);
   device int8_t *B = reinterpret_cast<device int8_t *>(B_storage);

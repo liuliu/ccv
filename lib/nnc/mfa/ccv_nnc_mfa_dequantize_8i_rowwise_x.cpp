@@ -33,7 +33,7 @@ static uint32_t scale_size_for_data_type(const uint64_t data_type) noexcept
 
 static ccv_nnc_mfa_dequantize_8i_rowwise_x_selected_scratch_layout_t selected_scratch_layout(ccv_nnc_mfa_dequantize_8i_rowwise_x_selected_params_t params) noexcept
 {
-	const size_t active_experts = params.segment_count > 0 ? (size_t)params.segment_count : 1;
+	const size_t active_experts = params.bincount > 0 ? (size_t)params.bincount : 1;
 	const size_t active_experts_bytes = align_up(active_experts * sizeof(uint32_t), 256);
 	const size_t dispatch_offset = active_experts_bytes;
 	return (ccv_nnc_mfa_dequantize_8i_rowwise_x_selected_scratch_layout_t){
@@ -112,7 +112,7 @@ void ccv_nnc_mfa_encode_dequantize_8i_rowwise_x_selected(ccv_nnc_mfa_context_t* 
 	CCV_NNC_MFA_PRECONDITION(params.row_length <= UINT32_MAX);
 	CCV_NNC_MFA_PRECONDITION(params.rows_per_expert <= UINT32_MAX);
 	CCV_NNC_MFA_PRECONDITION(params.expert_count <= UINT32_MAX);
-	CCV_NNC_MFA_PRECONDITION(params.segment_count <= UINT32_MAX);
+	CCV_NNC_MFA_PRECONDITION(params.bincount <= UINT32_MAX);
 	CCV_NNC_MFA_PRECONDITION(params.rows_per_expert == 0 || params.expert_count <= UINT32_MAX / params.rows_per_expert);
 	const uint64_t row_count = params.expert_count * params.rows_per_expert;
 	CCV_NNC_MFA_PRECONDITION(params.row_length == 0 || row_count <= UINT32_MAX / params.row_length);
@@ -120,7 +120,7 @@ void ccv_nnc_mfa_encode_dequantize_8i_rowwise_x_selected(ccv_nnc_mfa_context_t* 
 	descriptor.rowLength = (uint32_t)params.row_length;
 	descriptor.rowsPerExpert = (uint32_t)params.rows_per_expert;
 	descriptor.expertCount = (uint32_t)params.expert_count;
-	descriptor.segmentCount = (uint32_t)params.segment_count;
+	descriptor.binCount = (uint32_t)params.bincount;
 
 	auto pool = NS::AutoreleasePool::alloc()->init();
 	auto& shaderCache = context->kernel_cache;

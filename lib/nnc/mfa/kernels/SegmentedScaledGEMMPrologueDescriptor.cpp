@@ -8,6 +8,8 @@ bool SegmentedScaledGEMMPrologueDescriptor::operator==(const SegmentedScaledGEMM
 {
   return
     simd_all(matrixDimensions == rhs.matrixDimensions) &&
+    expertCount == rhs.expertCount &&
+    binCount == rhs.binCount &&
     simd_all(blockDimensions == rhs.blockDimensions) &&
     ioPrecision == rhs.ioPrecision &&
     useBias == rhs.useBias &&
@@ -20,7 +22,8 @@ std::size_t std::hash<SegmentedScaledGEMMPrologueDescriptor>::operator()(const S
   using namespace ccv::nnc::mfa::hash;
   combine_32(seed, hash.matrixDimensions[0]);
   combine_32(seed, hash.matrixDimensions[1]);
-  combine_32(seed, hash.matrixDimensions[2]);
+  combine_32(seed, hash.expertCount);
+  combine_32(seed, hash.binCount);
   combine_32(seed, hash.blockDimensions[0]);
   combine_32(seed, hash.blockDimensions[1]);
   combine_32(seed, hash.blockDimensions[2]);
@@ -55,18 +58,20 @@ std::pair<SegmentedScaledGEMMPrologueKernelDescriptor, PipelineValue<SegmentedSc
   auto createFunctionPipelineIndirect =
   [=](MTL::Library* library, SegmentedScaledGEMMPrologueKernel* kernel) -> std::tuple<NS::SharedPtr<MTL::Function>, NS::SharedPtr<MTL::ComputePipelineState>, NS::SharedPtr<MTL::IndirectCommandBuffer>> {
     auto constants = NS::TransferPtr(MTL::FunctionConstantValues::alloc()->init());
-    const uint32_t segments = this->matrixDimensions[0];
-    const uint32_t N = this->matrixDimensions[1];
-    const uint32_t K = this->matrixDimensions[2];
+    const uint32_t binCount = this->binCount;
+    const uint32_t N = this->matrixDimensions[0];
+    const uint32_t K = this->matrixDimensions[1];
+    const uint32_t expertCount = this->expertCount;
     const uint32_t MBlock = this->blockDimensions[0];
     const uint32_t NBlock = this->blockDimensions[1];
     const uint32_t threadgroupSize = this->threadgroupSize;
-    constants->setConstantValue(&segments, MTL::DataTypeUInt, NS::UInteger(0));
+    constants->setConstantValue(&binCount, MTL::DataTypeUInt, NS::UInteger(0));
     constants->setConstantValue(&N, MTL::DataTypeUInt, NS::UInteger(1));
     constants->setConstantValue(&K, MTL::DataTypeUInt, NS::UInteger(2));
     constants->setConstantValue(&MBlock, MTL::DataTypeUInt, NS::UInteger(3));
     constants->setConstantValue(&NBlock, MTL::DataTypeUInt, NS::UInteger(4));
     constants->setConstantValue(&threadgroupSize, MTL::DataTypeUInt, NS::UInteger(5));
+    constants->setConstantValue(&expertCount, MTL::DataTypeUInt, NS::UInteger(6));
 
     auto functionName = NS::String::string("segmented_scaled_gemm_prologue", NS::UTF8StringEncoding);
     NS::Error* error = nil;
@@ -79,7 +84,7 @@ std::pair<SegmentedScaledGEMMPrologueKernelDescriptor, PipelineValue<SegmentedSc
     icbDesc->setInheritPipelineState(false);
     icbDesc->setInheritBuffers(false);
     icbDesc->setMaxKernelBufferBindCount(this->useBias ? 7 : 6);
-    auto indirect = NS::TransferPtr(device->newIndirectCommandBuffer(icbDesc.get(), segments, MTL::ResourceStorageModePrivate));
+    auto indirect = NS::TransferPtr(device->newIndirectCommandBuffer(icbDesc.get(), binCount, MTL::ResourceStorageModePrivate));
     return std::make_tuple(function, pipeline, indirect);
   };
 

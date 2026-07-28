@@ -11,7 +11,9 @@ struct SegmentedScaledGEMMPrologueKernelDescriptor;
 struct SegmentedScaledGEMMPrologueKernel;
 
 struct SegmentedScaledGEMMPrologueDescriptor {
-  simd::uint3 matrixDimensions;
+  simd::uint2 matrixDimensions; // N, K.
+  uint32_t expertCount;
+  uint32_t binCount;
   simd::ushort3 blockDimensions;
   GEMMOperandPrecision ioPrecision;
   bool useBias;
