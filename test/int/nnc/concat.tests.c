@@ -52,6 +52,23 @@ TEST_CASE("concatenate several tensors together")
 	ccv_cnnp_model_free(full);
 }
 
+TEST_CASE("concatenate zero-dimensional tensors")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_FORMAT_TRANSFORM_FORWARD, CCV_NNC_BACKEND_MPS));
+	ccv_cnnp_model_t* const concat = ccv_cnnp_concat(1, "concat");
+	const ccv_nnc_tensor_param_t a_params = GPU_TENSOR_NHWC(000, 32F, 0, 64);
+	const ccv_nnc_tensor_param_t b_params = GPU_TENSOR_NHWC(000, 32F, 0, 64);
+	ccv_cnnp_model_compile(concat, TENSOR_PARAM_LIST(a_params, b_params), CMD_NOOP(), CMD_NOOP());
+	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, a_params, 0);
+	ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, b_params, 0);
+	ccv_nnc_tensor_t* const c = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 0), 0);
+	ccv_cnnp_model_evaluate(concat, (ccv_cnnp_evaluate_param_t){}, TENSOR_LIST(a, b), TENSOR_LIST(c), 0, 0);
+	ccv_nnc_tensor_free(a);
+	ccv_nnc_tensor_free(b);
+	ccv_nnc_tensor_free(c);
+	ccv_cnnp_model_free(concat);
+}
+
 TEST_CASE("concatenate several tensors together and make sure they are simplified away")
 {
 	GUARD_ELSE_RETURN((ccv_nnc_cmd_ok(CCV_NNC_SET_FORWARD, CCV_NNC_BACKEND_GPU_CUDNN) &&

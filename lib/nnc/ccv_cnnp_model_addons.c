@@ -364,8 +364,13 @@ static void _ccv_cnnp_concat_build(ccv_cnnp_model_t* const super, ccv_nnc_symbol
 		}
 	const int nd = ccv_nnc_tensor_nd(output_params.dim);
 	const int axis = self->axis;
-	assert(axis < nd);
-	output_params.dim[axis] = 0;
+	if (nd > 0)
+	{
+		assert(axis < nd);
+		output_params.dim[axis] = 0;
+	} else
+		for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC; i++)
+			output_params.dim[i] = 0;
 	int input_is_contiguous = 1;
 	for (i = 0; i < input_size; i++)
 	{
