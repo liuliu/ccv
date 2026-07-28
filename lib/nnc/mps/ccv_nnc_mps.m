@@ -1,6 +1,7 @@
 #include "ccv_nnc_mps.h"
 #include "ccv_internal.h"
 #include "nnc/ccv_nnc_internal.h"
+#include "nnc/_ccv_nnc_stream.h"
 #include "nnc/ccv_nnc_easy.h"
 #include "3rdparty/khash/khash.h"
 #include <string.h>

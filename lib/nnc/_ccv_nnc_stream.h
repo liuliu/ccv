@@ -51,12 +51,15 @@ CCV_WARN_UNUSED(co_scheduler_t*) ccv_nnc_stream_context_get_scheduler(ccv_nnc_st
 #define co_stream_await(_stream) do { if (!_co_stream_await(_self_, _stream)) { return (co_state_t){ __LINE__, 0 }; } case __LINE__: ; } while (0)
 int _co_stream_await(co_routine_t* const self, ccv_nnc_stream_context_t* const stream);
 
-typedef struct {
+typedef struct ccv_nnc_async_callback_s {
 	ccv_nnc_callback_f fn;
 	void* callback_context;
 } ccv_nnc_async_callback_t;
 
+#ifndef GUARD_ccv_nnc_async_callback_f
+#define GUARD_ccv_nnc_async_callback_f
 typedef void(*ccv_nnc_async_callback_f)(ccv_nnc_async_callback_t* const async);
+#endif
 
 KHASH_MAP_INIT_INT(stream_map, ccv_nnc_stream_context_t*);
 

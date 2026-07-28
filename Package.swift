@@ -90,7 +90,7 @@ let package = Package(
                 "scheme.mk",
                 ".ycm_extra_conf.py",
             ],
-            publicHeadersPath: ".",
+            publicHeadersPath: "include",
             cSettings: [
                 .headerSearchPath("."),
                 .define("HAVE_CBLAS"),
@@ -160,7 +160,7 @@ let package = Package(
                 "cmd/upsample/gpu",
                 "cmd/util/gpu",
             ],
-            publicHeadersPath: ".",
+            publicHeadersPath: "include",
             cSettings: [
                 .headerSearchPath("."),
                 .headerSearchPath(".."),
