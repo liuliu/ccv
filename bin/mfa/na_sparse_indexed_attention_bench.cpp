@@ -339,12 +339,12 @@ int main(int argc, char** argv)
   fill_sparse_indexed_attention_inputs(q_f32, dense_f32, sparse_f32, indices_i32, sinks_f32, config);
   fill_sdpa_baseline_inputs(baseline_source_f32, shared_gather_indices_i32, token_gather_indices_i32, shared_mask_f32, token_mask_f32, dense_f32, sparse_f32, indices_i32, config);
 
-  ccv_nnc_tensor_t* const hq = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, config.T, config.H, config.D), 0);
-  ccv_nnc_tensor_t* const hdense = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, config.dense_rows, config.D), 0);
-  ccv_nnc_tensor_t* const hsparse = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, config.sparse_rows, config.D), 0);
+  ccv_nnc_tensor_t* const hq = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, 1, config.T, config.H, config.D), 0);
+  ccv_nnc_tensor_t* const hdense = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, 1, config.dense_rows, 1, config.D), 0);
+  ccv_nnc_tensor_t* const hsparse = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, 1, config.sparse_rows, 1, config.D), 0);
   const ccv_nnc_tensor_param_t hindices_params = (index_columns == 0) ? CPU_TENSOR_NHWC(32S, config.T) : CPU_TENSOR_NHWC(32S, config.T, index_columns);
   ccv_nnc_tensor_t* const hindices = ccv_nnc_tensor_new(0, hindices_params, 0);
-  ccv_nnc_tensor_t* const hsinks = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, config.H), 0);
+  ccv_nnc_tensor_t* const hsinks = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, 1, 1, config.H, 1), 0);
   ccv_nnc_tensor_t* const hbaseline_source = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, config.dense_rows + config.sparse_rows, config.D), 0);
   ccv_nnc_tensor_t* const hshared_gather_indices = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, baseline_rows), 0);
   ccv_nnc_tensor_t* const htoken_gather_indices = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, (int)token_index_count), 0);
@@ -361,13 +361,13 @@ int main(int argc, char** argv)
   ccv_float_to_half_precision(shared_mask_f32.data(), (uint16_t*)hshared_mask->data.f16, (int)baseline_mask_count);
   ccv_float_to_half_precision(token_mask_f32.data(), (uint16_t*)htoken_mask->data.f16, (int)baseline_mask_count);
 
-  ccv_nnc_tensor_t* const q = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, config.T, config.H, config.D), 0);
-  ccv_nnc_tensor_t* const dense = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, config.dense_rows, config.D), 0);
-  ccv_nnc_tensor_t* const sparse = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, config.sparse_rows, config.D), 0);
+  ccv_nnc_tensor_t* const q = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, 1, config.T, config.H, config.D), 0);
+  ccv_nnc_tensor_t* const dense = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, 1, config.dense_rows, 1, config.D), 0);
+  ccv_nnc_tensor_t* const sparse = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, 1, config.sparse_rows, 1, config.D), 0);
   const ccv_nnc_tensor_param_t indices_params = (index_columns == 0) ? GPU_TENSOR_NHWC(000, 32S, config.T) : GPU_TENSOR_NHWC(000, 32S, config.T, index_columns);
   ccv_nnc_tensor_t* const indices = ccv_nnc_tensor_new(0, indices_params, 0);
-  ccv_nnc_tensor_t* const sinks = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, config.H), 0);
-  ccv_nnc_tensor_t* const out = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, config.T, config.H, config.D), 0);
+  ccv_nnc_tensor_t* const sinks = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, 1, 1, config.H, 1), 0);
+  ccv_nnc_tensor_t* const out = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, 1, config.T, config.H, config.D), 0);
   ccv_nnc_tensor_t* const baseline_source = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, config.dense_rows + config.sparse_rows, config.D), 0);
   ccv_nnc_tensor_t* const shared_gather_indices = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32S, baseline_rows), 0);
   ccv_nnc_tensor_t* const token_gather_indices = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32S, (int)token_index_count), 0);

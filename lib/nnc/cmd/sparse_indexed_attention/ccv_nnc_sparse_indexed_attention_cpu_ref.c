@@ -7,6 +7,22 @@
 #include <math.h>
 #include <string.h>
 
+static int _ccv_nnc_sparse_indexed_attention_dense_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const q, ccv_nnc_tensor_t* const dense_k, ccv_nnc_tensor_t* const dense_v, ccv_nnc_tensor_t* const sinks, ccv_nnc_tensor_t* const out, ccv_nnc_stream_context_t* const stream_context)
+{
+	ccv_nnc_cmd_t attention = CMD_SCALED_DOT_PRODUCT_ATTENTION_FORWARD(cmd.info.sparse_indexed_attention.scale, cmd.info.sparse_indexed_attention.is_causal);
+	attention.info.scaled_dot_product_attention.attention_sinks = cmd.info.sparse_indexed_attention.attention_sinks;
+	attention.info.scaled_dot_product_attention.sliding_window = cmd.info.sparse_indexed_attention.sliding_window;
+	ccv_nnc_tensor_t* attention_inputs[] = {
+		q,
+		dense_k,
+		dense_v,
+		0, 0, 0, 0, 0,
+		sinks,
+	};
+	ccv_nnc_tensor_t* attention_outputs[] = { out };
+	return ccv_nnc_cmd_exec(attention, hint, flags, attention_inputs, sinks ? 9 : 3, attention_outputs, 1, stream_context);
+}
+
 static inline void _ccv_nnc_sparse_indexed_attention_attend_row(const float* const q, const float* const k, const float* const v, const int D, const float scale, double* const maxval, double* const sumval, double* const acc)
 {
 	int d;
@@ -77,33 +93,50 @@ static int _ccv_nnc_sparse_indexed_attention_forw(const ccv_nnc_cmd_t cmd, const
 	const int q_nd = ccv_nnc_tensor_nd(q->info.dim);
 	const int dense_k_nd = ccv_nnc_tensor_nd(dense_k->info.dim);
 	const int dense_v_nd = ccv_nnc_tensor_nd(dense_v->info.dim);
-	const int sparse_k_nd = ccv_nnc_tensor_nd(sparse_k->info.dim);
-	const int sparse_v_nd = ccv_nnc_tensor_nd(sparse_v->info.dim);
 	const int indices_nd = ccv_nnc_tensor_nd(indices->info.dim);
 	const int out_nd = ccv_nnc_tensor_nd(out->info.dim);
-	assert(q_nd == 3);
-	assert(dense_k_nd == 2);
-	assert(dense_v_nd == 2);
-	assert(sparse_k_nd == 2);
-	assert(sparse_v_nd == 2);
+	assert(q_nd == 4);
+	assert(dense_k_nd == 4);
+	assert(dense_v_nd == 4);
 	assert(indices_nd == 1 || indices_nd == 2);
-	assert(out_nd == 3);
-	const int T = q->info.dim[0];
-	const int H = q->info.dim[1];
-	const int D = q->info.dim[2];
-	const int dense_rows = dense_k->info.dim[0];
-	const int sparse_rows = sparse_k->info.dim[0];
+	assert(out_nd == 4);
+	const int batch_size = q->info.dim[0];
+	const int T = q->info.dim[1];
+	const int H = q->info.dim[2];
+	const int D = q->info.dim[3];
+	const int dense_rows = dense_k->info.dim[1];
 	const int K = (indices_nd == 1) ? 0 : indices->info.dim[1];
-	assert(dense_k->info.dim[1] == D);
-	assert(dense_v->info.dim[0] == dense_rows);
-	assert(dense_v->info.dim[1] == D);
-	assert(sparse_k->info.dim[1] == D);
-	assert(sparse_v->info.dim[0] == sparse_rows);
-	assert(sparse_v->info.dim[1] == D);
+	assert(batch_size == 1);
+	assert(dense_k->info.dim[0] == batch_size);
+	assert(dense_k->info.dim[2] == 1);
+	assert(dense_k->info.dim[3] == D);
+	assert(dense_v->info.dim[0] == batch_size);
+	assert(dense_v->info.dim[1] == dense_rows);
+	assert(dense_v->info.dim[2] == 1);
+	assert(dense_v->info.dim[3] == D);
 	assert(indices->info.dim[0] == T);
-	assert(out->info.dim[0] == T);
-	assert(out->info.dim[1] == H);
-	assert(out->info.dim[2] == D);
+	assert(out->info.dim[0] == batch_size);
+	assert(out->info.dim[1] == T);
+	assert(out->info.dim[2] == H);
+	assert(out->info.dim[3] == D);
+	const int sparse_k_is_empty = sparse_k->info.dim[0] == 0;
+	const int sparse_v_is_empty = sparse_v->info.dim[0] == 0;
+	if (sparse_k_is_empty != sparse_v_is_empty)
+		return CCV_NNC_EXEC_INVALID;
+	if (sparse_k_is_empty)
+		return _ccv_nnc_sparse_indexed_attention_dense_forw(cmd, hint, flags, inputs[0], inputs[1], inputs[2], sinks ? inputs[6] : 0, outputs[0], stream_context);
+	const int sparse_k_nd = ccv_nnc_tensor_nd(sparse_k->info.dim);
+	const int sparse_v_nd = ccv_nnc_tensor_nd(sparse_v->info.dim);
+	assert(sparse_k_nd == 4);
+	assert(sparse_v_nd == 4);
+	const int sparse_rows = sparse_k->info.dim[1];
+	assert(sparse_k->info.dim[0] == batch_size);
+	assert(sparse_k->info.dim[2] == 1);
+	assert(sparse_k->info.dim[3] == D);
+	assert(sparse_v->info.dim[0] == batch_size);
+	assert(sparse_v->info.dim[1] == sparse_rows);
+	assert(sparse_v->info.dim[2] == 1);
+	assert(sparse_v->info.dim[3] == D);
 	uint32_t sink_head_stride = 0;
 	if (sinks)
 	{
@@ -166,7 +199,7 @@ static int _ccv_nnc_sparse_indexed_attention_back(const ccv_nnc_cmd_t cmd, const
 
 REGISTER_COMMAND_BACKEND(CCV_NNC_SPARSE_INDEXED_ATTENTION_FORWARD, CCV_NNC_BACKEND_CPU_REF)(ccv_nnc_cmd_backend_registry_t* const registry)
 {
-	registry->tensor_formats = CCV_TENSOR_FORMAT_NHWC | CCV_TENSOR_FORMAT_NCHW;
+	registry->tensor_formats = CCV_TENSOR_FORMAT_NHWC;
 	registry->tensor_datatypes = CCV_32F | CCV_32S;
 	registry->tensor_memory = CCV_TENSOR_CPU_MEMORY;
 	registry->algorithms = 1;

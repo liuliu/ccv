@@ -9293,13 +9293,13 @@ TEST_CASE("scaled dot product arg partition with MFA BF16 DS4-native shape")
 
 TEST_CASE("sparse indexed attention cpu reference applies dense causal window and sparse terminator")
 {
-	ccv_nnc_tensor_t* const q = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 4, 1, 1), 0);
-	ccv_nnc_tensor_t* const dense_k = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 1), 0);
-	ccv_nnc_tensor_t* const dense_v = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 1), 0);
-	ccv_nnc_tensor_t* const sparse_k = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 3, 1), 0);
-	ccv_nnc_tensor_t* const sparse_v = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 3, 1), 0);
+	ccv_nnc_tensor_t* const q = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, 4, 1, 1), 0);
+	ccv_nnc_tensor_t* const dense_k = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, 2, 1, 1), 0);
+	ccv_nnc_tensor_t* const dense_v = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, 2, 1, 1), 0);
+	ccv_nnc_tensor_t* const sparse_k = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, 3, 1, 1), 0);
+	ccv_nnc_tensor_t* const sparse_v = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, 3, 1, 1), 0);
 	ccv_nnc_tensor_t* const indices = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, 4, 3), 0);
-	ccv_nnc_tensor_t* const out = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 4, 1, 1), 0);
+	ccv_nnc_tensor_t* const out = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, 4, 1, 1), 0);
 	int i;
 	for (i = 0; i < 4; i++)
 		q->data.f32[i] = 1;
@@ -9381,14 +9381,14 @@ TEST_CASE("sparse indexed attention cpu reference applies dense causal window an
 
 TEST_CASE("sparse indexed attention cpu reference applies attention sink to denominator only")
 {
-	ccv_nnc_tensor_t* const q = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 1, 1), 0);
-	ccv_nnc_tensor_t* const dense_k = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, 1), 0);
-	ccv_nnc_tensor_t* const dense_v = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, 1), 0);
-	ccv_nnc_tensor_t* const sparse_k = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, 1), 0);
-	ccv_nnc_tensor_t* const sparse_v = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, 1), 0);
+	ccv_nnc_tensor_t* const q = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, 2, 1, 1), 0);
+	ccv_nnc_tensor_t* const dense_k = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, 1, 1, 1), 0);
+	ccv_nnc_tensor_t* const dense_v = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, 1, 1, 1), 0);
+	ccv_nnc_tensor_t* const sparse_k = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, 1, 1, 1), 0);
+	ccv_nnc_tensor_t* const sparse_v = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, 1, 1, 1), 0);
 	ccv_nnc_tensor_t* const indices = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, 2, 1), 0);
-	ccv_nnc_tensor_t* const sinks = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1), 0);
-	ccv_nnc_tensor_t* const out = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 1, 1), 0);
+	ccv_nnc_tensor_t* const sinks = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, 1, 1, 1), 0);
+	ccv_nnc_tensor_t* const out = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, 2, 1, 1), 0);
 	q->data.f32[0] = q->data.f32[1] = 1;
 	dense_k->data.f32[0] = 0;
 	dense_v->data.f32[0] = 0;
@@ -9439,21 +9439,22 @@ static int _mps_sparse_indexed_attention_compare(const int datatype, const int a
 	const int dense_count = dense_rows * D;
 	const int sparse_count = sparse_rows * D;
 	int status = 0;
-	ccv_nnc_tensor_t* const hq = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, T, H, D), 0);
-	ccv_nnc_tensor_t* const hdense = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, dense_rows, D), 0);
-	ccv_nnc_tensor_t* const hsparse = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, sparse_rows, D), 0);
+	ccv_nnc_tensor_t* const hq = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, T, H, D), 0);
+	ccv_nnc_tensor_t* const hdense = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, dense_rows, 1, D), 0);
+	const ccv_nnc_tensor_param_t hsparse_params = sparse_rows == 0 ? CPU_TENSOR_NHWC(32F, 0) : CPU_TENSOR_NHWC(32F, 1, sparse_rows, 1, D);
+	ccv_nnc_tensor_t* const hsparse = ccv_nnc_tensor_new(0, hsparse_params, 0);
 	ccv_nnc_tensor_param_t hindices_params = K == 0 ? CPU_TENSOR_NHWC(32S, T) : CPU_TENSOR_NHWC(32S, T, K);
 	ccv_nnc_tensor_t* const hindices = ccv_nnc_tensor_new(0, hindices_params, 0);
-	ccv_nnc_tensor_t* const hsinks = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, H), 0);
-	ccv_nnc_tensor_t* const href = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, T, H, D), 0);
+	ccv_nnc_tensor_t* const hsinks = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, 1, H, 1), 0);
+	ccv_nnc_tensor_t* const href = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, T, H, D), 0);
 	_mps_sparse_indexed_attention_fill(T, H, D, dense_rows, sparse_rows, K, hq->data.f32, hdense->data.f32, hsparse->data.f32, hindices->data.i32, hsinks->data.f32);
-	ccv_nnc_tensor_param_t q_input_params = CPU_TENSOR_NHWC(32F, T, H, D);
+	ccv_nnc_tensor_param_t q_input_params = CPU_TENSOR_NHWC(32F, 1, T, H, D);
 	q_input_params.datatype = datatype;
-	ccv_nnc_tensor_param_t dense_input_params = CPU_TENSOR_NHWC(32F, dense_rows, D);
+	ccv_nnc_tensor_param_t dense_input_params = CPU_TENSOR_NHWC(32F, 1, dense_rows, 1, D);
 	dense_input_params.datatype = datatype;
-	ccv_nnc_tensor_param_t sparse_input_params = CPU_TENSOR_NHWC(32F, sparse_rows, D);
+	ccv_nnc_tensor_param_t sparse_input_params = sparse_rows == 0 ? CPU_TENSOR_NHWC(32F, 0) : CPU_TENSOR_NHWC(32F, 1, sparse_rows, 1, D);
 	sparse_input_params.datatype = datatype;
-	ccv_nnc_tensor_param_t sinks_input_params = CPU_TENSOR_NHWC(32F, H);
+	ccv_nnc_tensor_param_t sinks_input_params = CPU_TENSOR_NHWC(32F, 1, 1, H, 1);
 	sinks_input_params.datatype = datatype;
 	ccv_nnc_tensor_t* const hq_input = ccv_nnc_tensor_new(0, q_input_params, 0);
 	ccv_nnc_tensor_t* const hdense_input = ccv_nnc_tensor_new(0, dense_input_params, 0);
@@ -9477,13 +9478,13 @@ static int _mps_sparse_indexed_attention_compare(const int datatype, const int a
 		status = -1;
 		goto cleanup_host;
 	}
-	ccv_nnc_tensor_param_t q_params = GPU_TENSOR_NHWC(000, 32F, T, H, D);
+	ccv_nnc_tensor_param_t q_params = GPU_TENSOR_NHWC(000, 32F, 1, T, H, D);
 	q_params.datatype = datatype;
-	ccv_nnc_tensor_param_t dense_params = GPU_TENSOR_NHWC(000, 32F, dense_rows, D);
+	ccv_nnc_tensor_param_t dense_params = GPU_TENSOR_NHWC(000, 32F, 1, dense_rows, 1, D);
 	dense_params.datatype = datatype;
-	ccv_nnc_tensor_param_t sparse_params = GPU_TENSOR_NHWC(000, 32F, sparse_rows, D);
+	ccv_nnc_tensor_param_t sparse_params = sparse_rows == 0 ? GPU_TENSOR_NHWC(000, 32F, 0) : GPU_TENSOR_NHWC(000, 32F, 1, sparse_rows, 1, D);
 	sparse_params.datatype = datatype;
-	ccv_nnc_tensor_param_t sinks_params = GPU_TENSOR_NHWC(000, 32F, H);
+	ccv_nnc_tensor_param_t sinks_params = GPU_TENSOR_NHWC(000, 32F, 1, 1, H, 1);
 	sinks_params.datatype = datatype;
 	ccv_nnc_tensor_t* const q = ccv_nnc_tensor_new(0, q_params, 0);
 	ccv_nnc_tensor_t* const dense = ccv_nnc_tensor_new(0, dense_params, 0);
@@ -9572,6 +9573,8 @@ TEST_CASE("sparse indexed attention with MFA FP16 DS4-native shape")
 	REQUIRE_EQ(sparse_status, 0, "MFA FP16 sparse indexed attention should match CPU reference");
 	const int dense_status = _mps_sparse_indexed_attention_compare(CCV_16F, -1, 5, 512, 37, 1, 0, 1, 0, 1e-2, &max_abs, &max_relative, &max_idx, &expected, &actual);
 	REQUIRE_EQ(dense_status, 0, "MFA FP16 dense-only sparse indexed attention should match CPU reference");
+	const int empty_sparse_status = _mps_sparse_indexed_attention_compare(CCV_16F, -1, 5, 512, 37, 0, 0, 1, 0, 1e-2, &max_abs, &max_relative, &max_idx, &expected, &actual);
+	REQUIRE_EQ(empty_sparse_status, 0, "empty sparse indexed attention should fall back to dense scaled dot product attention");
 	const int threadgroup16_status = _mps_sparse_indexed_attention_compare(CCV_16F, 0, 5, 512, 4, 8, 4, 1, 0, 1e-2, &max_abs, &max_relative, &max_idx, &expected, &actual);
 	REQUIRE_EQ(threadgroup16_status, 0, "MFA FP16 sparse indexed attention threadgroup16 should match CPU reference");
 	const int threadgroup24_status = _mps_sparse_indexed_attention_compare(CCV_16F, 1, 5, 512, 4, 8, 4, 1, 0, 1e-2, &max_abs, &max_relative, &max_idx, &expected, &actual);
