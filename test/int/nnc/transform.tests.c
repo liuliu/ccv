@@ -79,6 +79,21 @@ TEST_CASE("mps transpose skips empty tensors")
 	ccv_nnc_tensor_free(b);
 }
 
+TEST_CASE("mps format transform skips empty tensors across formats")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_FORMAT_TRANSFORM_FORWARD, CCV_NNC_BACKEND_MPS));
+	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, GPU_TENSOR_CHWN(000, 16F, 0, 128), 0);
+	ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, 0, 128), 0);
+	ccv_nnc_cmd_t transform = CMD_FORMAT_TRANSFORM_FORWARD();
+	transform.backend = CCV_NNC_BACKEND_MPS;
+	REQUIRE_EQ(
+		CCV_NNC_EXEC_SUCCESS,
+		ccv_nnc_cmd_exec(transform, ccv_nnc_no_hint, 0, TENSOR_LIST(a), TENSOR_LIST(b), 0),
+		"empty cross-format transform should be skipped");
+	ccv_nnc_tensor_free(a);
+	ccv_nnc_tensor_free(b);
+}
+
 TEST_CASE("data conversion from double to half precision")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_DATATYPE_CONVERSION_FORWARD, CCV_NNC_BACKEND_GPU_REF));

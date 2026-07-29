@@ -256,6 +256,8 @@ static int _ccv_nnc_format_transform(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint
 		{
 			const ccv_nnc_tensor_view_t* const a = (const ccv_nnc_tensor_view_t*)inputs[i];
 			const ccv_nnc_tensor_view_t* const b = (const ccv_nnc_tensor_view_t*)outputs[i];
+			if (ccv_nnc_tensor_count(a->info) == 0 || ccv_nnc_tensor_count(b->info) == 0)
+				continue;
 			// If this is just normal data transfer, do this.
 			if (a->info.format == b->info.format && CCV_IS_TENSOR_CONTIGUOUS(a) && CCV_IS_TENSOR_CONTIGUOUS(b) && ccv_nnc_tensor_count(a->info) == ccv_nnc_tensor_count(b->info) && CCV_GET_DATA_TYPE_SIZE(a->info.datatype) == CCV_GET_DATA_TYPE_SIZE(b->info.datatype))
 			{
