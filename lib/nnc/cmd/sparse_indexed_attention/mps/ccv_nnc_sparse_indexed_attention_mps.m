@@ -126,18 +126,23 @@ static int _ccv_nnc_sparse_indexed_attention_forw(const ccv_nnc_cmd_t cmd, const
 			return CCV_NNC_EXEC_INVALID;
 		if (mtl_data_type == 121 && !ccv_nnc_mfa_neural_accelerators_support_bfloat(context))
 			return CCV_NNC_EXEC_INVALID;
-		if (cmd.algorithm >= 6)
+		if (cmd.algorithm >= 7)
 			return CCV_NNC_EXEC_INVALID;
 		if (cmd.algorithm == 2)
 			return CCV_NNC_EXEC_INVALID;
 		const int force_neural_accelerators = cmd.algorithm >= 0 && cmd.algorithm < 5;
 		const int force_generic = cmd.algorithm == 5;
+		const int force_r1 = cmd.algorithm == 6;
 		const int kv_is_shared = mpgetbuffer((ccv_nnc_tensor_t*)dense_k) == mpgetbuffer((ccv_nnc_tensor_t*)dense_v) && dense_k->dataof == dense_v->dataof &&
 			mpgetbuffer((ccv_nnc_tensor_t*)sparse_k) == mpgetbuffer((ccv_nnc_tensor_t*)sparse_v) && sparse_k->dataof == sparse_v->dataof;
 		if (!kv_is_shared)
 			return CCV_NNC_EXEC_INVALID;
+		const int r1_shape = T == 1 && D > 0 && D <= 512 && mtl_data_type != 3;
+		if (force_r1 && !r1_shape)
+			return CCV_NNC_EXEC_INVALID;
+		const int use_r1 = force_r1 || (cmd.algorithm < 0 && r1_shape);
 		const int na_shape = H == 64 && (D == 512 || D == 128);
-		int use_neural_accelerators = !force_generic && mtl_data_type != 3 && na_shape && !(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS) && ccv_nnc_mfa_has_neural_accelerators(context);
+		int use_neural_accelerators = !use_r1 && !force_generic && mtl_data_type != 3 && na_shape && !(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS) && ccv_nnc_mfa_has_neural_accelerators(context);
 		uint32_t variant = 0;
 		if (use_neural_accelerators)
 		{
@@ -152,6 +157,7 @@ static int _ccv_nnc_sparse_indexed_attention_forw(const ccv_nnc_cmd_t cmd, const
 		const ccv_nnc_mfa_sparse_indexed_attention_params_t params = {
 			.data_type = mtl_data_type,
 			.use_neural_accelerators = (uint8_t)use_neural_accelerators,
+			.use_r1 = (uint8_t)use_r1,
 			.T = (uint32_t)T,
 			.dense_rows = (uint32_t)dense_rows,
 			.sparse_rows = (uint32_t)sparse_rows,
@@ -204,7 +210,7 @@ REGISTER_COMMAND_BACKEND(CCV_NNC_SPARSE_INDEXED_ATTENTION_FORWARD, CCV_NNC_BACKE
 	registry->tensor_formats = CCV_TENSOR_FORMAT_NHWC;
 	registry->tensor_datatypes = CCV_32F | CCV_16F | CCV_16BF | CCV_32S;
 	registry->tensor_memory = CCV_TENSOR_GPU_MEMORY;
-	registry->algorithms = 6;
+	registry->algorithms = 7;
 	registry->exec = _ccv_nnc_sparse_indexed_attention_forw;
 }
 

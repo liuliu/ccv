@@ -5,6 +5,7 @@ typedef struct {
   uint8_t is_causal;
   uint8_t attention_sinks;
   uint8_t use_neural_accelerators;
+  uint8_t use_r1;
   uint32_t sink_head_stride;
   uint32_t T;
   uint32_t dense_rows;

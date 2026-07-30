@@ -421,9 +421,11 @@ int main(int argc, char** argv)
     {1, "sparse_indexed_attention_mfa_tg_h24"},
     {3, "sparse_indexed_attention_mfa_tg_h64"},
     {5, "sparse_indexed_attention_mfa_generic"},
+    {6, "sparse_indexed_attention_mfa_r1"},
   };
   const Variant variants_d128[] = {
     {4, "sparse_indexed_attention_mfa_tg_h64_d128"},
+    {6, "sparse_indexed_attention_mfa_r1"},
   };
   const Variant* const active_variants = (config.D == 128) ? variants_d128 : variants;
   const int variant_count = (config.D == 128) ? (int)(sizeof(variants_d128) / sizeof(variants_d128[0])) : (int)(sizeof(variants) / sizeof(variants[0]));
