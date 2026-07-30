@@ -1199,6 +1199,99 @@ TEST_CASE("a compiled model absorbs a new model with slightly different configur
 	ccv_cnnp_model_free(multi_layer);
 }
 
+TEST_CASE("a compiled model updates move destination aliases across absorbed shapes")
+{
+	const ccv_cnnp_model_io_t current0 = ccv_cnnp_input();
+	const ccv_cnnp_model_io_t cache0 = ccv_cnnp_input();
+	const ccv_cnnp_model_io_t destination0 = ccv_cnnp_model_apply(
+		ccv_cnnp_reshape(
+			CCV_TENSOR_FORMAT_NHWC, DIM_ALLOC(1), DIM_ALLOC(0), DIM_ALLOC(1), 0),
+		MODEL_IO_LIST(cache0));
+	const ccv_cnnp_model_io_t moved0 = ccv_cnnp_model_apply(
+		ccv_cnnp_move(0), MODEL_IO_LIST(current0, destination0));
+	const ccv_cnnp_model_io_t prefix0 = ccv_cnnp_model_apply(
+		ccv_cnnp_reshape(
+			CCV_TENSOR_FORMAT_NHWC, DIM_ALLOC(1), DIM_ALLOC(0), DIM_ALLOC(1), 0),
+		MODEL_IO_LIST(cache0));
+	ccv_cnnp_model_add_dependencies(prefix0, MODEL_IO_LIST(moved0));
+	const ccv_cnnp_model_io_t output0 = ccv_cnnp_model_apply(
+		ccv_cnnp_contiguous(0), MODEL_IO_LIST(prefix0));
+	ccv_cnnp_model_t* const model = ccv_cnnp_model_new(
+		MODEL_IO_LIST(current0, cache0), MODEL_IO_LIST(output0), 0, 0);
+	const ccv_nnc_tensor_param_t current_params = CPU_TENSOR_NHWC(32F, 1);
+	const ccv_nnc_tensor_param_t cache_params = CPU_TENSOR_NHWC(32F, 4);
+	ccv_cnnp_model_compile(
+		model, TENSOR_PARAM_LIST(current_params, cache_params), CMD_NOOP(), CMD_NOOP());
+
+	ccv_nnc_tensor_t* const current = ccv_nnc_tensor_new(0, current_params, 0);
+	ccv_nnc_tensor_t* const cache = ccv_nnc_tensor_new(0, cache_params, 0);
+	ccv_nnc_tensor_t* output = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1), 0);
+	current->data.f32[0] = 10;
+	ccv_cnnp_model_evaluate(
+		model, (ccv_cnnp_evaluate_param_t){},
+		TENSOR_LIST(current, cache), TENSOR_LIST(output), 0, 0);
+	REQUIRE_ARRAY_EQ(float, output->data.f32, ((float[]){10}), 1, "the first value should be appended at offset 0");
+	ccv_nnc_tensor_free(output);
+
+	const ccv_cnnp_model_io_t current1 = ccv_cnnp_input();
+	const ccv_cnnp_model_io_t cache1 = ccv_cnnp_input();
+	const ccv_cnnp_model_io_t destination1 = ccv_cnnp_model_apply(
+		ccv_cnnp_reshape(
+			CCV_TENSOR_FORMAT_NHWC, DIM_ALLOC(1), DIM_ALLOC(1), DIM_ALLOC(1), 0),
+		MODEL_IO_LIST(cache1));
+	const ccv_cnnp_model_io_t moved1 = ccv_cnnp_model_apply(
+		ccv_cnnp_move(0), MODEL_IO_LIST(current1, destination1));
+	const ccv_cnnp_model_io_t prefix1 = ccv_cnnp_model_apply(
+		ccv_cnnp_reshape(
+			CCV_TENSOR_FORMAT_NHWC, DIM_ALLOC(2), DIM_ALLOC(0), DIM_ALLOC(1), 0),
+		MODEL_IO_LIST(cache1));
+	ccv_cnnp_model_add_dependencies(prefix1, MODEL_IO_LIST(moved1));
+	const ccv_cnnp_model_io_t output1 = ccv_cnnp_model_apply(
+		ccv_cnnp_contiguous(0), MODEL_IO_LIST(prefix1));
+	ccv_cnnp_model_t* const model1 = ccv_cnnp_model_new(
+		MODEL_IO_LIST(current1, cache1), MODEL_IO_LIST(output1), 0, 0);
+	ccv_cnnp_model_absorb(
+		model, model1, TENSOR_PARAM_LIST(current_params, cache_params));
+	output = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2), 0);
+	current->data.f32[0] = 20;
+	ccv_cnnp_model_evaluate(
+		model, (ccv_cnnp_evaluate_param_t){},
+		TENSOR_LIST(current, cache), TENSOR_LIST(output), 0, 0);
+	REQUIRE_ARRAY_EQ(float, output->data.f32, ((float[]){10, 20}), 2, "the second value should be appended at offset 1");
+	ccv_nnc_tensor_free(output);
+
+	const ccv_cnnp_model_io_t current2 = ccv_cnnp_input();
+	const ccv_cnnp_model_io_t cache2 = ccv_cnnp_input();
+	const ccv_cnnp_model_io_t destination2 = ccv_cnnp_model_apply(
+		ccv_cnnp_reshape(
+			CCV_TENSOR_FORMAT_NHWC, DIM_ALLOC(1), DIM_ALLOC(2), DIM_ALLOC(1), 0),
+		MODEL_IO_LIST(cache2));
+	const ccv_cnnp_model_io_t moved2 = ccv_cnnp_model_apply(
+		ccv_cnnp_move(0), MODEL_IO_LIST(current2, destination2));
+	const ccv_cnnp_model_io_t prefix2 = ccv_cnnp_model_apply(
+		ccv_cnnp_reshape(
+			CCV_TENSOR_FORMAT_NHWC, DIM_ALLOC(3), DIM_ALLOC(0), DIM_ALLOC(1), 0),
+		MODEL_IO_LIST(cache2));
+	ccv_cnnp_model_add_dependencies(prefix2, MODEL_IO_LIST(moved2));
+	const ccv_cnnp_model_io_t output2 = ccv_cnnp_model_apply(
+		ccv_cnnp_contiguous(0), MODEL_IO_LIST(prefix2));
+	ccv_cnnp_model_t* const model2 = ccv_cnnp_model_new(
+		MODEL_IO_LIST(current2, cache2), MODEL_IO_LIST(output2), 0, 0);
+	ccv_cnnp_model_absorb(
+		model, model2, TENSOR_PARAM_LIST(current_params, cache_params));
+	output = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 3), 0);
+	current->data.f32[0] = 30;
+	ccv_cnnp_model_evaluate(
+		model, (ccv_cnnp_evaluate_param_t){},
+		TENSOR_LIST(current, cache), TENSOR_LIST(output), 0, 0);
+	REQUIRE_ARRAY_EQ(float, output->data.f32, ((float[]){10, 20, 30}), 3, "the third value should be appended at offset 2");
+
+	ccv_nnc_tensor_free(output);
+	ccv_nnc_tensor_free(cache);
+	ccv_nnc_tensor_free(current);
+	ccv_cnnp_model_free(model);
+}
+
 TEST_CASE("use linear model's parameter as the input for more computation")
 {
 	ccv_cnnp_model_t* const linear = ccv_cnnp_dense(1, 0, 0, 1, 0);

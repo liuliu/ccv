@@ -4197,8 +4197,14 @@ void ccv_nnc_tensor_bind_symbol(ccv_nnc_tensor_arena_t* const tensor_arena, cons
 			if (CCV_IS_TENSOR_VIEW(d_tensor))
 				ccv_nnc_tensor_data(tensor->info, tensor->data.u8, ((ccv_nnc_tensor_view_t*)d_tensor)->off + tensor->dataof, &d_tensor->data, &d_tensor->dataof);
 			else {
-				d_tensor->data.u8 = tensor->data.u8;
-				d_tensor->dataof = tensor->dataof;
+				// A zero-offset packed alias is represented as a plain tensor. Model absorb can
+				// change its offset, so reconstruct that offset when rebinding the backing tensor.
+				const ccv_nnc_symbolic_graph_t* const graph = (const ccv_nnc_symbolic_graph_t*)tensor_arena->graph_ref;
+				const ccv_nnc_tensor_symbol_info_t* const symbol_info =
+					(ccv_nnc_tensor_symbol_info_t*)ccv_array_get(graph->tensor_symbol_info, d);
+				const off_t off = ccv_nnc_tensor_view_offset(
+					d_tensor->info.datatype, symbol_info->stride, symbol_info->ofs);
+				ccv_nnc_tensor_data(tensor->info, tensor->data.u8, off + tensor->dataof, &d_tensor->data, &d_tensor->dataof);
 			}
 		}
 }
