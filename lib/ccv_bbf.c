@@ -578,7 +578,7 @@ static ccv_bbf_feature_t _ccv_bbf_genetic_optimize(unsigned char** posdata, int 
 }
 
 #define less_than(fit1, fit2, aux) ((fit1).error < (fit2).error)
-static CCV_IMPLEMENT_QSORT(static _ccv_bbf_best_qsort, ccv_bbf_gene_t, less_than)
+static CCV_IMPLEMENT_QSORT(_ccv_bbf_best_qsort, ccv_bbf_gene_t, less_than)
 #undef less_than
 
 static ccv_bbf_gene_t _ccv_bbf_best_gene(ccv_bbf_gene_t* gene, int pnum, int point_min, unsigned char** posdata, int posnum, unsigned char** negdata, int negnum, ccv_size_t size, double* pw, double* nw)
