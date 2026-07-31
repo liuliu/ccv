@@ -430,6 +430,34 @@ static void _ccv_cnnp_graph_push_graph_exec_symbol(void* context, const ccv_nnc_
 
 static void _ccv_nnc_tensor_symbol_reinit(const ccv_nnc_symbolic_graph_t* const src_graph, ccv_nnc_symbolic_graph_t* const dest_graph, const int src_index, const int dest_index)
 {
+	int src_alias_ref = src_index;
+	const ccv_nnc_tensor_symbol_info_t* src_info = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(src_graph->tensor_symbol_info, src_alias_ref);
+	while (src_info->alias_ref)
+	{
+		src_alias_ref = src_info->alias_ref - 1;
+		src_info = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(src_graph->tensor_symbol_info, src_alias_ref);
+	}
+	int dest_alias_ref = dest_index;
+	const ccv_nnc_tensor_symbol_info_t* dest_info = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(dest_graph->tensor_symbol_info, dest_alias_ref);
+	while (dest_info->alias_ref)
+	{
+		dest_alias_ref = dest_info->alias_ref - 1;
+		dest_info = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(dest_graph->tensor_symbol_info, dest_alias_ref);
+	}
+	assert((src_alias_ref != src_index) == (dest_alias_ref != dest_index));
+	if (src_alias_ref != src_index)
+	{
+		const ccv_nnc_tensor_symbol_t src_alias_symbol = {
+			.d = src_alias_ref,
+			.graph = src_graph
+		};
+		const ccv_nnc_tensor_symbol_t dest_alias_symbol = {
+			.d = dest_alias_ref,
+			.graph = dest_graph
+		};
+		const ccv_nnc_tensor_param_t params = ccv_nnc_tensor_symbol_params(src_graph, src_alias_symbol);
+		ccv_nnc_tensor_symbol_set(dest_graph, dest_alias_symbol, params);
+	}
 	const ccv_nnc_tensor_symbol_t src_symbol = {
 		.d = src_index,
 		.graph = src_graph
