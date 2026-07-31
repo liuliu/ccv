@@ -1525,10 +1525,8 @@ static float _mps_segmented_scaled_gemm_bias_value(const int expert, const int c
 	return (float)(((expert * 5 + col * 3) % 29) - 14) / 256.0f;
 }
 
-static int _mps_segmented_scaled_gemm_validate_format_shape_experts(const int datatype, const int use_bias, const int force_fallback, const int format, const int total_m, const int expert_count, const int bincount, const int guard_output, double* const max_abs_ref, double* const max_rel_ref)
+static int _mps_segmented_scaled_gemm_validate_format_shape_experts_dims(const int datatype, const int use_bias, const int force_fallback, const int format, const int total_m, const int expert_count, const int bincount, const int guard_output, const int n_dim, const int k_dim, double* const max_abs_ref, double* const max_rel_ref)
 {
-	const int n_dim = 128;
-	const int k_dim = 256;
 	assert(bincount > 0);
 	assert(expert_count >= bincount);
 	int* const counts_data = (int*)cccalloc(expert_count, sizeof(int));
@@ -1787,6 +1785,11 @@ static int _mps_segmented_scaled_gemm_validate_format_shape_experts(const int da
 	return exec_status != CCV_NNC_EXEC_SUCCESS ? exec_status : guard_status;
 }
 
+static int _mps_segmented_scaled_gemm_validate_format_shape_experts(const int datatype, const int use_bias, const int force_fallback, const int format, const int total_m, const int expert_count, const int bincount, const int guard_output, double* const max_abs_ref, double* const max_rel_ref)
+{
+	return _mps_segmented_scaled_gemm_validate_format_shape_experts_dims(datatype, use_bias, force_fallback, format, total_m, expert_count, bincount, guard_output, 128, 256, max_abs_ref, max_rel_ref);
+}
+
 static int _mps_segmented_scaled_gemm_validate_format_shape(const int datatype, const int use_bias, const int force_fallback, const int format, const int total_m, double* const max_abs_ref, double* const max_rel_ref)
 {
 	const int expert_count = format ? 4 : 3;
@@ -1928,6 +1931,42 @@ TEST_CASE("mps forward gemm with loadM flag")
 	REQUIRE(max_rel_scaled < 2e-3, "loadM scaled GEMM should match row-wise quantized fp16 reference, max_abs=%g max_rel=%g", max_abs_scaled, max_rel_scaled);
 	REQUIRE_EQ(status_generic, 0, "loadM generic GEMM fallback validation should run");
 	REQUIRE(max_rel_generic < 2e-3, "loadM generic GEMM fallback should match dense GPU fp16 reference, max_abs=%g max_rel=%g", max_abs_generic, max_rel_generic);
+}
+
+TEST_CASE("mps segmented int8 gemv with row-wise 8i weight, bias, and direct routes")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SEGMENTED_GEMM_FORWARD, CCV_NNC_BACKEND_MPS));
+	double max_abs = 0;
+	double max_rel = 0;
+	REQUIRE_EQ(_mps_segmented_scaled_gemm_validate_format_shape_experts_dims(
+		CCV_16F, 1, 1, 0, 8, 11, 8, 0, 129, 256, &max_abs, &max_rel), 0, "row-wise 8i segmented Int8 GEMV validation should run");
+	REQUIRE(max_rel < 3e-3, "row-wise 8i segmented Int8 GEMV should match the dense-A reference, max_abs=%g max_rel=%g", max_abs, max_rel);
+}
+
+TEST_CASE("mps segmented int8 gemv with packed row-wise 8i-x weights")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SEGMENTED_GEMM_FORWARD, CCV_NNC_BACKEND_MPS));
+	const int formats[] = {
+		CCV_NNC_QX_8I_ROWWISE_Q5_K,
+		CCV_NNC_QX_8I_ROWWISE_Q6_K,
+		CCV_NNC_QX_8I_ROWWISE_Q4_K,
+		CCV_NNC_QX_8I_ROWWISE_Q3_K,
+		CCV_NNC_QX_8I_ROWWISE_Q2_K,
+		CCV_NNC_QX_8I_ROWWISE_IQ2_XXS,
+		CCV_NNC_QX_8I_ROWWISE_IQ2_S,
+		CCV_NNC_QX_8I_ROWWISE_IQ2_XS,
+		CCV_NNC_QX_8I_ROWWISE_IQ3_S,
+		CCV_NNC_QX_8I_ROWWISE_IQ3_XXS,
+	};
+	int i;
+	for (i = 0; i < sizeof(formats) / sizeof(formats[0]); i++)
+	{
+		double max_abs = 0;
+		double max_rel = 0;
+		REQUIRE_EQ(_mps_segmented_scaled_gemm_validate_format_shape_experts_dims(
+			CCV_16F, 0, 1, formats[i], 1, 2, 1, 0, 256, 256, &max_abs, &max_rel), 0, "packed segmented Int8 GEMV validation should run for format=%d", formats[i]);
+		REQUIRE(max_rel < 3e-3, "packed segmented Int8 GEMV should match the dense-A reference for format=%d, max_abs=%g max_rel=%g", formats[i], max_abs, max_rel);
+	}
 }
 
 TEST_CASE("mps segmented gemm with row-wise 8i weight NA")

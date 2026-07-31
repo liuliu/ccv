@@ -280,6 +280,23 @@ static int _ccv_nnc_segmented_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_h
 			!(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS) &&
 			ccv_nnc_mfa_has_neural_accelerators(context) &&
 			(mtl_data_type != 121 || ccv_nnc_mfa_neural_accelerators_support_bfloat(context));
+		const int use_segmented_int8_gemv =
+			(b_rows == bincount) &&
+			(b_rows > 0) &&
+			w_qx_8i_rowwise &&
+			(CCV_GET_DATA_TYPE(a->info.datatype) != CCV_QX) &&
+			(CCV_GET_DATA_TYPE(b->info.datatype) != CCV_QX) &&
+			(!bias || CCV_GET_DATA_TYPE(bias->info.datatype) != CCV_QX) &&
+			((w_rows % 4) == 0) &&
+			(!w_8i_rowwise_x_format ||
+				((w_rows % 256) == 0 && (b_cols % 256) == 0)) &&
+			!is_transpose_a &&
+			is_transpose_w &&
+			is_contiguous &&
+			is_same_dtype &&
+			is_supported_dtype &&
+			ccv_nnc_mfa_context_supported(context) &&
+			!(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA);
 		const int is_mfa_supported =
 			ccv_nnc_mfa_context_supported(context) && is_contiguous && is_same_dtype && is_supported_dtype && !(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA);
 
@@ -322,6 +339,44 @@ static int _ccv_nnc_segmented_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_h
 		}
 
 		assert(is_mfa_supported);
+		if (use_segmented_int8_gemv)
+		{
+			ccv_nnc_mfa_segmented_int8_gemv_params_t params = {
+				.data_type = mtl_data_type,
+				.format = w_8i_rowwise_x_format,
+				.M = (uint32_t)b_rows,
+				.N = (uint32_t)b_cols,
+				.K = (uint32_t)w_rows,
+				.fused_bias = (bias ? 1 : 0),
+				.expert_count = (uint32_t)w_batch_size,
+				.bincount = (uint32_t)bincount,
+			};
+			ccv_nnc_mfa_prepare_segmented_int8_gemv(context, params);
+			mtl_command_batch_t* command_batch = ccv_nnc_stream_context_start_command_batch(stream_context);
+			mtl_buffer_t* bias_buffer = NULL;
+			if (bias)
+				bias_buffer = mpgetbuffer((ccv_nnc_tensor_t*)bias);
+			mtl_buffer_t* tensors[7] = {
+				mpgetbuffer((ccv_nnc_tensor_t*)a),
+				mpgetbuffer((ccv_nnc_tensor_t*)indices),
+				mpgetbuffer((ccv_nnc_tensor_t*)counts),
+				mpgetbuffer((ccv_nnc_tensor_t*)w),
+				mpgetbuffer((ccv_nnc_tensor_t*)b),
+				bias_buffer,
+				NULL,
+			};
+			size_t tensor_offsets[6] = {
+				a->dataof,
+				indices->dataof,
+				counts->dataof,
+				w->dataof,
+				b->dataof,
+				bias ? bias->dataof : 0,
+			};
+			ccv_nnc_mfa_encode_segmented_int8_gemv(context, params, command_batch, tensors, tensor_offsets);
+			ccv_nnc_stream_context_finish_command_batch(stream_context, command_batch);
+			return CCV_NNC_EXEC_SUCCESS;
+		}
 		if (use_segmented_scaled_gemm)
 		{
 			ccv_nnc_mfa_segmented_scaled_gemm_params_t params = {
