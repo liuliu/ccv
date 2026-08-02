@@ -6,6 +6,8 @@ SRCS := Metal.cpp ccv_nnc_mfa.cpp ccv_nnc_mfa_attention.cpp ccv_nnc_mfa_error.cp
 
 SRCS += ccv_nnc_mfa_segmented_int8_gemv.cpp kernels/SegmentedInt8GemvDescriptor.cpp kernels/SegmentedInt8GemvKernel.cpp
 
+SRCS += ccv_nnc_mfa_moe_routing.cpp kernels/MoERoutingDescriptor.cpp kernels/MoERoutingKernel.cpp
+
 SRC_OBJS := $(patsubst %.c,%.o,$(patsubst %.cpp,%.o,$(patsubst %.mm,%.o,$(SRCS))))
 
 .PHONY: release all lib clean

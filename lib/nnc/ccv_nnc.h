@@ -330,6 +330,11 @@ typedef struct {
 			float epsilon; /**< [hyper_connection.epsilon] Numerical epsilon used by the gates and Sinkhorn normalization. */
 		} hyper_connection;
 		struct {
+			int kth; /**< [moe_routing.kth] Number of experts selected for each token. */
+			float weight_scale; /**< [moe_routing.weight_scale] Scale applied after normalizing the selected expert weights. */
+			int preselected; /**< [moe_routing.preselected] Whether expert IDs are supplied rather than selected from the biased routing scores. */
+		} moe_routing;
+		struct {
 			int datatype; /**< [conform_data_format.datatype] The data format to emulate while retaining Float32 storage. */
 			int preserved_tail; /**< [conform_data_format.preserved_tail] Number of values at the end of each row to leave unchanged. */
 		} conform_data_format;

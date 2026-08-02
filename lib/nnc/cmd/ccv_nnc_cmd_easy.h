@@ -207,6 +207,10 @@
 #define CMD_SMOOTH_L1_FORWARD(_b) ccv_nnc_cmd(CCV_NNC_SMOOTH_L1_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.smooth_l1={.beta=_b}}), 0)
 // CCV_NNC_SMOOTH_L1_BACKWARD
 #define CMD_SMOOTH_L1_BACKWARD(_b) ccv_nnc_cmd(CCV_NNC_SMOOTH_L1_BACKWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.smooth_l1={.beta=_b}}), 0)
+// CCV_NNC_MOE_ROUTING_FORWARD
+#define CMD_MOE_ROUTING_FORWARD(_kth, _weight_scale, _preselected) ccv_nnc_cmd(CCV_NNC_MOE_ROUTING_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.moe_routing={.kth=(_kth),.weight_scale=(_weight_scale),.preselected=(_preselected)}}), 0)
+// CCV_NNC_MOE_ROUTING_BACKWARD
+#define CMD_MOE_ROUTING_BACKWARD(_kth, _weight_scale, _preselected) ccv_nnc_cmd(CCV_NNC_MOE_ROUTING_BACKWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.moe_routing={.kth=(_kth),.weight_scale=(_weight_scale),.preselected=(_preselected)}}), 0)
 // CCV_NNC_NMS_FORWARD
 #define CMD_NMS_FORWARD(_iou_threshold) ccv_nnc_cmd(CCV_NNC_NMS_FORWARD, 0, ((ccv_nnc_cmd_param_t){.nms={.iou_threshold=_iou_threshold}}), 0)
 // CCV_NNC_NMS_BACKWARD

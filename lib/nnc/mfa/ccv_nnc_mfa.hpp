@@ -47,6 +47,7 @@ extern "C" {
 #include "ccv_nnc_mfa_hyper_connection.hpp"
 #include "ccv_nnc_mfa_segmented_gemm.hpp"
 #include "ccv_nnc_mfa_gated_delta.hpp"
+#include "ccv_nnc_mfa_moe_routing.hpp"
 
 #ifdef __cplusplus
 #include "nnc/mfa/3rdparty/metal-cpp/Dispatch.hpp"
