@@ -115,6 +115,10 @@ enum {
 	CCV_NNC_GEMM_8I = 0x8, /**< For GEMM (or similar op), whether prefer to use INT8 inputs / accumulators when supported. */
 };
 
+enum {
+	CCV_NNC_MOE_ROUTING_COMPACT_SINGLE_TOKEN_ACTIVATION = 0x1, /**< Keep the activation output at one row when routing a single token. */
+};
+
 /**
  * Parameters for command.
  */
@@ -338,6 +342,7 @@ typedef struct {
 			int kth; /**< [moe_routing.kth] Number of experts selected for each token. */
 			float weight_scale; /**< [moe_routing.weight_scale] Scale applied after normalizing the selected expert weights. */
 			int preselected; /**< [moe_routing.preselected] Whether expert IDs are supplied rather than selected from the biased routing scores. */
+			int flags; /**< [moe_routing.flags] Optional routing behavior, such as retaining a compact activation for one token. */
 		} moe_routing;
 		struct {
 			int datatype; /**< [conform_data_format.datatype] The data format to emulate while retaining Float32 storage. */

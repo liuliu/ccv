@@ -39,6 +39,8 @@ static int _ccv_nnc_moe_routing_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint
 	const int hidden = activation->info.dim[1];
 	const int pair_count = token_count * kth;
 	const int group_count = ccv_min(pair_count, expert_count);
+	const int compact_single_token_activation = token_count == 1 && (cmd.info.moe_routing.flags & CCV_NNC_MOE_ROUTING_COMPACT_SINGLE_TOKEN_ACTIVATION);
+	const int gathered_rows = compact_single_token_activation ? 1 : pair_count;
 	if (kth <= 0 || expert_count < kth || token_count <= 0 || hidden <= 0 || cmd.info.moe_routing.weight_scale <= 0 ||
 		(cmd.info.moe_routing.preselected != 0 && cmd.info.moe_routing.preselected != 1) ||
 		ccv_nnc_tensor_nd(logits->info.dim) != 2 || ccv_nnc_tensor_nd(activation->info.dim) != 2 || activation->info.dim[0] != token_count ||
@@ -46,7 +48,7 @@ static int _ccv_nnc_moe_routing_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint
 		token_indices->info.datatype != CCV_32S || expert_indices->info.datatype != CCV_32S ||
 		expert_counts->info.datatype != CCV_32S || activation->info.datatype != gathered->info.datatype ||
 		(activation->info.datatype != CCV_32F && activation->info.datatype != CCV_16F && activation->info.datatype != CCV_16BF) ||
-		gathered->info.dim[0] != pair_count || gathered->info.dim[1] != hidden ||
+		gathered->info.dim[0] != gathered_rows || gathered->info.dim[1] != hidden ||
 		ccv_nnc_tensor_count(route_weights->info) != pair_count || ccv_nnc_tensor_count(token_indices->info) != pair_count ||
 		ccv_nnc_tensor_count(expert_indices->info) != group_count || ccv_nnc_tensor_count(expert_counts->info) != group_count ||
 		!CCV_IS_TENSOR_CONTIGUOUS(logits) || !CCV_IS_TENSOR_CONTIGUOUS(route) ||
@@ -113,14 +115,17 @@ static int _ccv_nnc_moe_routing_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint
 	if (token_count > 1)
 		_ccv_nnc_moe_routing_pair_sort(pairs, pair_count, 0);
 	const size_t element_size = CCV_GET_DATA_TYPE_SIZE(activation->info.datatype);
+	if (compact_single_token_activation)
+		memcpy(gathered->data.u8, activation->data.u8, (size_t)hidden * element_size);
 	int i;
 	for (i = 0; i < pair_count; i++)
 	{
 		route_weights->data.f32[i] = pairs[i].weight;
 		token_indices->data.i32[i] = pairs[i].token;
-		memcpy(gathered->data.u8 + (size_t)i * hidden * element_size,
-			activation->data.u8 + (size_t)pairs[i].token * hidden * element_size,
-			(size_t)hidden * element_size);
+		if (!compact_single_token_activation)
+			memcpy(gathered->data.u8 + (size_t)i * hidden * element_size,
+				activation->data.u8 + (size_t)pairs[i].token * hidden * element_size,
+				(size_t)hidden * element_size);
 	}
 	if (token_count == 1)
 	{

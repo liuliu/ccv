@@ -42,8 +42,9 @@ static void _ccv_nnc_moe_routing_tensor_auto_forw(const ccv_nnc_cmd_param_t cmd,
 		assert(inputs[1].dim[0] == expert_count);
 	}
 	const int pair_count = token_count * kth;
+	const int compact_single_token_activation = token_count == 1 && (cmd.moe_routing.flags & CCV_NNC_MOE_ROUTING_COMPACT_SINGLE_TOKEN_ACTIVATION);
 	outputs[0] = inputs[2];
-	outputs[0].dim[0] = pair_count;
+	outputs[0].dim[0] = compact_single_token_activation ? 1 : pair_count;
 	outputs[1] = inputs[0];
 	memset(outputs[1].dim, 0, sizeof(outputs[1].dim));
 	outputs[1].dim[0] = pair_count;
@@ -68,5 +69,7 @@ REGISTER_COMMAND(CCV_NNC_MOE_ROUTING_BACKWARD)(ccv_nnc_cmd_registry_t* const reg
 
 //@REGISTER_EASY_COMMAND_MACRO(CCV_NNC_MOE_ROUTING_FORWARD)
 #define CMD_MOE_ROUTING_FORWARD(_kth, _weight_scale, _preselected) ccv_nnc_cmd(CCV_NNC_MOE_ROUTING_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.moe_routing={.kth=(_kth),.weight_scale=(_weight_scale),.preselected=(_preselected)}}), 0)
+//@REGISTER_EASY_COMMAND_MACRO(CCV_NNC_MOE_ROUTING_FORWARD)
+#define CMD_MOE_ROUTING_FORWARD_FLAGS(_kth, _weight_scale, _preselected, _flags) ccv_nnc_cmd(CCV_NNC_MOE_ROUTING_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.moe_routing={.kth=(_kth),.weight_scale=(_weight_scale),.preselected=(_preselected),.flags=(_flags)}}), 0)
 //@REGISTER_EASY_COMMAND_MACRO(CCV_NNC_MOE_ROUTING_BACKWARD)
 #define CMD_MOE_ROUTING_BACKWARD(_kth, _weight_scale, _preselected) ccv_nnc_cmd(CCV_NNC_MOE_ROUTING_BACKWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.moe_routing={.kth=(_kth),.weight_scale=(_weight_scale),.preselected=(_preselected)}}), 0)

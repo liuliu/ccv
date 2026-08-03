@@ -28,7 +28,7 @@ static int _moe_routing_double_compare(const void* const a, const void* const b)
 	return (av > bv) - (av < bv);
 }
 
-static moe_routing_benchmark_t _moe_routing_benchmark(const int preselected, const int disable_mfa, const int warmup, const int iterations, const int batch_size, const int hidden)
+static moe_routing_benchmark_t _moe_routing_benchmark(const int preselected, const int disable_mfa, const int compact_single_token_activation, const int warmup, const int iterations, const int batch_size, const int hidden)
 {
 	const int expert_count = 256;
 	const int kth = 6;
@@ -45,7 +45,7 @@ static moe_routing_benchmark_t _moe_routing_benchmark(const int preselected, con
 	ccv_nnc_tensor_t* const logits = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 1, expert_count), 0);
 	ccv_nnc_tensor_t* const route = ccv_nnc_tensor_new(0, preselected ? GPU_TENSOR_NHWC(000, 32S, 1, kth) : GPU_TENSOR_NHWC(000, 32F, expert_count), 0);
 	ccv_nnc_tensor_t* const activation = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, 1, hidden), 0);
-	ccv_nnc_tensor_t* const gathered = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, kth, hidden), 0);
+	ccv_nnc_tensor_t* const gathered = ccv_nnc_tensor_new(0, compact_single_token_activation ? GPU_TENSOR_NHWC(000, 16F, 1, hidden) : GPU_TENSOR_NHWC(000, 16F, kth, hidden), 0);
 	ccv_nnc_tensor_t* const route_weights = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, kth), 0);
 	ccv_nnc_tensor_t* const token_indices = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32S, kth), 0);
 	ccv_nnc_tensor_t* const expert_indices = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32S, kth), 0);
@@ -68,7 +68,8 @@ static moe_routing_benchmark_t _moe_routing_benchmark(const int preselected, con
 	result.status = ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0,
 		TENSOR_LIST(hlogits, hroute, hactivation), TENSOR_LIST(logits, route, activation), stream);
 	ccv_nnc_stream_context_wait(stream);
-	ccv_nnc_cmd_t cmd = CMD_MOE_ROUTING_FORWARD(kth, 1.5f, preselected);
+	ccv_nnc_cmd_t cmd = CMD_MOE_ROUTING_FORWARD_FLAGS(kth, 1.5f, preselected,
+		compact_single_token_activation ? CCV_NNC_MOE_ROUTING_COMPACT_SINGLE_TOKEN_ACTIVATION : 0);
 	cmd.backend = CCV_NNC_BACKEND_MPS;
 	int iteration;
 	for (iteration = 0; iteration < warmup && result.status == CCV_NNC_EXEC_SUCCESS; iteration++)
@@ -121,17 +122,25 @@ static moe_routing_benchmark_t _moe_routing_benchmark(const int preselected, con
 
 static int _moe_routing_report(const int preselected, const int warmup, const int iterations, const int batch_size, const int hidden)
 {
-	const moe_routing_benchmark_t graph = _moe_routing_benchmark(preselected, 1, warmup, iterations, batch_size, hidden);
-	const moe_routing_benchmark_t mfa = _moe_routing_benchmark(preselected, 0, warmup, iterations, batch_size, hidden);
-	if (graph.status != CCV_NNC_EXEC_SUCCESS || mfa.status != CCV_NNC_EXEC_SUCCESS)
+	const moe_routing_benchmark_t graph_expanded = _moe_routing_benchmark(preselected, 1, 0, warmup, iterations, batch_size, hidden);
+	const moe_routing_benchmark_t graph_compact = _moe_routing_benchmark(preselected, 1, 1, warmup, iterations, batch_size, hidden);
+	const moe_routing_benchmark_t mfa_expanded = _moe_routing_benchmark(preselected, 0, 0, warmup, iterations, batch_size, hidden);
+	const moe_routing_benchmark_t mfa_compact = _moe_routing_benchmark(preselected, 0, 1, warmup, iterations, batch_size, hidden);
+	if (graph_expanded.status != CCV_NNC_EXEC_SUCCESS || graph_compact.status != CCV_NNC_EXEC_SUCCESS ||
+		mfa_expanded.status != CCV_NNC_EXEC_SUCCESS || mfa_compact.status != CCV_NNC_EXEC_SUCCESS)
 	{
-		fprintf(stderr, "moe routing benchmark failed: graph=%d mfa=%d\n", graph.status, mfa.status);
+		fprintf(stderr, "moe routing benchmark failed: graph-expanded=%d graph-compact=%d mfa-expanded=%d mfa-compact=%d\n",
+			graph_expanded.status, graph_compact.status, mfa_expanded.status, mfa_compact.status);
 		return 1;
 	}
-	printf("%s,mpsgraph,1,256,6,%d,fp16,%.3f,%.3f,%.3f,1.000\n",
-		preselected ? "preselected" : "standard", hidden, graph.median_us, graph.mean_us, graph.min_us);
-	printf("%s,mfa,1,256,6,%d,fp16,%.3f,%.3f,%.3f,%.3f\n",
-		preselected ? "preselected" : "standard", hidden, mfa.median_us, mfa.mean_us, mfa.min_us, graph.median_us / mfa.median_us);
+	printf("%s,mpsgraph,expanded,1,256,6,%d,fp16,%.3f,%.3f,%.3f,1.000\n",
+		preselected ? "preselected" : "standard", hidden, graph_expanded.median_us, graph_expanded.mean_us, graph_expanded.min_us);
+	printf("%s,mpsgraph,compact,1,256,6,%d,fp16,%.3f,%.3f,%.3f,%.3f\n",
+		preselected ? "preselected" : "standard", hidden, graph_compact.median_us, graph_compact.mean_us, graph_compact.min_us, graph_expanded.median_us / graph_compact.median_us);
+	printf("%s,mfa,expanded,1,256,6,%d,fp16,%.3f,%.3f,%.3f,1.000\n",
+		preselected ? "preselected" : "standard", hidden, mfa_expanded.median_us, mfa_expanded.mean_us, mfa_expanded.min_us);
+	printf("%s,mfa,compact,1,256,6,%d,fp16,%.3f,%.3f,%.3f,%.3f\n",
+		preselected ? "preselected" : "standard", hidden, mfa_compact.median_us, mfa_compact.mean_us, mfa_compact.min_us, mfa_expanded.median_us / mfa_compact.median_us);
 	return 0;
 }
 
@@ -149,7 +158,7 @@ int main(int argc, char** argv)
 	ccv_nnc_init();
 	const uint64_t old_flags = ccv_nnc_flags();
 	const int old_watermark = ccv_nnc_queue_watermark();
-	printf("mode,backend,T,E,K,H,dtype,median_us,mean_us,min_us,speedup_vs_mpsgraph\n");
+	printf("mode,backend,activation,T,E,K,H,dtype,median_us,mean_us,min_us,speedup_vs_expanded\n");
 	const int standard_status = _moe_routing_report(0, warmup, iterations, batch_size, hidden);
 	const int preselected_status = _moe_routing_report(1, warmup, iterations, batch_size, hidden);
 	ccv_nnc_set_queue_watermark(old_watermark);

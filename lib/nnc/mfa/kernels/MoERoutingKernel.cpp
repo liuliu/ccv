@@ -30,6 +30,7 @@ struct moe_routing_params {
 	uint hidden;
 	float weight_scale;
 	uint preselected;
+	uint compact_single_token_activation;
 };
 
 inline float stable_log1p(float x)
@@ -123,9 +124,15 @@ kernel void moe_routing_t1(
 		}
 	}
 
-	const uint gathered_count = params.kth * params.hidden;
-	for (uint index = tid; index < gathered_count; index += ntg)
-		gathered[index] = activation[index % params.hidden];
+	if (params.compact_single_token_activation)
+	{
+		for (uint index = tid; index < params.hidden; index += ntg)
+			gathered[index] = activation[index];
+	} else {
+		const uint gathered_count = params.kth * params.hidden;
+		for (uint index = tid; index < gathered_count; index += ntg)
+			gathered[index] = activation[index % params.hidden];
+	}
 }
 )";
 	const std::string activation_token = "ACTIVATION_TYPE";

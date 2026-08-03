@@ -9,6 +9,7 @@ typedef struct {
 	uint32_t hidden;
 	float weight_scale;
 	uint32_t preselected;
+	uint32_t compact_single_token_activation;
 } ccv_nnc_mfa_moe_routing_dispatch_params_t;
 
 void ccv_nnc_mfa_prepare_moe_routing(ccv_nnc_mfa_context_t* context, ccv_nnc_mfa_moe_routing_params_t params)
@@ -43,6 +44,7 @@ void ccv_nnc_mfa_encode_moe_routing(ccv_nnc_mfa_context_t* context, ccv_nnc_mfa_
 		.hidden = params.hidden,
 		.weight_scale = params.weight_scale,
 		.preselected = params.preselected,
+		.compact_single_token_activation = params.compact_single_token_activation,
 	};
 	encoder->setBytes(&dispatch_params, sizeof(dispatch_params), 8);
 	encoder->setThreadgroupMemoryLength(NS::UInteger(params.expert_count * sizeof(float)), 0);

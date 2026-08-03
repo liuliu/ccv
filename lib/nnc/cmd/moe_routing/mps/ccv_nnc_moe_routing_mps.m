@@ -67,6 +67,8 @@ static int _ccv_nnc_moe_routing_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint
 	const int hidden = activation->info.dim[1];
 	const int pair_count = token_count * kth;
 	const int group_count = ccv_min(pair_count, expert_count);
+	const int compact_single_token_activation = token_count == 1 && (cmd.info.moe_routing.flags & CCV_NNC_MOE_ROUTING_COMPACT_SINGLE_TOKEN_ACTIVATION);
+	const int gathered_rows = compact_single_token_activation ? 1 : pair_count;
 	if (kth <= 0 || expert_count < kth || token_count <= 0 || hidden <= 0 || cmd.info.moe_routing.weight_scale <= 0 ||
 		(cmd.info.moe_routing.preselected != 0 && cmd.info.moe_routing.preselected != 1) ||
 		ccv_nnc_tensor_nd(logits->info.dim) != 2 || ccv_nnc_tensor_nd(activation->info.dim) != 2 || activation->info.dim[0] != token_count ||
@@ -74,7 +76,7 @@ static int _ccv_nnc_moe_routing_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint
 		token_indices->info.datatype != CCV_32S || expert_indices->info.datatype != CCV_32S ||
 		expert_counts->info.datatype != CCV_32S || activation->info.datatype != gathered->info.datatype ||
 		(activation->info.datatype != CCV_32F && activation->info.datatype != CCV_16F && activation->info.datatype != CCV_16BF) ||
-		gathered->info.dim[0] != pair_count || gathered->info.dim[1] != hidden ||
+		gathered->info.dim[0] != gathered_rows || gathered->info.dim[1] != hidden ||
 		ccv_nnc_tensor_count(route_weights->info) != pair_count || ccv_nnc_tensor_count(token_indices->info) != pair_count ||
 		ccv_nnc_tensor_count(expert_indices->info) != group_count || ccv_nnc_tensor_count(expert_counts->info) != group_count ||
 		!CCV_IS_TENSOR_CONTIGUOUS(logits) || !CCV_IS_TENSOR_CONTIGUOUS(route) ||
@@ -117,6 +119,7 @@ static int _ccv_nnc_moe_routing_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint
 					.hidden = (uint32_t)hidden,
 					.weight_scale = cmd.info.moe_routing.weight_scale,
 					.preselected = (uint32_t)cmd.info.moe_routing.preselected,
+					.compact_single_token_activation = (uint32_t)compact_single_token_activation,
 				};
 				ccv_nnc_mfa_prepare_moe_routing(context, params);
 				mtl_command_batch_t* const command_batch = ccv_nnc_stream_context_start_command_batch(stream_context);
@@ -188,7 +191,7 @@ static int _ccv_nnc_moe_routing_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint
 			{
 				ordered_weights = flat_weights;
 				ordered_tokens = [graph constantWithScalar:0.0 shape:@[@(kth)] dataType:MPSDataTypeInt32];
-				ordered_activations = [graph broadcastTensor:mps_activation toShape:@[@(kth), @(hidden)] name:nil];
+				ordered_activations = [graph broadcastTensor:mps_activation toShape:@[@(compact_single_token_activation ? 1 : kth), @(hidden)] name:nil];
 				grouped_experts = flat_selected;
 				grouped_counts = [graph constantWithScalar:1.0 shape:@[@(kth)] dataType:MPSDataTypeInt32];
 			} else {
