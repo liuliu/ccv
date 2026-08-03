@@ -42,9 +42,9 @@ static void _ccv_nnc_moe_routing_tensor_auto_forw(const ccv_nnc_cmd_param_t cmd,
 		assert(inputs[1].dim[0] == expert_count);
 	}
 	const int pair_count = token_count * kth;
-	const int compact_single_token_activation = token_count == 1 && (cmd.moe_routing.flags & CCV_NNC_MOE_ROUTING_COMPACT_SINGLE_TOKEN_ACTIVATION);
+	const int single_input_token = token_count == 1 && (cmd.moe_routing.flags & CCV_NNC_MOE_ROUTING_SINGLE_INPUT_TOKEN);
 	outputs[0] = inputs[2];
-	outputs[0].dim[0] = compact_single_token_activation ? 1 : pair_count;
+	outputs[0].dim[0] = single_input_token ? 1 : pair_count;
 	outputs[1] = inputs[0];
 	memset(outputs[1].dim, 0, sizeof(outputs[1].dim));
 	outputs[1].dim[0] = pair_count;

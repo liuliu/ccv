@@ -24,14 +24,12 @@ using namespace metal;
 
 typedef ACTIVATION_TYPE activation_t;
 
-struct moe_routing_params {
-	uint expert_count;
-	uint kth;
-	uint hidden;
-	float weight_scale;
-	uint preselected;
-	uint compact_single_token_activation;
-};
+constant uint expert_count [[function_constant(0)]];
+constant uint kth [[function_constant(1)]];
+constant uint hidden [[function_constant(2)]];
+constant float weight_scale [[function_constant(3)]];
+constant bool preselected [[function_constant(4)]];
+constant bool single_input_token [[function_constant(5)]];
 
 inline float stable_log1p(float x)
 {
@@ -56,7 +54,6 @@ kernel void moe_routing_t1(
 	device int* token_indices [[buffer(5)]],
 	device int* expert_indices [[buffer(6)]],
 	device int* expert_counts [[buffer(7)]],
-	constant moe_routing_params& params [[buffer(8)]],
 	threadgroup float* probabilities [[threadgroup(0)]],
 	uint tid [[thread_index_in_threadgroup]],
 	uint lane [[thread_index_in_simdgroup]],
@@ -66,21 +63,21 @@ kernel void moe_routing_t1(
 	threadgroup float group_scores[8];
 	threadgroup uint group_experts[8];
 	threadgroup uint top_experts[32];
-	for (uint expert = tid; expert < params.expert_count; expert += ntg)
+	for (uint expert = tid; expert < expert_count; expert += ntg)
 		probabilities[expert] = routing_probability(logits[expert]);
 	threadgroup_barrier(mem_flags::mem_threadgroup);
 
-	if (params.preselected)
+	if (preselected)
 	{
 		if (tid == 0)
 		{
 			device const int* selected = (device const int*)route;
-			for (uint slot = 0; slot < params.kth; slot++)
+			for (uint slot = 0; slot < kth; slot++)
 				top_experts[slot] = (uint)selected[slot];
 		}
 	} else {
-		float candidate_score = tid < params.expert_count ? probabilities[tid] + ((device const float*)route)[tid] : -INFINITY;
-		for (uint slot = 0; slot < params.kth; slot++)
+		float candidate_score = tid < expert_count ? probabilities[tid] + ((device const float*)route)[tid] : -INFINITY;
+		for (uint slot = 0; slot < kth; slot++)
 		{
 			const float simd_score = simd_max(candidate_score);
 			const uint candidate_expert = candidate_score == simd_score ? tid : 0xffffffffu;
@@ -111,10 +108,10 @@ kernel void moe_routing_t1(
 	if (tid == 0)
 	{
 		float selected_sum = 0.0f;
-		for (uint slot = 0; slot < params.kth; slot++)
+		for (uint slot = 0; slot < kth; slot++)
 			selected_sum += probabilities[top_experts[slot]];
-		const float selected_scale = params.weight_scale / max(selected_sum, 6.103515625e-5f);
-		for (uint slot = 0; slot < params.kth; slot++)
+		const float selected_scale = weight_scale / max(selected_sum, 6.103515625e-5f);
+		for (uint slot = 0; slot < kth; slot++)
 		{
 			const uint expert = top_experts[slot];
 			route_weights[slot] = probabilities[expert] * selected_scale;
@@ -124,14 +121,14 @@ kernel void moe_routing_t1(
 		}
 	}
 
-	if (params.compact_single_token_activation)
+	if (single_input_token)
 	{
-		for (uint index = tid; index < params.hidden; index += ntg)
+		for (uint index = tid; index < hidden; index += ntg)
 			gathered[index] = activation[index];
 	} else {
-		const uint gathered_count = params.kth * params.hidden;
+		const uint gathered_count = kth * hidden;
 		for (uint index = tid; index < gathered_count; index += ntg)
-			gathered[index] = activation[index % params.hidden];
+			gathered[index] = activation[index % hidden];
 	}
 }
 )";

@@ -8,7 +8,7 @@ typedef struct {
 	uint32_t hidden;
 	float weight_scale;
 	uint32_t preselected;
-	uint32_t compact_single_token_activation;
+	uint32_t single_input_token;
 } ccv_nnc_mfa_moe_routing_params_t;
 
 #ifdef __cplusplus

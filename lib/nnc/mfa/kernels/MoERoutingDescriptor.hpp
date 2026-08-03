@@ -20,8 +20,14 @@ struct MoERoutingKernel;
 
 struct MoERoutingDescriptor {
 	uint32_t dataType;
+	uint32_t expertCount;
+	uint32_t kth;
+	uint32_t hidden;
+	float weightScale;
+	bool preselected;
+	bool singleInputToken;
 
-	constexpr bool operator==(const MoERoutingDescriptor& rhs) const { return dataType == rhs.dataType; }
+	bool operator==(const MoERoutingDescriptor& rhs) const;
 
 	std::pair<MoERoutingKernelDescriptor, PipelineValue<MoERoutingKernel>*> findKernel(MTL::Device* const device, const DeviceProperties& dprops, NS::Array* const binaryArchivesToRead, MTL::BinaryArchive* const binaryArchiveToWrite, const std::string& pathToWrite, std::unordered_map<MoERoutingKernelDescriptor, std::unique_ptr<MoERoutingKernel>>* const libraryCache) const noexcept;
 };
@@ -29,7 +35,7 @@ struct MoERoutingDescriptor {
 template<>
 struct std::hash<MoERoutingDescriptor>
 {
-	std::size_t operator()(const MoERoutingDescriptor& hash) const noexcept { return hash.dataType; }
+	std::size_t operator()(const MoERoutingDescriptor& hash) const noexcept;
 };
 
 #endif
