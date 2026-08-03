@@ -54,6 +54,7 @@ void ccv_nnc_mfa_encode_segmented_int8_swiglu(
   descriptor.routeCount = params.bincount;
   descriptor.format = params.format;
   descriptor.broadcastInput = params.broadcast_input;
+  descriptor.clamp = params.clamp;
   descriptor.memoryPrecision = ioPrecision(params.data_type);
   auto pipelineValue = context->kernel_cache.findKernel<
     SegmentedInt8SwiGLUKernel,
@@ -75,7 +76,6 @@ void ccv_nnc_mfa_encode_segmented_int8_swiglu(
   encoder->setBuffer(tensors[3], tensorOffsets[3], 6);
   encoder->setBuffer(tensors[4], tensorOffsets[4], 7);
   encoder->setBuffer(tensors[5], tensorOffsets[5], 8);
-  encoder->setBytes(&params.clamp, sizeof(params.clamp), 9);
   for (int i = 0; i < 6; ++i)
     encoder->useResource(tensors[i], MTL::ResourceUsageRead);
   encoder->useResource(tensors[6], MTL::ResourceUsageWrite);

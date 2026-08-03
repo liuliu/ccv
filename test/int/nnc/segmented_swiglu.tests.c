@@ -258,14 +258,13 @@ TEST_CASE("MPS segmented SwiGLU supports general dense routed groups")
 	ccv_nnc_tensor_free(ha);
 }
 
-static void _segmented_swiglu_mps_rowwise_case(const int format, const int broadcast_input, const int grouped_prefill, const char* const format_name, int* const __case_result__)
+static void _segmented_swiglu_mps_rowwise_case(const int format, const int broadcast_input, const int grouped_prefill, const float clamp, const char* const format_name, int* const __case_result__)
 {
 	const int rows = grouped_prefill ? 17 : 6;
 	const int segments = 6;
 	const int experts = 8;
 	const int n = 256;
 	const int k = 256;
-	const float clamp = 10;
 	const int activation_rows = broadcast_input ? 1 : rows;
 	const size_t activation_count = (size_t)activation_rows * k;
 	const size_t weight_count = (size_t)experts * n * k;
@@ -404,37 +403,38 @@ static void _segmented_swiglu_mps_rowwise_case(const int format, const int broad
 TEST_CASE("MPS segmented SwiGLU fuses rowwise int8 decode")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SEGMENTED_SWIGLU_FORWARD, CCV_NNC_BACKEND_MPS));
-	_segmented_swiglu_mps_rowwise_case(0, 0, 0, "Q8_0 decode", __case_result__);
+	_segmented_swiglu_mps_rowwise_case(0, 0, 0, 10, "Q8_0 decode", __case_result__);
 }
 
 TEST_CASE("MPS segmented SwiGLU fuses IQ2_XXS decode")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SEGMENTED_SWIGLU_FORWARD, CCV_NNC_BACKEND_MPS));
-	_segmented_swiglu_mps_rowwise_case(CCV_NNC_QX_8I_ROWWISE_IQ2_XXS, 0, 0, "IQ2_XXS decode", __case_result__);
+	_segmented_swiglu_mps_rowwise_case(CCV_NNC_QX_8I_ROWWISE_IQ2_XXS, 0, 0, 10, "IQ2_XXS decode", __case_result__);
+	_segmented_swiglu_mps_rowwise_case(CCV_NNC_QX_8I_ROWWISE_IQ2_XXS, 0, 0, 0.25f, "IQ2_XXS decode with specialized clamp", __case_result__);
 }
 
 TEST_CASE("MPS segmented SwiGLU broadcasts one activation row for rowwise int8 decode")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SEGMENTED_SWIGLU_FORWARD, CCV_NNC_BACKEND_MPS));
-	_segmented_swiglu_mps_rowwise_case(0, 1, 0, "broadcast Q8_0 decode", __case_result__);
+	_segmented_swiglu_mps_rowwise_case(0, 1, 0, 10, "broadcast Q8_0 decode", __case_result__);
 }
 
 TEST_CASE("MPS segmented SwiGLU broadcasts one activation row for IQ2_XXS decode")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SEGMENTED_SWIGLU_FORWARD, CCV_NNC_BACKEND_MPS));
-	_segmented_swiglu_mps_rowwise_case(CCV_NNC_QX_8I_ROWWISE_IQ2_XXS, 1, 0, "broadcast IQ2_XXS decode", __case_result__);
+	_segmented_swiglu_mps_rowwise_case(CCV_NNC_QX_8I_ROWWISE_IQ2_XXS, 1, 0, 10, "broadcast IQ2_XXS decode", __case_result__);
 }
 
 TEST_CASE("MPS segmented SwiGLU executes grouped rowwise int8 prefill")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SEGMENTED_SWIGLU_FORWARD, CCV_NNC_BACKEND_MPS));
-	_segmented_swiglu_mps_rowwise_case(0, 0, 1, "Q8_0 grouped prefill", __case_result__);
+	_segmented_swiglu_mps_rowwise_case(0, 0, 1, 10, "Q8_0 grouped prefill", __case_result__);
 }
 
 TEST_CASE("MPS segmented SwiGLU executes grouped IQ2_XXS prefill")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SEGMENTED_SWIGLU_FORWARD, CCV_NNC_BACKEND_MPS));
-	_segmented_swiglu_mps_rowwise_case(CCV_NNC_QX_8I_ROWWISE_IQ2_XXS, 0, 1, "IQ2_XXS grouped prefill", __case_result__);
+	_segmented_swiglu_mps_rowwise_case(CCV_NNC_QX_8I_ROWWISE_IQ2_XXS, 0, 1, 10, "IQ2_XXS grouped prefill", __case_result__);
 }
 
 #include "case_main.h"

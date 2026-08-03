@@ -14,6 +14,7 @@ struct SegmentedInt8SwiGLUDescriptor {
   uint32_t routeCount;
   uint32_t format;
   uint32_t broadcastInput;
+  float clamp;
   GEMMOperandPrecision memoryPrecision;
 
   bool operator==(const SegmentedInt8SwiGLUDescriptor& rhs) const;

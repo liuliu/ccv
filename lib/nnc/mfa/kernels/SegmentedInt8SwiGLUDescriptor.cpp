@@ -8,7 +8,7 @@ bool SegmentedInt8SwiGLUDescriptor::operator==(const SegmentedInt8SwiGLUDescript
   return simd_all(matrixDimensions == rhs.matrixDimensions) &&
     expertCount == rhs.expertCount && routeCount == rhs.routeCount &&
     format == rhs.format && broadcastInput == rhs.broadcastInput &&
-    memoryPrecision == rhs.memoryPrecision;
+    clamp == rhs.clamp && memoryPrecision == rhs.memoryPrecision;
 }
 
 std::size_t std::hash<SegmentedInt8SwiGLUDescriptor>::operator()(
@@ -21,6 +21,7 @@ std::size_t std::hash<SegmentedInt8SwiGLUDescriptor>::operator()(
   seed = combine_32(seed, value.routeCount);
   seed = combine_32(seed, value.format);
   seed = combine_32(seed, value.broadcastInput);
+  seed = combine_32(seed, reinterpret_cast<const uint32_t&>(value.clamp));
   seed = combine_32(seed, (uint32_t)value.memoryPrecision.value);
   return seed;
 }
@@ -92,6 +93,7 @@ std::pair<
   constants->setConstantValue(&expertCount, MTL::DataTypeUInt, NS::UInteger(5));
   constants->setConstantValue(&broadcastInput, MTL::DataTypeUInt, NS::UInteger(6));
   constants->setConstantValue(&weightStride, MTL::DataTypeULong, NS::UInteger(7));
+  constants->setConstantValue(&clamp, MTL::DataTypeFloat, NS::UInteger(8));
 
   NS::String* functionName = NS::String::string(
     "segmented_int8_swiglu", NS::UTF8StringEncoding);
