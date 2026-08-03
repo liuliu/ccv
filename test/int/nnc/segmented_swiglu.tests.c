@@ -258,9 +258,9 @@ TEST_CASE("MPS segmented SwiGLU supports general dense routed groups")
 	ccv_nnc_tensor_free(ha);
 }
 
-static void _segmented_swiglu_mps_rowwise_case(const int format, const int broadcast_input, const char* const format_name, int* const __case_result__)
+static void _segmented_swiglu_mps_rowwise_case(const int format, const int broadcast_input, const int grouped_prefill, const char* const format_name, int* const __case_result__)
 {
-	const int rows = 6;
+	const int rows = grouped_prefill ? 17 : 6;
 	const int segments = 6;
 	const int experts = 8;
 	const int n = 256;
@@ -283,13 +283,15 @@ static void _segmented_swiglu_mps_rowwise_case(const int format, const int broad
 	_segmented_swiglu_fill(hgate_f32->data.f32, weight_count, 29, 113, 1.0f / 1024);
 	_segmented_swiglu_fill(hup_f32->data.f32, weight_count, 37, 127, 1.0f / 1024);
 	const int selected[] = { 7, 1, 5, 2, 6, 3 };
-	const int rows_per_segment[] = { 0, 2, 1, 1, 1, 1 };
+	const int decode_rows_per_segment[] = { 0, 2, 1, 1, 1, 1 };
+	const int prefill_rows_per_segment[] = { 0, 2, 4, 3, 5, 3 };
 	memcpy(hindices->data.i32, selected, sizeof(selected));
-	memcpy(hcounts->data.i32, rows_per_segment, sizeof(rows_per_segment));
+	memcpy(hcounts->data.i32, grouped_prefill ? prefill_rows_per_segment : decode_rows_per_segment,
+		sizeof(decode_rows_per_segment));
 	int i;
 	for (i = 0; i < rows; i++)
 	{
-		hroute_f32->data.f32[i] = (float)(i + 1) / 7;
+		hroute_f32->data.f32[i] = (float)(i + 1) / (rows + 1);
 	}
 	ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0,
 		TENSOR_LIST(ha_f32, hgate_f32, hup_f32, hroute_f32), TENSOR_LIST(ha, hgate, hup, hroute), 0);
@@ -342,8 +344,8 @@ static void _segmented_swiglu_mps_rowwise_case(const int format, const int broad
 	ccv_nnc_tensor_t* const route = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, rows), 0);
 	ccv_nnc_tensor_t* const indices = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32S, segments), 0);
 	ccv_nnc_tensor_t* const counts = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32S, segments), 0);
-	ccv_nnc_tensor_t* const direct_output = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, rows, n), 0);
-	ccv_nnc_tensor_t* const direct_actual = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, rows, n), 0);
+	ccv_nnc_tensor_t* const output = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, rows, n), 0);
+	ccv_nnc_tensor_t* const actual = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, rows, n), 0);
 	ccv_nnc_stream_context_t* const stream = ccv_nnc_stream_context_new(CCV_STREAM_CONTEXT_GPU);
 	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0,
 		TENSOR_LIST(ha, hindices, hcounts, hgate_q, hup_q, hroute),
@@ -356,21 +358,22 @@ static void _segmented_swiglu_mps_rowwise_case(const int format, const int broad
 	ccv_nnc_set_queue_watermark(3);
 	for (i = 0; i < 3; i++)
 		REQUIRE_EQ(ccv_nnc_cmd_exec(mps_command, ccv_nnc_no_hint, 0,
-			TENSOR_LIST(a, indices, counts, gate_q, up_q, route), TENSOR_LIST(direct_output), stream),
-			CCV_NNC_EXEC_SUCCESS, "%s direct decode path should queue", format_name);
+			TENSOR_LIST(a, indices, counts, gate_q, up_q, route), TENSOR_LIST(output), stream),
+			CCV_NNC_EXEC_SUCCESS, "%s path should queue", format_name);
 	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0,
-		TENSOR_LIST(direct_output), TENSOR_LIST(direct_actual), stream);
+		TENSOR_LIST(output), TENSOR_LIST(actual), stream);
 	ccv_nnc_stream_context_wait(stream);
 	ccv_nnc_set_queue_watermark(old_watermark);
 	if (old_flags & CCV_NNC_DISABLE_MFA)
 		ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA);
 	else
 		ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA);
-	_segmented_swiglu_compare_half(direct_actual->data.f16, expected->data.f32, rows * n, 0.02,
-		"direct rowwise segmented SwiGLU should match its dequantized CPU reference", __case_result__);
+	_segmented_swiglu_compare_half(actual->data.f16, expected->data.f32, rows * n,
+		grouped_prefill ? 0.04 : 0.02,
+		"rowwise segmented SwiGLU should match its dequantized CPU reference", __case_result__);
 	ccv_nnc_stream_context_free(stream);
-	ccv_nnc_tensor_free(direct_actual);
-	ccv_nnc_tensor_free(direct_output);
+	ccv_nnc_tensor_free(actual);
+	ccv_nnc_tensor_free(output);
 	ccv_nnc_tensor_free(counts);
 	ccv_nnc_tensor_free(indices);
 	ccv_nnc_tensor_free(route);
@@ -401,25 +404,37 @@ static void _segmented_swiglu_mps_rowwise_case(const int format, const int broad
 TEST_CASE("MPS segmented SwiGLU fuses rowwise int8 decode")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SEGMENTED_SWIGLU_FORWARD, CCV_NNC_BACKEND_MPS));
-	_segmented_swiglu_mps_rowwise_case(0, 0, "Q8_0", __case_result__);
+	_segmented_swiglu_mps_rowwise_case(0, 0, 0, "Q8_0 decode", __case_result__);
 }
 
 TEST_CASE("MPS segmented SwiGLU fuses IQ2_XXS decode")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SEGMENTED_SWIGLU_FORWARD, CCV_NNC_BACKEND_MPS));
-	_segmented_swiglu_mps_rowwise_case(CCV_NNC_QX_8I_ROWWISE_IQ2_XXS, 0, "IQ2_XXS", __case_result__);
+	_segmented_swiglu_mps_rowwise_case(CCV_NNC_QX_8I_ROWWISE_IQ2_XXS, 0, 0, "IQ2_XXS decode", __case_result__);
 }
 
 TEST_CASE("MPS segmented SwiGLU broadcasts one activation row for rowwise int8 decode")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SEGMENTED_SWIGLU_FORWARD, CCV_NNC_BACKEND_MPS));
-	_segmented_swiglu_mps_rowwise_case(0, 1, "broadcast Q8_0", __case_result__);
+	_segmented_swiglu_mps_rowwise_case(0, 1, 0, "broadcast Q8_0 decode", __case_result__);
 }
 
 TEST_CASE("MPS segmented SwiGLU broadcasts one activation row for IQ2_XXS decode")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SEGMENTED_SWIGLU_FORWARD, CCV_NNC_BACKEND_MPS));
-	_segmented_swiglu_mps_rowwise_case(CCV_NNC_QX_8I_ROWWISE_IQ2_XXS, 1, "broadcast IQ2_XXS", __case_result__);
+	_segmented_swiglu_mps_rowwise_case(CCV_NNC_QX_8I_ROWWISE_IQ2_XXS, 1, 0, "broadcast IQ2_XXS decode", __case_result__);
+}
+
+TEST_CASE("MPS segmented SwiGLU executes grouped rowwise int8 prefill")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SEGMENTED_SWIGLU_FORWARD, CCV_NNC_BACKEND_MPS));
+	_segmented_swiglu_mps_rowwise_case(0, 0, 1, "Q8_0 grouped prefill", __case_result__);
+}
+
+TEST_CASE("MPS segmented SwiGLU executes grouped IQ2_XXS prefill")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SEGMENTED_SWIGLU_FORWARD, CCV_NNC_BACKEND_MPS));
+	_segmented_swiglu_mps_rowwise_case(CCV_NNC_QX_8I_ROWWISE_IQ2_XXS, 0, 1, "IQ2_XXS grouped prefill", __case_result__);
 }
 
 #include "case_main.h"

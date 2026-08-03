@@ -311,6 +311,10 @@
 #define CMD_SCATTER_ADD_FORWARD(_bincount) ccv_nnc_cmd(CCV_NNC_SCATTER_ADD_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.scatter_add={.bincount=_bincount}}), 0)
 // CCV_NNC_SCATTER_ADD_BACKWARD
 #define CMD_SCATTER_ADD_BACKWARD(_bincount) ccv_nnc_cmd(CCV_NNC_SCATTER_ADD_BACKWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.scatter_add={.bincount=_bincount}}), 0)
+// CCV_NNC_SEGMENTED_SWIGLU_FORWARD
+#define CMD_SEGMENTED_SWIGLU_FORWARD(_clamp) ccv_nnc_cmd(CCV_NNC_SEGMENTED_SWIGLU_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.segmented_swiglu={.clamp=_clamp}}), 0)
+// CCV_NNC_SEGMENTED_SWIGLU_BACKWARD
+#define CMD_SEGMENTED_SWIGLU_BACKWARD(_clamp) ccv_nnc_cmd(CCV_NNC_SEGMENTED_SWIGLU_BACKWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.segmented_swiglu={.clamp=_clamp}}), 0)
 // CCV_NNC_SGD_FORWARD
 #define CMD_SGD_FORWARD(_nesterov, _rate, _scale, _decay, _momentum, _dampening) ccv_nnc_cmd(CCV_NNC_SGD_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.sgd={.nesterov=_nesterov,.rate=_rate,.scale=_scale,.decay=_decay,.momentum=_momentum,.dampening=_dampening}}), 0)
 // CCV_NNC_SIGMOID_FORWARD
@@ -359,6 +363,8 @@
 #define CMD_SWISH_BACKWARD(_beta) ccv_nnc_cmd(CCV_NNC_SWISH_BACKWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.swish={.beta=_beta}}), 0)
 // CCV_NNC_SWISH_MUL_FORWARD
 #define CMD_SWISH_MUL_FORWARD(_beta, _scale) ccv_nnc_cmd(CCV_NNC_SWISH_MUL_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.swish_mul={.beta=_beta,.scale=_scale}}), 0)
+// CCV_NNC_SWISH_MUL_FORWARD
+#define CMD_WEIGHTED_SWISH_MUL_FORWARD(_beta, _scale, _clamp) ccv_nnc_cmd(CCV_NNC_SWISH_MUL_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.swish_mul={.beta=_beta,.scale=_scale,.clamp=_clamp,.weighted=1}}), 0)
 // CCV_NNC_SWISH_MUL_BACKWARD
 #define CMD_SWISH_MUL_BACKWARD(_beta, _scale) ccv_nnc_cmd(CCV_NNC_SWISH_MUL_BACKWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.swish_mul={.beta=_beta,.scale=_scale}}), 0)
 // CCV_NNC_TANH_FORWARD
