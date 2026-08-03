@@ -39,6 +39,119 @@ TEST_CASE("swish mul in float")
 	ccv_nnc_tensor_free(c_tensor);
 }
 
+TEST_CASE("weighted clamped swish mul applies one weight per row")
+{
+	const int rows = 7;
+	const int cols = 13;
+	const float limit = 10;
+	ccv_nnc_tensor_t* const value = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, cols), 0);
+	ccv_nnc_tensor_t* const gate = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, cols), 0);
+	ccv_nnc_tensor_t* const weight = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows), 0);
+	ccv_nnc_tensor_t* const output = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, cols), 0);
+	int i;
+	for (i = 0; i < rows; i++)
+	{
+		weight->data.f32[i] = (float)(i + 1) / 8;
+		int j;
+		for (j = 0; j < cols; j++)
+		{
+			value->data.f32[i * cols + j] = (float)((i * 19 + j * 7) % 37 - 18);
+			gate->data.f32[i * cols + j] = (float)((i * 11 + j * 13) % 41 - 20);
+		}
+	}
+	REQUIRE_EQ(ccv_nnc_cmd_exec(CMD_WEIGHTED_SWISH_MUL_FORWARD(1, 1, limit), ccv_nnc_no_hint, 0,
+		TENSOR_LIST(value, gate, weight), TENSOR_LIST(output), 0), CCV_NNC_EXEC_SUCCESS,
+		"weighted clamped swish mul should execute");
+	for (i = 0; i < rows; i++)
+	{
+		int j;
+		for (j = 0; j < cols; j++)
+		{
+			const float limited_value = ccv_min(ccv_max(value->data.f32[i * cols + j], -limit), limit);
+			const float limited_gate = ccv_min(gate->data.f32[i * cols + j], limit);
+			const float expected = weight->data.f32[i] * limited_value * limited_gate / (1 + expf(-limited_gate));
+			REQUIRE_EQ_WITH_TOLERANCE(output->data.f32[i * cols + j], expected, 1e-5,
+				"weighted clamped swish mul should match its row-wise reference");
+		}
+	}
+	ccv_nnc_tensor_free(output);
+	ccv_nnc_tensor_free(weight);
+	ccv_nnc_tensor_free(gate);
+	ccv_nnc_tensor_free(value);
+}
+
+TEST_CASE("MPSGraph weighted clamped swish mul accepts a rank-one row weight")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SWISH_MUL_FORWARD, CCV_NNC_BACKEND_MPS));
+	const int rows = 7;
+	const int cols = 13;
+	const float limit = 10;
+	ccv_nnc_tensor_t* const hvalue_f32 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, cols), 0);
+	ccv_nnc_tensor_t* const hgate_f32 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, cols), 0);
+	ccv_nnc_tensor_t* const hweight_f32 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows), 0);
+	ccv_nnc_tensor_t* const expected = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, cols), 0);
+	ccv_nnc_tensor_t* const hvalue = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, rows, cols), 0);
+	ccv_nnc_tensor_t* const hgate = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, rows, cols), 0);
+	ccv_nnc_tensor_t* const hweight = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, rows), 0);
+	ccv_nnc_tensor_t* const value = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, rows, cols), 0);
+	ccv_nnc_tensor_t* const gate = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, rows, cols), 0);
+	ccv_nnc_tensor_t* const weight = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, rows), 0);
+	ccv_nnc_tensor_t* const output = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, rows, cols), 0);
+	ccv_nnc_tensor_t* const houtput = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, rows, cols), 0);
+	ccv_nnc_tensor_t* const actual = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, cols), 0);
+	int i;
+	for (i = 0; i < rows; i++)
+	{
+		hweight_f32->data.f32[i] = (float)(i + 1) / 8;
+		int j;
+		for (j = 0; j < cols; j++)
+		{
+			hvalue_f32->data.f32[i * cols + j] = (float)((i * 19 + j * 7) % 37 - 18);
+			hgate_f32->data.f32[i * cols + j] = (float)((i * 11 + j * 13) % 41 - 20);
+		}
+	}
+	ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0,
+		TENSOR_LIST(hvalue_f32, hgate_f32, hweight_f32), TENSOR_LIST(hvalue, hgate, hweight), 0);
+	ccv_nnc_tensor_t* const value_f32 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, cols), 0);
+	ccv_nnc_tensor_t* const gate_f32 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, cols), 0);
+	ccv_nnc_tensor_t* const weight_f32 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows), 0);
+	ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0,
+		TENSOR_LIST(hvalue, hgate, hweight), TENSOR_LIST(value_f32, gate_f32, weight_f32), 0);
+	ccv_nnc_cmd_exec(CMD_WEIGHTED_SWISH_MUL_FORWARD(1, 1, limit), ccv_nnc_no_hint, 0,
+		TENSOR_LIST(value_f32, gate_f32, weight_f32), TENSOR_LIST(expected), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0,
+		TENSOR_LIST(hvalue, hgate, hweight), TENSOR_LIST(value, gate, weight), 0);
+	const uint64_t old_flags = ccv_nnc_flags();
+	ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA);
+	ccv_nnc_cmd_t cmd = CMD_WEIGHTED_SWISH_MUL_FORWARD(1, 1, limit);
+	cmd.backend = CCV_NNC_BACKEND_MPS;
+	const int status = ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0,
+		TENSOR_LIST(value, gate, weight), TENSOR_LIST(output), 0);
+	if (!(old_flags & CCV_NNC_DISABLE_MFA))
+		ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA);
+	REQUIRE_EQ(status, CCV_NNC_EXEC_SUCCESS, "MPSGraph weighted clamped swish mul should execute");
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(output), TENSOR_LIST(houtput), 0);
+	ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(houtput), TENSOR_LIST(actual), 0);
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, actual->data.f32, expected->data.f32, rows * cols, 2e-2,
+		"MPSGraph weighted clamped swish mul should match the quantized CPU reference");
+	ccv_nnc_tensor_free(weight_f32);
+	ccv_nnc_tensor_free(gate_f32);
+	ccv_nnc_tensor_free(value_f32);
+	ccv_nnc_tensor_free(actual);
+	ccv_nnc_tensor_free(houtput);
+	ccv_nnc_tensor_free(output);
+	ccv_nnc_tensor_free(weight);
+	ccv_nnc_tensor_free(gate);
+	ccv_nnc_tensor_free(value);
+	ccv_nnc_tensor_free(hweight);
+	ccv_nnc_tensor_free(hgate);
+	ccv_nnc_tensor_free(hvalue);
+	ccv_nnc_tensor_free(expected);
+	ccv_nnc_tensor_free(hweight_f32);
+	ccv_nnc_tensor_free(hgate_f32);
+	ccv_nnc_tensor_free(hvalue_f32);
+}
+
 TEST_CASE("swish mul gradient in float")
 {
 	ccv_nnc_tensor_t* const value = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 17, 13), 0);

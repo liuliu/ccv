@@ -19,6 +19,7 @@ struct SwishMulKernel {
   uint8_t outputMask;
 
   uint8_t value;
+  uint8_t weighted;
 
   bool loadM;
 
@@ -26,11 +27,14 @@ struct SwishMulKernel {
 
   float scale;
 
+  uint8_t clamped;
+
   GEMMOperandPrecision gPrecision;
 
   GEMMOperandPrecision aPrecision;
 
   GEMMOperandPrecision bPrecision;
+  GEMMOperandPrecision weightPrecision;
 
   GEMMOperandPrecision daPrecision;
 

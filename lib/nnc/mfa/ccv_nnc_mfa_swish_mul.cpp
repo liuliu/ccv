@@ -30,6 +30,7 @@ void ccv_nnc_mfa_prepare_swish_mul(mfa::context* context, ccv_nnc_mfa_swish_mul_
 
 void ccv_nnc_mfa_encode_swish_mul(ccv_nnc_mfa_context_t* context, ccv_nnc_mfa_swish_mul_params_t params, mtl_command_batch_t* command_batch, mtl_buffer_t** tensors, size_t* tensor_offsets)
 {
+  CCV_NNC_MFA_PRECONDITION(!params.weighted || (params.weight_count > 0 && params.length % params.weight_count == 0));
   auto encoder = command_batch->startCommand();
 
   int num_tensors = 0;
@@ -42,7 +43,7 @@ void ccv_nnc_mfa_encode_swish_mul(ccv_nnc_mfa_context_t* context, ccv_nnc_mfa_sw
     const int expected_tensors = params.output_mask == 1 ? 3 : params.output_mask == 2 ? 4 : 5;
     CCV_NNC_MFA_PRECONDITION(num_tensors == expected_tensors);
   } else {
-    CCV_NNC_MFA_PRECONDITION(num_tensors == 3);
+    CCV_NNC_MFA_PRECONDITION(num_tensors == (params.weighted ? 4 : 3));
   }
 
   SwishMulDescriptor descriptor;
@@ -50,17 +51,22 @@ void ccv_nnc_mfa_encode_swish_mul(ccv_nnc_mfa_context_t* context, ccv_nnc_mfa_sw
   descriptor.outputMask = params.output_mask;
   descriptor.beta = params.beta;
   descriptor.scale = params.scale;
+  descriptor.clamp = params.clamp;
+  descriptor.weighted = params.weighted;
   descriptor.gPrecision = precision_from_mtl_data_type(params.g_data_type);
   descriptor.aPrecision = precision_from_mtl_data_type(params.a_data_type);
   descriptor.bPrecision = precision_from_mtl_data_type(params.b_data_type);
+  descriptor.weightPrecision = precision_from_mtl_data_type(params.weight_data_type);
   descriptor.daPrecision = precision_from_mtl_data_type(params.da_data_type);
   descriptor.dbPrecision = precision_from_mtl_data_type(params.db_data_type);
   descriptor.length = params.length;
+  descriptor.weightCount = params.weight_count;
   descriptor.loadM = params.loadM;
 
-  if (!params.loadM && params.length % (4 * 256) == 0) {
+  const bool row_vectorizable = !params.weighted || ((params.length / params.weight_count) % 4 == 0);
+  if (row_vectorizable && !params.loadM && params.length % (4 * 256) == 0) {
     descriptor.value = 0;
-  } else if (params.length % 4 == 0) {
+  } else if (row_vectorizable && params.length % 4 == 0) {
     descriptor.value = 1;
   } else {
     descriptor.value = 2;
@@ -116,24 +122,18 @@ void ccv_nnc_mfa_encode_swish_mul(ccv_nnc_mfa_context_t* context, ccv_nnc_mfa_sw
       if (!read)
         encoder->useResource(tensors[write_indices[i]], MTL::ResourceUsageWrite);
     }
-  } else if (tensors[0] == tensors[2]) {
-    encoder->useResource(tensors[0], MTL::ResourceUsageRead | MTL::ResourceUsageWrite);
-    encoder->useResource(tensors[1], MTL::ResourceUsageRead);
-  } else if (tensors[1] == tensors[2]) {
-    encoder->useResource(tensors[0], MTL::ResourceUsageRead);
-    encoder->useResource(tensors[1], MTL::ResourceUsageRead | MTL::ResourceUsageWrite);
   } else {
-    encoder->useResource(tensors[0], MTL::ResourceUsageRead);
-    encoder->useResource(tensors[1], MTL::ResourceUsageRead);
-    encoder->useResource(tensors[2], MTL::ResourceUsageWrite);
+    const int output_index = params.weighted ? 3 : 2;
+    for (int i = 0; i < output_index; i++)
+      encoder->useResource(tensors[i], tensors[i] == tensors[output_index] ? MTL::ResourceUsageRead | MTL::ResourceUsageWrite : MTL::ResourceUsageRead);
+    bool output_is_input = false;
+    for (int i = 0; i < output_index; i++)
+      output_is_input = output_is_input || tensors[i] == tensors[output_index];
+    if (!output_is_input)
+      encoder->useResource(tensors[output_index], MTL::ResourceUsageWrite);
   }
 
-  unsigned int count;
-  if (params.length % 4 == 0) {
-    count = params.length / 4;
-  } else {
-    count = params.length;
-  }
+  const unsigned int count = (kernel->value == 0 || kernel->value == 1) ? params.length / 4 : params.length;
   if (params.loadM)
     encoder->setBytes(&count, sizeof(count), num_tensors);
   const int num_blocks = (count + 255) / 256;

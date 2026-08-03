@@ -55,6 +55,7 @@ struct SegmentedInt8GemvDescriptor {
   GEMMOperandPrecision memoryPrecision;
 
   bool useBias;
+  bool broadcastInput;
 
   bool operator==(const SegmentedInt8GemvDescriptor& rhs) const;
 

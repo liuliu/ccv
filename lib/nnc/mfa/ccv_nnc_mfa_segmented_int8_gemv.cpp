@@ -61,6 +61,7 @@ void ccv_nnc_mfa_encode_segmented_int8_gemv(
   descriptor.format = params.format;
   descriptor.memoryPrecision = io_precision(params.data_type);
   descriptor.useBias = params.fused_bias;
+  descriptor.broadcastInput = params.broadcast_input;
 
   auto pool = NS::AutoreleasePool::alloc()->init();
   auto pipelineValue = context->kernel_cache.findKernel<

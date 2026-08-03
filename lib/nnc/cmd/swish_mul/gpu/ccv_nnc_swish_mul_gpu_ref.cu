@@ -13,31 +13,37 @@ static int _ccv_nnc_swish_mul_datatype_supported(const int datatype)
 }
 
 template<typename NUM1, typename NUM2>
-__global__ void _ccv_nnc_swish_mul_forw_kernel(const size_t count, const float beta, const float scale, const NUM1* const a, const NUM2* const b, NUM1* const c)
+__global__ void _ccv_nnc_swish_mul_forw_kernel(const size_t count, const float beta, const float scale, const float limit, const size_t row_width, const NUM1* const a, const NUM2* const b, const NUM1* const weight, NUM1* const c)
 {
 	CUDA_1D_KERNEL_LOOP(i, count) {
-		const float value = (float)a[i];
-		const float gate = (float)b[i];
+		float value = (float)a[i];
+		float gate = (float)b[i];
+		if (limit > 1.0e-6f)
+		{
+			value = fminf(fmaxf(value, -limit), limit);
+			gate = fminf(gate, limit);
+		}
 		const float sigmoid = 1.f / (1.f + expf(-beta * gate));
-		c[i] = (NUM1)(scale * value * gate * sigmoid);
+		const float row_weight = weight ? (float)weight[i / row_width] : 1;
+		c[i] = (NUM1)(scale * row_weight * value * gate * sigmoid);
 	}
 }
 
 template<typename NUM1, typename NUM2>
-static void _ccv_nnc_swish_mul_forw_launch(const size_t count, const float beta, const float scale, const ccv_nnc_tensor_t* const a, const ccv_nnc_tensor_t* const b, ccv_nnc_tensor_t* const c, cudaStream_t stream)
+static void _ccv_nnc_swish_mul_forw_launch(const size_t count, const float beta, const float scale, const float limit, const size_t row_width, const ccv_nnc_tensor_t* const a, const ccv_nnc_tensor_t* const b, const ccv_nnc_tensor_t* const weight, ccv_nnc_tensor_t* const c, cudaStream_t stream)
 {
-	_ccv_nnc_swish_mul_forw_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, beta, scale, (const NUM1*)a->data.u8, (const NUM2*)b->data.u8, (NUM1*)c->data.u8);
+	_ccv_nnc_swish_mul_forw_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, beta, scale, limit, row_width, (const NUM1*)a->data.u8, (const NUM2*)b->data.u8, weight ? (const NUM1*)weight->data.u8 : 0, (NUM1*)c->data.u8);
 }
 
 template<typename NUM1>
-static int _ccv_nnc_swish_mul_forw_gate(const size_t count, const float beta, const float scale, const ccv_nnc_tensor_t* const a, const ccv_nnc_tensor_t* const b, ccv_nnc_tensor_t* const c, cudaStream_t stream)
+static int _ccv_nnc_swish_mul_forw_gate(const size_t count, const float beta, const float scale, const float limit, const size_t row_width, const ccv_nnc_tensor_t* const a, const ccv_nnc_tensor_t* const b, const ccv_nnc_tensor_t* const weight, ccv_nnc_tensor_t* const c, cudaStream_t stream)
 {
 	if (b->info.datatype == CCV_32F)
-		_ccv_nnc_swish_mul_forw_launch<NUM1, float>(count, beta, scale, a, b, c, stream);
+		_ccv_nnc_swish_mul_forw_launch<NUM1, float>(count, beta, scale, limit, row_width, a, b, weight, c, stream);
 	else if (b->info.datatype == CCV_16F)
-		_ccv_nnc_swish_mul_forw_launch<NUM1, __half>(count, beta, scale, a, b, c, stream);
+		_ccv_nnc_swish_mul_forw_launch<NUM1, __half>(count, beta, scale, limit, row_width, a, b, weight, c, stream);
 	else if (b->info.datatype == CCV_16BF)
-		_ccv_nnc_swish_mul_forw_launch<NUM1, __nv_bfloat16>(count, beta, scale, a, b, c, stream);
+		_ccv_nnc_swish_mul_forw_launch<NUM1, __nv_bfloat16>(count, beta, scale, limit, row_width, a, b, weight, c, stream);
 	else
 		return CCV_NNC_EXEC_INVALID;
 	return CCV_NNC_EXEC_SUCCESS;
@@ -45,18 +51,21 @@ static int _ccv_nnc_swish_mul_forw_gate(const size_t count, const float beta, co
 
 static int _ccv_nnc_swish_mul_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
 {
-	assert(input_size == 2);
+	const int weighted = cmd.info.swish_mul.weighted;
+	assert(input_size == (weighted ? 3 : 2));
 	assert(output_size == 1);
 	const ccv_nnc_tensor_t* const a = inputs[0];
 	const ccv_nnc_tensor_t* const b = inputs[1];
+	const ccv_nnc_tensor_t* const weight = weighted ? inputs[2] : 0;
 	ccv_nnc_tensor_t* const c = outputs[0];
-	if (a->info.dim[0] == 0 || b->info.dim[0] == 0 || c->info.dim[0] == 0)
+	if (a->info.dim[0] == 0 || b->info.dim[0] == 0 || (weight && weight->info.dim[0] == 0) || c->info.dim[0] == 0)
 		return CCV_NNC_EXEC_INVALID;
-	if (!CCV_IS_TENSOR_CONTIGUOUS(a) || !CCV_IS_TENSOR_CONTIGUOUS(b) || !CCV_IS_TENSOR_CONTIGUOUS(c))
+	if (!CCV_IS_TENSOR_CONTIGUOUS(a) || !CCV_IS_TENSOR_CONTIGUOUS(b) || (weight && !CCV_IS_TENSOR_CONTIGUOUS(weight)) || !CCV_IS_TENSOR_CONTIGUOUS(c))
 		return CCV_NNC_EXEC_INVALID;
 	if (c->info.datatype != a->info.datatype ||
 		!_ccv_nnc_swish_mul_datatype_supported(a->info.datatype) ||
-		!_ccv_nnc_swish_mul_datatype_supported(b->info.datatype))
+		!_ccv_nnc_swish_mul_datatype_supported(b->info.datatype) ||
+		(weight && weight->info.datatype != a->info.datatype))
 		return CCV_NNC_EXEC_INVALID;
 	const int a_nd = ccv_nnc_tensor_nd(a->info.dim);
 	if (a_nd != ccv_nnc_tensor_nd(b->info.dim) ||
@@ -67,16 +76,21 @@ static int _ccv_nnc_swish_mul_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t
 		if (a->info.dim[i] != b->info.dim[i] || a->info.dim[i] != c->info.dim[i])
 			return CCV_NNC_EXEC_INVALID;
 	const size_t count = ccv_nnc_tensor_count(a->info);
+	const size_t weight_count = weight ? ccv_nnc_tensor_count(weight->info) : 1;
+	if (weight_count == 0 || count % weight_count != 0)
+		return CCV_NNC_EXEC_INVALID;
+	const size_t row_width = count / weight_count;
 	const float beta = cmd.info.swish_mul.beta;
 	const float scale = cmd.info.swish_mul.scale;
+	const float limit = cmd.info.swish_mul.clamp;
 	cudaStream_t stream = ccv_nnc_stream_context_get_stream(stream_context);
 	int status;
 	if (a->info.datatype == CCV_32F)
-		status = _ccv_nnc_swish_mul_forw_gate<float>(count, beta, scale, a, b, c, stream);
+		status = _ccv_nnc_swish_mul_forw_gate<float>(count, beta, scale, limit, row_width, a, b, weight, c, stream);
 	else if (a->info.datatype == CCV_16F)
-		status = _ccv_nnc_swish_mul_forw_gate<__half>(count, beta, scale, a, b, c, stream);
+		status = _ccv_nnc_swish_mul_forw_gate<__half>(count, beta, scale, limit, row_width, a, b, weight, c, stream);
 	else
-		status = _ccv_nnc_swish_mul_forw_gate<__nv_bfloat16>(count, beta, scale, a, b, c, stream);
+		status = _ccv_nnc_swish_mul_forw_gate<__nv_bfloat16>(count, beta, scale, limit, row_width, a, b, weight, c, stream);
 	if (status != CCV_NNC_EXEC_SUCCESS)
 		return status;
 	CUDA_ENFORCE(cudaGetLastError());

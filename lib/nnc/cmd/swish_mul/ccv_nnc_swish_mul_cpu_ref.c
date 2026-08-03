@@ -12,16 +12,20 @@
 
 static int _ccv_nnc_swish_mul_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
 {
-	assert(input_size == 2);
+	const int weighted = cmd.info.swish_mul.weighted;
+	assert(input_size == (weighted ? 3 : 2));
 	assert(output_size == 1);
 	const ccv_nnc_tensor_t* const a = inputs[0];
 	const ccv_nnc_tensor_t* const b = inputs[1];
+	const ccv_nnc_tensor_t* const w = weighted ? inputs[2] : 0;
 	ccv_nnc_tensor_t* const c = outputs[0];
 	assert(CCV_IS_TENSOR_CONTIGUOUS(a));
 	assert(CCV_IS_TENSOR_CONTIGUOUS(b));
+	assert(!w || CCV_IS_TENSOR_CONTIGUOUS(w));
 	assert(CCV_IS_TENSOR_CONTIGUOUS(c));
 	assert(a->info.datatype == CCV_32F);
 	assert(b->info.datatype == CCV_32F);
+	assert(!w || w->info.datatype == CCV_32F);
 	assert(c->info.datatype == CCV_32F);
 	int i;
 	for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC && a->info.dim[i] > 0; i++)
@@ -30,16 +34,23 @@ static int _ccv_nnc_swish_mul_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t
 		assert(a->info.dim[i] == c->info.dim[i]);
 	}
 	const int count = ccv_nnc_tensor_count(a->info);
+	const int weight_count = w ? ccv_nnc_tensor_count(w->info) : 1;
+	assert(weight_count > 0 && count % weight_count == 0);
+	const int row_width = count / weight_count;
 	const float beta = cmd.info.swish_mul.beta;
 	const float scale = cmd.info.swish_mul.scale;
+	const float limit = cmd.info.swish_mul.clamp;
+	const int clamp_enabled = limit > 1.0e-6f;
 	const float* const ap = a->data.f32;
 	const float* const bp = b->data.f32;
+	const float* const wp = w ? w->data.f32 : 0;
 	float* const cp = c->data.f32;
 	for (i = 0; i < count; i++)
 	{
-		const float x = bp[i];
+		const float x = clamp_enabled ? ccv_min(bp[i], limit) : bp[i];
+		const float value = clamp_enabled ? ccv_min(ccv_max(ap[i], -limit), limit) : ap[i];
 		const float sigmoid = 1.f / (1.f + expf(-beta * x));
-		cp[i] = scale * ap[i] * x * sigmoid;
+		cp[i] = scale * value * x * sigmoid * (wp ? wp[i / row_width] : 1);
 	}
 	return CCV_NNC_EXEC_SUCCESS;
 }

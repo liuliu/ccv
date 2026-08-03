@@ -4,7 +4,7 @@ LDFLAGS := -L"../../lib" -lccv $(LDFLAGS)
 CFLAGS := -O3 -Wall -I"../../lib" $(CFLAGS)
 NVFLAGS := -O3 -I"../../lib" -lineinfo $(NVFLAGS)
 
-TARGETS = nnc-e2e-verify nnc-e2e-sym-verify nnc-sym cifar-10 imagenet coco imdb iwslt wmt csv imdb_lstm sdpa_bench sdpa_grad_bench routed_segmented_gemm_bench moe_routing_bench mps_rowwise_gemm_bench na_int8_dynamic_quant_bench ane_rowwise_quant_transpose_bench # attention_kernel_gen gemm_kernel_gen square_attention_test laplacian_test adversarial_shape_test
+TARGETS = nnc-e2e-verify nnc-e2e-sym-verify nnc-sym cifar-10 imagenet coco imdb iwslt wmt csv imdb_lstm sdpa_bench sdpa_grad_bench routed_segmented_gemm_bench moe_routing_bench segmented_swiglu_bench mps_rowwise_gemm_bench na_int8_dynamic_quant_bench ane_rowwise_quant_transpose_bench # attention_kernel_gen gemm_kernel_gen square_attention_test laplacian_test adversarial_shape_test
 
 FUZZ_TARGETS = csv_fuzz
 

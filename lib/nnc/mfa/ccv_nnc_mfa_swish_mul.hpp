@@ -4,10 +4,14 @@
 typedef struct {
   float beta;
   float scale;
+  float clamp;
   uint64_t a_data_type;
   uint64_t b_data_type;
+  uint64_t weight_data_type;
   uint32_t length;
+  uint32_t weight_count;
   uint8_t gradient;
+  uint8_t weighted;
   uint8_t output_mask;
   uint64_t g_data_type;
   uint64_t da_data_type;

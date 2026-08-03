@@ -12,7 +12,8 @@ bool SegmentedInt8GemvDescriptor::operator==(const SegmentedInt8GemvDescriptor& 
     binCount == rhs.binCount &&
     format == rhs.format &&
     memoryPrecision == rhs.memoryPrecision &&
-    useBias == rhs.useBias;
+    useBias == rhs.useBias &&
+    broadcastInput == rhs.broadcastInput;
 }
 
 std::size_t std::hash<SegmentedInt8GemvDescriptor>::operator()(
@@ -27,7 +28,7 @@ std::size_t std::hash<SegmentedInt8GemvDescriptor>::operator()(
   seed = combine_32(seed, pack_32(simd::uchar4 {
     (uint8_t)hash.memoryPrecision.value,
     (uint8_t)hash.useBias,
-    0,
+    (uint8_t)hash.broadcastInput,
     0,
   }));
   return seed;
@@ -170,6 +171,9 @@ std::pair<
     &binCount, MTL::DataTypeUInt, NS::UInteger(6));
   constants->setConstantValue(
     &weightStride, MTL::DataTypeULong, NS::UInteger(7));
+  const uint32_t broadcastInputValue = broadcastInput;
+  constants->setConstantValue(
+    &broadcastInputValue, MTL::DataTypeUInt, NS::UInteger(8));
 
   NS::String* functionName = NS::String::string(
     "segmented_int8_gemv", NS::UTF8StringEncoding);

@@ -3,3 +3,4 @@ nnc-e2e-sym-verify
 nnc-sym
 routed_segmented_gemm_bench
 moe_routing_bench
+segmented_swiglu_bench

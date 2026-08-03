@@ -126,7 +126,7 @@ kernel void segmented_int8_gemv(
     return;
 
   src0 += (ulong)expert * weight_expert_stride;
-  src1 += (ulong)route * ncols;
+  src1 += broadcast_input ? 0 : (ulong)route * ncols;
   dst += (ulong)route * nrows;
   scales += (ulong)expert * nrows;
   const uint tgpig = tgpig_position - route * threadgroups_per_route;
@@ -367,7 +367,7 @@ kernel void segmented_int8_gemv(
     return;
 
   src0 += (ulong)expert * weight_expert_stride;
-  src1 += (ulong)route * ncols;
+  src1 += broadcast_input ? 0 : (ulong)route * ncols;
   dst += (ulong)route * nrows;
   scales += (ulong)expert * nrows;
   const uint tgpig = tgpig_position - route * threadgroups_per_route;
@@ -580,7 +580,7 @@ kernel void segmented_int8_gemv(
     return;
 
   src0 += (ulong)expert * weight_expert_stride;
-  src1 += (ulong)route * ncols;
+  src1 += broadcast_input ? 0 : (ulong)route * ncols;
   dst += (ulong)route * nrows;
   scales += (ulong)expert * nrows;
   const uint tgpig = tgpig_position - route * threadgroups_per_route;
@@ -743,12 +743,29 @@ kernel void segmented_int8_gemv(
   const uint rows_per_threadgroup = ROWS * S;
   const uint threadgroups_per_route = (nrows + rows_per_threadgroup - 1u) / rows_per_threadgroup;
   const uint route = tgpig_position / threadgroups_per_route;
-  const int expert = indices[route];
+  threadgroup int route_expert;
+  if (sgitg == 0 && tiisg == 0) {
+    route_expert = -1;
+    uint row_offset = 0;
+    for (uint bin = 0; bin < bin_count; bin++) {
+      const int count = counts[bin];
+      if (count <= 0)
+        continue;
+      const uint next_row_offset = row_offset + (uint)count;
+      if (route < next_row_offset) {
+        route_expert = indices[bin];
+        break;
+      }
+      row_offset = next_row_offset;
+    }
+  }
+  threadgroup_barrier(mem_flags::mem_threadgroup);
+  const int expert = route_expert;
   if (expert < 0 || expert >= (int)expert_count)
     return;
 
   src0 += (ulong)expert * weight_expert_stride;
-  src1 += (ulong)route * ncols;
+  src1 += broadcast_input ? 0 : (ulong)route * ncols;
   dst += (ulong)route * nrows;
   scales += (ulong)expert * nrows;
   const uint tgpig = tgpig_position - route * threadgroups_per_route;
@@ -1416,7 +1433,7 @@ kernel void segmented_int8_gemv(
     return;
 
   src0 += (ulong)expert * weight_expert_stride;
-  src1 += (ulong)route * ncols;
+  src1 += broadcast_input ? 0 : (ulong)route * ncols;
   dst += (ulong)route * nrows;
   scales += (ulong)expert * nrows;
   const uint tgpig = tgpig_position - route * threadgroups_per_route;
@@ -1558,12 +1575,29 @@ kernel void segmented_int8_gemv(
   const uint rows_per_threadgroup = ROWS * S;
   const uint threadgroups_per_route = (nrows + rows_per_threadgroup - 1u) / rows_per_threadgroup;
   const uint route = tgpig_position / threadgroups_per_route;
-  const int expert = indices[route];
+  threadgroup int route_expert;
+  if (sgitg == 0 && tiisg == 0) {
+    route_expert = -1;
+    uint row_offset = 0;
+    for (uint bin = 0; bin < bin_count; bin++) {
+      const int count = counts[bin];
+      if (count <= 0)
+        continue;
+      const uint next_row_offset = row_offset + (uint)count;
+      if (route < next_row_offset) {
+        route_expert = indices[bin];
+        break;
+      }
+      row_offset = next_row_offset;
+    }
+  }
+  threadgroup_barrier(mem_flags::mem_threadgroup);
+  const int expert = route_expert;
   if (expert < 0 || expert >= (int)expert_count)
     return;
 
   src0 += (ulong)expert * weight_expert_stride;
-  src1 += (ulong)route * ncols;
+  src1 += broadcast_input ? 0 : (ulong)route * ncols;
   dst += (ulong)route * nrows;
   scales += (ulong)expert * nrows;
   const uint tgpig = tgpig_position - route * threadgroups_per_route;
@@ -1708,7 +1742,7 @@ kernel void segmented_int8_gemv(
     return;
 
   src0 += (ulong)expert * weight_expert_stride;
-  src1 += (ulong)route * ncols;
+  src1 += broadcast_input ? 0 : (ulong)route * ncols;
   dst += (ulong)route * nrows;
   scales += (ulong)expert * nrows;
   const uint tgpig = tgpig_position - route * threadgroups_per_route;
@@ -1848,12 +1882,29 @@ kernel void segmented_int8_gemv(
   const uint rows_per_threadgroup = ROWS * S;
   const uint threadgroups_per_route = (nrows + rows_per_threadgroup - 1u) / rows_per_threadgroup;
   const uint route = tgpig_position / threadgroups_per_route;
-  const int expert = indices[route];
+  threadgroup int route_expert;
+  if (sgitg == 0 && tiisg == 0) {
+    route_expert = -1;
+    uint row_offset = 0;
+    for (uint bin = 0; bin < bin_count; bin++) {
+      const int count = counts[bin];
+      if (count <= 0)
+        continue;
+      const uint next_row_offset = row_offset + (uint)count;
+      if (route < next_row_offset) {
+        route_expert = indices[bin];
+        break;
+      }
+      row_offset = next_row_offset;
+    }
+  }
+  threadgroup_barrier(mem_flags::mem_threadgroup);
+  const int expert = route_expert;
   if (expert < 0 || expert >= (int)expert_count)
     return;
 
   src0 += (ulong)expert * weight_expert_stride;
-  src1 += (ulong)route * ncols;
+  src1 += broadcast_input ? 0 : (ulong)route * ncols;
   dst += (ulong)route * nrows;
   scales += (ulong)expert * nrows;
   const uint tgpig = tgpig_position - route * threadgroups_per_route;
@@ -2006,7 +2057,7 @@ kernel void segmented_int8_gemv(
     return;
 
   src0 += (ulong)expert * weight_expert_stride;
-  src1 += (ulong)route * ncols;
+  src1 += broadcast_input ? 0 : (ulong)route * ncols;
   dst += (ulong)route * nrows;
   scales += (ulong)expert * nrows;
   const uint tgpig = tgpig_position - route * threadgroups_per_route;
@@ -2148,12 +2199,29 @@ kernel void segmented_int8_gemv(
   const uint rows_per_threadgroup = ROWS * S;
   const uint threadgroups_per_route = (nrows + rows_per_threadgroup - 1u) / rows_per_threadgroup;
   const uint route = tgpig_position / threadgroups_per_route;
-  const int expert = indices[route];
+  threadgroup int route_expert;
+  if (sgitg == 0 && tiisg == 0) {
+    route_expert = -1;
+    uint row_offset = 0;
+    for (uint bin = 0; bin < bin_count; bin++) {
+      const int count = counts[bin];
+      if (count <= 0)
+        continue;
+      const uint next_row_offset = row_offset + (uint)count;
+      if (route < next_row_offset) {
+        route_expert = indices[bin];
+        break;
+      }
+      row_offset = next_row_offset;
+    }
+  }
+  threadgroup_barrier(mem_flags::mem_threadgroup);
+  const int expert = route_expert;
   if (expert < 0 || expert >= (int)expert_count)
     return;
 
   src0 += (ulong)expert * weight_expert_stride;
-  src1 += (ulong)route * ncols;
+  src1 += broadcast_input ? 0 : (ulong)route * ncols;
   dst += (ulong)route * nrows;
   scales += (ulong)expert * nrows;
   const uint tgpig = tgpig_position - route * threadgroups_per_route;
@@ -2312,7 +2380,7 @@ kernel void segmented_int8_gemv(
     return;
 
   src0 += (ulong)expert * weight_expert_stride;
-  src1 += (ulong)route * ncols;
+  src1 += broadcast_input ? 0 : (ulong)route * ncols;
   dst += (ulong)route * nrows;
   scales += (ulong)expert * nrows;
   const uint tgpig = tgpig_position - route * threadgroups_per_route;
@@ -2454,12 +2522,29 @@ kernel void segmented_int8_gemv(
   const uint rows_per_threadgroup = ROWS * S;
   const uint threadgroups_per_route = (nrows + rows_per_threadgroup - 1u) / rows_per_threadgroup;
   const uint route = tgpig_position / threadgroups_per_route;
-  const int expert = indices[route];
+  threadgroup int route_expert;
+  if (sgitg == 0 && tiisg == 0) {
+    route_expert = -1;
+    uint row_offset = 0;
+    for (uint bin = 0; bin < bin_count; bin++) {
+      const int count = counts[bin];
+      if (count <= 0)
+        continue;
+      const uint next_row_offset = row_offset + (uint)count;
+      if (route < next_row_offset) {
+        route_expert = indices[bin];
+        break;
+      }
+      row_offset = next_row_offset;
+    }
+  }
+  threadgroup_barrier(mem_flags::mem_threadgroup);
+  const int expert = route_expert;
   if (expert < 0 || expert >= (int)expert_count)
     return;
 
   src0 += (ulong)expert * weight_expert_stride;
-  src1 += (ulong)route * ncols;
+  src1 += broadcast_input ? 0 : (ulong)route * ncols;
   dst += (ulong)route * nrows;
   scales += (ulong)expert * nrows;
   const uint tgpig = tgpig_position - route * threadgroups_per_route;
@@ -2619,7 +2704,7 @@ kernel void segmented_int8_gemv(
     return;
 
   src0 += (ulong)expert * weight_expert_stride;
-  src1 += (ulong)route * ncols;
+  src1 += broadcast_input ? 0 : (ulong)route * ncols;
   dst += (ulong)route * nrows;
   scales += (ulong)expert * nrows;
   const uint tgpig = tgpig_position - route * threadgroups_per_route;
@@ -2749,12 +2834,29 @@ kernel void segmented_int8_gemv(
   const uint rows_per_threadgroup = ROWS * S;
   const uint threadgroups_per_route = (nrows + rows_per_threadgroup - 1u) / rows_per_threadgroup;
   const uint route = tgpig_position / threadgroups_per_route;
-  const int expert = indices[route];
+  threadgroup int route_expert;
+  if (sgitg == 0 && tiisg == 0) {
+    route_expert = -1;
+    uint row_offset = 0;
+    for (uint bin = 0; bin < bin_count; bin++) {
+      const int count = counts[bin];
+      if (count <= 0)
+        continue;
+      const uint next_row_offset = row_offset + (uint)count;
+      if (route < next_row_offset) {
+        route_expert = indices[bin];
+        break;
+      }
+      row_offset = next_row_offset;
+    }
+  }
+  threadgroup_barrier(mem_flags::mem_threadgroup);
+  const int expert = route_expert;
   if (expert < 0 || expert >= (int)expert_count)
     return;
 
   src0 += (ulong)expert * weight_expert_stride;
-  src1 += (ulong)route * ncols;
+  src1 += broadcast_input ? 0 : (ulong)route * ncols;
   dst += (ulong)route * nrows;
   scales += (ulong)expert * nrows;
   const uint tgpig = tgpig_position - route * threadgroups_per_route;
@@ -3101,7 +3203,7 @@ kernel void segmented_int8_gemv(
     return;
 
   src0 += (ulong)expert * weight_expert_stride;
-  src1 += (ulong)route * ncols;
+  src1 += broadcast_input ? 0 : (ulong)route * ncols;
   dst += (ulong)route * nrows;
   scales += (ulong)expert * nrows;
   const uint tgpig = tgpig_position - route * threadgroups_per_route;
@@ -3313,12 +3415,29 @@ kernel void segmented_int8_gemv(
   const uint rows_per_threadgroup = ROWS * S;
   const uint threadgroups_per_route = (nrows + rows_per_threadgroup - 1u) / rows_per_threadgroup;
   const uint route = tgpig_position / threadgroups_per_route;
-  const int expert = indices[route];
+  threadgroup int route_expert;
+  if (sgitg == 0 && tiisg == 0) {
+    route_expert = -1;
+    uint row_offset = 0;
+    for (uint bin = 0; bin < bin_count; bin++) {
+      const int count = counts[bin];
+      if (count <= 0)
+        continue;
+      const uint next_row_offset = row_offset + (uint)count;
+      if (route < next_row_offset) {
+        route_expert = indices[bin];
+        break;
+      }
+      row_offset = next_row_offset;
+    }
+  }
+  threadgroup_barrier(mem_flags::mem_threadgroup);
+  const int expert = route_expert;
   if (expert < 0 || expert >= (int)expert_count)
     return;
 
   src0 += (ulong)expert * weight_expert_stride;
-  src1 += (ulong)route * ncols;
+  src1 += broadcast_input ? 0 : (ulong)route * ncols;
   dst += (ulong)route * nrows;
   scales += (ulong)expert * nrows;
   const uint tgpig = tgpig_position - route * threadgroups_per_route;
@@ -3422,7 +3541,7 @@ kernel void segmented_int8_gemv(
     return;
 
   src0 += (ulong)expert * weight_expert_stride;
-  src1 += (ulong)route * ncols;
+  src1 += broadcast_input ? 0 : (ulong)route * ncols;
   dst += (ulong)route * nrows;
   scales += (ulong)expert * nrows;
   const uint tgpig = tgpig_position - route * threadgroups_per_route;
@@ -3611,7 +3730,7 @@ kernel void segmented_int8_gemv(
     return;
 
   src0 += (ulong)expert * weight_expert_stride;
-  src1 += (ulong)route * ncols;
+  src1 += broadcast_input ? 0 : (ulong)route * ncols;
   dst += (ulong)route * nrows;
   scales += (ulong)expert * nrows;
   const uint tgpig = tgpig_position - route * threadgroups_per_route;
@@ -3753,12 +3872,29 @@ kernel void segmented_int8_gemv(
   const uint rows_per_threadgroup = ROWS * S;
   const uint threadgroups_per_route = (nrows + rows_per_threadgroup - 1u) / rows_per_threadgroup;
   const uint route = tgpig_position / threadgroups_per_route;
-  const int expert = indices[route];
+  threadgroup int route_expert;
+  if (sgitg == 0 && tiisg == 0) {
+    route_expert = -1;
+    uint row_offset = 0;
+    for (uint bin = 0; bin < bin_count; bin++) {
+      const int count = counts[bin];
+      if (count <= 0)
+        continue;
+      const uint next_row_offset = row_offset + (uint)count;
+      if (route < next_row_offset) {
+        route_expert = indices[bin];
+        break;
+      }
+      row_offset = next_row_offset;
+    }
+  }
+  threadgroup_barrier(mem_flags::mem_threadgroup);
+  const int expert = route_expert;
   if (expert < 0 || expert >= (int)expert_count)
     return;
 
   src0 += (ulong)expert * weight_expert_stride;
-  src1 += (ulong)route * ncols;
+  src1 += broadcast_input ? 0 : (ulong)route * ncols;
   dst += (ulong)route * nrows;
   scales += (ulong)expert * nrows;
   const uint tgpig = tgpig_position - route * threadgroups_per_route;
@@ -3862,6 +3998,8 @@ std::string SegmentedInt8GemvKernel::createConstants() const noexcept {
   defines += "constant uint bin_count [[function_constant(6)]];";
   defines += "\n";
   defines += "constant ulong weight_expert_stride [[function_constant(7)]];";
+  defines += "\n";
+  defines += "constant uint broadcast_input [[function_constant(8)]];";
   defines += "\n";
   return defines;
 }

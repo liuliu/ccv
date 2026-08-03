@@ -9,17 +9,23 @@ SwishMulKernel::SwishMulKernel(SwishMulKernelDescriptor descriptor, MTL::Device*
 
   value = descriptor.value;
 
+  weighted = descriptor.weighted;
+
   loadM = descriptor.loadM;
 
   beta = descriptor.beta;
 
   scale = descriptor.scale;
 
+  clamped = descriptor.clamped;
+
   gPrecision = descriptor.gPrecision;
 
   aPrecision = descriptor.aPrecision;
 
   bPrecision = descriptor.bPrecision;
+
+  weightPrecision = descriptor.weightPrecision;
 
   daPrecision = descriptor.daPrecision;
 
@@ -47,6 +53,7 @@ std::string SwishMulKernel::createSource() const noexcept {
   std::string shader = createConstants() + "\n";
   const bool beta_is_one = (beta == 1);
   const bool scale_is_one = (scale == 1);
+  const bool clamp_enabled = clamped;
   const bool value_gradient = gradient && ((outputMask & 1) != 0);
   const bool gate_gradient = gradient && ((outputMask & 2) != 0);
   const bool vectorized = (value == 0 || value == 1);
@@ -168,12 +175,12 @@ inline float stable_swish_gradient(float z)
 }
     )";
   } else if (value == 0 || value == 1) {
+    shader += "kernel void swish_mul(\n  device realA4 *a [[buffer(0)]],\n  device realB4 *b [[buffer(1)]],\n";
+    if (weighted)
+      shader += "  device realW *weight [[buffer(2)]],\n  device realA4 *destination [[buffer(3)]],\n";
+    else
+      shader += "  device realA4 *destination [[buffer(2)]],\n";
     shader += R"(
-kernel void swish_mul(
-  device realA4 *a [[buffer(0)]],
-  device realB4 *b [[buffer(1)]],
-  device realA4 *destination [[buffer(2)]],
-
   uint3 tpig [[thread_position_in_grid]]
 ) {
   const uint idx = tpig.x;
@@ -181,47 +188,55 @@ kernel void swish_mul(
     if (value == 1)
       shader += "  if (idx >= count)\n    return;\n";
     shader += R"(
-  const float4 av = (float4)(a[idx]);
-  const float4 bv = (float4)(b[idx]);
+  float4 av = (float4)(a[idx]);
+  float4 bv = (float4)(b[idx]);
 )";
+    if (clamp_enabled)
+      shader += "  av = metal::clamp(av, (float4)(-limit), (float4)(limit));\n  bv = min(bv, (float4)(limit));\n";
     if (beta_is_one)
       shader += "  float4 result = av * bv * stable_sigmoid(bv);\n";
     else
       shader += "  float4 result = av * bv * stable_sigmoid(beta * bv);\n";
     if (!scale_is_one)
       shader += "  result *= scale;\n";
+    if (weighted)
+      shader += "  result *= (float)(weight[(idx * 4) / row_width]);\n";
     shader += R"(
   destination[idx] = (realA4)result;
 }
     )";
   } else {
+    shader += "kernel void swish_mul(\n  device realA *a [[buffer(0)]],\n  device realB *b [[buffer(1)]],\n";
+    if (weighted)
+      shader += "  device realW *weight [[buffer(2)]],\n  device realA *destination [[buffer(3)]],\n";
+    else
+      shader += "  device realA *destination [[buffer(2)]],\n";
     shader += R"(
-kernel void swish_mul(
-  device realA *a [[buffer(0)]],
-  device realB *b [[buffer(1)]],
-  device realA *destination [[buffer(2)]],
-
   uint3 tpig [[thread_position_in_grid]]
 ) {
   const uint idx = tpig.x;
   if (idx >= count)
     return;
-  const float av = (float)(a[idx]);
-  const float bv = (float)(b[idx]);
+  float av = (float)(a[idx]);
+  float bv = (float)(b[idx]);
 )";
+    if (clamp_enabled)
+      shader += "  av = metal::clamp(av, -limit, limit);\n  bv = min(bv, limit);\n";
     if (beta_is_one)
       shader += "  float result = av * bv * stable_sigmoid(bv);\n";
     else
       shader += "  float result = av * bv * stable_sigmoid(beta * bv);\n";
     if (!scale_is_one)
       shader += "  result *= scale;\n";
+    if (weighted)
+      shader += "  result *= (float)(weight[idx / row_width]);\n";
     shader += R"(
   destination[idx] = (realA)result;
 }
     )";
   }
   if (loadM) {
-    const uint8_t countBufferIndex = gradient ? 2 + ((outputMask & 1) ? 1 : 0) + ((outputMask & 2) ? 2 : 0) : 3;
+    const uint8_t countBufferIndex = gradient ? 2 + ((outputMask & 1) ? 1 : 0) + ((outputMask & 2) ? 2 : 0) : (weighted ? 4 : 3);
     const std::string::size_type argumentPosition = shader.find("  uint3 tpig [[thread_position_in_grid]]");
     CCV_NNC_MFA_PRECONDITION(argumentPosition != std::string::npos);
     shader.insert(argumentPosition, "  const device uint *loadM [[buffer(" + std::to_string(countBufferIndex) + ")]],\n");
@@ -274,9 +289,13 @@ std::string SwishMulKernel::createConstants() const noexcept {
   } else if (vectorized) {
     define_type("realA4", aPrecision, true);
     define_type("realB4", bPrecision, true);
+    if (weighted)
+      define_type("realW", weightPrecision, false);
   } else {
     define_type("realA", aPrecision, false);
     define_type("realB", bPrecision, false);
+    if (weighted)
+      define_type("realW", weightPrecision, false);
   }
   if (value != 0 && !loadM) {
     defines += "constant uint count [[function_constant(0)]];";
@@ -288,6 +307,14 @@ std::string SwishMulKernel::createConstants() const noexcept {
   }
   if (scale != 1) {
     defines += "constant float scale [[function_constant(2)]];";
+    defines += "\n";
+  }
+  if (clamped) {
+    defines += "constant float limit [[function_constant(3)]];";
+    defines += "\n";
+  }
+  if (weighted) {
+    defines += "constant uint row_width [[function_constant(4)]];";
     defines += "\n";
   }
   return defines;

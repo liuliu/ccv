@@ -8,15 +8,19 @@ bool SwishMulDescriptor::operator==(const SwishMulDescriptor& rhs) const {
   gradient == rhs.gradient &&
   outputMask == rhs.outputMask &&
   value == rhs.value &&
+  weighted == rhs.weighted &&
   beta == rhs.beta &&
   scale == rhs.scale &&
+  clamp == rhs.clamp &&
   gPrecision == rhs.gPrecision &&
   aPrecision == rhs.aPrecision &&
   bPrecision == rhs.bPrecision &&
+  weightPrecision == rhs.weightPrecision &&
   daPrecision == rhs.daPrecision &&
   dbPrecision == rhs.dbPrecision &&
   loadM == rhs.loadM &&
-  (loadM || length == rhs.length);
+  weightCount == rhs.weightCount &&
+  ((loadM && !weighted) || length == rhs.length);
 }
 
 std::size_t std::hash<SwishMulDescriptor>::operator()(const SwishMulDescriptor& hash) const noexcept {
@@ -26,9 +30,12 @@ std::size_t std::hash<SwishMulDescriptor>::operator()(const SwishMulDescriptor& 
   combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.gPrecision.value, (unsigned int)hash.aPrecision.value }));
   combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.bPrecision.value, (unsigned int)hash.daPrecision.value }));
   combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.dbPrecision.value, (unsigned int)hash.value }));
-  combine_64(seed, hash.loadM ? 0 : (uint64_t)hash.length);
+  combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.weightPrecision.value, (unsigned int)hash.weighted }));
+  combine_32(seed, hash.weightCount);
+  combine_64(seed, (hash.loadM && !hash.weighted) ? 0 : (uint64_t)hash.length);
   combine_32(seed, hash.loadM ? 1 : 0);
   combine_64(seed, pack_64(simd::uint2 { *reinterpret_cast<const uint32_t*>(&hash.beta), *reinterpret_cast<const uint32_t*>(&hash.scale) }));
+  combine_32(seed, *reinterpret_cast<const uint32_t*>(&hash.clamp));
   return seed;
 }
 
@@ -49,12 +56,15 @@ std::pair<SwishMulKernelDescriptor, PipelineValue<SwishMulKernel>*> SwishMulDesc
   kernelDesc.gradient = gradient;
   kernelDesc.outputMask = outputMask;
   kernelDesc.value = value;
+  kernelDesc.weighted = weighted;
   kernelDesc.loadM = loadM;
   kernelDesc.beta = beta;
   kernelDesc.scale = scale;
+  kernelDesc.clamped = clamp > 1.0e-6f;
   kernelDesc.gPrecision = gPrecision;
   kernelDesc.aPrecision = aPrecision;
   kernelDesc.bPrecision = bPrecision;
+  kernelDesc.weightPrecision = weightPrecision;
   kernelDesc.daPrecision = daPrecision;
   kernelDesc.dbPrecision = dbPrecision;
 
@@ -77,6 +87,12 @@ std::pair<SwishMulKernelDescriptor, PipelineValue<SwishMulKernel>*> SwishMulDesc
       constants->setConstantValue(&beta, MTL::DataTypeFloat, NS::UInteger(1));
     if (scale != 1)
       constants->setConstantValue(&scale, MTL::DataTypeFloat, NS::UInteger(2));
+    if (clamp > 1.0e-6f)
+      constants->setConstantValue(&clamp, MTL::DataTypeFloat, NS::UInteger(3));
+    if (weighted) {
+      const uint32_t rowWidth = length / weightCount;
+      constants->setConstantValue(&rowWidth, MTL::DataTypeUInt, NS::UInteger(4));
+    }
 
     NS::String* swiftName = NS::String::string("swish_mul", NS::UTF8StringEncoding);
     NS::Error* error = nil;

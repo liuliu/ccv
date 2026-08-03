@@ -8,6 +8,7 @@ typedef struct {
   uint32_t N;
   uint32_t K;
   uint8_t fused_bias;
+  uint8_t broadcast_input;
   uint32_t expert_count;
   uint32_t bincount;
 } ccv_nnc_mfa_segmented_int8_gemv_params_t;
