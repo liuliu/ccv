@@ -17,7 +17,7 @@ SwishMulKernel::SwishMulKernel(SwishMulKernelDescriptor descriptor, MTL::Device*
 
   scale = descriptor.scale;
 
-  clamped = descriptor.clamped;
+  clamp = descriptor.clamp;
 
   gPrecision = descriptor.gPrecision;
 
@@ -53,7 +53,7 @@ std::string SwishMulKernel::createSource() const noexcept {
   std::string shader = createConstants() + "\n";
   const bool beta_is_one = (beta == 1);
   const bool scale_is_one = (scale == 1);
-  const bool clamp_enabled = clamped;
+  const bool clamp_enabled = clamp;
   const bool value_gradient = gradient && ((outputMask & 1) != 0);
   const bool gate_gradient = gradient && ((outputMask & 2) != 0);
   const bool vectorized = (value == 0 || value == 1);
@@ -192,7 +192,7 @@ inline float stable_swish_gradient(float z)
   float4 bv = (float4)(b[idx]);
 )";
     if (clamp_enabled)
-      shader += "  av = metal::clamp(av, (float4)(-limit), (float4)(limit));\n  bv = min(bv, (float4)(limit));\n";
+      shader += "  av = metal::clamp(av, (float4)(-clamp_limit), (float4)(clamp_limit));\n  bv = min(bv, (float4)(clamp_limit));\n";
     if (beta_is_one)
       shader += "  float4 result = av * bv * stable_sigmoid(bv);\n";
     else
@@ -221,7 +221,7 @@ inline float stable_swish_gradient(float z)
   float bv = (float)(b[idx]);
 )";
     if (clamp_enabled)
-      shader += "  av = metal::clamp(av, -limit, limit);\n  bv = min(bv, limit);\n";
+      shader += "  av = metal::clamp(av, -clamp_limit, clamp_limit);\n  bv = min(bv, clamp_limit);\n";
     if (beta_is_one)
       shader += "  float result = av * bv * stable_sigmoid(bv);\n";
     else
@@ -309,8 +309,8 @@ std::string SwishMulKernel::createConstants() const noexcept {
     defines += "constant float scale [[function_constant(2)]];";
     defines += "\n";
   }
-  if (clamped) {
-    defines += "constant float limit [[function_constant(3)]];";
+  if (clamp) {
+    defines += "constant float clamp_limit [[function_constant(3)]];";
     defines += "\n";
   }
   if (weighted) {

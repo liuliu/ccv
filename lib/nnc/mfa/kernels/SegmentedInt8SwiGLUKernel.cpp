@@ -68,8 +68,9 @@ constant uint groups_per_row [[function_constant(4)]];
 constant uint expert_count [[function_constant(5)]];
 constant uint broadcast_input [[function_constant(6)]];
 constant ulong weight_expert_stride [[function_constant(7)]];
-constant float clamp_limit [[function_constant(8)]];
 )";
+  if (descriptor.clamp)
+    shader += "constant float clamp_limit [[function_constant(8)]];\n";
   appendIQ2XXSScaledGrid(shader);
   appendIQ2XXSSigns(shader);
   shader += R"(
@@ -219,12 +220,17 @@ kernel void segmented_int8_swiglu(
   const float up_row_sum0 = simd_sum(up_sum0);
   const float route_weight = (float)route_weights[route];
   if (lane == 0) {
-    const float gate0 = gate_row_sum0 * (float)gate_scales[row_base + 0];
-    const float up0 = up_row_sum0 * (float)up_scales[row_base + 0];
-    const float clamped_gate = min(gate0, clamp_limit);
-    const float clamped_up = clamp(up0, -clamp_limit, clamp_limit);
+    float gate0 = gate_row_sum0 * (float)gate_scales[row_base + 0];
+    float up0 = up_row_sum0 * (float)up_scales[row_base + 0];
+)";
+  if (descriptor.clamp)
+    shader += R"(
+    gate0 = min(gate0, clamp_limit);
+    up0 = clamp(up0, -clamp_limit, clamp_limit);
+)";
+  shader += R"(
     destination[row_base + 0] = (real)(
-      route_weight * clamped_up * clamped_gate * stable_sigmoid(clamped_gate));
+      route_weight * up0 * gate0 * stable_sigmoid(gate0));
   }
 }
 )";

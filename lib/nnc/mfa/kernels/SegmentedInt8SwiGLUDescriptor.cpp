@@ -68,6 +68,7 @@ std::pair<
 
   SegmentedInt8SwiGLUKernelDescriptor kernelDesc;
   kernelDesc.format = format;
+  kernelDesc.clamp = clamp > 0;
   kernelDesc.memoryPrecision = memoryPrecision;
   SegmentedInt8SwiGLUKernel* kernel;
   auto iterator = libraryCache->find(kernelDesc);
@@ -93,7 +94,8 @@ std::pair<
   constants->setConstantValue(&expertCount, MTL::DataTypeUInt, NS::UInteger(5));
   constants->setConstantValue(&broadcastInput, MTL::DataTypeUInt, NS::UInteger(6));
   constants->setConstantValue(&weightStride, MTL::DataTypeULong, NS::UInteger(7));
-  constants->setConstantValue(&clamp, MTL::DataTypeFloat, NS::UInteger(8));
+  if (clamp > 0)
+    constants->setConstantValue(&clamp, MTL::DataTypeFloat, NS::UInteger(8));
 
   NS::String* functionName = NS::String::string(
     "segmented_int8_swiglu", NS::UTF8StringEncoding);

@@ -53,7 +53,7 @@ static int _ccv_nnc_segmented_swiglu_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc
 		output->info.dim[output_nd - 1] != n)
 		return CCV_NNC_EXEC_INVALID;
 	const float limit = cmd.info.segmented_swiglu.clamp;
-	const int clamp_enabled = limit > 1.0e-6f;
+	const int clamp_enabled = limit > 0;
 	size_t row = 0;
 	size_t segment;
 	for (segment = 0; segment < segment_count; segment++)

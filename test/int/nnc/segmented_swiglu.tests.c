@@ -91,6 +91,17 @@ TEST_CASE("segmented SwiGLU composes routed gate and up projections on CPU")
 		CCV_NNC_EXEC_SUCCESS, "segmented SwiGLU should execute on CPU");
 	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, expected, output->data.f32, rows * n, 1e-5,
 		"segmented SwiGLU should match the high-level routed reference, including an empty segment");
+	const float tiny_clamp = 1.0e-7f;
+	_segmented_swiglu_reference(a->data.f32, indices->data.i32, counts->data.i32,
+		gate_w->data.f32, up_w->data.f32, route_weight->data.f32,
+		rows, segments, n, k, tiny_clamp, expected);
+	command = CMD_SEGMENTED_SWIGLU_FORWARD(tiny_clamp);
+	command.backend = CCV_NNC_BACKEND_CPU_REF;
+	REQUIRE_EQ(ccv_nnc_cmd_exec(command, ccv_nnc_no_hint, 0,
+		TENSOR_LIST(a, indices, counts, gate_w, up_w, route_weight), TENSOR_LIST(output), 0),
+		CCV_NNC_EXEC_SUCCESS, "segmented SwiGLU should apply every positive clamp");
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, expected, output->data.f32, rows * n, 1e-9,
+		"segmented SwiGLU should not use an epsilon threshold for clamp");
 	ccv_nnc_tensor_param_t inferred = {};
 	ccv_nnc_hint_tensor_auto(command, TENSOR_PARAM_LIST(a->info, indices->info, counts->info, gate_w->info, up_w->info, route_weight->info), ccv_nnc_no_hint, &inferred, 1);
 	REQUIRE_EQ(inferred.dim[0], rows, "segmented SwiGLU should preserve the input row count");
@@ -411,6 +422,7 @@ TEST_CASE("MPS segmented SwiGLU fuses IQ2_XXS decode")
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SEGMENTED_SWIGLU_FORWARD, CCV_NNC_BACKEND_MPS));
 	_segmented_swiglu_mps_rowwise_case(CCV_NNC_QX_8I_ROWWISE_IQ2_XXS, 0, 0, 10, "IQ2_XXS decode", __case_result__);
 	_segmented_swiglu_mps_rowwise_case(CCV_NNC_QX_8I_ROWWISE_IQ2_XXS, 0, 0, 0.25f, "IQ2_XXS decode with specialized clamp", __case_result__);
+	_segmented_swiglu_mps_rowwise_case(CCV_NNC_QX_8I_ROWWISE_IQ2_XXS, 0, 0, 0, "IQ2_XXS decode without clamp", __case_result__);
 }
 
 TEST_CASE("MPS segmented SwiGLU broadcasts one activation row for rowwise int8 decode")

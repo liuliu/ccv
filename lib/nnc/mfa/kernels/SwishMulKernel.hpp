@@ -27,7 +27,7 @@ struct SwishMulKernel {
 
   float scale;
 
-  uint8_t clamped;
+  bool clamp;
 
   GEMMOperandPrecision gPrecision;
 

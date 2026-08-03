@@ -60,7 +60,7 @@ std::pair<SwishMulKernelDescriptor, PipelineValue<SwishMulKernel>*> SwishMulDesc
   kernelDesc.loadM = loadM;
   kernelDesc.beta = beta;
   kernelDesc.scale = scale;
-  kernelDesc.clamped = clamp > 1.0e-6f;
+  kernelDesc.clamp = clamp > 0;
   kernelDesc.gPrecision = gPrecision;
   kernelDesc.aPrecision = aPrecision;
   kernelDesc.bPrecision = bPrecision;
@@ -87,7 +87,7 @@ std::pair<SwishMulKernelDescriptor, PipelineValue<SwishMulKernel>*> SwishMulDesc
       constants->setConstantValue(&beta, MTL::DataTypeFloat, NS::UInteger(1));
     if (scale != 1)
       constants->setConstantValue(&scale, MTL::DataTypeFloat, NS::UInteger(2));
-    if (clamp > 1.0e-6f)
+    if (clamp > 0)
       constants->setConstantValue(&clamp, MTL::DataTypeFloat, NS::UInteger(3));
     if (weighted) {
       const uint32_t rowWidth = length / weightCount;

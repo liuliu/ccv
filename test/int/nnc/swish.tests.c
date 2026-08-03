@@ -74,18 +74,34 @@ TEST_CASE("weighted clamped swish mul applies one weight per row")
 				"weighted clamped swish mul should match its row-wise reference");
 		}
 	}
+	const float tiny_limit = 1.0e-7f;
+	REQUIRE_EQ(ccv_nnc_cmd_exec(CMD_WEIGHTED_SWISH_MUL_FORWARD(1, 1, tiny_limit), ccv_nnc_no_hint, 0,
+		TENSOR_LIST(value, gate, weight), TENSOR_LIST(output), 0), CCV_NNC_EXEC_SUCCESS,
+		"weighted swish mul should apply every positive clamp");
+	for (i = 0; i < rows; i++)
+	{
+		int j;
+		for (j = 0; j < cols; j++)
+		{
+			const float limited_value = ccv_min(ccv_max(value->data.f32[i * cols + j], -tiny_limit), tiny_limit);
+			const float limited_gate = ccv_min(gate->data.f32[i * cols + j], tiny_limit);
+			const float expected = weight->data.f32[i] * limited_value * limited_gate / (1 + expf(-limited_gate));
+			REQUIRE_EQ_WITH_TOLERANCE(output->data.f32[i * cols + j], expected, 1e-9,
+				"weighted swish mul should not use an epsilon threshold for clamp");
+		}
+	}
 	ccv_nnc_tensor_free(output);
 	ccv_nnc_tensor_free(weight);
 	ccv_nnc_tensor_free(gate);
 	ccv_nnc_tensor_free(value);
 }
 
-TEST_CASE("MPSGraph weighted clamped swish mul accepts a rank-one row weight")
+TEST_CASE("MPS weighted clamped swish mul accepts a rank-one row weight")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SWISH_MUL_FORWARD, CCV_NNC_BACKEND_MPS));
 	const int rows = 7;
 	const int cols = 13;
-	const float limit = 10;
+	const float limit = 1.0e-7f;
 	ccv_nnc_tensor_t* const hvalue_f32 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, cols), 0);
 	ccv_nnc_tensor_t* const hgate_f32 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, cols), 0);
 	ccv_nnc_tensor_t* const hweight_f32 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows), 0);
@@ -125,15 +141,38 @@ TEST_CASE("MPSGraph weighted clamped swish mul accepts a rank-one row weight")
 	ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA);
 	ccv_nnc_cmd_t cmd = CMD_WEIGHTED_SWISH_MUL_FORWARD(1, 1, limit);
 	cmd.backend = CCV_NNC_BACKEND_MPS;
-	const int status = ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0,
+	const int graph_status = ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0,
 		TENSOR_LIST(value, gate, weight), TENSOR_LIST(output), 0);
-	if (!(old_flags & CCV_NNC_DISABLE_MFA))
-		ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA);
-	REQUIRE_EQ(status, CCV_NNC_EXEC_SUCCESS, "MPSGraph weighted clamped swish mul should execute");
+	REQUIRE_EQ(graph_status, CCV_NNC_EXEC_SUCCESS, "MPSGraph weighted clamped swish mul should execute");
 	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(output), TENSOR_LIST(houtput), 0);
 	ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(houtput), TENSOR_LIST(actual), 0);
 	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, actual->data.f32, expected->data.f32, rows * cols, 2e-2,
 		"MPSGraph weighted clamped swish mul should match the quantized CPU reference");
+	ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA);
+	const float specialized_limits[] = { 0, 0.25f, 0.125f, 1.0e-7f };
+	const int specialized_limit_count = sizeof(specialized_limits) / sizeof(specialized_limits[0]);
+	for (i = 0; i < specialized_limit_count; i++)
+	{
+		const float specialized_limit = specialized_limits[i];
+		REQUIRE_EQ(ccv_nnc_cmd_exec(CMD_WEIGHTED_SWISH_MUL_FORWARD(1, 1, specialized_limit), ccv_nnc_no_hint, 0,
+			TENSOR_LIST(value_f32, gate_f32, weight_f32), TENSOR_LIST(expected), 0), CCV_NNC_EXEC_SUCCESS,
+			"CPU reference should execute for specialized clamp %.9g", specialized_limit);
+		cmd = CMD_WEIGHTED_SWISH_MUL_FORWARD(1, 1, specialized_limit);
+		cmd.backend = CCV_NNC_BACKEND_MPS;
+		REQUIRE_EQ(ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0,
+			TENSOR_LIST(value, gate, weight), TENSOR_LIST(output), 0), CCV_NNC_EXEC_SUCCESS,
+			"MFA weighted swish mul should execute for specialized clamp %.9g", specialized_limit);
+		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0,
+			TENSOR_LIST(output), TENSOR_LIST(houtput), 0);
+		ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0,
+			TENSOR_LIST(houtput), TENSOR_LIST(actual), 0);
+		REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, actual->data.f32, expected->data.f32, rows * cols, 2e-2,
+			"MFA weighted swish mul should specialize its clamp function constant");
+	}
+	if (old_flags & CCV_NNC_DISABLE_MFA)
+		ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA);
+	else
+		ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA);
 	ccv_nnc_tensor_free(weight_f32);
 	ccv_nnc_tensor_free(gate_f32);
 	ccv_nnc_tensor_free(value_f32);

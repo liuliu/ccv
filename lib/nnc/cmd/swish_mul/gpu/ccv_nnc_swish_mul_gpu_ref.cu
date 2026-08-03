@@ -18,7 +18,7 @@ __global__ void _ccv_nnc_swish_mul_forw_kernel(const size_t count, const float b
 	CUDA_1D_KERNEL_LOOP(i, count) {
 		float value = (float)a[i];
 		float gate = (float)b[i];
-		if (limit > 1.0e-6f)
+		if (limit > 0)
 		{
 			value = fminf(fmaxf(value, -limit), limit);
 			gate = fminf(gate, limit);

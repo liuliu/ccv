@@ -40,7 +40,7 @@ static int _ccv_nnc_swish_mul_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t
 	const float beta = cmd.info.swish_mul.beta;
 	const float scale = cmd.info.swish_mul.scale;
 	const float limit = cmd.info.swish_mul.clamp;
-	const int clamp_enabled = limit > 1.0e-6f;
+	const int clamp_enabled = limit > 0;
 	const float* const ap = a->data.f32;
 	const float* const bp = b->data.f32;
 	const float* const wp = w ? w->data.f32 : 0;

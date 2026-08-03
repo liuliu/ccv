@@ -6,11 +6,13 @@
 
 struct SegmentedInt8SwiGLUKernelDescriptor {
   uint32_t format;
+  bool clamp;
   GEMMOperandPrecision memoryPrecision;
 
   constexpr bool operator==(const SegmentedInt8SwiGLUKernelDescriptor& rhs) const
   {
-    return format == rhs.format && memoryPrecision == rhs.memoryPrecision;
+    return format == rhs.format && clamp == rhs.clamp &&
+      memoryPrecision == rhs.memoryPrecision;
   }
 };
 
@@ -20,7 +22,8 @@ struct std::hash<SegmentedInt8SwiGLUKernelDescriptor>
   std::size_t operator()(const SegmentedInt8SwiGLUKernelDescriptor& value) const noexcept
   {
     return std::hash<uint64_t>()(
-      (uint64_t)value.format | ((uint64_t)value.memoryPrecision.value << 32));
+      (uint64_t)value.format | ((uint64_t)value.memoryPrecision.value << 32) |
+      ((uint64_t)value.clamp << 40));
   }
 };
 

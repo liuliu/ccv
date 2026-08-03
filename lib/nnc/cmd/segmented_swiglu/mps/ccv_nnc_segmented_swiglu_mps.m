@@ -4,7 +4,6 @@
 #include "nnc/ccv_nnc_easy.h"
 #include "nnc/ccv_nnc_internal.h"
 #include "nnc/mps/ccv_nnc_mps.h"
-#include <float.h>
 
 static uint64_t _ccv_nnc_segmented_swiglu_mtl_datatype(const int datatype)
 {
@@ -57,7 +56,6 @@ static int _ccv_nnc_segmented_swiglu_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc
 	const uint32_t up_format = up_subtype == CCV_NNC_QX_8I_ROWWISE_X ? (uint32_t)up_w->info.reserved : 0;
 	const int rowwise_shape_supported = gate_format == 0 ? (K % 4) == 0 : (K % 256) == 0 && (N % 256) == 0;
 	const uint64_t mtl_datatype = _ccv_nnc_segmented_swiglu_mtl_datatype(a->info.datatype);
-	const float direct_clamp = cmd.info.segmented_swiglu.clamp > 1.0e-6f ? cmd.info.segmented_swiglu.clamp : FLT_MAX;
 	ccv_nnc_mfa_context_t* const context = ccv_nnc_default_mfa_context();
 	const int direct_decode =
 		input_shape_supported && M == bincount && M > 0 && N > 0 && K > 0 && expert_count > 0 &&
@@ -92,7 +90,7 @@ static int _ccv_nnc_segmented_swiglu_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc
 				.expert_count = expert_count,
 				.bincount = bincount,
 				.broadcast_input = broadcast_input,
-				.clamp = direct_clamp,
+				.clamp = cmd.info.segmented_swiglu.clamp,
 			};
 			ccv_nnc_mfa_prepare_segmented_int8_swiglu(context, params);
 			mtl_command_batch_t* const command_batch = ccv_nnc_stream_context_start_command_batch(stream_context);

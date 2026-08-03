@@ -121,7 +121,7 @@ static int _ccv_nnc_swish_mul_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t
 					[inputShapedTypes addObject:ccv_nnc_mps_graph_tensor_input_shape(w, w->info.dim, w->stride)];
 					mps_w_f32 = w->info.datatype == CCV_32F ? mps_w : [graph castTensor:mps_w toType:MPSDataTypeFloat32 name:@"mps_w_float"];
 				}
-				if (limit > 1.0e-6f)
+				if (limit > 0)
 				{
 					MPSGraphTensor* const mps_limit = [graph constantWithScalar:limit dataType:MPSDataTypeFloat32];
 					MPSGraphTensor* const mps_negative_limit = [graph constantWithScalar:-limit dataType:MPSDataTypeFloat32];

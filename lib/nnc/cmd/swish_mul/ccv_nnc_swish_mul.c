@@ -18,7 +18,7 @@ static int _ccv_nnc_swish_mul_forw_bitmask(const ccv_nnc_cmd_param_t cmd, const 
 
 static int _ccv_nnc_swish_mul_back_bitmask(const ccv_nnc_cmd_param_t cmd, const int input_size, const int output_size, const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size)
 {
-	if (cmd.swish_mul.weighted || cmd.swish_mul.clamp > 1.0e-6f)
+	if (cmd.swish_mul.weighted || cmd.swish_mul.clamp > 0)
 		return 0;
 	// w.r.t. both value and gate.
 	if ((input_bitmasks[0] & 7u) == 7u && output_bitmasks[0] == ((1u << 0) | (1u << 1)))
