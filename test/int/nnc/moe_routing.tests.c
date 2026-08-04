@@ -29,7 +29,7 @@ TEST_CASE("moe routing infers outputs and groups preselected routes on CPU")
 	const float weight_scale = 1.25f;
 	const ccv_nnc_cmd_t cmd = CMD_MOE_ROUTING_FORWARD(kth, weight_scale, 1);
 	ccv_nnc_tensor_param_t input_params[] = {
-		CPU_TENSOR_NHWC(32F, token_count, expert_count),
+		CPU_TENSOR_NHWC(16F, token_count, expert_count),
 		CPU_TENSOR_NHWC(32S, token_count, kth),
 		CPU_TENSOR_NHWC(16F, token_count, hidden),
 	};
@@ -112,8 +112,8 @@ TEST_CASE("moe routing selects biased top-k and rejects invalid preselected expe
 	const int expert_count = 8;
 	const int kth = 3;
 	const int hidden = 4;
-	ccv_nnc_tensor_t* const logits = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, expert_count), 0);
-	ccv_nnc_tensor_t* const bias = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, expert_count), 0);
+	ccv_nnc_tensor_t* const logits = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, 1, expert_count), 0);
+	ccv_nnc_tensor_t* const bias = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, expert_count), 0);
 	ccv_nnc_tensor_t* const selected = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, 1, kth), 0);
 	ccv_nnc_tensor_t* const activation = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, hidden), 0);
 	ccv_nnc_tensor_t* const gathered = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, kth, hidden), 0);
@@ -122,11 +122,14 @@ TEST_CASE("moe routing selects biased top-k and rejects invalid preselected expe
 	ccv_nnc_tensor_t* const experts = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, kth), 0);
 	ccv_nnc_tensor_t* const counts = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, kth), 0);
 	int i;
+	float routing_values[16];
 	for (i = 0; i < expert_count; i++)
 	{
-		logits->data.f32[i] = 0;
-		bias->data.f32[i] = (float)i;
+		routing_values[i] = 0;
+		routing_values[expert_count + i] = (float)i;
 	}
+	ccv_float_to_half_precision(routing_values, (uint16_t*)logits->data.f16, expert_count);
+	ccv_float_to_half_precision(routing_values + expert_count, (uint16_t*)bias->data.f16, expert_count);
 	for (i = 0; i < hidden; i++)
 		activation->data.f32[i] = (float)(i + 1);
 	const ccv_nnc_cmd_t standard_cmd = CMD_MOE_ROUTING_FORWARD(kth, 1.5f, 0);
@@ -271,7 +274,7 @@ static int _moe_routing_records(const ccv_nnc_tensor_t* const tokens, const ccv_
 	return position == pair_count;
 }
 
-static moe_routing_mps_result_t _moe_routing_mps_case(const int token_count, const int expert_count, const int kth, const int hidden, const int preselected, const int disable_mfa, const int activation_datatype, const int command_flags)
+static moe_routing_mps_result_t _moe_routing_mps_case(const int token_count, const int expert_count, const int kth, const int hidden, const int preselected, const int disable_mfa, const int routing_datatype, const int activation_datatype, const int command_flags)
 {
 	const int pair_count = token_count * kth;
 	const int group_count = ccv_min(pair_count, expert_count);
@@ -285,6 +288,8 @@ static moe_routing_mps_result_t _moe_routing_mps_case(const int token_count, con
 	};
 	ccv_nnc_tensor_param_t hroute_params = CPU_TENSOR_NHWC(32F, expert_count);
 	ccv_nnc_tensor_param_t route_params = GPU_TENSOR_NHWC(000, 32F, expert_count);
+	hroute_params.datatype = routing_datatype;
+	route_params.datatype = routing_datatype;
 	if (preselected)
 	{
 		hroute_params = CPU_TENSOR_NHWC(32S, token_count, kth);
@@ -298,7 +303,11 @@ static moe_routing_mps_result_t _moe_routing_mps_case(const int token_count, con
 	activation_params.datatype = activation_datatype;
 	hgathered_params.datatype = activation_datatype;
 	gathered_params.datatype = activation_datatype;
-	ccv_nnc_tensor_t* const hlogits = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, token_count, expert_count), 0);
+	ccv_nnc_tensor_param_t hlogits_params = CPU_TENSOR_NHWC(32F, token_count, expert_count);
+	ccv_nnc_tensor_param_t logits_params = GPU_TENSOR_NHWC(000, 32F, token_count, expert_count);
+	hlogits_params.datatype = routing_datatype;
+	logits_params.datatype = routing_datatype;
+	ccv_nnc_tensor_t* const hlogits = ccv_nnc_tensor_new(0, hlogits_params, 0);
 	ccv_nnc_tensor_t* const hroute = ccv_nnc_tensor_new(0, hroute_params, 0);
 	ccv_nnc_tensor_t* const hactivation = ccv_nnc_tensor_new(0, hactivation_params, 0);
 	ccv_nnc_tensor_t* const expected_gathered = ccv_nnc_tensor_new(0, hgathered_params, 0);
@@ -306,7 +315,7 @@ static moe_routing_mps_result_t _moe_routing_mps_case(const int token_count, con
 	ccv_nnc_tensor_t* const expected_tokens = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, pair_count), 0);
 	ccv_nnc_tensor_t* const expected_experts = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, group_count), 0);
 	ccv_nnc_tensor_t* const expected_counts = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, group_count), 0);
-	ccv_nnc_tensor_t* const logits = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, token_count, expert_count), 0);
+	ccv_nnc_tensor_t* const logits = ccv_nnc_tensor_new(0, logits_params, 0);
 	ccv_nnc_tensor_t* const route = ccv_nnc_tensor_new(0, route_params, 0);
 	ccv_nnc_tensor_t* const activation = ccv_nnc_tensor_new(0, activation_params, 0);
 	ccv_nnc_tensor_t* const gathered = ccv_nnc_tensor_new(0, gathered_params, 0);
@@ -319,6 +328,8 @@ static moe_routing_mps_result_t _moe_routing_mps_case(const int token_count, con
 	ccv_nnc_tensor_t* const actual_tokens = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, pair_count), 0);
 	ccv_nnc_tensor_t* const actual_experts = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, group_count), 0);
 	ccv_nnc_tensor_t* const actual_counts = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, group_count), 0);
+	const int logits_count = token_count * expert_count;
+	float* const logits_values = (float*)malloc(sizeof(float) * logits_count);
 	int i;
 	for (i = 0; i < token_count; i++)
 	{
@@ -326,9 +337,14 @@ static moe_routing_mps_result_t _moe_routing_mps_case(const int token_count, con
 		for (expert = 0; expert < expert_count; expert++)
 		{
 			const int rank = (expert * 37 + i * 53) % expert_count;
-			hlogits->data.f32[i * expert_count + expert] = (float)(rank - expert_count / 2) * 0.03125f;
+			logits_values[i * expert_count + expert] = (float)(rank - expert_count / 2) * 0.03125f;
 		}
 	}
+	if (routing_datatype == CCV_32F)
+		memcpy(hlogits->data.f32, logits_values, sizeof(float) * logits_count);
+	else
+		ccv_float_to_half_precision(logits_values, (uint16_t*)hlogits->data.f16, logits_count);
+	free(logits_values);
 	if (preselected)
 	{
 		for (i = 0; i < token_count; i++)
@@ -338,8 +354,14 @@ static moe_routing_mps_result_t _moe_routing_mps_case(const int token_count, con
 				hroute->data.i32[i * kth + slot] = (i * 29 + slot * 43 + 7) % expert_count;
 		}
 	} else {
+		float* const bias_values = (float*)malloc(sizeof(float) * expert_count);
 		for (i = 0; i < expert_count; i++)
-			hroute->data.f32[i] = (float)i * 0.00001f;
+			bias_values[i] = (float)i * 0.00001f;
+		if (routing_datatype == CCV_32F)
+			memcpy(hroute->data.f32, bias_values, sizeof(float) * expert_count);
+		else
+			ccv_float_to_half_precision(bias_values, (uint16_t*)hroute->data.f16, expert_count);
+		free(bias_values);
 	}
 	const int activation_count = token_count * hidden;
 	float* const activation_values = (float*)malloc(sizeof(float) * activation_count);
@@ -438,12 +460,12 @@ static moe_routing_mps_result_t _moe_routing_mps_case(const int token_count, con
 TEST_CASE("single-token moe routing MFA and MPSGraph paths match CPU")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_MOE_ROUTING_FORWARD, CCV_NNC_BACKEND_MPS));
-	const moe_routing_mps_result_t standard_mfa = _moe_routing_mps_case(1, 256, 6, 4096, 0, 0, CCV_16F, 0);
-	const moe_routing_mps_result_t standard_graph = _moe_routing_mps_case(1, 256, 6, 4096, 0, 1, CCV_16F, 0);
-	const moe_routing_mps_result_t selected_mfa = _moe_routing_mps_case(1, 256, 6, 1024, 1, 0, CCV_16BF, 0);
-	const moe_routing_mps_result_t selected_graph = _moe_routing_mps_case(1, 256, 6, 1024, 1, 1, CCV_16BF, 0);
-	const moe_routing_mps_result_t single_input_mfa = _moe_routing_mps_case(1, 256, 6, 4096, 0, 0, CCV_16F, CCV_NNC_MOE_ROUTING_SINGLE_INPUT_TOKEN);
-	const moe_routing_mps_result_t single_input_graph = _moe_routing_mps_case(1, 256, 6, 4096, 0, 1, CCV_16F, CCV_NNC_MOE_ROUTING_SINGLE_INPUT_TOKEN);
+	const moe_routing_mps_result_t standard_mfa = _moe_routing_mps_case(1, 256, 6, 4096, 0, 0, CCV_16F, CCV_16F, 0);
+	const moe_routing_mps_result_t standard_graph = _moe_routing_mps_case(1, 256, 6, 4096, 0, 1, CCV_16F, CCV_16F, 0);
+	const moe_routing_mps_result_t selected_mfa = _moe_routing_mps_case(1, 256, 6, 1024, 1, 0, CCV_16F, CCV_16BF, 0);
+	const moe_routing_mps_result_t selected_graph = _moe_routing_mps_case(1, 256, 6, 1024, 1, 1, CCV_16F, CCV_16BF, 0);
+	const moe_routing_mps_result_t single_input_mfa = _moe_routing_mps_case(1, 256, 6, 4096, 0, 0, CCV_32F, CCV_16F, CCV_NNC_MOE_ROUTING_SINGLE_INPUT_TOKEN);
+	const moe_routing_mps_result_t single_input_graph = _moe_routing_mps_case(1, 256, 6, 4096, 0, 1, CCV_32F, CCV_16F, CCV_NNC_MOE_ROUTING_SINGLE_INPUT_TOKEN);
 	REQUIRE_EQ(standard_mfa.status, CCV_NNC_EXEC_SUCCESS, "standard single-token MFA routing should execute");
 	REQUIRE(standard_mfa.metadata_match, "standard single-token MFA metadata should match CPU");
 	REQUIRE(standard_mfa.gathered_match, "standard single-token MFA gathering should match CPU exactly");
@@ -473,7 +495,7 @@ TEST_CASE("single-token moe routing MFA and MPSGraph paths match CPU")
 TEST_CASE("multi-token moe routing ignores the single input token flag and matches CPU")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_MOE_ROUTING_FORWARD, CCV_NNC_BACKEND_MPS));
-	const moe_routing_mps_result_t result = _moe_routing_mps_case(7, 16, 3, 65, 0, 0, CCV_32F, CCV_NNC_MOE_ROUTING_SINGLE_INPUT_TOKEN);
+	const moe_routing_mps_result_t result = _moe_routing_mps_case(7, 16, 3, 65, 0, 0, CCV_16F, CCV_32F, CCV_NNC_MOE_ROUTING_SINGLE_INPUT_TOKEN);
 	REQUIRE_EQ(result.status, CCV_NNC_EXEC_SUCCESS, "multi-token MPSGraph routing should execute");
 	REQUIRE(result.metadata_match, "multi-token grouping metadata should match CPU independent of equal-key sort order");
 	REQUIRE(result.gathered_match, "multi-token gathered activations should match CPU exactly");

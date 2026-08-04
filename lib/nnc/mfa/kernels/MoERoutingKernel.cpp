@@ -1,28 +1,36 @@
 #include "MoERoutingKernel.hpp"
 #include "../ccv_nnc_mfa.hpp"
+#include "CodeWriter.hpp"
+
+static const char* _ccv_nnc_moe_routing_type_name(const uint32_t data_type)
+{
+	switch (data_type)
+	{
+		case 3:
+			return "float";
+		case 16:
+			return "half";
+		case 121:
+			return "bfloat";
+		default:
+			CCV_NNC_MFA_PRECONDITION(false);
+			return nullptr;
+	}
+}
 
 MoERoutingKernel::MoERoutingKernel(MoERoutingKernelDescriptor descriptor, MTL::Device* const device)
 {
-	const char* activation_type = nullptr;
-	switch (descriptor.dataType)
-	{
-		case 3:
-			activation_type = "float";
-			break;
-		case 16:
-			activation_type = "half";
-			break;
-		case 121:
-			activation_type = "bfloat";
-			break;
-		default:
-			CCV_NNC_MFA_PRECONDITION(false);
-	}
-	std::string source = R"(
+	const char* const activation_type = _ccv_nnc_moe_routing_type_name(descriptor.activationDataType);
+	const char* const routing_type = _ccv_nnc_moe_routing_type_name(descriptor.routingDataType);
+	CodeWriter source;
+	source.SetValue("ACTIVATION_TYPE", activation_type);
+	source.SetValue("ROUTING_TYPE", routing_type);
+	source += R"(
 #include <metal_stdlib>
 using namespace metal;
 
-typedef ACTIVATION_TYPE activation_t;
+typedef {{ACTIVATION_TYPE}} activation_t;
+typedef {{ROUTING_TYPE}} routing_t;
 
 constant uint expert_count [[function_constant(0)]];
 constant uint kth [[function_constant(1)]];
@@ -46,7 +54,7 @@ inline float routing_probability(float x)
 }
 
 kernel void moe_routing_t1(
-	device const float* logits [[buffer(0)]],
+	device const routing_t* logits [[buffer(0)]],
 	device const char* route [[buffer(1)]],
 	device const activation_t* activation [[buffer(2)]],
 	device activation_t* gathered [[buffer(3)]],
@@ -64,7 +72,7 @@ kernel void moe_routing_t1(
 	threadgroup uint group_experts[8];
 	threadgroup uint top_experts[32];
 	for (uint expert = tid; expert < expert_count; expert += ntg)
-		probabilities[expert] = routing_probability(logits[expert]);
+		probabilities[expert] = routing_probability((float)logits[expert]);
 	threadgroup_barrier(mem_flags::mem_threadgroup);
 
 	if (preselected)
@@ -76,7 +84,7 @@ kernel void moe_routing_t1(
 				top_experts[slot] = (uint)selected[slot];
 		}
 	} else {
-		float candidate_score = tid < expert_count ? probabilities[tid] + ((device const float*)route)[tid] : -INFINITY;
+		float candidate_score = tid < expert_count ? probabilities[tid] + (float)((device const routing_t*)route)[tid] : -INFINITY;
 		for (uint slot = 0; slot < kth; slot++)
 		{
 			const float simd_score = simd_max(candidate_score);
@@ -132,11 +140,8 @@ kernel void moe_routing_t1(
 	}
 }
 )";
-	const std::string activation_token = "ACTIVATION_TYPE";
-	const std::string::size_type activation_position = source.find(activation_token);
-	CCV_NNC_MFA_PRECONDITION(activation_position != std::string::npos);
-	source.replace(activation_position, activation_token.size(), activation_type);
+	const std::string shader = source.ToString();
 	NS::Error* error = nil;
-	library = NS::TransferPtr(device->newLibrary(NS::String::string(source.c_str(), NS::UTF8StringEncoding), nil, &error));
+	library = NS::TransferPtr(device->newLibrary(NS::String::string(shader.c_str(), NS::UTF8StringEncoding), nil, &error));
 	CCV_NNC_MFA_CHECK_ERROR(error);
 }

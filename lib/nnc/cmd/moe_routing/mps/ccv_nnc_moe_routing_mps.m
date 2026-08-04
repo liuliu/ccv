@@ -5,6 +5,21 @@
 #include "nnc/ccv_nnc_internal.h"
 #include "nnc/mps/ccv_nnc_mps.h"
 
+static uint32_t _ccv_nnc_moe_routing_mfa_datatype(const int datatype)
+{
+	switch (datatype)
+	{
+		case CCV_32F:
+			return 3;
+		case CCV_16F:
+			return 16;
+		case CCV_16BF:
+			return 121;
+		default:
+			return UINT32_MAX;
+	}
+}
+
 static MPSGraphTensor* _ccv_nnc_moe_routing_stable_log1p(MPSGraph* const graph, MPSGraphTensor* const x)
 {
 	MPSGraphTensor* const one = [graph constantWithScalar:1.0 dataType:x.dataType];
@@ -19,7 +34,7 @@ static MPSGraphTensor* _ccv_nnc_moe_routing_stable_log1p(MPSGraph* const graph, 
 
 static MPSGraphTensor* _ccv_nnc_moe_routing_probabilities(MPSGraph* const graph, MPSGraphTensor* const logits)
 {
-	MPSGraphTensor* const zero = [graph constantWithScalar:0.0 dataType:MPSDataTypeFloat32];
+	MPSGraphTensor* const zero = [graph constantWithScalar:0.0 dataType:logits.dataType];
 	MPSGraphTensor* const positive = [graph maximumWithPrimaryTensor:logits secondaryTensor:zero name:nil];
 	MPSGraphTensor* const negative_absolute = [graph negativeWithTensor:[graph absoluteWithTensor:logits name:nil] name:nil];
 	MPSGraphTensor* const exponential = [graph exponentWithTensor:negative_absolute name:nil];
@@ -72,7 +87,7 @@ static int _ccv_nnc_moe_routing_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint
 	if (kth <= 0 || expert_count < kth || token_count <= 0 || hidden <= 0 || cmd.info.moe_routing.weight_scale <= 0 ||
 		(cmd.info.moe_routing.preselected != 0 && cmd.info.moe_routing.preselected != 1) ||
 		ccv_nnc_tensor_nd(logits->info.dim) != 2 || ccv_nnc_tensor_nd(activation->info.dim) != 2 || activation->info.dim[0] != token_count ||
-		logits->info.datatype != CCV_32F || route_weights->info.datatype != CCV_32F ||
+		(logits->info.datatype != CCV_32F && logits->info.datatype != CCV_16F) || route_weights->info.datatype != CCV_32F ||
 		token_indices->info.datatype != CCV_32S || expert_indices->info.datatype != CCV_32S ||
 		expert_counts->info.datatype != CCV_32S || activation->info.datatype != gathered->info.datatype ||
 		(activation->info.datatype != CCV_32F && activation->info.datatype != CCV_16F && activation->info.datatype != CCV_16BF) ||
@@ -88,7 +103,9 @@ static int _ccv_nnc_moe_routing_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint
 	{
 		if (route->info.datatype != CCV_32S || ccv_nnc_tensor_nd(route->info.dim) != 2 || route->info.dim[0] != token_count || route->info.dim[1] != kth)
 			return CCV_NNC_EXEC_INVALID;
-	} else if (route->info.datatype != CCV_32F || ccv_nnc_tensor_nd(route->info.dim) != 1 || route->info.dim[0] != expert_count) {
+	} else if ((route->info.datatype != CCV_32F && route->info.datatype != CCV_16F) ||
+		route->info.datatype != logits->info.datatype || ccv_nnc_tensor_nd(route->info.dim) != 1 ||
+		route->info.dim[0] != expert_count) {
 		return CCV_NNC_EXEC_INVALID;
 	}
 	if (token_count == 1 && kth <= 32 && expert_count <= 256)
@@ -97,23 +114,11 @@ static int _ccv_nnc_moe_routing_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint
 			ccv_nnc_mfa_context_t* const context = ccv_nnc_default_mfa_context();
 			if (ccv_nnc_mfa_context_supported(context) && !(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA))
 			{
-				uint32_t data_type;
-				switch (activation->info.datatype)
-				{
-					case CCV_32F:
-						data_type = 3;
-						break;
-					case CCV_16F:
-						data_type = 16;
-						break;
-					case CCV_16BF:
-						data_type = 121;
-						break;
-					default:
-						return CCV_NNC_EXEC_INVALID;
-				}
+				const uint32_t activation_data_type = _ccv_nnc_moe_routing_mfa_datatype(activation->info.datatype);
+				const uint32_t routing_data_type = _ccv_nnc_moe_routing_mfa_datatype(logits->info.datatype);
 				const ccv_nnc_mfa_moe_routing_params_t params = {
-					.data_type = data_type,
+					.activation_data_type = activation_data_type,
+					.routing_data_type = routing_data_type,
 					.expert_count = (uint32_t)expert_count,
 					.kth = (uint32_t)kth,
 					.hidden = (uint32_t)hidden,
@@ -175,10 +180,10 @@ static int _ccv_nnc_moe_routing_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint
 			MPSGraphTensor* selected_probabilities = [graph gatherAlongAxis:0 withUpdatesTensor:flat_probabilities indicesTensor:flat_probability_indices name:nil];
 			selected_probabilities = [graph reshapeTensor:selected_probabilities withShape:selected_shape name:nil];
 			MPSGraphTensor* denominator = [graph reductionSumWithTensor:selected_probabilities axis:1 name:nil];
-			denominator = [graph maximumWithPrimaryTensor:denominator secondaryTensor:[graph constantWithScalar:6.103515625e-5f dataType:MPSDataTypeFloat32] name:nil];
+			denominator = [graph maximumWithPrimaryTensor:denominator secondaryTensor:[graph constantWithScalar:6.103515625e-5f dataType:selected_probabilities.dataType] name:nil];
 			denominator = [graph reshapeTensor:denominator withShape:@[@(token_count), @1] name:nil];
 			MPSGraphTensor* normalized_weights = [graph divisionWithPrimaryTensor:selected_probabilities secondaryTensor:denominator name:nil];
-			normalized_weights = [graph multiplicationWithPrimaryTensor:normalized_weights secondaryTensor:[graph constantWithScalar:cmd.info.moe_routing.weight_scale dataType:MPSDataTypeFloat32] name:nil];
+			normalized_weights = [graph multiplicationWithPrimaryTensor:normalized_weights secondaryTensor:[graph constantWithScalar:cmd.info.moe_routing.weight_scale dataType:normalized_weights.dataType] name:nil];
 			MPSGraphTensor* const flat_selected = [graph reshapeTensor:selected withShape:@[@(pair_count)] name:nil];
 			MPSGraphTensor* const flat_weights = [graph reshapeTensor:normalized_weights withShape:@[@(pair_count)] name:nil];
 
@@ -204,6 +209,8 @@ static int _ccv_nnc_moe_routing_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint
 				ordered_activations = [graph gatherAlongAxis:0 withUpdatesTensor:mps_activation indicesTensor:activation_indices name:nil];
 				_ccv_nnc_moe_routing_unique_segments(graph, ordered_experts, pair_count, group_count, &grouped_experts, &grouped_counts);
 			}
+			if (ordered_weights.dataType != MPSDataTypeFloat32)
+				ordered_weights = [graph castTensor:ordered_weights toType:MPSDataTypeFloat32 name:nil];
 			[result_tensors addObject:ordered_activations];
 			[result_tensors addObject:ordered_weights];
 			[result_tensors addObject:ordered_tokens];

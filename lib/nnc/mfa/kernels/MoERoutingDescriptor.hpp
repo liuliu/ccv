@@ -6,20 +6,22 @@
 #include "DeviceProperties.hpp"
 
 struct MoERoutingKernelDescriptor {
-	uint32_t dataType;
-	constexpr bool operator==(const MoERoutingKernelDescriptor& rhs) const { return dataType == rhs.dataType; }
+	uint32_t activationDataType;
+	uint32_t routingDataType;
+	constexpr bool operator==(const MoERoutingKernelDescriptor& rhs) const { return activationDataType == rhs.activationDataType && routingDataType == rhs.routingDataType; }
 };
 
 template<>
 struct std::hash<MoERoutingKernelDescriptor>
 {
-	std::size_t operator()(const MoERoutingKernelDescriptor& hash) const noexcept { return hash.dataType; }
+	std::size_t operator()(const MoERoutingKernelDescriptor& hash) const noexcept { return std::hash<uint64_t>()((uint64_t)hash.activationDataType | ((uint64_t)hash.routingDataType << 32)); }
 };
 
 struct MoERoutingKernel;
 
 struct MoERoutingDescriptor {
-	uint32_t dataType;
+	uint32_t activationDataType;
+	uint32_t routingDataType;
 	uint32_t expertCount;
 	uint32_t kth;
 	uint32_t hidden;

@@ -6,7 +6,8 @@ using namespace ccv::nnc;
 void ccv_nnc_mfa_prepare_moe_routing(ccv_nnc_mfa_context_t* context, ccv_nnc_mfa_moe_routing_params_t params)
 {
 	const MoERoutingDescriptor descriptor {
-		params.data_type,
+		params.activation_data_type,
+		params.routing_data_type,
 		params.expert_count,
 		params.kth,
 		params.hidden,
@@ -33,7 +34,8 @@ void ccv_nnc_mfa_encode_moe_routing(ccv_nnc_mfa_context_t* context, ccv_nnc_mfa_
 	}
 	CCV_NNC_MFA_PRECONDITION(num_tensors == 8);
 	const MoERoutingDescriptor descriptor {
-		params.data_type,
+		params.activation_data_type,
+		params.routing_data_type,
 		params.expert_count,
 		params.kth,
 		params.hidden,

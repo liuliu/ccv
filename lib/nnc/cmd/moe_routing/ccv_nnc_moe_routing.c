@@ -25,7 +25,7 @@ static void _ccv_nnc_moe_routing_tensor_auto_forw(const ccv_nnc_cmd_param_t cmd,
 	const int activation_nd = ccv_nnc_tensor_nd(inputs[2].dim);
 	assert(logits_nd == 2);
 	assert(activation_nd == 2);
-	assert(inputs[0].datatype == CCV_32F);
+	assert(inputs[0].datatype == CCV_32F || inputs[0].datatype == CCV_16F);
 	assert(inputs[2].datatype == CCV_32F || inputs[2].datatype == CCV_16F || inputs[2].datatype == CCV_16BF);
 	const int token_count = inputs[0].dim[0];
 	const int expert_count = inputs[0].dim[1];
@@ -38,7 +38,8 @@ static void _ccv_nnc_moe_routing_tensor_auto_forw(const ccv_nnc_cmd_param_t cmd,
 		assert(inputs[1].dim[0] == token_count && inputs[1].dim[1] == kth);
 	} else {
 		assert(route_nd == 1);
-		assert(inputs[1].datatype == CCV_32F);
+		assert(inputs[1].datatype == CCV_32F || inputs[1].datatype == CCV_16F);
+		assert(inputs[1].datatype == inputs[0].datatype);
 		assert(inputs[1].dim[0] == expert_count);
 	}
 	const int pair_count = token_count * kth;
@@ -46,6 +47,7 @@ static void _ccv_nnc_moe_routing_tensor_auto_forw(const ccv_nnc_cmd_param_t cmd,
 	outputs[0] = inputs[2];
 	outputs[0].dim[0] = single_input_token ? 1 : pair_count;
 	outputs[1] = inputs[0];
+	outputs[1].datatype = CCV_32F;
 	memset(outputs[1].dim, 0, sizeof(outputs[1].dim));
 	outputs[1].dim[0] = pair_count;
 	outputs[2] = outputs[1];

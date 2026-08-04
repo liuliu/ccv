@@ -44,7 +44,7 @@ static int _ccv_nnc_moe_routing_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint
 	if (kth <= 0 || expert_count < kth || token_count <= 0 || hidden <= 0 || cmd.info.moe_routing.weight_scale <= 0 ||
 		(cmd.info.moe_routing.preselected != 0 && cmd.info.moe_routing.preselected != 1) ||
 		ccv_nnc_tensor_nd(logits->info.dim) != 2 || ccv_nnc_tensor_nd(activation->info.dim) != 2 || activation->info.dim[0] != token_count ||
-		logits->info.datatype != CCV_32F || route_weights->info.datatype != CCV_32F ||
+		(logits->info.datatype != CCV_32F && logits->info.datatype != CCV_16F) || route_weights->info.datatype != CCV_32F ||
 		token_indices->info.datatype != CCV_32S || expert_indices->info.datatype != CCV_32S ||
 		expert_counts->info.datatype != CCV_32S || activation->info.datatype != gathered->info.datatype ||
 		(activation->info.datatype != CCV_32F && activation->info.datatype != CCV_16F && activation->info.datatype != CCV_16BF) ||
@@ -60,20 +60,42 @@ static int _ccv_nnc_moe_routing_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint
 	{
 		if (route->info.datatype != CCV_32S || ccv_nnc_tensor_nd(route->info.dim) != 2 || route->info.dim[0] != token_count || route->info.dim[1] != kth)
 			return CCV_NNC_EXEC_INVALID;
-	} else if (route->info.datatype != CCV_32F || ccv_nnc_tensor_nd(route->info.dim) != 1 || route->info.dim[0] != expert_count) {
+	} else if ((route->info.datatype != CCV_32F && route->info.datatype != CCV_16F) ||
+		route->info.datatype != logits->info.datatype || ccv_nnc_tensor_nd(route->info.dim) != 1 ||
+		route->info.dim[0] != expert_count) {
 		return CCV_NNC_EXEC_INVALID;
 	}
-	const size_t workspace_size = sizeof(float) * expert_count + sizeof(ccv_nnc_moe_routing_pair_t) * pair_count + sizeof(int) * kth;
+	const int bias_f16 = !cmd.info.moe_routing.preselected && route->info.datatype == CCV_16F;
+	const size_t workspace_size = sizeof(float) * expert_count * (bias_f16 ? 2 : 1) +
+		sizeof(ccv_nnc_moe_routing_pair_t) * pair_count + sizeof(int) * kth;
 	float* const probabilities = (float*)ccv_nnc_stream_context_get_workspace(stream_context, workspace_size, CCV_TENSOR_CPU_MEMORY);
-	ccv_nnc_moe_routing_pair_t* const pairs = (ccv_nnc_moe_routing_pair_t*)(probabilities + expert_count);
+	float* const converted_bias = probabilities + expert_count;
+	ccv_nnc_moe_routing_pair_t* const pairs = (ccv_nnc_moe_routing_pair_t*)(converted_bias + (bias_f16 ? expert_count : 0));
 	int* const selected = (int*)(pairs + pair_count);
+	const float* bias = 0;
+	if (!cmd.info.moe_routing.preselected)
+	{
+		if (bias_f16)
+		{
+			ccv_half_precision_to_float((const uint16_t*)route->data.f16, converted_bias, expert_count);
+			bias = converted_bias;
+		} else
+			bias = route->data.f32;
+	}
 	int token;
 	for (token = 0; token < token_count; token++)
 	{
-		const float* const token_logits = logits->data.f32 + token * expert_count;
 		int expert;
-		for (expert = 0; expert < expert_count; expert++)
-			probabilities[expert] = _ccv_nnc_moe_routing_probability(token_logits[expert]);
+		if (logits->info.datatype == CCV_16F)
+		{
+			ccv_half_precision_to_float((const uint16_t*)logits->data.f16 + token * expert_count, probabilities, expert_count);
+			for (expert = 0; expert < expert_count; expert++)
+				probabilities[expert] = _ccv_nnc_moe_routing_probability(probabilities[expert]);
+		} else {
+			const float* const token_logits = logits->data.f32 + token * expert_count;
+			for (expert = 0; expert < expert_count; expert++)
+				probabilities[expert] = _ccv_nnc_moe_routing_probability(token_logits[expert]);
+		}
 		int slot;
 		if (cmd.info.moe_routing.preselected)
 		{
@@ -84,9 +106,9 @@ static int _ccv_nnc_moe_routing_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint
 				selected[slot] = -1;
 			for (expert = 0; expert < expert_count; expert++)
 			{
-				const float score = probabilities[expert] + route->data.f32[expert];
+				const float score = probabilities[expert] + bias[expert];
 				for (slot = 0; slot < kth; slot++)
-					if (selected[slot] < 0 || score > probabilities[selected[slot]] + route->data.f32[selected[slot]])
+					if (selected[slot] < 0 || score > probabilities[selected[slot]] + bias[selected[slot]])
 					{
 						int j;
 						for (j = kth - 1; j > slot; j--)

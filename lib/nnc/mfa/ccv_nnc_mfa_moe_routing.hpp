@@ -2,7 +2,8 @@
 #define GUARD_ccv_nnc_mfa_moe_routing_hpp
 
 typedef struct {
-	uint32_t data_type;
+	uint32_t activation_data_type;
+	uint32_t routing_data_type;
 	uint32_t expert_count;
 	uint32_t kth;
 	uint32_t hidden;

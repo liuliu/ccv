@@ -5,7 +5,8 @@
 
 bool MoERoutingDescriptor::operator==(const MoERoutingDescriptor& rhs) const
 {
-	return dataType == rhs.dataType &&
+	return activationDataType == rhs.activationDataType &&
+		routingDataType == rhs.routingDataType &&
 		expertCount == rhs.expertCount &&
 		kth == rhs.kth &&
 		hidden == rhs.hidden &&
@@ -18,7 +19,8 @@ std::size_t std::hash<MoERoutingDescriptor>::operator()(const MoERoutingDescript
 {
 	using namespace ccv::nnc::mfa::hash;
 	std::size_t seed = 0;
-	seed = combine_32(seed, hash.dataType);
+	seed = combine_32(seed, hash.activationDataType);
+	seed = combine_32(seed, hash.routingDataType);
 	seed = combine_32(seed, hash.expertCount);
 	seed = combine_32(seed, hash.kth);
 	seed = combine_32(seed, hash.hidden);
@@ -30,7 +32,7 @@ std::size_t std::hash<MoERoutingDescriptor>::operator()(const MoERoutingDescript
 
 std::pair<MoERoutingKernelDescriptor, PipelineValue<MoERoutingKernel>*> MoERoutingDescriptor::findKernel(MTL::Device* const device, const DeviceProperties&, NS::Array* const, MTL::BinaryArchive* const, const std::string&, std::unordered_map<MoERoutingKernelDescriptor, std::unique_ptr<MoERoutingKernel>>* const libraryCache) const noexcept
 {
-	const MoERoutingKernelDescriptor kernel_descriptor { dataType };
+	const MoERoutingKernelDescriptor kernel_descriptor { activationDataType, routingDataType };
 	auto iterator = libraryCache->find(kernel_descriptor);
 	if (iterator == libraryCache->end())
 		iterator = libraryCache->try_emplace(kernel_descriptor, std::make_unique<MoERoutingKernel>(kernel_descriptor, device)).first;
