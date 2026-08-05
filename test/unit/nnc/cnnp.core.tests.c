@@ -1437,6 +1437,12 @@ TEST_CASE("embedding model can generate vector embedding")
 	ccv_cnnp_model_free(embedding);
 }
 
+TEST_CASE("embedding model accepts a 32-bit integer vocabulary")
+{
+	ccv_cnnp_model_t* const embedding = ccv_cnnp_embedding(CCV_32S, 10, 8, 0, 0);
+	ccv_cnnp_model_free(embedding);
+}
+
 TEST_CASE("model to get the internal name for parameters")
 {
 	ccv_cnnp_model_t* const linear1 = ccv_cnnp_dense(1, 1, 0, 1, "linear");

@@ -4907,7 +4907,7 @@ CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_index_select(const char* const name)
 /**
  * An dictionary embedding model. This can be thought as index select model but the vocabulary
  * tensor is within this model itself.
- * @param datatype The data type of the vocabulary.
+ * @param datatype The data type of the vocabulary. This can be CCV_32F, CCV_16F, CCV_16BF, or CCV_32S.
  * @param vocab_size The size of the vocabulary.
  * @param embed_size The size of the embedding.
  * @param is_trainable Whether the parameters of this model can be trained.

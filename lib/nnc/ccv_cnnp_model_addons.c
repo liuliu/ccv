@@ -3551,7 +3551,7 @@ ccv_cnnp_model_t* ccv_cnnp_embedding(const int datatype, const int vocab_size, c
 	ccv_cnnp_model_copy_name(&model_embedding->super, name);
 	model_embedding->vocab.d = CCV_NNC_NO_TENSOR_SYMBOL;
 	model_embedding->vocab.graph = 0;
-	assert(datatype == CCV_32F || datatype == CCV_16F || datatype == CCV_16BF);
+	assert(datatype == CCV_32F || datatype == CCV_16F || datatype == CCV_16BF || datatype == CCV_32S);
 	model_embedding->datatype = datatype;
 	assert(vocab_size > 0);
 	model_embedding->vocab_size = vocab_size;
