@@ -30,6 +30,9 @@ mtl_buffer_t* ccv_nnc_mfa_ane_rowwise_coreml_cache_activation_surface_buffer(
     ccv_nnc_mfa_ane_rowwise_coreml_cache_t* cache);
 mtl_buffer_t* ccv_nnc_mfa_ane_rowwise_coreml_cache_output_surface_buffer(
     ccv_nnc_mfa_ane_rowwise_coreml_cache_t* cache);
+mtl_buffer_t* ccv_nnc_mfa_ane_rowwise_coreml_cache_output_split_surface_buffer(
+    ccv_nnc_mfa_ane_rowwise_coreml_cache_t* cache,
+    uint32_t split_index);
 mtl_buffer_t* ccv_nnc_mfa_ane_rowwise_coreml_cache_activation_scales_buffer(
     ccv_nnc_mfa_ane_rowwise_coreml_cache_t* cache);
 
@@ -48,6 +51,8 @@ uint32_t ccv_nnc_mfa_ane_rowwise_coreml_program_M(
 uint32_t ccv_nnc_mfa_ane_rowwise_coreml_program_N(
     const ccv_nnc_mfa_ane_rowwise_coreml_program_t* program);
 uint32_t ccv_nnc_mfa_ane_rowwise_coreml_program_K(
+    const ccv_nnc_mfa_ane_rowwise_coreml_program_t* program);
+uint32_t ccv_nnc_mfa_ane_rowwise_coreml_program_k_split(
     const ccv_nnc_mfa_ane_rowwise_coreml_program_t* program);
 
 int ccv_nnc_mfa_ane_rowwise_coreml_evaluate(

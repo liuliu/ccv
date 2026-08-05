@@ -1986,14 +1986,9 @@ TEST_CASE("mps forward gemm with row-wise 8i weight ANE K split")
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_MPS));
 	double k2_max_abs = 0;
 	double k2_max_rel = 0;
-	const int k2_status = _mps_forward_ane_k_split_validate_shape(512, 128, 4096, &k2_max_abs, &k2_max_rel);
-	double k4_max_abs = 0;
-	double k4_max_rel = 0;
-	const int k4_status = _mps_forward_ane_k_split_validate_shape(512, 128, 8192, &k4_max_abs, &k4_max_rel);
+	const int k2_status = _mps_forward_ane_k_split_validate_shape(512, 384, 4096, &k2_max_abs, &k2_max_rel);
 	REQUIRE_EQ(k2_status, 0, "ANE row-wise 8i K/2 split validation should run");
 	REQUIRE(k2_max_rel < 2e-3, "ANE row-wise 8i K/2 split should match Metal, max_abs=%g max_rel=%g", k2_max_abs, k2_max_rel);
-	REQUIRE_EQ(k4_status, 0, "ANE row-wise 8i K/4 split validation should run");
-	REQUIRE(k4_max_rel < 2e-3, "ANE row-wise 8i K/4 split should match Metal, max_abs=%g max_rel=%g", k4_max_abs, k4_max_rel);
 }
 
 TEST_CASE("mps forward gemm with loadM flag")

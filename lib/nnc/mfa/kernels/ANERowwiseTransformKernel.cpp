@@ -262,6 +262,51 @@ kernel void dequantize_output_transposed_bias(
     dst[output_offset(dst_row, dst_col)] = ({{IO_TYPE}})(value + (float)bias[dst_col]);
   }
 }
+
+kernel void dequantize_split_output_transposed(
+    device const half* src0 [[buffer(0)]],
+    device const half* src1 [[buffer(1)]],
+    device {{IO_TYPE}}* dst [[buffer(2)]],
+    device const {{IO_TYPE}}* activation_scales [[buffer(3)]],
+    device const {{IO_TYPE}}* weight_scales [[buffer(4)]],
+    ushort2 tid2 [[thread_position_in_threadgroup]],
+    uint2 tgid [[threadgroup_position_in_grid]])
+{
+  const uint dst_row = tgid.y * {{OUTPUT_TILE_DIM_Y}} + tid2.y;
+  const uint dst_col = tgid.x * {{OUTPUT_TILE_DIM_X}} + tid2.x;
+  if (dst_row < TOTAL_ROWS && dst_col < N) {
+    const uint src_index = dst_col * PADDED_ROWS + dst_row;
+    const float partial_sum = (float)src0[src_index] + (float)src1[src_index];
+    const float value = partial_sum *
+        (float)activation_scales[activation_scale_offset(dst_row)] *
+        (float)weight_scales[dst_col] *
+        SCALE_CORRECTION;
+    dst[output_offset(dst_row, dst_col)] = ({{IO_TYPE}})value;
+  }
+}
+
+kernel void dequantize_split_output_transposed_bias(
+    device const half* src0 [[buffer(0)]],
+    device const half* src1 [[buffer(1)]],
+    device {{IO_TYPE}}* dst [[buffer(2)]],
+    device const {{IO_TYPE}}* activation_scales [[buffer(3)]],
+    device const {{IO_TYPE}}* weight_scales [[buffer(4)]],
+    device const {{IO_TYPE}}* bias [[buffer(5)]],
+    ushort2 tid2 [[thread_position_in_threadgroup]],
+    uint2 tgid [[threadgroup_position_in_grid]])
+{
+  const uint dst_row = tgid.y * {{OUTPUT_TILE_DIM_Y}} + tid2.y;
+  const uint dst_col = tgid.x * {{OUTPUT_TILE_DIM_X}} + tid2.x;
+  if (dst_row < TOTAL_ROWS && dst_col < N) {
+    const uint src_index = dst_col * PADDED_ROWS + dst_row;
+    const float partial_sum = (float)src0[src_index] + (float)src1[src_index];
+    const float value = partial_sum *
+        (float)activation_scales[activation_scale_offset(dst_row)] *
+        (float)weight_scales[dst_col] *
+        SCALE_CORRECTION;
+    dst[output_offset(dst_row, dst_col)] = ({{IO_TYPE}})(value + (float)bias[dst_col]);
+  }
+}
 )";
   return source.ToString();
 }

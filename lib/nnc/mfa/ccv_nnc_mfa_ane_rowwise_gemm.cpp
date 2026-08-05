@@ -552,31 +552,63 @@ static bool run_dequantize_output(
     std::string* const error_out)
 {
   mtl_command_batch_t* const command_batch = ccv_nnc_stream_context_start_command_batch(stream_context);
+  char error_buffer[1024] = {};
   auto encoder = command_batch->startCommand();
   auto* const kernel = transform_pipeline->kernel;
-  mtl_buffer_t* const coreml_output_buffer = ccv_nnc_mfa_ane_rowwise_coreml_cache_output_surface_buffer(cache);
-  if (!coreml_output_buffer) {
-    if (error_out)
-      *error_out = "CoreML output buffer is not available for dequantize";
-    return false;
-  }
-  encoder->setComputePipelineState(fused_bias ? transform_pipeline->fourth.get() : transform_pipeline->third.get());
-  encoder->useResource(coreml_output_buffer, MTL::ResourceUsageRead);
-  encoder->useResource(output, MTL::ResourceUsageWrite);
-  encoder->useResource(activation_scales_buffer, MTL::ResourceUsageRead);
-  encoder->useResource(weight_buffer, MTL::ResourceUsageRead);
-  encoder->setBuffer(coreml_output_buffer, 0, 0);
-  encoder->setBuffer(output, output_offset, 1);
-  encoder->setBuffer(activation_scales_buffer, activation_scales_offset, 2);
-  encoder->setBuffer(weight_buffer, weight_scale_offset, 3);
-  if (fused_bias) {
-    if (!bias_buffer) {
+  const uint32_t k_split = ccv_nnc_mfa_ane_rowwise_coreml_program_k_split(program);
+  if (k_split > 1) {
+    encoder->setComputePipelineState(fused_bias ? transform_pipeline->seventh.get() : transform_pipeline->sixth.get());
+    for (uint32_t i = 0; i < 2; ++i) {
+      mtl_buffer_t* const partial_output = ccv_nnc_mfa_ane_rowwise_coreml_cache_output_split_surface_buffer(
+          cache, i);
+      if (!partial_output) {
+        if (error_out)
+          *error_out = "CoreML split output buffer is not available for dequantize";
+        return false;
+      }
+      encoder->useResource(partial_output, MTL::ResourceUsageRead);
+      encoder->setBuffer(partial_output, 0, i);
+    }
+    encoder->useResource(output, MTL::ResourceUsageWrite);
+    encoder->useResource(activation_scales_buffer, MTL::ResourceUsageRead);
+    encoder->useResource(weight_buffer, MTL::ResourceUsageRead);
+    encoder->setBuffer(output, output_offset, 2);
+    encoder->setBuffer(activation_scales_buffer, activation_scales_offset, 3);
+    encoder->setBuffer(weight_buffer, weight_scale_offset, 4);
+    if (fused_bias) {
+      if (!bias_buffer) {
+        if (error_out)
+          *error_out = "bias buffer is not available for output bias add";
+        return false;
+      }
+      encoder->useResource(bias_buffer, MTL::ResourceUsageRead);
+      encoder->setBuffer(bias_buffer, bias_offset, 5);
+    }
+  } else {
+    mtl_buffer_t* const coreml_output_buffer = ccv_nnc_mfa_ane_rowwise_coreml_cache_output_surface_buffer(cache);
+    if (!coreml_output_buffer) {
       if (error_out)
-        *error_out = "bias buffer is not available for output bias add";
+        *error_out = "CoreML output buffer is not available for dequantize";
       return false;
     }
-    encoder->useResource(bias_buffer, MTL::ResourceUsageRead);
-    encoder->setBuffer(bias_buffer, bias_offset, 4);
+    encoder->setComputePipelineState(fused_bias ? transform_pipeline->fourth.get() : transform_pipeline->third.get());
+    encoder->useResource(coreml_output_buffer, MTL::ResourceUsageRead);
+    encoder->useResource(output, MTL::ResourceUsageWrite);
+    encoder->useResource(activation_scales_buffer, MTL::ResourceUsageRead);
+    encoder->useResource(weight_buffer, MTL::ResourceUsageRead);
+    encoder->setBuffer(coreml_output_buffer, 0, 0);
+    encoder->setBuffer(output, output_offset, 1);
+    encoder->setBuffer(activation_scales_buffer, activation_scales_offset, 2);
+    encoder->setBuffer(weight_buffer, weight_scale_offset, 3);
+    if (fused_bias) {
+      if (!bias_buffer) {
+        if (error_out)
+          *error_out = "bias buffer is not available for output bias add";
+        return false;
+      }
+      encoder->useResource(bias_buffer, MTL::ResourceUsageRead);
+      encoder->setBuffer(bias_buffer, bias_offset, 4);
+    }
   }
   encoder->dispatchThreadgroups(
       kernel->outputDequantizeGridSize(
@@ -584,7 +616,6 @@ static bool run_dequantize_output(
           ccv_nnc_mfa_ane_rowwise_coreml_program_N(program)),
       kernel->outputDequantizeThreadgroupSize());
   command_batch->finishCommand(encoder);
-  char error_buffer[1024] = {};
   const int ok = ccv_nnc_mfa_ane_rowwise_finish_command_batch_async(
       stream_context,
       command_batch,

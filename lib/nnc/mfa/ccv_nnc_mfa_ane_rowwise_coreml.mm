@@ -12,6 +12,7 @@
 #endif
 #import <Metal/Metal.h>
 #import <objc/message.h>
+#import <dispatch/dispatch.h>
 
 #include <algorithm>
 #include <atomic>
@@ -41,6 +42,7 @@ constexpr size_t kANEWeightSurfaceCacheLimitBytes = 128 * 1024 * 1024;
 constexpr size_t kANEOutputSurfaceCacheLimitBytes = 1024 * 1024 * 1024;
 constexpr size_t kANEScratchBufferAlignment = 16 * 1024;
 constexpr uint32_t kFastFenceLaneCount = 1;
+constexpr uint32_t kANEMaxKSplit = 2;
 constexpr uint32_t kANEMinSplitM = 512;
 constexpr uint32_t kANESmallM = 1024;
 constexpr uint32_t kANEDirectKLimitAt512M = 3072;
@@ -52,7 +54,7 @@ static size_t align_up(const size_t value, const size_t alignment) noexcept
   return (value + alignment - 1) & ~(alignment - 1);
 }
 
-// Keep each static K partition below the measured ANE matmul performance cliff.
+// Use two independent predictions after direct matmul crosses its measured K cliff.
 static uint32_t select_matmul_k_split(const uint32_t M, const uint32_t K) noexcept
 {
   if (M < kANEMinSplitM)
@@ -61,10 +63,6 @@ static uint32_t select_matmul_k_split(const uint32_t M, const uint32_t K) noexce
       (M <= kANESmallM ? kANEDirectKLimitAt1024M : kANEDirectKLimit);
   if (K <= direct_k_limit)
     return 1;
-  if (K <= direct_k_limit * 2 && (K % 2) == 0)
-    return 2;
-  if ((K % 4) == 0)
-    return 4;
   if ((K % 2) == 0)
     return 2;
   return 1;
@@ -188,6 +186,8 @@ struct CompiledProgram {
   uint32_t M;
   uint32_t N;
   uint32_t K;
+  uint32_t split_K;
+  uint32_t k_split;
   CFTypeRef model;
   CFTypeRef x_name;
   CFTypeRef w_name;
@@ -255,21 +255,20 @@ struct SharedScratch {
   uint32_t M = 0;
   uint32_t N = 0;
   uint32_t K = 0;
-  size_t activation_surface_bytes = 0;
+  uint32_t split_K = 0;
+  uint32_t k_split = 0;
   size_t weight_surface_bytes = 0;
-  size_t output_surface_bytes = 0;
-  size_t activation_scale_bytes = 0;
   size_t activation_scale_capacity_bytes = 0;
-  CVPixelBufferRef activation_pixel_buffer = nullptr;
-  CVPixelBufferRef weight_pixel_buffer = nullptr;
-  CVPixelBufferRef output_pixel_buffer = nullptr;
-  IOSurfaceRef activation_surface = nullptr;
-  IOSurfaceRef weight_surface = nullptr;
-  IOSurfaceRef output_surface = nullptr;
   mtl_buffer_t* activation_surface_buffer = nullptr;
   mtl_buffer_t* weight_surface_buffer = nullptr;
   mtl_buffer_t* output_surface_buffer = nullptr;
   mtl_buffer_t* activation_scales = nullptr;
+  CVPixelBufferRef activation_split_pixel_buffers[kANEMaxKSplit] = {};
+  CVPixelBufferRef weight_split_pixel_buffers[kANEMaxKSplit] = {};
+  CVPixelBufferRef output_split_pixel_buffers[kANEMaxKSplit] = {};
+  mtl_buffer_t* activation_split_surface_buffers[kANEMaxKSplit] = {};
+  mtl_buffer_t* weight_split_surface_buffers[kANEMaxKSplit] = {};
+  mtl_buffer_t* output_split_surface_buffers[kANEMaxKSplit] = {};
 };
 
 struct FastFence {
@@ -314,21 +313,20 @@ static void destroy_shared_scratch(SharedScratch* const scratch)
   scratch->M = 0;
   scratch->N = 0;
   scratch->K = 0;
-  scratch->activation_surface_bytes = 0;
+  scratch->split_K = 0;
+  scratch->k_split = 0;
   scratch->weight_surface_bytes = 0;
-  scratch->output_surface_bytes = 0;
-  scratch->activation_scale_bytes = 0;
   scratch->activation_scale_capacity_bytes = 0;
-  scratch->activation_pixel_buffer = nullptr;
-  scratch->weight_pixel_buffer = nullptr;
-  scratch->output_pixel_buffer = nullptr;
-  scratch->activation_surface = nullptr;
-  scratch->weight_surface = nullptr;
-  scratch->output_surface = nullptr;
   scratch->activation_surface_buffer = nullptr;
   scratch->weight_surface_buffer = nullptr;
   scratch->output_surface_buffer = nullptr;
   scratch->activation_scales = nullptr;
+  memset(scratch->activation_split_pixel_buffers, 0, sizeof(scratch->activation_split_pixel_buffers));
+  memset(scratch->weight_split_pixel_buffers, 0, sizeof(scratch->weight_split_pixel_buffers));
+  memset(scratch->output_split_pixel_buffers, 0, sizeof(scratch->output_split_pixel_buffers));
+  memset(scratch->activation_split_surface_buffers, 0, sizeof(scratch->activation_split_surface_buffers));
+  memset(scratch->weight_split_surface_buffers, 0, sizeof(scratch->weight_split_surface_buffers));
+  memset(scratch->output_split_surface_buffers, 0, sizeof(scratch->output_split_surface_buffers));
 }
 
 static void destroy_fast_fence(FastFence* const fence)
@@ -465,12 +463,14 @@ static bool ensure_fast_fence(FastFence* const fence, mtl_device_t* const device
   return true;
 }
 
-static void evict_surface_cache_entries(SurfaceCache* const cache, CachedSurface* const keep_entry)
+static void evict_surface_cache_entries(
+    SurfaceCache* const cache,
+    const std::vector<CachedSurface*>& keep_entries)
 {
   while (cache->limit_bytes > 0 && cache->total_alloc_bytes > cache->limit_bytes) {
     auto victim_it = cache->entries.end();
     for (auto it = cache->entries.begin(); it != cache->entries.end(); ++it) {
-      if (it->get() == keep_entry)
+      if (std::find(keep_entries.begin(), keep_entries.end(), it->get()) != keep_entries.end())
         continue;
       if (victim_it == cache->entries.end() || (*it)->last_used < (*victim_it)->last_used)
         victim_it = it;
@@ -489,10 +489,12 @@ static CachedSurface* find_or_create_cached_surface(
     const size_t width,
     const size_t requested_height,
     const MLMultiArrayDataType dt,
+    const std::vector<CachedSurface*>& used_entries,
     std::string* const error_out)
 {
   for (auto& entry : cache->entries)
-    if (entry->width == width && entry->height == requested_height) {
+    if (entry->width == width && entry->height == requested_height &&
+        std::find(used_entries.begin(), used_entries.end(), entry.get()) == used_entries.end()) {
       entry->last_used = ++cache->lru_clock;
       return entry.get();
     }
@@ -516,9 +518,7 @@ static CachedSurface* find_or_create_cached_surface(
 
   cache->total_alloc_bytes += replacement->alloc_bytes;
   cache->entries.emplace_back(std::move(replacement));
-  CachedSurface* const created = cache->entries.back().get();
-  evict_surface_cache_entries(cache, created);
-  return created;
+  return cache->entries.back().get();
 }
 
 static NSString* mil_header()
@@ -632,8 +632,7 @@ static NSString* generate_dynamic_i8_two_input_matmul_scaled_mil(
     const uint32_t K,
     const uint32_t N,
     const uint32_t padded_M,
-    const float dq_scale,
-    const uint32_t k_split)
+    const float dq_scale)
 {
   NSMutableString* const mil = [NSMutableString string];
   [mil appendString:mil_header()];
@@ -641,31 +640,9 @@ static NSString* generate_dynamic_i8_two_input_matmul_scaled_mil(
   [mil appendFormat:@"        fp16 dq_scale = const()[name = string(\"dq_scale\"), val = %@];\n", mil_fp16_literal(dq_scale)];
   [mil appendString:@"        bool mm_transpose_x_0 = const()[name = string(\"mm_transpose_x_0\"), val = bool(false)];\n"];
   [mil appendString:@"        bool mm_transpose_y_0 = const()[name = string(\"mm_transpose_y_0\"), val = bool(false)];\n"];
-  if (k_split == 1) {
-    [mil appendFormat:@"        tensor<fp16, [1,1,%u,%u]> xh = dequantize(input = x, scale = dq_scale)[name = string(\"xh\")];\n", K, padded_M];
-    [mil appendFormat:@"        tensor<fp16, [1,1,%u,%u]> wh = dequantize(input = w, scale = dq_scale)[name = string(\"wh\")];\n", N, K];
-    [mil appendFormat:@"        tensor<fp16, [1, 1, %u, %u]> mm = matmul(transpose_x = mm_transpose_x_0, transpose_y = mm_transpose_y_0, x = wh, y = xh)[name = string(\"mm\")];\n", N, padded_M];
-  } else {
-    const uint32_t split_K = K / k_split;
-    [mil appendFormat:@"        tensor<int32, [4]> ws = const()[name = string(\"ws\"), val = tensor<int32, [4]>([1,1,%u,%u])];\n", N, split_K];
-    [mil appendFormat:@"        tensor<int32, [4]> xs = const()[name = string(\"xs\"), val = tensor<int32, [4]>([1,1,%u,%u])];\n", split_K, padded_M];
-    for (uint32_t i = 0; i < k_split; ++i) {
-      [mil appendFormat:@"        tensor<int32, [4]> wb%u = const()[name = string(\"wb%u\"), val = tensor<int32, [4]>([0,0,0,%u])];\n", i, i, i * split_K];
-      [mil appendFormat:@"        tensor<int32, [4]> xb%u = const()[name = string(\"xb%u\"), val = tensor<int32, [4]>([0,0,%u,0])];\n", i, i, i * split_K];
-      [mil appendFormat:@"        tensor<int8, [1,1,%u,%u]> wq%u = slice_by_size(x = w, begin = wb%u, size = ws)[name = string(\"wq%u\")];\n", N, split_K, i, i, i];
-      [mil appendFormat:@"        tensor<int8, [1,1,%u,%u]> xq%u = slice_by_size(x = x, begin = xb%u, size = xs)[name = string(\"xq%u\")];\n", split_K, padded_M, i, i, i];
-      [mil appendFormat:@"        tensor<fp16, [1,1,%u,%u]> wh%u = dequantize(input = wq%u, scale = dq_scale)[name = string(\"wh%u\")];\n", N, split_K, i, i, i];
-      [mil appendFormat:@"        tensor<fp16, [1,1,%u,%u]> xh%u = dequantize(input = xq%u, scale = dq_scale)[name = string(\"xh%u\")];\n", split_K, padded_M, i, i, i];
-      [mil appendFormat:@"        tensor<fp16, [1,1,%u,%u]> mm%u = matmul(transpose_x = mm_transpose_x_0, transpose_y = mm_transpose_y_0, x = wh%u, y = xh%u)[name = string(\"mm%u\")];\n", N, padded_M, i, i, i, i];
-    }
-    if (k_split == 2) {
-      [mil appendFormat:@"        tensor<fp16, [1,1,%u,%u]> mm = add(x = mm0, y = mm1)[name = string(\"mm\")];\n", N, padded_M];
-    } else {
-      [mil appendFormat:@"        tensor<fp16, [1,1,%u,%u]> sum01 = add(x = mm0, y = mm1)[name = string(\"sum01\")];\n", N, padded_M];
-      [mil appendFormat:@"        tensor<fp16, [1,1,%u,%u]> sum23 = add(x = mm2, y = mm3)[name = string(\"sum23\")];\n", N, padded_M];
-      [mil appendFormat:@"        tensor<fp16, [1,1,%u,%u]> mm = add(x = sum01, y = sum23)[name = string(\"mm\")];\n", N, padded_M];
-    }
-  }
+  [mil appendFormat:@"        tensor<fp16, [1,1,%u,%u]> xh = dequantize(input = x, scale = dq_scale)[name = string(\"xh\")];\n", K, padded_M];
+  [mil appendFormat:@"        tensor<fp16, [1,1,%u,%u]> wh = dequantize(input = w, scale = dq_scale)[name = string(\"wh\")];\n", N, K];
+  [mil appendFormat:@"        tensor<fp16, [1, 1, %u, %u]> mm = matmul(transpose_x = mm_transpose_x_0, transpose_y = mm_transpose_y_0, x = wh, y = xh)[name = string(\"mm\")];\n", N, padded_M];
   [mil appendString:@"    } -> (mm);\n}\n"];
   return mil;
 }
@@ -740,8 +717,7 @@ static NSMutableDictionary* default_metadata_root(void)
 static NSString* build_metadata_json(
     const uint32_t K,
     const uint32_t N,
-    const uint32_t padded_M,
-    const uint32_t k_split)
+    const uint32_t padded_M)
 {
   NSMutableDictionary* const root = default_metadata_root();
   NSArray<NSNumber*>* const x_shape = make_shape(1, 1, K, padded_M);
@@ -754,14 +730,6 @@ static NSString* build_metadata_json(
   root[@"outputSchema"] = @[
     schema_entry_for_name(@"mm", "Float16", y_shape),
   ];
-  if (k_split > 1) {
-    root[@"mlProgramOperationTypeHistogram"] = @{
-      @"Ios19.dequantize" : @(k_split * 2),
-      @"Ios18.matmul" : @(k_split),
-      @"Ios18.slice_by_size" : @(k_split * 2),
-      @"Ios18.add" : @(k_split - 1),
-    };
-  }
   NSData* const json_data = [NSJSONSerialization dataWithJSONObject:@[root] options:NSJSONWritingPrettyPrinted error:nil];
   return [[[NSString alloc] initWithData:json_data encoding:NSUTF8StringEncoding] autorelease];
 }
@@ -845,6 +813,7 @@ static std::unique_ptr<CompiledProgram> compile_program(
   @autoreleasepool {
     const float model_scale = 1.0f / std::sqrt((float)K);
     const uint32_t k_split = select_matmul_k_split(padded_M, K);
+    const uint32_t split_K = K / k_split;
     NSString* const temp_directory = [NSTemporaryDirectory() stringByAppendingPathComponent:[NSString stringWithFormat:@"%@.mlmodelc", [[NSUUID UUID] UUIDString]]];
     NSFileManager* const file_manager = [NSFileManager defaultManager];
     NSError* error = nil;
@@ -853,16 +822,16 @@ static std::unique_ptr<CompiledProgram> compile_program(
         *error_out = "failed to create manual .mlmodelc: " + describe_nserror(error);
       return {};
     }
-    NSData* const coremldata = synthesized_coremldata(K, N, padded_M);
+    NSData* const coremldata = synthesized_coremldata(split_K, N, padded_M);
     if (![coremldata writeToFile:[temp_directory stringByAppendingPathComponent:@"coremldata.bin"] atomically:YES]) {
       if (error_out)
         *error_out = "failed to write coremldata.bin";
       return {};
     }
-    if (!write_text_file(generate_dynamic_i8_two_input_matmul_scaled_mil(K, N, padded_M, model_scale, k_split),
+    if (!write_text_file(generate_dynamic_i8_two_input_matmul_scaled_mil(split_K, N, padded_M, model_scale),
                          [temp_directory stringByAppendingPathComponent:@"model.mil"], error_out))
       return {};
-    if (!write_text_file(build_metadata_json(K, N, padded_M, k_split),
+    if (!write_text_file(build_metadata_json(split_K, N, padded_M),
                          [temp_directory stringByAppendingPathComponent:@"metadata.json"], error_out))
       return {};
     if (!write_text_file(build_manifest_json(@"model.mil", @"weights"),
@@ -917,6 +886,8 @@ static std::unique_ptr<CompiledProgram> compile_program(
       padded_M,
       N,
       K,
+      split_K,
+      k_split,
       CFBridgingRetain(model),
       CFBridgingRetain(x_name),
       CFBridgingRetain(w_name),
@@ -936,11 +907,58 @@ struct ccv_nnc_mfa_ane_rowwise_coreml_cache_s {
   SurfaceCache activation_surface_cache;
   SurfaceCache weight_surface_cache;
   SurfaceCache output_surface_cache;
+  id<MTLComputePipelineState> split_weight_pipeline = nil;
 };
 
 struct ccv_nnc_mfa_ane_rowwise_coreml_program_s {
   CompiledProgram* program;
 };
+
+static NSString* split_io_source(void)
+{
+  return @"#include <metal_stdlib>\n"
+         @"using namespace metal;\n"
+         @"struct SplitWeightParams { uint N; uint K; uint splitK; };\n"
+         @"kernel void split_rowwise_weight(\n"
+         @"    device const char* src [[buffer(0)]],\n"
+         @"    device char* dst0 [[buffer(1)]], device char* dst1 [[buffer(2)]],\n"
+         @"    constant SplitWeightParams& p [[buffer(3)]], uint2 gid [[thread_position_in_grid]]) {\n"
+         @"  if (gid.x >= p.splitK || gid.y >= p.N) return;\n"
+         @"  const uint dstIndex = gid.y * p.splitK + gid.x;\n"
+         @"  dst0[dstIndex] = src[gid.y * p.K + gid.x];\n"
+         @"  dst1[dstIndex] = src[gid.y * p.K + p.splitK + gid.x];\n"
+         @"}\n";
+}
+
+static bool ensure_split_weight_pipeline(
+    ccv_nnc_mfa_ane_rowwise_coreml_cache_t* const cache,
+    std::string* const error_out)
+{
+  if (cache->split_weight_pipeline)
+    return true;
+  id<MTLDevice> const device = (__bridge id<MTLDevice>)(void*)cache->device;
+  NSError* error = nil;
+  id<MTLLibrary> const library = [device newLibraryWithSource:split_io_source() options:nil error:&error];
+  if (!library) {
+    if (error_out)
+      *error_out = "failed to compile split I/O kernels: " + describe_nserror(error);
+    return false;
+  }
+  id<MTLFunction> const split_weight_function = [library newFunctionWithName:@"split_rowwise_weight"];
+  if (!split_weight_function) {
+    if (error_out)
+      *error_out = "failed to load split weight kernel function";
+    [split_weight_function release];
+    [library release];
+    return false;
+  }
+  cache->split_weight_pipeline = [device newComputePipelineStateWithFunction:split_weight_function error:&error];
+  if (!cache->split_weight_pipeline && error_out)
+    *error_out = "failed to create split weight pipeline: " + describe_nserror(error);
+  [split_weight_function release];
+  [library release];
+  return cache->split_weight_pipeline;
+}
 
 extern "C" {
 
@@ -964,6 +982,7 @@ void ccv_nnc_mfa_ane_rowwise_coreml_cache_destroy(ccv_nnc_mfa_ane_rowwise_coreml
   destroy_surface_cache(&cache->activation_surface_cache);
   destroy_surface_cache(&cache->weight_surface_cache);
   destroy_surface_cache(&cache->output_surface_cache);
+  [cache->split_weight_pipeline release];
   delete cache;
 }
 
@@ -980,35 +999,78 @@ int ccv_nnc_mfa_ane_rowwise_coreml_cache_ensure_scratch(
     set_error(error_out, error_out_size, "ANE rowwise cache is not initialized");
     return 0;
   }
-  const size_t activation_surface_bytes = (size_t)K * padded_M * sizeof(int8_t);
-  const size_t weight_surface_bytes = (size_t)N * K * sizeof(int8_t);
-  const size_t output_surface_bytes = (size_t)N * padded_M * sizeof(uint16_t);
+  const uint32_t k_split = select_matmul_k_split(padded_M, K);
+  const uint32_t split_K = K / k_split;
+  const size_t weight_surface_bytes = (size_t)N * split_K * sizeof(int8_t);
   const size_t activation_scale_bytes = (size_t)padded_M * sizeof(uint16_t);
   SharedScratch& scratch = cache->scratch;
-  const bool scratch_shape_matches = (scratch.M == padded_M && scratch.N == N && scratch.K == K);
-  if (scratch_shape_matches &&
-      scratch.activation_surface && scratch.weight_surface && scratch.output_surface &&
-      scratch.activation_surface_buffer && scratch.weight_surface_buffer &&
-      scratch.output_surface_buffer && scratch.activation_scales &&
+  bool split_surfaces_ready = true;
+  for (uint32_t i = 0; i < k_split; ++i)
+    split_surfaces_ready = split_surfaces_ready &&
+        scratch.activation_split_pixel_buffers[i] && scratch.weight_split_pixel_buffers[i] &&
+        scratch.output_split_pixel_buffers[i] && scratch.activation_split_surface_buffers[i] &&
+        scratch.weight_split_surface_buffers[i] && scratch.output_split_surface_buffers[i];
+  const bool scratch_shape_matches =
+      scratch.M == padded_M && scratch.N == N && scratch.K == K &&
+      scratch.split_K == split_K && scratch.k_split == k_split;
+  if (scratch_shape_matches && split_surfaces_ready &&
+      scratch.activation_surface_buffer && scratch.activation_scales &&
       scratch.activation_scale_capacity_bytes >= activation_scale_bytes) {
     set_error(error_out, error_out_size, "");
     return 1;
   }
+
+  std::vector<CachedSurface*> activation_entries;
+  std::vector<CachedSurface*> weight_entries;
+  std::vector<CachedSurface*> output_entries;
   CachedSurface* const activation_surface_entry =
-      find_or_create_cached_surface(&cache->activation_surface_cache, cache->device, padded_M, K, MLMultiArrayDataTypeInt8, &error);
-  CachedSurface* const weight_surface_entry =
-      find_or_create_cached_surface(&cache->weight_surface_cache, cache->device, K, N, MLMultiArrayDataTypeInt8, &error);
-  CachedSurface* const output_surface_entry =
-      find_or_create_cached_surface(&cache->output_surface_cache, cache->device, padded_M, N, MLMultiArrayDataTypeFloat16, &error);
-  scratch.activation_surface = activation_surface_entry ? activation_surface_entry->surface : nullptr;
-  scratch.weight_surface = weight_surface_entry ? weight_surface_entry->surface : nullptr;
-  scratch.output_surface = output_surface_entry ? output_surface_entry->surface : nullptr;
-  scratch.activation_pixel_buffer = activation_surface_entry ? activation_surface_entry->pixel_buffer : nullptr;
-  scratch.weight_pixel_buffer = weight_surface_entry ? weight_surface_entry->pixel_buffer : nullptr;
-  scratch.output_pixel_buffer = output_surface_entry ? output_surface_entry->pixel_buffer : nullptr;
+      find_or_create_cached_surface(
+          &cache->activation_surface_cache, cache->device, padded_M, K,
+          MLMultiArrayDataTypeInt8, activation_entries, &error);
+  if (activation_surface_entry)
+    activation_entries.push_back(activation_surface_entry);
+  CachedSurface* split_activation_entries[kANEMaxKSplit] = {};
+  CachedSurface* split_weight_entries[kANEMaxKSplit] = {};
+  CachedSurface* split_output_entries[kANEMaxKSplit] = {};
+  for (uint32_t i = 0; i < k_split && error.empty(); ++i) {
+    if (k_split == 1) {
+      split_activation_entries[i] = activation_surface_entry;
+    } else {
+      split_activation_entries[i] = find_or_create_cached_surface(
+          &cache->activation_surface_cache, cache->device, padded_M, split_K,
+          MLMultiArrayDataTypeInt8, activation_entries, &error);
+      if (split_activation_entries[i])
+        activation_entries.push_back(split_activation_entries[i]);
+    }
+    split_weight_entries[i] = find_or_create_cached_surface(
+        &cache->weight_surface_cache, cache->device, split_K, N,
+        MLMultiArrayDataTypeInt8, weight_entries, &error);
+    if (split_weight_entries[i])
+      weight_entries.push_back(split_weight_entries[i]);
+    split_output_entries[i] = find_or_create_cached_surface(
+        &cache->output_surface_cache, cache->device, padded_M, N,
+        MLMultiArrayDataTypeFloat16, output_entries, &error);
+    if (split_output_entries[i])
+      output_entries.push_back(split_output_entries[i]);
+  }
+  evict_surface_cache_entries(&cache->activation_surface_cache, activation_entries);
+  evict_surface_cache_entries(&cache->weight_surface_cache, weight_entries);
+  evict_surface_cache_entries(&cache->output_surface_cache, output_entries);
+
   scratch.activation_surface_buffer = activation_surface_entry ? activation_surface_entry->buffer : nullptr;
-  scratch.weight_surface_buffer = weight_surface_entry ? weight_surface_entry->buffer : nullptr;
-  scratch.output_surface_buffer = output_surface_entry ? output_surface_entry->buffer : nullptr;
+  for (uint32_t i = 0; i < kANEMaxKSplit; ++i) {
+    CachedSurface* const activation_entry = split_activation_entries[i];
+    CachedSurface* const weight_entry = split_weight_entries[i];
+    CachedSurface* const output_entry = split_output_entries[i];
+    scratch.activation_split_pixel_buffers[i] = activation_entry ? activation_entry->pixel_buffer : nullptr;
+    scratch.weight_split_pixel_buffers[i] = weight_entry ? weight_entry->pixel_buffer : nullptr;
+    scratch.output_split_pixel_buffers[i] = output_entry ? output_entry->pixel_buffer : nullptr;
+    scratch.activation_split_surface_buffers[i] = activation_entry ? activation_entry->buffer : nullptr;
+    scratch.weight_split_surface_buffers[i] = weight_entry ? weight_entry->buffer : nullptr;
+    scratch.output_split_surface_buffers[i] = output_entry ? output_entry->buffer : nullptr;
+  }
+  scratch.weight_surface_buffer = scratch.weight_split_surface_buffers[0];
+  scratch.output_surface_buffer = scratch.output_split_surface_buffers[0];
   if (!scratch.activation_scales || scratch.activation_scale_capacity_bytes < activation_scale_bytes) {
     if (scratch.activation_scales) {
       scratch.activation_scales->release();
@@ -1021,13 +1083,15 @@ int ccv_nnc_mfa_ane_rowwise_coreml_cache_ensure_scratch(
   scratch.M = padded_M;
   scratch.N = N;
   scratch.K = K;
-  scratch.activation_surface_bytes = activation_surface_bytes;
+  scratch.split_K = split_K;
+  scratch.k_split = k_split;
   scratch.weight_surface_bytes = weight_surface_bytes;
-  scratch.output_surface_bytes = output_surface_bytes;
-  scratch.activation_scale_bytes = activation_scale_bytes;
-  if (!scratch.activation_surface || !scratch.weight_surface || !scratch.output_surface ||
-      !scratch.activation_surface_buffer || !scratch.weight_surface_buffer ||
-      !scratch.output_surface_buffer || !scratch.activation_scales) {
+  split_surfaces_ready = true;
+  for (uint32_t i = 0; i < k_split; ++i)
+    split_surfaces_ready = split_surfaces_ready &&
+        scratch.activation_split_surface_buffers[i] && scratch.weight_split_surface_buffers[i] &&
+        scratch.output_split_surface_buffers[i];
+  if (!scratch.activation_surface_buffer || !scratch.activation_scales || !split_surfaces_ready) {
     if (error.empty())
       error = "failed to allocate CoreML rowwise scratch";
     destroy_surface_cache(&cache->activation_surface_cache);
@@ -1051,6 +1115,15 @@ mtl_buffer_t* ccv_nnc_mfa_ane_rowwise_coreml_cache_output_surface_buffer(
     ccv_nnc_mfa_ane_rowwise_coreml_cache_t* cache)
 {
   return cache ? cache->scratch.output_surface_buffer : nullptr;
+}
+
+mtl_buffer_t* ccv_nnc_mfa_ane_rowwise_coreml_cache_output_split_surface_buffer(
+    ccv_nnc_mfa_ane_rowwise_coreml_cache_t* cache,
+    const uint32_t split_index)
+{
+  return cache && split_index < cache->scratch.k_split
+      ? cache->scratch.output_split_surface_buffers[split_index]
+      : nullptr;
 }
 
 mtl_buffer_t* ccv_nnc_mfa_ane_rowwise_coreml_cache_activation_scales_buffer(
@@ -1116,6 +1189,27 @@ uint32_t ccv_nnc_mfa_ane_rowwise_coreml_program_K(
   return program && program->program ? program->program->K : 0;
 }
 
+uint32_t ccv_nnc_mfa_ane_rowwise_coreml_program_k_split(
+    const ccv_nnc_mfa_ane_rowwise_coreml_program_t* program)
+{
+  return program && program->program ? program->program->k_split : 0;
+}
+
+static MLMultiArray* output_multiarray(
+    id<MLFeatureProvider> const output_provider,
+    NSString* const output_name)
+{
+  MLMultiArray* result_array = [output_provider featureValueForName:output_name].multiArrayValue;
+  if (result_array)
+    return result_array;
+  for (NSString* feature_name in output_provider.featureNames) {
+    result_array = [output_provider featureValueForName:feature_name].multiArrayValue;
+    if (result_array)
+      return result_array;
+  }
+  return nil;
+}
+
 int ccv_nnc_mfa_ane_rowwise_coreml_evaluate(
     ccv_nnc_mfa_ane_rowwise_coreml_cache_t* cache,
     const ccv_nnc_mfa_ane_rowwise_coreml_program_t* program_handle,
@@ -1129,78 +1223,121 @@ int ccv_nnc_mfa_ane_rowwise_coreml_evaluate(
     NSString* const x_name = program ? (__bridge NSString*)program->x_name : nil;
     NSString* const w_name = program ? (__bridge NSString*)program->w_name : nil;
     NSString* const y_name = program ? (__bridge NSString*)program->y_name : nil;
-    if (!cache || !program || !model || !cache->scratch.activation_surface || !cache->scratch.weight_surface ||
-        !cache->scratch.output_surface || !x_name || !w_name || !y_name) {
+    if (!cache || !program || !model || !x_name || !w_name || !y_name ||
+        cache->scratch.k_split != program->k_split || cache->scratch.split_K != program->split_K ||
+        !output_backing_key_supported()) {
       error = "CoreML rowwise program is missing runtime objects";
       set_error(error_out, error_out_size, error);
       return 0;
     }
-    NSArray<NSNumber*>* const activation_shape = make_shape(1, 1, program->K, cache->scratch.M);
-    NSArray<NSNumber*>* const weight_shape = make_shape(1, 1, program->N, program->K);
+    NSArray<NSNumber*>* const activation_shape = make_shape(1, 1, program->split_K, cache->scratch.M);
+    NSArray<NSNumber*>* const weight_shape = make_shape(1, 1, program->N, program->split_K);
     NSArray<NSNumber*>* const output_shape = make_shape(1, 1, program->N, cache->scratch.M);
-    MLMultiArray* const activation_array =
-        cache->scratch.activation_pixel_buffer ? create_multiarray_with_pixel_buffer(cache->scratch.activation_pixel_buffer, activation_shape, &error) : nil;
-    MLMultiArray* const weight_array =
-        cache->scratch.weight_pixel_buffer ? create_multiarray_with_pixel_buffer(cache->scratch.weight_pixel_buffer, weight_shape, &error) : nil;
-    MLMultiArray* const output_array =
-        cache->scratch.output_pixel_buffer ? create_multiarray_with_pixel_buffer(cache->scratch.output_pixel_buffer, output_shape, &error) : nil;
-    if (!activation_array || !weight_array || !output_array) {
-      if (error.empty())
-        error = "failed to create CoreML multiarray wrappers from IOSurface";
-      set_error(error_out, error_out_size, error);
-      return 0;
-    }
-    NSError* ns_error = nil;
-    NSDictionary* const inputs = @{
-      x_name : [MLFeatureValue featureValueWithMultiArray:activation_array],
-      w_name : [MLFeatureValue featureValueWithMultiArray:weight_array],
+    MLMultiArray* activation_arrays[kANEMaxKSplit] = {};
+    MLMultiArray* weight_arrays[kANEMaxKSplit] = {};
+    MLMultiArray* output_arrays[kANEMaxKSplit] = {};
+    MLDictionaryFeatureProvider* input_providers[kANEMaxKSplit] = {};
+    MLPredictionOptions* options[kANEMaxKSplit] = {};
+    const auto release_prediction_objects = [&] {
+      for (uint32_t i = 0; i < program->k_split; ++i) {
+        [input_providers[i] release];
+        [options[i] release];
+      }
     };
-    MLDictionaryFeatureProvider* const input_provider =
-        [[MLDictionaryFeatureProvider alloc] initWithDictionary:inputs error:&ns_error];
-    if (!input_provider) {
-      error = "failed to create CoreML input provider: " + describe_nserror(ns_error);
-      set_error(error_out, error_out_size, error);
-      return 0;
-    }
-    MLPredictionOptions* const opts = [[MLPredictionOptions alloc] init];
-    if (output_backing_key_supported()) {
+    for (uint32_t i = 0; i < program->k_split; ++i) {
+      activation_arrays[i] = create_multiarray_with_pixel_buffer(
+          cache->scratch.activation_split_pixel_buffers[i], activation_shape, &error);
+      weight_arrays[i] = create_multiarray_with_pixel_buffer(
+          cache->scratch.weight_split_pixel_buffers[i], weight_shape, &error);
+      output_arrays[i] = create_multiarray_with_pixel_buffer(
+          cache->scratch.output_split_pixel_buffers[i], output_shape, &error);
+      if (!activation_arrays[i] || !weight_arrays[i] || !output_arrays[i]) {
+        if (error.empty())
+          error = "failed to create CoreML multiarray wrappers from IOSurface";
+        release_prediction_objects();
+        set_error(error_out, error_out_size, error);
+        return 0;
+      }
+      NSError* ns_error = nil;
+      NSDictionary* const inputs = @{
+        x_name : [MLFeatureValue featureValueWithMultiArray:activation_arrays[i]],
+        w_name : [MLFeatureValue featureValueWithMultiArray:weight_arrays[i]],
+      };
+      input_providers[i] = [[MLDictionaryFeatureProvider alloc] initWithDictionary:inputs error:&ns_error];
+      if (!input_providers[i]) {
+        error = "failed to create CoreML input provider: " + describe_nserror(ns_error);
+        release_prediction_objects();
+        set_error(error_out, error_out_size, error);
+        return 0;
+      }
+      options[i] = [[MLPredictionOptions alloc] init];
       @try {
-        [opts setOutputBackings:@{y_name : output_array}];
+        [options[i] setOutputBackings:@{y_name : output_arrays[i]}];
       } @catch (NSException* exception) {
-        [input_provider release];
-        [opts release];
         error = exception.reason ? std::string(exception.reason.UTF8String) : "setOutputBackings failed";
+        release_prediction_objects();
         set_error(error_out, error_out_size, error);
         return 0;
       }
     }
-    id<MLFeatureProvider> const output_provider = [model predictionFromFeatures:input_provider options:opts error:&ns_error];
-    [input_provider release];
-    [opts release];
-    if (!output_provider) {
-      error = "CoreML evaluate failed: " + describe_nserror(ns_error);
-      set_error(error_out, error_out_size, error);
-      return 0;
-    }
-    MLMultiArray* result_array = [output_provider featureValueForName:y_name].multiArrayValue;
-    if (!result_array) {
-      for (NSString* feature_name in output_provider.featureNames) {
-        result_array = [output_provider featureValueForName:feature_name].multiArrayValue;
-        if (result_array)
-          break;
+
+    if (program->k_split == 1) {
+      NSError* ns_error = nil;
+      id<MLFeatureProvider> const output_provider =
+          [model predictionFromFeatures:input_providers[0] options:options[0] error:&ns_error];
+      MLMultiArray* const result_array = output_provider ? output_multiarray(output_provider, y_name) : nil;
+      if (!output_provider || result_array != output_arrays[0]) {
+        error = output_provider
+            ? "CoreML did not use the requested output backing"
+            : "CoreML evaluate failed: " + describe_nserror(ns_error);
+        release_prediction_objects();
+        set_error(error_out, error_out_size, error);
+        return 0;
+      }
+    } else {
+      struct AsyncPredictionState {
+        NSError* errors[kANEMaxKSplit] = {};
+        std::atomic_bool used_output_backing[kANEMaxKSplit];
+
+        AsyncPredictionState()
+        {
+          for (uint32_t i = 0; i < kANEMaxKSplit; ++i)
+            used_output_backing[i].store(false, std::memory_order_relaxed);
+        }
+      } state;
+      AsyncPredictionState* const state_ptr = &state;
+      dispatch_group_t const group = dispatch_group_create();
+      for (uint32_t i = 0; i < program->k_split; ++i) {
+        dispatch_group_enter(group);
+        const uint32_t prediction_index = i;
+        MLMultiArray* const expected_output = output_arrays[i];
+        [model predictionFromFeatures:input_providers[i]
+                              options:options[i]
+                    completionHandler:^(id<MLFeatureProvider> output_provider, NSError* ns_error) {
+          if (ns_error)
+            state_ptr->errors[prediction_index] = [ns_error retain];
+          if (output_multiarray(output_provider, y_name) == expected_output)
+            state_ptr->used_output_backing[prediction_index].store(true, std::memory_order_release);
+          dispatch_group_leave(group);
+        }];
+      }
+      dispatch_group_wait(group, DISPATCH_TIME_FOREVER);
+      dispatch_release(group);
+      for (uint32_t i = 0; i < program->k_split; ++i) {
+        if (error.empty() && (state.errors[i] || !state.used_output_backing[i].load(std::memory_order_acquire))) {
+          error = state.errors[i]
+              ? "CoreML async evaluate failed: " + describe_nserror(state.errors[i])
+              : "CoreML async evaluate did not use the requested output backing";
+        }
+        [state.errors[i] release];
+      }
+      if (!error.empty()) {
+        release_prediction_objects();
+        set_error(error_out, error_out_size, error);
+        return 0;
       }
     }
-    if (!result_array || !result_array.dataPointer) {
-      error = "CoreML output provider does not contain a readable multiarray";
-      set_error(error_out, error_out_size, error);
-      return 0;
-    }
-    const size_t result_bytes = (size_t)result_array.count * bytes_per_ml_datatype(result_array.dataType);
-    if (result_bytes != cache->scratch.output_surface_bytes) {
-      error = "CoreML output size does not match rowwise scratch";
-      set_error(error_out, error_out_size, error);
-      return 0;
-    }
+    release_prediction_objects();
   }
   set_error(error_out, error_out_size, "");
   return 1;
@@ -1222,6 +1359,64 @@ int ccv_nnc_mfa_ane_rowwise_coreml_append_weight_upload(
   }
   command_batch->commandEncoder->endEncoding();
   command_batch->commandEncoder = nullptr;
+  if (cache->scratch.k_split > 1) {
+    std::string error;
+    if (!ensure_split_weight_pipeline(cache, &error)) {
+      set_error(error_out, error_out_size, error);
+      return 0;
+    }
+    const size_t expected_weight_bytes = (size_t)cache->scratch.N * cache->scratch.K * sizeof(int8_t);
+    if (weight_bytes != expected_weight_bytes) {
+      set_error(error_out, error_out_size, "split weight upload size does not match scratch shape");
+      return 0;
+    }
+    id<MTLComputeCommandEncoder> const compute_encoder =
+        [bridge_command_buffer(command_batch->commandBuffer) computeCommandEncoder];
+    if (!compute_encoder) {
+      set_error(error_out, error_out_size, "failed to create split weight encoder");
+      return 0;
+    }
+    struct SplitWeightParams {
+      uint32_t N;
+      uint32_t K;
+      uint32_t split_K;
+    } params = {
+      cache->scratch.N,
+      cache->scratch.K,
+      cache->scratch.split_K,
+    };
+    [compute_encoder setComputePipelineState:cache->split_weight_pipeline];
+    [compute_encoder setBuffer:(__bridge id<MTLBuffer>)(void*)weight offset:weight_offset atIndex:0];
+    for (uint32_t i = 0; i < kANEMaxKSplit; ++i) {
+      mtl_buffer_t* const split_buffer = cache->scratch.weight_split_surface_buffers[i];
+      [compute_encoder setBuffer:(__bridge id<MTLBuffer>)(void*)split_buffer offset:0 atIndex:i + 1];
+    }
+    [compute_encoder setBytes:&params length:sizeof(params) atIndex:3];
+    const NSUInteger thread_width = cache->split_weight_pipeline.threadExecutionWidth;
+    const NSUInteger thread_height = std::max<NSUInteger>(
+        1, std::min<NSUInteger>(8, cache->split_weight_pipeline.maxTotalThreadsPerThreadgroup / thread_width));
+    [compute_encoder dispatchThreads:MTLSizeMake(cache->scratch.split_K, cache->scratch.N, 1)
+                threadsPerThreadgroup:MTLSizeMake(thread_width, thread_height, 1)];
+    [compute_encoder endEncoding];
+
+    id<MTLBlitCommandEncoder> const activation_blit =
+        [bridge_command_buffer(command_batch->commandBuffer) blitCommandEncoder];
+    if (!activation_blit) {
+      set_error(error_out, error_out_size, "failed to create split activation blit encoder");
+      return 0;
+    }
+    const size_t split_activation_bytes =
+        (size_t)cache->scratch.split_K * cache->scratch.M * sizeof(int8_t);
+    for (uint32_t i = 0; i < cache->scratch.k_split; ++i)
+      [activation_blit copyFromBuffer:(__bridge id<MTLBuffer>)(void*)cache->scratch.activation_surface_buffer
+                         sourceOffset:(size_t)i * split_activation_bytes
+                             toBuffer:(__bridge id<MTLBuffer>)(void*)cache->scratch.activation_split_surface_buffers[i]
+                    destinationOffset:0
+                                 size:split_activation_bytes];
+    [activation_blit endEncoding];
+    set_error(error_out, error_out_size, "");
+    return 1;
+  }
   id<MTLBlitCommandEncoder> const blit_encoder =
       [bridge_command_buffer(command_batch->commandBuffer) blitCommandEncoder];
   if (!blit_encoder) {
@@ -1302,8 +1497,12 @@ int ccv_nnc_mfa_ane_rowwise_fast_fence_append_update(
   };
   // These IOSurface-backed buffers cross from Metal to CoreML/ANE. The counter
   // only orders execution; this touch mirrors MLX's fast-sync visibility step.
-  encode_coherent_buffer(cache->scratch.activation_surface_buffer, cache->scratch.activation_surface_bytes);
-  encode_coherent_buffer(cache->scratch.weight_surface_buffer, cache->scratch.weight_surface_bytes);
+  const size_t split_activation_bytes =
+      (size_t)cache->scratch.split_K * cache->scratch.M * sizeof(int8_t);
+  for (uint32_t i = 0; i < cache->scratch.k_split; ++i) {
+    encode_coherent_buffer(cache->scratch.activation_split_surface_buffers[i], split_activation_bytes);
+    encode_coherent_buffer(cache->scratch.weight_split_surface_buffers[i], cache->scratch.weight_surface_bytes);
+  }
   if (encoded_coherent_input)
     [encoder memoryBarrierWithScope:MTLBarrierScopeBuffers];
   [encoder setComputePipelineState:cache->fast_fence.update_pipeline];

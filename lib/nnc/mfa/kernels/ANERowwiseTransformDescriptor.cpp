@@ -91,6 +91,8 @@ std::pair<ANERowwiseTransformKernelDescriptor, PipelineValue<ANERowwiseTransform
   auto dequantizeOutputTransposed = NS::TransferPtr(createPipeline(kernel, "dequantize_output_transposed"));
   auto dequantizeOutputTransposedBias = NS::TransferPtr(createPipeline(kernel, "dequantize_output_transposed_bias"));
   auto transposeQuantizedActivation = NS::TransferPtr(createPipeline(kernel, "transpose_quantized_activation"));
+  auto dequantizeSplitOutputTransposed = NS::TransferPtr(createPipeline(kernel, "dequantize_split_output_transposed"));
+  auto dequantizeSplitOutputTransposedBias = NS::TransferPtr(createPipeline(kernel, "dequantize_split_output_transposed_bias"));
 
   PipelineValue<ANERowwiseTransformKernel>* output =
       new PipelineValue<ANERowwiseTransformKernel> { kernel, computeActivationScales };
@@ -98,5 +100,7 @@ std::pair<ANERowwiseTransformKernelDescriptor, PipelineValue<ANERowwiseTransform
   output->third = dequantizeOutputTransposed;
   output->fourth = dequantizeOutputTransposedBias;
   output->fifth = transposeQuantizedActivation;
+  output->sixth = dequantizeSplitOutputTransposed;
+  output->seventh = dequantizeSplitOutputTransposedBias;
   return std::make_pair(kernelDesc, output);
 }
