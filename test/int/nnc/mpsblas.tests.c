@@ -1087,6 +1087,79 @@ static int _mps_forward_scaled_gemm_validate_aligned_m(const int datatype, const
 	return _mps_forward_scaled_gemm_validate_shape(datatype, use_bias, 384, 384, 128, max_abs_ref, max_rel_ref);
 }
 
+static int _mps_forward_ane_k_split_validate_shape(const int m_dim, const int n_dim, const int k_dim, double* const max_abs_ref, double* const max_rel_ref)
+{
+	ccv_nnc_tensor_t* const ha = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, m_dim, k_dim), 0);
+	ccv_nnc_tensor_t* const hwq = ccv_nnc_tensor_new(0, ccv_nnc_tensor_8i_rowwise(CPU_TENSOR_NHWC(16F, n_dim, k_dim)), 0);
+	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, m_dim, k_dim), 0);
+	ccv_nnc_tensor_t* const w = ccv_nnc_tensor_new(0, ccv_nnc_tensor_8i_rowwise(GPU_TENSOR_NHWC(000, 16F, n_dim, k_dim)), 0);
+	ccv_nnc_tensor_t* const baseline_b = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, m_dim, n_dim), 0);
+	ccv_nnc_tensor_t* const ane_b = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, m_dim, n_dim), 0);
+	ccv_nnc_tensor_t* const baseline_h = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, m_dim, n_dim), 0);
+	ccv_nnc_tensor_t* const ane_h = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, m_dim, n_dim), 0);
+	_mps_forward_scaled_gemm_fill_matrix(CCV_16F, ha->data.f16, m_dim, k_dim, 1);
+	void* const w_dense = ccmalloc(sizeof(ccv_float16_t) * (size_t)n_dim * k_dim);
+	_mps_forward_scaled_gemm_fill_matrix(CCV_16F, w_dense, n_dim, k_dim, 0);
+	const size_t qsize = ccv_nnc_quantize_8i_rowwise(w_dense, CCV_16F, CCV_TENSOR_CPU_MEMORY, (size_t)n_dim * k_dim, k_dim, 0, 0, hwq->data.u8, ccv_nnc_tensor_data_size_without_padding(hwq->info));
+	int status = qsize == ccv_nnc_tensor_data_size_without_padding(hwq->info) ? CCV_NNC_EXEC_SUCCESS : CCV_NNC_EXEC_INVALID;
+	if (status == CCV_NNC_EXEC_SUCCESS)
+		status = ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha, hwq), TENSOR_LIST(a, w), 0);
+
+	const uint64_t old_flags = ccv_nnc_flags();
+	ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA_ANE);
+	ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA_GEMM);
+	if (status == CCV_NNC_EXEC_SUCCESS)
+		status = ccv_nnc_cmd_exec(CMD_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(0, 1)), ccv_nnc_no_hint, 0, TENSOR_LIST(a, w), TENSOR_LIST(baseline_b), 0);
+	ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA_ANE);
+	ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA_GEMM);
+	if (status == CCV_NNC_EXEC_SUCCESS)
+		status = ccv_nnc_cmd_exec(CMD_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(0, 1)), ccv_nnc_no_hint, 0, TENSOR_LIST(a, w), TENSOR_LIST(ane_b), 0);
+	if (old_flags & CCV_NNC_DISABLE_MFA_GEMM)
+		ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA_GEMM);
+	else
+		ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA_GEMM);
+	if (old_flags & CCV_NNC_DISABLE_MFA_ANE)
+		ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA_ANE);
+	else
+		ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA_ANE);
+
+	if (status == CCV_NNC_EXEC_SUCCESS)
+		status = ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(baseline_b, ane_b), TENSOR_LIST(baseline_h, ane_h), 0);
+	float* const baseline = (float*)ccmalloc(sizeof(float) * (size_t)m_dim * n_dim);
+	float* const ane = (float*)ccmalloc(sizeof(float) * (size_t)m_dim * n_dim);
+	if (status == CCV_NNC_EXEC_SUCCESS)
+	{
+		_mps_forward_scaled_gemm_to_float(CCV_16F, baseline_h->data.f16, m_dim * n_dim, baseline);
+		_mps_forward_scaled_gemm_to_float(CCV_16F, ane_h->data.f16, m_dim * n_dim, ane);
+		double max_abs = 0;
+		double max_rel = 0;
+		int i;
+		for (i = 0; i < m_dim * n_dim; i++)
+		{
+			const double diff = fabs((double)ane[i] - (double)baseline[i]);
+			const double denom = ccv_max(1.0, ccv_max(fabs((double)ane[i]), fabs((double)baseline[i])));
+			max_abs = ccv_max(max_abs, diff);
+			max_rel = ccv_max(max_rel, diff / denom);
+		}
+		if (max_abs_ref)
+			*max_abs_ref = max_abs;
+		if (max_rel_ref)
+			*max_rel_ref = max_rel;
+	}
+	ccfree(ane);
+	ccfree(baseline);
+	ccfree(w_dense);
+	ccv_nnc_tensor_free(ane_h);
+	ccv_nnc_tensor_free(baseline_h);
+	ccv_nnc_tensor_free(ane_b);
+	ccv_nnc_tensor_free(baseline_b);
+	ccv_nnc_tensor_free(w);
+	ccv_nnc_tensor_free(a);
+	ccv_nnc_tensor_free(hwq);
+	ccv_nnc_tensor_free(ha);
+	return status == CCV_NNC_EXEC_SUCCESS ? 0 : -1;
+}
+
 static int _mps_forward_scaled_gemm_validate_batched(const int datatype, const int use_bias, const int weight_batched, const int bias_batched, double* const max_abs_ref, double* const max_rel_ref)
 {
 	const int batch_dim = 2;
@@ -1906,6 +1979,21 @@ TEST_CASE("mps forward gemm with row-wise 8i weight ANE stream ordering")
 	double max_rel = 0;
 	REQUIRE_EQ(_mps_forward_ane_rowwise_gemm_stream_sync_validate(&max_abs, &max_rel), 0, "ANE row-wise 8i stream-ordering validation should run");
 	REQUIRE(max_rel < 2e-3, "ANE row-wise 8i GEMM should respect queued Metal writer work before quant/evaluate, max_abs=%g max_rel=%g", max_abs, max_rel);
+}
+
+TEST_CASE("mps forward gemm with row-wise 8i weight ANE K split")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_MPS));
+	double k2_max_abs = 0;
+	double k2_max_rel = 0;
+	const int k2_status = _mps_forward_ane_k_split_validate_shape(512, 128, 4096, &k2_max_abs, &k2_max_rel);
+	double k4_max_abs = 0;
+	double k4_max_rel = 0;
+	const int k4_status = _mps_forward_ane_k_split_validate_shape(512, 128, 8192, &k4_max_abs, &k4_max_rel);
+	REQUIRE_EQ(k2_status, 0, "ANE row-wise 8i K/2 split validation should run");
+	REQUIRE(k2_max_rel < 2e-3, "ANE row-wise 8i K/2 split should match Metal, max_abs=%g max_rel=%g", k2_max_abs, k2_max_rel);
+	REQUIRE_EQ(k4_status, 0, "ANE row-wise 8i K/4 split validation should run");
+	REQUIRE(k4_max_rel < 2e-3, "ANE row-wise 8i K/4 split should match Metal, max_abs=%g max_rel=%g", k4_max_abs, k4_max_rel);
 }
 
 TEST_CASE("mps forward gemm with loadM flag")

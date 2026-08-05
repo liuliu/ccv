@@ -41,10 +41,33 @@ constexpr size_t kANEWeightSurfaceCacheLimitBytes = 128 * 1024 * 1024;
 constexpr size_t kANEOutputSurfaceCacheLimitBytes = 1024 * 1024 * 1024;
 constexpr size_t kANEScratchBufferAlignment = 16 * 1024;
 constexpr uint32_t kFastFenceLaneCount = 1;
+constexpr uint32_t kANEMinSplitM = 512;
+constexpr uint32_t kANESmallM = 1024;
+constexpr uint32_t kANEDirectKLimitAt512M = 3072;
+constexpr uint32_t kANEDirectKLimitAt1024M = 2560;
+constexpr uint32_t kANEDirectKLimit = 2688;
 
 static size_t align_up(const size_t value, const size_t alignment) noexcept
 {
   return (value + alignment - 1) & ~(alignment - 1);
+}
+
+// Keep each static K partition below the measured ANE matmul performance cliff.
+static uint32_t select_matmul_k_split(const uint32_t M, const uint32_t K) noexcept
+{
+  if (M < kANEMinSplitM)
+    return 1;
+  const uint32_t direct_k_limit = M == kANEMinSplitM ? kANEDirectKLimitAt512M :
+      (M <= kANESmallM ? kANEDirectKLimitAt1024M : kANEDirectKLimit);
+  if (K <= direct_k_limit)
+    return 1;
+  if (K <= direct_k_limit * 2 && (K % 2) == 0)
+    return 2;
+  if ((K % 4) == 0)
+    return 4;
+  if ((K % 2) == 0)
+    return 2;
+  return 1;
 }
 
 static void set_error(char* const error_out, const size_t error_out_size, const std::string& error)
@@ -605,21 +628,44 @@ static void append_coremldata_feature_entry(
   [payload appendData:body];
 }
 
-static NSString* generate_dynamic_i8_two_input_matmul_tx_scaled_mil(
+static NSString* generate_dynamic_i8_two_input_matmul_scaled_mil(
     const uint32_t K,
     const uint32_t N,
     const uint32_t padded_M,
-    const float dq_scale)
+    const float dq_scale,
+    const uint32_t k_split)
 {
   NSMutableString* const mil = [NSMutableString string];
   [mil appendString:mil_header()];
   [mil appendFormat:@"    func main<ios19>(tensor<int8, [1, 1, %u, %u]> w, tensor<int8, [1, 1, %u, %u]> x) {\n", N, K, K, padded_M];
   [mil appendFormat:@"        fp16 dq_scale = const()[name = string(\"dq_scale\"), val = %@];\n", mil_fp16_literal(dq_scale)];
-  [mil appendFormat:@"        tensor<fp16, [1,1,%u,%u]> xh = dequantize(input = x, scale = dq_scale)[name = string(\"xh\")];\n", K, padded_M];
-  [mil appendFormat:@"        tensor<fp16, [1,1,%u,%u]> wh = dequantize(input = w, scale = dq_scale)[name = string(\"wh\")];\n", N, K];
   [mil appendString:@"        bool mm_transpose_x_0 = const()[name = string(\"mm_transpose_x_0\"), val = bool(false)];\n"];
   [mil appendString:@"        bool mm_transpose_y_0 = const()[name = string(\"mm_transpose_y_0\"), val = bool(false)];\n"];
-  [mil appendFormat:@"        tensor<fp16, [1, 1, %u, %u]> mm = matmul(transpose_x = mm_transpose_x_0, transpose_y = mm_transpose_y_0, x = wh, y = xh)[name = string(\"mm\")];\n", N, padded_M];
+  if (k_split == 1) {
+    [mil appendFormat:@"        tensor<fp16, [1,1,%u,%u]> xh = dequantize(input = x, scale = dq_scale)[name = string(\"xh\")];\n", K, padded_M];
+    [mil appendFormat:@"        tensor<fp16, [1,1,%u,%u]> wh = dequantize(input = w, scale = dq_scale)[name = string(\"wh\")];\n", N, K];
+    [mil appendFormat:@"        tensor<fp16, [1, 1, %u, %u]> mm = matmul(transpose_x = mm_transpose_x_0, transpose_y = mm_transpose_y_0, x = wh, y = xh)[name = string(\"mm\")];\n", N, padded_M];
+  } else {
+    const uint32_t split_K = K / k_split;
+    [mil appendFormat:@"        tensor<int32, [4]> ws = const()[name = string(\"ws\"), val = tensor<int32, [4]>([1,1,%u,%u])];\n", N, split_K];
+    [mil appendFormat:@"        tensor<int32, [4]> xs = const()[name = string(\"xs\"), val = tensor<int32, [4]>([1,1,%u,%u])];\n", split_K, padded_M];
+    for (uint32_t i = 0; i < k_split; ++i) {
+      [mil appendFormat:@"        tensor<int32, [4]> wb%u = const()[name = string(\"wb%u\"), val = tensor<int32, [4]>([0,0,0,%u])];\n", i, i, i * split_K];
+      [mil appendFormat:@"        tensor<int32, [4]> xb%u = const()[name = string(\"xb%u\"), val = tensor<int32, [4]>([0,0,%u,0])];\n", i, i, i * split_K];
+      [mil appendFormat:@"        tensor<int8, [1,1,%u,%u]> wq%u = slice_by_size(x = w, begin = wb%u, size = ws)[name = string(\"wq%u\")];\n", N, split_K, i, i, i];
+      [mil appendFormat:@"        tensor<int8, [1,1,%u,%u]> xq%u = slice_by_size(x = x, begin = xb%u, size = xs)[name = string(\"xq%u\")];\n", split_K, padded_M, i, i, i];
+      [mil appendFormat:@"        tensor<fp16, [1,1,%u,%u]> wh%u = dequantize(input = wq%u, scale = dq_scale)[name = string(\"wh%u\")];\n", N, split_K, i, i, i];
+      [mil appendFormat:@"        tensor<fp16, [1,1,%u,%u]> xh%u = dequantize(input = xq%u, scale = dq_scale)[name = string(\"xh%u\")];\n", split_K, padded_M, i, i, i];
+      [mil appendFormat:@"        tensor<fp16, [1,1,%u,%u]> mm%u = matmul(transpose_x = mm_transpose_x_0, transpose_y = mm_transpose_y_0, x = wh%u, y = xh%u)[name = string(\"mm%u\")];\n", N, padded_M, i, i, i, i];
+    }
+    if (k_split == 2) {
+      [mil appendFormat:@"        tensor<fp16, [1,1,%u,%u]> mm = add(x = mm0, y = mm1)[name = string(\"mm\")];\n", N, padded_M];
+    } else {
+      [mil appendFormat:@"        tensor<fp16, [1,1,%u,%u]> sum01 = add(x = mm0, y = mm1)[name = string(\"sum01\")];\n", N, padded_M];
+      [mil appendFormat:@"        tensor<fp16, [1,1,%u,%u]> sum23 = add(x = mm2, y = mm3)[name = string(\"sum23\")];\n", N, padded_M];
+      [mil appendFormat:@"        tensor<fp16, [1,1,%u,%u]> mm = add(x = sum01, y = sum23)[name = string(\"mm\")];\n", N, padded_M];
+    }
+  }
   [mil appendString:@"    } -> (mm);\n}\n"];
   return mil;
 }
@@ -691,7 +737,11 @@ static NSMutableDictionary* default_metadata_root(void)
   }] autorelease];
 }
 
-static NSString* build_metadata_json(const uint32_t K, const uint32_t N, const uint32_t padded_M)
+static NSString* build_metadata_json(
+    const uint32_t K,
+    const uint32_t N,
+    const uint32_t padded_M,
+    const uint32_t k_split)
 {
   NSMutableDictionary* const root = default_metadata_root();
   NSArray<NSNumber*>* const x_shape = make_shape(1, 1, K, padded_M);
@@ -704,6 +754,14 @@ static NSString* build_metadata_json(const uint32_t K, const uint32_t N, const u
   root[@"outputSchema"] = @[
     schema_entry_for_name(@"mm", "Float16", y_shape),
   ];
+  if (k_split > 1) {
+    root[@"mlProgramOperationTypeHistogram"] = @{
+      @"Ios19.dequantize" : @(k_split * 2),
+      @"Ios18.matmul" : @(k_split),
+      @"Ios18.slice_by_size" : @(k_split * 2),
+      @"Ios18.add" : @(k_split - 1),
+    };
+  }
   NSData* const json_data = [NSJSONSerialization dataWithJSONObject:@[root] options:NSJSONWritingPrettyPrinted error:nil];
   return [[[NSString alloc] initWithData:json_data encoding:NSUTF8StringEncoding] autorelease];
 }
@@ -786,6 +844,7 @@ static std::unique_ptr<CompiledProgram> compile_program(
 {
   @autoreleasepool {
     const float model_scale = 1.0f / std::sqrt((float)K);
+    const uint32_t k_split = select_matmul_k_split(padded_M, K);
     NSString* const temp_directory = [NSTemporaryDirectory() stringByAppendingPathComponent:[NSString stringWithFormat:@"%@.mlmodelc", [[NSUUID UUID] UUIDString]]];
     NSFileManager* const file_manager = [NSFileManager defaultManager];
     NSError* error = nil;
@@ -800,10 +859,10 @@ static std::unique_ptr<CompiledProgram> compile_program(
         *error_out = "failed to write coremldata.bin";
       return {};
     }
-    if (!write_text_file(generate_dynamic_i8_two_input_matmul_tx_scaled_mil(K, N, padded_M, model_scale),
+    if (!write_text_file(generate_dynamic_i8_two_input_matmul_scaled_mil(K, N, padded_M, model_scale, k_split),
                          [temp_directory stringByAppendingPathComponent:@"model.mil"], error_out))
       return {};
-    if (!write_text_file(build_metadata_json(K, N, padded_M),
+    if (!write_text_file(build_metadata_json(K, N, padded_M, k_split),
                          [temp_directory stringByAppendingPathComponent:@"metadata.json"], error_out))
       return {};
     if (!write_text_file(build_manifest_json(@"model.mil", @"weights"),
