@@ -9,7 +9,8 @@ bool ScaledDotProductArgPartitionDescriptor::operator==(const ScaledDotProductAr
   return
   memoryPrecision == rhs.memoryPrecision &&
   T == rhs.T &&
-  C == rhs.C &&
+  (loadC || C == rhs.C) &&
+  loadC == rhs.loadC &&
   H == rhs.H &&
   D == rhs.D &&
   kth == rhs.kth &&
@@ -26,12 +27,12 @@ std::size_t std::hash<ScaledDotProductArgPartitionDescriptor>::operator()(const 
   using namespace ccv::nnc::mfa::hash;
   std::size_t seed = 0;
   combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.memoryPrecision.value, hash.T }));
-  combine_64(seed, pack_64(simd::uint2 { hash.C, hash.H }));
+  combine_64(seed, pack_64(simd::uint2 { hash.loadC ? 0 : hash.C, hash.H }));
   combine_64(seed, pack_64(simd::uint2 { hash.D, hash.kth }));
   combine_64(seed, pack_64(simd::uint2 { hash.compressionRatio, hash.isCausal ? 1u : 0u }));
   combine_32(seed, static_cast<uint32_t>(hash.queryOffset));
   combine_32(seed, pack_32(simd::ushort2 { hash.scoreBlockM, hash.scoreBlockN }));
-  combine_32(seed, pack_32(simd::ushort2 { hash.scoreSIMDGroups, 0 }));
+  combine_32(seed, pack_32(simd::ushort2 { hash.scoreSIMDGroups, (unsigned short)(hash.loadC ? 1 : 0) }));
   combine_32(seed, reinterpret_cast<const uint32_t&>(hash.scale));
   return seed;
 }
@@ -55,12 +56,15 @@ std::pair<ScaledDotProductArgPartitionKernelDescriptor, PipelineValue<ScaledDotP
   kernelDesc.scoreBlockM = scoreBlockM;
   kernelDesc.scoreBlockN = scoreBlockN;
   kernelDesc.scoreSIMDGroups = scoreSIMDGroups;
+  kernelDesc.loadC = loadC;
 
   auto createPipeline =
   [=](MTL::Library* library, const char* name) -> MTL::ComputePipelineState* {
     auto constants = NS::TransferPtr(MTL::FunctionConstantValues::alloc()->init());
     constants->setConstantValue(&T, MTL::DataTypeUInt, NS::UInteger(0));
-    constants->setConstantValue(&C, MTL::DataTypeUInt, NS::UInteger(1));
+    if (!loadC) {
+      constants->setConstantValue(&C, MTL::DataTypeUInt, NS::UInteger(1));
+    }
     constants->setConstantValue(&H, MTL::DataTypeUInt, NS::UInteger(2));
     constants->setConstantValue(&D, MTL::DataTypeUInt, NS::UInteger(3));
     constants->setConstantValue(&compressionRatio, MTL::DataTypeUInt, NS::UInteger(4));

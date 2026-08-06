@@ -199,8 +199,9 @@ void ccv_nnc_mfa_encode_scaled_dot_product_arg_partition(ccv_nnc_mfa_context_t* 
   } else {
     ScaledDotProductArgPartitionDescriptor descriptor;
     setDescriptor(descriptor);
+    descriptor.loadC = true;
     auto pipelineValue = shaderCache.findKernel<ScaledDotProductArgPartitionKernel, ScaledDotProductArgPartitionDescriptor, ScaledDotProductArgPartitionKernelDescriptor>(descriptor, context->device.get(), dprops);
     pool->drain();
-    encodePipeline(pipelineValue, descriptor, false);
+    encodePipeline(pipelineValue, descriptor, descriptor.loadC);
   }
 }

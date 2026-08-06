@@ -9822,6 +9822,8 @@ TEST_CASE("scaled dot product arg partition with generic MFA FP16 DS4-native sha
 	REQUIRE_EQ(_mps_scaled_dot_product_arg_partition_compare(160, 32, 64, 128, 8, 1, 4, -32, CCV_16F, 0, 1), 0, "generic MFA FP16 selected ids should pad zero-visible causal compression rows");
 	REQUIRE_EQ(_mps_scaled_dot_product_arg_partition_compare(4, 40, 64, 128, 4, 1, 4, 0, CCV_16F, 0, 1), 0, "generic MFA should respect a zero query offset");
 	REQUIRE_EQ(_mps_scaled_dot_product_arg_partition_compare(4, 40, 64, 128, 4, 1, 4, 159, CCV_16F, 0, 1), 0, "generic MFA should respect an explicit absolute query offset");
+	REQUIRE_EQ(_mps_scaled_dot_product_arg_partition_compare(3, 1024, 64, 128, 512, 0, 4, 0, CCV_16F, 0, 1), 0, "generic MFA FP16 selected ids should match CPU reference before runtime C reuse");
+	REQUIRE_EQ(_mps_scaled_dot_product_arg_partition_compare(3, 4096, 64, 128, 512, 0, 4, 0, CCV_16F, 0, 1), 0, "generic MFA FP16 should reuse its pipeline with runtime C");
 }
 
 TEST_CASE("scaled dot product arg partition with MFA BF16 DS4-native shape")
