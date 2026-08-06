@@ -4,7 +4,9 @@
 GemvKernel::GemvKernel(GemvKernelDescriptor descriptor, MTL::Device* const device) {
   fusedBias = descriptor.fusedBias;
   mrows = descriptor.mrows;
+  batched = descriptor.batched;
   memoryPrecision = descriptor.memoryPrecision;
+  CCV_NNC_MFA_PRECONDITION(!batched || (mrows == 1 && !fusedBias));
 
   source = createSource();
 
@@ -334,14 +336,35 @@ kernel void gemv(
   device const real *src1 [[buffer(1)]],
   device real *dst [[buffer(2)]],
 
-  uint tgpig [[threadgroup_position_in_grid]],
-  uint tiitg [[thread_index_in_threadgroup]],
+)";
+    if (batched) {
+      shader += R"(  uint3 tgpig [[threadgroup_position_in_grid]],
+)";
+    } else {
+      shader += R"(  uint tgpig [[threadgroup_position_in_grid]],
+)";
+    }
+    shader += R"(  uint tiitg [[thread_index_in_threadgroup]],
   uint sgitg [[simdgroup_index_in_threadgroup]],
   uint tiisg [[thread_index_in_simdgroup]]
 ) {
-  constexpr uint TILE_COLS = 256;
-  const uint rb = tgpig * N;
-  const uint row = rb + sgitg;
+)";
+    if (batched) {
+      shader += R"(  src0 += tgpig.z * A_batch_stride;
+  src1 += tgpig.z * B_batch_stride;
+  dst += tgpig.z * C_batch_stride;
+)";
+    }
+    shader += R"(  constexpr uint TILE_COLS = 256;
+)";
+    if (batched) {
+      shader += R"(  const uint rb = tgpig.x * N;
+)";
+    } else {
+      shader += R"(  const uint rb = tgpig * N;
+)";
+    }
+    shader += R"(  const uint row = rb + sgitg;
   device const real* y = (device const real*)src1;
   threadgroup real y_shared[TILE_COLS];
   const bool active = row < nrows;
@@ -413,5 +436,13 @@ std::string GemvKernel::createConstants() const noexcept {
   defines += "\n";
   defines += "constant uint nrows [[function_constant(2)]];";
   defines += "\n";
+  if (batched) {
+    defines += "constant uint A_batch_stride [[function_constant(3)]];";
+    defines += "\n";
+    defines += "constant uint B_batch_stride [[function_constant(4)]];";
+    defines += "\n";
+    defines += "constant uint C_batch_stride [[function_constant(5)]];";
+    defines += "\n";
+  }
   return defines;
 }

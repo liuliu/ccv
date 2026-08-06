@@ -303,6 +303,8 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 			CCV_GET_DATA_TYPE(a->info.datatype) != CCV_QX &&
 			CCV_GET_DATA_TYPE(w->info.datatype) != CCV_QX &&
 			CCV_GET_DATA_TYPE(b->info.datatype) != CCV_QX;
+		const int is_interleaved_batched_dense_gemv =
+			is_interleaved_batched_dense_gemm && adim[0] == 1;
 		const int is_interleaved_batched_scaled_gemm =
 			is_interleaved_batched_gemm &&
 			CCV_GET_DATA_TYPE(a->info.datatype) != CCV_QX &&
@@ -363,7 +365,9 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 
 		ccv_nnc_mfa_context_t* context = ccv_nnc_default_mfa_context();
 		const int load_m = !!(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M);
-		const int is_mfa_gemv = !is_batched && ((((a_rows == 1) || (!is_transpose_a && (a_rows == 2 || a_rows == 3))) && is_transpose_w && (w_rows % 4) == 0) || (!is_transpose_a && w_cols == 1 && (a_cols % 4) == 0));
+		const int is_mfa_gemv =
+			(!is_batched && ((((a_rows == 1) || (!is_transpose_a && (a_rows == 2 || a_rows == 3))) && is_transpose_w && (w_rows % 4) == 0) || (!is_transpose_a && w_cols == 1 && (a_cols % 4) == 0))) ||
+			(is_interleaved_batched_dense_gemv && (w_rows % 4) == 0);
 		const int is_downcast = ((cmd.info.blas.flags & CCV_NNC_GEMM_16F) && (a_datatype == CCV_16F || a_datatype == CCV_16BF));
 		const int use_ane_rowwise_gemm =
 			w_qx_8i_rowwise &&
@@ -695,6 +699,7 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 			// Let the MFA GEMM selector choose NAMatMulSmallM for the low-K row-vector NAX window
 			// only when the caller explicitly requests the 16F downcast path.
 			const int use_mfa_gemm_for_vector =
+				!is_interleaved_batched_dense_gemv &&
 				a_rows == 1 &&
 				!is_transpose_a &&
 				is_transpose_w &&
@@ -715,6 +720,10 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 						.mrows = (uint32_t)a_rows,
 						.ncols = w_rows,
 						.nrows = w_cols,
+						.batch_dimension = is_interleaved_batched_dense_gemv ? (uint32_t)adim[1] : 0,
+						.batch_stride_a = is_interleaved_batched_dense_gemv ? (uint32_t)interleaved_w_batch_stride : 0,
+						.batch_stride_b = is_interleaved_batched_dense_gemv ? (uint32_t)w_rows : 0,
+						.batch_stride_c = is_interleaved_batched_dense_gemv ? (uint32_t)b_cols : 0,
 						.fused_bias = bias ? 1 : 0,
 					};
 				} else {

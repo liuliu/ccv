@@ -6,6 +6,10 @@ typedef struct {
   uint32_t mrows;
   uint32_t nrows;
   uint32_t ncols;
+  uint32_t batch_dimension;
+  uint32_t batch_stride_a;
+  uint32_t batch_stride_b;
+  uint32_t batch_stride_c;
   uint8_t fused_bias;
 } ccv_nnc_mfa_gemv_params_t;
 

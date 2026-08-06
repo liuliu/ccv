@@ -11,7 +11,8 @@ bool GemvDescriptor::operator==(const GemvDescriptor& rhs) const {
   mrows == rhs.mrows &&
   memoryPrecision == rhs.memoryPrecision &&
   nrows == rhs.nrows &&
-  ncols == rhs.ncols;
+  ncols == rhs.ncols &&
+  simd_all(batchStrides.value_or(simd::uint3(UINT32_MAX)) == rhs.batchStrides.value_or(simd::uint3(UINT32_MAX)));
 }
 
 uint32_t GemvDescriptor::rowsPerThreadgroup(MTL::Device* const device) noexcept {
@@ -37,6 +38,11 @@ std::size_t std::hash<GemvDescriptor>::operator()(const GemvDescriptor& hash) co
   std::size_t seed = 0;
   combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.memoryPrecision.value, (unsigned int)hash.fusedBias | ((unsigned int)hash.mrows << 8) }));
   combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.nrows, (unsigned int)hash.ncols }));
+  if (hash.batchStrides.has_value()) {
+    combine_32(seed, hash.batchStrides.value()[0]);
+    combine_32(seed, hash.batchStrides.value()[1]);
+    combine_32(seed, hash.batchStrides.value()[2]);
+  }
   return seed;
 }
 
@@ -56,6 +62,7 @@ std::pair<GemvKernelDescriptor, PipelineValue<GemvKernel>*> GemvDescriptor::find
   GemvKernelDescriptor kernelDesc;
   kernelDesc.fusedBias = fusedBias;
   kernelDesc.mrows = mrows;
+  kernelDesc.batched = batchStrides.has_value();
   kernelDesc.memoryPrecision = memoryPrecision;
 
   auto createPipeline =
@@ -66,6 +73,14 @@ std::pair<GemvKernelDescriptor, PipelineValue<GemvKernel>*> GemvDescriptor::find
     constants->setConstantValue(&rows, MTL::DataTypeUInt, NS::UInteger(0));
     constants->setConstantValue(&ncols, MTL::DataTypeUInt, NS::UInteger(1));
     constants->setConstantValue(&nrows, MTL::DataTypeUInt, NS::UInteger(2));
+    if (batchStrides.has_value()) {
+      const uint32_t batchStrideA = batchStrides.value()[0];
+      const uint32_t batchStrideB = batchStrides.value()[1];
+      const uint32_t batchStrideC = batchStrides.value()[2];
+      constants->setConstantValue(&batchStrideA, MTL::DataTypeUInt, NS::UInteger(3));
+      constants->setConstantValue(&batchStrideB, MTL::DataTypeUInt, NS::UInteger(4));
+      constants->setConstantValue(&batchStrideC, MTL::DataTypeUInt, NS::UInteger(5));
+    }
 
     NS::String* swiftName = NS::String::string("gemv", NS::UTF8StringEncoding);
     NS::Error* error = nil;

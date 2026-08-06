@@ -20,6 +20,14 @@ void ccv_nnc_mfa_encode_gemv(ccv_nnc_mfa_context_t* context, ccv_nnc_mfa_gemv_pa
   CCV_NNC_MFA_PRECONDITION(num_tensors == 3 || num_tensors == 4);
   CCV_NNC_MFA_PRECONDITION((params.fused_bias && num_tensors == 4) || (!params.fused_bias && num_tensors == 3));
   CCV_NNC_MFA_PRECONDITION(params.mrows == 1 || params.mrows == 2 || params.mrows == 3);
+  const uint32_t batchDimension = params.batch_dimension > 1 ? params.batch_dimension : 1;
+  if (batchDimension > 1) {
+    CCV_NNC_MFA_PRECONDITION(params.mrows == 1);
+    CCV_NNC_MFA_PRECONDITION(!params.fused_bias);
+    CCV_NNC_MFA_PRECONDITION(params.batch_stride_a > 0);
+    CCV_NNC_MFA_PRECONDITION(params.batch_stride_b > 0);
+    CCV_NNC_MFA_PRECONDITION(params.batch_stride_c > 0);
+  }
 
   GemvDescriptor descriptor;
   descriptor.fusedBias = params.fused_bias ? 1 : 0;
@@ -33,6 +41,13 @@ void ccv_nnc_mfa_encode_gemv(ccv_nnc_mfa_context_t* context, ccv_nnc_mfa_gemv_pa
   }
   descriptor.nrows = params.nrows;
   descriptor.ncols = params.ncols;
+  if (batchDimension > 1) {
+    descriptor.batchStrides = simd::uint3 {
+      params.batch_stride_a,
+      params.batch_stride_b,
+      params.batch_stride_c,
+    };
+  }
 
   auto pool = NS::AutoreleasePool::alloc()->init();
   auto& shaderCache = context->kernel_cache;
@@ -50,7 +65,7 @@ void ccv_nnc_mfa_encode_gemv(ccv_nnc_mfa_context_t* context, ccv_nnc_mfa_gemv_pa
   }
 
   const uint32_t rowsPerThreadgroup = GemvDescriptor::rowsPerThreadgroup(context->device.get());
-  MTL::Size gridSize = MTL::Size((params.nrows + rowsPerThreadgroup - 1) / rowsPerThreadgroup, 1, 1);
+  MTL::Size gridSize = MTL::Size((params.nrows + rowsPerThreadgroup - 1) / rowsPerThreadgroup, 1, batchDimension);
   CCV_NNC_MFA_PRECONDITION(gridSize.width > 0);
   encoder->dispatchThreadgroups(gridSize, MTL::Size(rowsPerThreadgroup * 32, 1, 1));
   command_batch->finishCommand(encoder);

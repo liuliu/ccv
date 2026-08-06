@@ -14,6 +14,8 @@ struct GemvKernel {
 
   uint8_t mrows;
 
+  uint8_t batched;
+
   GEMMOperandPrecision memoryPrecision;
 
   GemvKernel(GemvKernelDescriptor descriptor, MTL::Device* const device);
