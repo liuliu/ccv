@@ -9,6 +9,7 @@ NAScaledDotProductArgPartitionKernel::NAScaledDotProductArgPartitionKernel(NASca
   scoreBlockN = descriptor.scoreBlockN;
   scoreSIMDGroups = descriptor.scoreSIMDGroups;
   loadC = descriptor.loadC;
+  isCausal = descriptor.isCausal;
   scoreThreadgroupSize = MTL::Size(scoreSIMDGroups * 32, 1, 1);
   topKThreadgroupSize = MTL::Size(1, 1, 1);
   topKTileThreadgroupSize = MTL::Size(512, 1, 1);
@@ -39,6 +40,29 @@ std::string NAScaledDotProductArgPartitionKernel::createSource() const noexcept 
   source.SetValue("TOPK_SERIAL_C_ARGUMENT", loadC ? "  constant uint& C_buf [[buffer(2)]],\n" : "");
   source.SetValue("TOPK_C_ARGUMENT", loadC ? "  constant uint& C_buf [[buffer(3)]],\n" : "");
   source.SetValue("LOAD_C_VALUE", loadC ? "  const uniform<uint> C = make_uniform(C_buf);\n" : "");
+  std::string scoreTileCulling;
+  if (isCausal) {
+    const std::string visibleCount = loadC ? "visible_count_for_token(last_t - 1, C)" : "visible_count_for_token(last_t - 1)";
+    scoreTileCulling =
+      "  if (t_start >= T) {\n"
+      "    return;\n"
+      "  }\n"
+      "  const uint last_t = min(t_start + uint(" + std::to_string(scoreBlockM) + "), T);\n"
+      "  const uint max_visible = " + visibleCount + ";\n"
+      "  if (c_start >= max_visible) {\n"
+      "    for (uint i = tid; i < " + std::to_string(scoreBlockM * scoreBlockN) + "; i += " + std::to_string(scoreSIMDGroups * 32) + ") {\n"
+      "      const uint row = i / " + std::to_string(scoreBlockN) + ";\n"
+      "      const uint col = i - row * " + std::to_string(scoreBlockN) + ";\n"
+      "      const uint t = t_start + row;\n"
+      "      const uint c = c_start + col;\n"
+      "      if (t < T && c < C) {\n"
+      "        scores[t * C + c] = -3.402823466e+38f;\n"
+      "      }\n"
+      "    }\n"
+      "    return;\n"
+      "  }\n";
+  }
+  source.SetValue("SCORE_TILE_CULLING", scoreTileCulling);
   source += R"(
 #include <metal_stdlib>
 #include <metal_tensor>
@@ -204,7 +228,7 @@ kernel void index_score(
 ) {
 {{LOAD_C_VALUE}}  const uint c_start = tgid.x * {{score_block_n}};
   const uint t_start = tgid.y * {{score_block_m}};
-  auto Q = tensor<device real, dextents<int32_t, 2>, tensor_inline>(q, dextents<int32_t, 2>(H * D, T));
+{{SCORE_TILE_CULLING}}  auto Q = tensor<device real, dextents<int32_t, 2>, tensor_inline>(q, dextents<int32_t, 2>(H * D, T));
   auto K = tensor<device real, dextents<int32_t, 2>, tensor_inline>(k, dextents<int32_t, 2>(D, C));
   constexpr auto score_desc = matmul2d_descriptor({{score_block_m}}, {{score_block_n}}, {{score_block_d}}, false, true, true, matmul2d_descriptor::mode::multiply_accumulate);
   matmul2d<score_desc, execution_simdgroups<1>> score_matmul_op;

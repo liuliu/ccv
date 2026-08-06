@@ -57,6 +57,7 @@ std::pair<NAScaledDotProductArgPartitionKernelDescriptor, PipelineValue<NAScaled
   kernelDesc.scoreBlockN = scoreBlockN;
   kernelDesc.scoreSIMDGroups = scoreSIMDGroups;
   kernelDesc.loadC = loadC;
+  kernelDesc.isCausal = isCausal;
 
   auto createPipeline =
   [=](MTL::Library* library, const char* name) -> MTL::ComputePipelineState* {

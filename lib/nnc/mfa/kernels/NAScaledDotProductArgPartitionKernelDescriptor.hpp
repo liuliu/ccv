@@ -10,6 +10,7 @@ struct NAScaledDotProductArgPartitionKernelDescriptor {
   uint16_t scoreBlockN = 32;
   uint16_t scoreSIMDGroups = 4;
   bool loadC = false;
+  bool isCausal = false;
 
   bool operator==(const NAScaledDotProductArgPartitionKernelDescriptor& rhs) const;
 };

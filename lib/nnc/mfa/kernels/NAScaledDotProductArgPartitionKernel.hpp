@@ -12,6 +12,7 @@ struct NAScaledDotProductArgPartitionKernel {
   uint16_t scoreBlockN;
   uint16_t scoreSIMDGroups;
   bool loadC;
+  bool isCausal;
   MTL::Size scoreThreadgroupSize;
   MTL::Size topKThreadgroupSize;
   MTL::Size topKTileThreadgroupSize;

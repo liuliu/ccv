@@ -16,12 +16,19 @@ static size_t _ccv_nnc_mfa_sdpap_align_up(const size_t value, const size_t align
   return (value + alignment - 1) / alignment * alignment;
 }
 
-static void _ccv_nnc_mfa_sdpap_score_tile(ccv_nnc_mfa_scaled_dot_product_arg_partition_params_t params, uint16_t* const block_m, uint16_t* const block_n, uint16_t* const simdgroups)
+static void _ccv_nnc_mfa_sdpap_na_score_tile(ccv_nnc_mfa_scaled_dot_product_arg_partition_params_t params, uint16_t* const block_m, uint16_t* const block_n, uint16_t* const simdgroups)
 {
-  (void)params;
   *block_m = 16;
-  *block_n = 32;
-  *simdgroups = 4;
+  if (params.T == 1) {
+    *block_n = 32;
+    *simdgroups = 8;
+  } else if (params.T >= 1024) {
+    *block_n = 64;
+    *simdgroups = params.C <= 1024 ? 4 : 2;
+  } else {
+    *block_n = 32;
+    *simdgroups = 4;
+  }
 }
 
 void ccv_nnc_mfa_prepare_scaled_dot_product_arg_partition(mfa::context* context, ccv_nnc_mfa_scaled_dot_product_arg_partition_params_t params)
@@ -105,7 +112,9 @@ void ccv_nnc_mfa_encode_scaled_dot_product_arg_partition(ccv_nnc_mfa_context_t* 
     descriptor.queryOffset = params.query_offset;
     descriptor.scale = params.scale;
     descriptor.isCausal = params.is_causal != 0;
-    _ccv_nnc_mfa_sdpap_score_tile(params, &descriptor.scoreBlockM, &descriptor.scoreBlockN, &descriptor.scoreSIMDGroups);
+    descriptor.scoreBlockM = 16;
+    descriptor.scoreBlockN = 32;
+    descriptor.scoreSIMDGroups = 4;
   };
 
   auto encodePipeline =
@@ -192,6 +201,7 @@ void ccv_nnc_mfa_encode_scaled_dot_product_arg_partition(ccv_nnc_mfa_context_t* 
   if (params.use_neural_accelerators) {
     NAScaledDotProductArgPartitionDescriptor descriptor;
     setDescriptor(descriptor);
+    _ccv_nnc_mfa_sdpap_na_score_tile(params, &descriptor.scoreBlockM, &descriptor.scoreBlockN, &descriptor.scoreSIMDGroups);
     descriptor.loadC = true;
     auto pipelineValue = shaderCache.findKernel<NAScaledDotProductArgPartitionKernel, NAScaledDotProductArgPartitionDescriptor, NAScaledDotProductArgPartitionKernelDescriptor>(descriptor, context->device.get(), dprops);
     pool->drain();
