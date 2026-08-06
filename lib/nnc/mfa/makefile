@@ -10,6 +10,8 @@ SRCS += ccv_nnc_mfa_segmented_int8_swiglu.cpp kernels/SegmentedInt8SwiGLUDescrip
 
 SRCS += ccv_nnc_mfa_moe_routing.cpp kernels/MoERoutingDescriptor.cpp kernels/MoERoutingKernel.cpp
 
+SRCS += ccv_nnc_mfa_rmsnorm_cmul.cpp kernels/RMSNormCmulDescriptor.cpp kernels/RMSNormCmulKernel.cpp
+
 SRC_OBJS := $(patsubst %.c,%.o,$(patsubst %.cpp,%.o,$(patsubst %.mm,%.o,$(SRCS))))
 
 .PHONY: release all lib clean

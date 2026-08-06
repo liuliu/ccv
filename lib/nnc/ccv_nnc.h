@@ -192,6 +192,11 @@ typedef struct {
 			int elementwise_affine; /**< [rmsnorm_gated.elementwise_affine] Whether it supports scale. */
 		} rmsnorm_gated;
 		struct {
+			int axis[CCV_NNC_MAX_DIM_ALLOC]; /**< [rmsnorm_cmul.axis[]] The axis selected to compute the root mean square. */
+			int count; /**< [rmsnorm_cmul.count] The number of axes selected. */
+			float epsilon; /**< [rmsnorm_cmul.epsilon] The epsilon for RMS normalization before complex multiplication. */
+		} rmsnorm_cmul;
+		struct {
 			int nesterov; /**< [sgd.nesterov] Nesterov accelerated gradient. */
 			float rate; /**< [sgd.rate] The learning rate. */
 			float scale; /**< [sgd.scale] The scale to be applied to the gradient before doing any minimization. */

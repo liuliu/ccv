@@ -3729,6 +3729,223 @@ TEST_CASE("compare rmsnorm with mps in bfloat precision through mfa and graph")
 	ccv_nnc_tensor_free(expected_inv16bf);
 }
 
+TEST_CASE("compare rmsnorm cmul with cpu ref")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_RMSNORM_CMUL_FORWARD, CCV_NNC_BACKEND_CPU_REF));
+	const int token_count = 3;
+	const int head_count = 4;
+	const int channels = 18;
+	const int row_count = token_count * head_count;
+	const int element_count = row_count * channels;
+	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, token_count, head_count, channels), 0);
+	ccv_nnc_tensor_t* const rotation = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, token_count, 1, channels), 0);
+	ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, token_count, head_count, channels), 0);
+	ccv_nnc_tensor_t* const inplace = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, token_count, head_count, channels), 0);
+	ccv_nnc_tensor_t* const expected = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, token_count, head_count, channels), 0);
+	dsfmt_t dsfmt;
+	dsfmt_init_gen_rand(&dsfmt, 31);
+	int i, j;
+	for (i = 0; i < element_count; i++)
+		a->data.f32[i] = (dsfmt_genrand_open_close(&dsfmt) * 2 - 1) * 3;
+	for (i = 0; i < token_count * channels; i++)
+		rotation->data.f32[i] = (dsfmt_genrand_open_close(&dsfmt) * 2 - 1) * 2;
+	for (i = 0; i < row_count; i++)
+	{
+		float square_sum = 0;
+		for (j = 0; j < channels; j++)
+		{
+			const float v = a->data.f32[i * channels + j];
+			square_sum += v * v;
+		}
+		const float inv_rms = 1.0f / sqrtf(square_sum / channels + 1e-6f);
+		const int rotation_offset = (i / head_count) * channels;
+		for (j = 0; j < channels; j += 2)
+		{
+			const float real = a->data.f32[i * channels + j] * inv_rms;
+			const float imag = a->data.f32[i * channels + j + 1] * inv_rms;
+			const float rotation_real = rotation->data.f32[rotation_offset + j];
+			const float rotation_imag = rotation->data.f32[rotation_offset + j + 1];
+			expected->data.f32[i * channels + j] = real * rotation_real - imag * rotation_imag;
+			expected->data.f32[i * channels + j + 1] = real * rotation_imag + imag * rotation_real;
+		}
+	}
+	memcpy(inplace->data.f32, a->data.f32, sizeof(float) * element_count);
+	ccv_nnc_cmd_t cmd = CMD_RMSNORM_CMUL_FORWARD(1e-6, 2);
+	cmd.backend = CCV_NNC_BACKEND_CPU_REF;
+	REQUIRE_EQ(CCV_NNC_EXEC_SUCCESS, ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(a, rotation), TENSOR_LIST(b), 0), "rmsnorm cmul cpu ref should run");
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, b->data.f32, expected->data.f32, element_count, 1e-6, "rmsnorm cmul cpu ref should match expected result");
+	REQUIRE_EQ(CCV_NNC_EXEC_SUCCESS, ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(inplace, rotation), TENSOR_LIST(inplace), 0), "rmsnorm cmul cpu ref should run in-place on first input");
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, inplace->data.f32, expected->data.f32, element_count, 1e-6, "rmsnorm cmul cpu ref in-place result should match expected result");
+	ccv_nnc_tensor_free(a);
+	ccv_nnc_tensor_free(rotation);
+	ccv_nnc_tensor_free(b);
+	ccv_nnc_tensor_free(inplace);
+	ccv_nnc_tensor_free(expected);
+}
+
+TEST_CASE("compare rmsnorm cmul with mps at production shape through mfa and graph")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_RMSNORM_CMUL_FORWARD, CCV_NNC_BACKEND_MPS));
+	const int token_count = 17;
+	const int head_count = 64;
+	const int channels = 512;
+	const int element_count = token_count * head_count * channels;
+	const int rotation_count = token_count * channels;
+	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, token_count, head_count, channels), 0);
+	ccv_nnc_tensor_t* const rotation = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, token_count, 1, channels), 0);
+	ccv_nnc_tensor_t* const exact_rotation = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, token_count, head_count, channels), 0);
+	ccv_nnc_tensor_t* const shared_rotation = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, channels), 0);
+	ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, token_count, head_count, channels), 0);
+	ccv_nnc_tensor_t* const ha = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, token_count, head_count, channels), 0);
+	ccv_nnc_tensor_t* const hrotation = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, token_count, 1, channels), 0);
+	ccv_nnc_tensor_t* const hexact_rotation = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, token_count, head_count, channels), 0);
+	ccv_nnc_tensor_t* const hshared_rotation = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, channels), 0);
+	ccv_nnc_tensor_t* const ha16 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, token_count, head_count, channels), 0);
+	ccv_nnc_tensor_t* const hy = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, token_count, head_count, channels), 0);
+	ccv_nnc_tensor_t* const hy16 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, token_count, head_count, channels), 0);
+	ccv_nnc_tensor_t* const expected = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, token_count, head_count, channels), 0);
+	ccv_nnc_tensor_t* const expected16 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, token_count, head_count, channels), 0);
+	ccv_nnc_tensor_t* const exact_expected = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, token_count, head_count, channels), 0);
+	ccv_nnc_tensor_t* const exact_expected16 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, token_count, head_count, channels), 0);
+	ccv_nnc_tensor_t* const shared_expected = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, token_count, head_count, channels), 0);
+	ccv_nnc_tensor_t* const shared_expected16 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, token_count, head_count, channels), 0);
+	dsfmt_t dsfmt;
+	dsfmt_init_gen_rand(&dsfmt, 32);
+	int i;
+	for (i = 0; i < element_count; i++)
+		ha->data.f32[i] = (dsfmt_genrand_open_close(&dsfmt) * 2 - 1) * 3;
+	for (i = 0; i < rotation_count; i++)
+		hrotation->data.f32[i] = (dsfmt_genrand_open_close(&dsfmt) * 2 - 1) * 2;
+	for (i = 0; i < element_count; i++)
+		hexact_rotation->data.f32[i] = (dsfmt_genrand_open_close(&dsfmt) * 2 - 1) * 2;
+	memcpy(hshared_rotation->data.f32, hrotation->data.f32, sizeof(float) * channels);
+	ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha), TENSOR_LIST(ha16), 0);
+	ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha16), TENSOR_LIST(ha), 0);
+	ccv_nnc_cmd_t cmd = CMD_RMSNORM_CMUL_FORWARD(1e-6, 2);
+	cmd.backend = CCV_NNC_BACKEND_CPU_REF;
+	REQUIRE_EQ(CCV_NNC_EXEC_SUCCESS, ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(ha, hrotation), TENSOR_LIST(expected), 0), "rmsnorm cmul cpu ref should produce the production-shape reference");
+	ccv_nnc_cmd_t exact_cmd = CMD_RMSNORM_CMUL_FORWARD(1e-4, 2);
+	exact_cmd.backend = CCV_NNC_BACKEND_CPU_REF;
+	REQUIRE_EQ(CCV_NNC_EXEC_SUCCESS, ccv_nnc_cmd_exec(exact_cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(ha, hexact_rotation), TENSOR_LIST(exact_expected), 0), "rmsnorm cmul cpu ref should produce the exact-rotation reference");
+	REQUIRE_EQ(CCV_NNC_EXEC_SUCCESS, ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(ha, hshared_rotation), TENSOR_LIST(shared_expected), 0), "rmsnorm cmul cpu ref should support standard rotation broadcasting");
+	ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(expected), TENSOR_LIST(expected16), 0);
+	ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(expected16), TENSOR_LIST(expected), 0);
+	ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(exact_expected), TENSOR_LIST(exact_expected16), 0);
+	ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(exact_expected16), TENSOR_LIST(exact_expected), 0);
+	ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(shared_expected), TENSOR_LIST(shared_expected16), 0);
+	ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(shared_expected16), TENSOR_LIST(shared_expected), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha16, hrotation, hexact_rotation, hshared_rotation), TENSOR_LIST(a, rotation, exact_rotation, shared_rotation), 0);
+	cmd.backend = CCV_NNC_BACKEND_MPS;
+	exact_cmd.backend = CCV_NNC_BACKEND_MPS;
+	const uint64_t old_flags = ccv_nnc_flags();
+	if (old_flags & CCV_NNC_DISABLE_MFA)
+		ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA);
+	REQUIRE_EQ(CCV_NNC_EXEC_SUCCESS, ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(a, rotation), TENSOR_LIST(b), 0), "mixed-precision rmsnorm cmul mfa should run at the production shape");
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(b), TENSOR_LIST(hy16), 0);
+	ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(hy16), TENSOR_LIST(hy), 0);
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, hy->data.f32, expected->data.f32, element_count, 5e-3, "mixed-precision rmsnorm cmul result from mfa should match fp32 reference rounded to half");
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha16), TENSOR_LIST(a), 0);
+	REQUIRE_EQ(CCV_NNC_EXEC_SUCCESS, ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(a, rotation), TENSOR_LIST(a), 0), "mixed-precision rmsnorm cmul mfa should run in-place on first input");
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(a), TENSOR_LIST(hy16), 0);
+	ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(hy16), TENSOR_LIST(hy), 0);
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, hy->data.f32, expected->data.f32, element_count, 5e-3, "mixed-precision in-place rmsnorm cmul result from mfa should match fp32 reference rounded to half");
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha16), TENSOR_LIST(a), 0);
+	REQUIRE_EQ(CCV_NNC_EXEC_SUCCESS, ccv_nnc_cmd_exec(exact_cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(a, exact_rotation), TENSOR_LIST(b), 0), "mixed-precision rmsnorm cmul mfa should specialize a second pipeline for exact rotation and a different epsilon");
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(b), TENSOR_LIST(hy16), 0);
+	ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(hy16), TENSOR_LIST(hy), 0);
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, hy->data.f32, exact_expected->data.f32, element_count, 5e-3, "exact-rotation rmsnorm cmul result from the second mfa pipeline should match fp32 reference rounded to half");
+	REQUIRE_EQ(CCV_NNC_EXEC_SUCCESS, ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(a, shared_rotation), TENSOR_LIST(b), 0), "rmsnorm cmul should use the graph fallback for a standard broadcast outside the native surface");
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(b), TENSOR_LIST(hy16), 0);
+	ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(hy16), TENSOR_LIST(hy), 0);
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, hy->data.f32, shared_expected->data.f32, element_count, 5e-3, "standard-broadcast rmsnorm cmul result from graph fallback should match fp32 reference rounded to half");
+	ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha16), TENSOR_LIST(a), 0);
+	REQUIRE_EQ(CCV_NNC_EXEC_SUCCESS, ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(a, rotation), TENSOR_LIST(b), 0), "mixed-precision rmsnorm cmul graph fallback should run at the production shape");
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(b), TENSOR_LIST(hy16), 0);
+	ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(hy16), TENSOR_LIST(hy), 0);
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, hy->data.f32, expected->data.f32, element_count, 5e-3, "mixed-precision rmsnorm cmul result from graph fallback should match fp32 reference rounded to half");
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha16), TENSOR_LIST(a), 0);
+	REQUIRE_EQ(CCV_NNC_EXEC_SUCCESS, ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(a, rotation), TENSOR_LIST(a), 0), "mixed-precision rmsnorm cmul graph fallback should run in-place on first input");
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(a), TENSOR_LIST(hy16), 0);
+	ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(hy16), TENSOR_LIST(hy), 0);
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, hy->data.f32, expected->data.f32, element_count, 5e-3, "mixed-precision in-place rmsnorm cmul result from graph fallback should match fp32 reference rounded to half");
+	if (old_flags & CCV_NNC_DISABLE_MFA)
+		ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA);
+	else
+		ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA);
+	ccv_nnc_tensor_free(a);
+	ccv_nnc_tensor_free(rotation);
+	ccv_nnc_tensor_free(exact_rotation);
+	ccv_nnc_tensor_free(shared_rotation);
+	ccv_nnc_tensor_free(b);
+	ccv_nnc_tensor_free(ha);
+	ccv_nnc_tensor_free(hrotation);
+	ccv_nnc_tensor_free(hexact_rotation);
+	ccv_nnc_tensor_free(hshared_rotation);
+	ccv_nnc_tensor_free(ha16);
+	ccv_nnc_tensor_free(hy);
+	ccv_nnc_tensor_free(hy16);
+	ccv_nnc_tensor_free(expected);
+	ccv_nnc_tensor_free(expected16);
+	ccv_nnc_tensor_free(exact_expected);
+	ccv_nnc_tensor_free(exact_expected16);
+	ccv_nnc_tensor_free(shared_expected);
+	ccv_nnc_tensor_free(shared_expected16);
+}
+
+TEST_CASE("compare rmsnorm cmul with mps through two-row reuse")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_RMSNORM_CMUL_FORWARD, CCV_NNC_BACKEND_CPU_REF));
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_RMSNORM_CMUL_FORWARD, CCV_NNC_BACKEND_MPS));
+	const int token_count = 4096;
+	const int head_count = 2;
+	const int channels = 18;
+	const int element_count = token_count * head_count * channels;
+	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, token_count, head_count, channels), 0);
+	ccv_nnc_tensor_t* const rotation = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, token_count, 1, channels), 0);
+	ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, token_count, head_count, channels), 0);
+	ccv_nnc_tensor_t* const ha = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, token_count, head_count, channels), 0);
+	ccv_nnc_tensor_t* const ha16 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, token_count, head_count, channels), 0);
+	ccv_nnc_tensor_t* const hrotation = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, token_count, 1, channels), 0);
+	ccv_nnc_tensor_t* const expected = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, token_count, head_count, channels), 0);
+	ccv_nnc_tensor_t* const hy = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, token_count, head_count, channels), 0);
+	ccv_nnc_tensor_t* const hy16 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, token_count, head_count, channels), 0);
+	dsfmt_t dsfmt;
+	dsfmt_init_gen_rand(&dsfmt, 33);
+	int i;
+	for (i = 0; i < element_count; i++)
+		ha->data.f32[i] = (dsfmt_genrand_open_close(&dsfmt) * 2 - 1) * 3;
+	for (i = 0; i < token_count * channels; i++)
+		hrotation->data.f32[i] = (dsfmt_genrand_open_close(&dsfmt) * 2 - 1) * 2;
+	ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha), TENSOR_LIST(ha16), 0);
+	ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha16), TENSOR_LIST(ha), 0);
+	ccv_nnc_cmd_t cmd = CMD_RMSNORM_CMUL_FORWARD(1e-6, 2);
+	cmd.backend = CCV_NNC_BACKEND_CPU_REF;
+	REQUIRE_EQ(CCV_NNC_EXEC_SUCCESS, ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(ha, hrotation), TENSOR_LIST(expected), 0), "rmsnorm cmul cpu ref should produce the two-row reuse reference");
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha16, hrotation), TENSOR_LIST(a, rotation), 0);
+	cmd.backend = CCV_NNC_BACKEND_MPS;
+	const uint64_t old_flags = ccv_nnc_flags();
+	if (old_flags & CCV_NNC_DISABLE_MFA)
+		ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA);
+	REQUIRE_EQ(CCV_NNC_EXEC_SUCCESS, ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(a, rotation), TENSOR_LIST(b), 0), "mixed-precision rmsnorm cmul mfa should run through two-row reuse");
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(b), TENSOR_LIST(hy16), 0);
+	ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(hy16), TENSOR_LIST(hy), 0);
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, hy->data.f32, expected->data.f32, element_count, 5e-3, "two-row reuse result should match fp32 reference rounded to half");
+	if (old_flags & CCV_NNC_DISABLE_MFA)
+		ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA);
+	else
+		ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA);
+	ccv_nnc_tensor_free(a);
+	ccv_nnc_tensor_free(rotation);
+	ccv_nnc_tensor_free(b);
+	ccv_nnc_tensor_free(ha);
+	ccv_nnc_tensor_free(ha16);
+	ccv_nnc_tensor_free(hrotation);
+	ccv_nnc_tensor_free(expected);
+	ccv_nnc_tensor_free(hy);
+	ccv_nnc_tensor_free(hy16);
+}
+
 TEST_CASE("compare rmsnorm gated with cpu ref")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_RMSNORM_GATED_FORWARD, CCV_NNC_BACKEND_CPU_REF));
