@@ -17,6 +17,7 @@ MTL::Size SparseIndexedAttentionKernel::threadgroupsPerGrid(uint32_t T, uint32_t
 SparseIndexedAttentionKernel::SparseIndexedAttentionKernel(SparseIndexedAttentionKernelDescriptor descriptor, MTL::Device *const device) {
   memoryPrecision = descriptor.memoryPrecision;
   attentionSinks = descriptor.attentionSinks;
+  loadRows = descriptor.loadRows;
   source = createSource();
   auto string = NS::String::string(source.c_str(), NS::UTF8StringEncoding);
   NS::Error* error = nil;
@@ -39,9 +40,13 @@ using namespace metal;
 
 typedef {{REAL}} real;
 
-constant uint T [[function_constant(0)]];
+constant uint T [[function_constant(0)]];\)";
+  if (!loadRows) {
+    source += R"(
 constant uint dense_rows [[function_constant(1)]];
-constant uint sparse_rows [[function_constant(2)]];
+constant uint sparse_rows [[function_constant(2)]];\)";
+  }
+  source += R"(
 constant uint H [[function_constant(3)]];
 constant uint D [[function_constant(4)]];
 constant uint K [[function_constant(5)]];
@@ -65,13 +70,24 @@ kernel void sparse_indexed_attention(
 )";
   }
   source += R"(
-  device real* out [[buffer(5)]],
+  device real* out [[buffer(5)]],\)";
+  if (loadRows) {
+    source += R"(
+  constant uint2& runtime_rows [[buffer(6)]],\)";
+  }
+  source += R"(
   threadgroup uchar* scratch [[threadgroup(0)]],
   ushort tid [[thread_index_in_threadgroup]],
   ushort lane [[thread_index_in_simdgroup]],
   ushort sg [[simdgroup_index_in_threadgroup]],
   uint2 tgid [[threadgroup_position_in_grid]]
-) {
+) {\)";
+  if (loadRows) {
+    source += R"(
+  const uniform<uint> dense_rows = make_uniform(runtime_rows.x);
+  const uniform<uint> sparse_rows = make_uniform(runtime_rows.y);\)";
+  }
+  source += R"(
   threadgroup real* kv_shared = (threadgroup real*)scratch;
   const uint h = tgid.x * {{SIMD_GROUPS}}u + uint(sg);
   const uint t = tgid.y;

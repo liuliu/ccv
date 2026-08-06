@@ -9,8 +9,10 @@ bool SparseIndexedAttentionDescriptor::operator==(const SparseIndexedAttentionDe
   memoryPrecision == rhs.memoryPrecision &&
   attentionSinks == rhs.attentionSinks &&
   T == rhs.T &&
-  denseRows == rhs.denseRows &&
-  sparseRows == rhs.sparseRows &&
+  (loadRows ||
+    (denseRows == rhs.denseRows &&
+     sparseRows == rhs.sparseRows)) &&
+  loadRows == rhs.loadRows &&
   H == rhs.H &&
   D == rhs.D &&
   K == rhs.K &&
@@ -24,11 +26,11 @@ std::size_t std::hash<SparseIndexedAttentionDescriptor>::operator()(const Sparse
   using namespace ccv::nnc::mfa::hash;
   std::size_t seed = 0;
   combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.memoryPrecision.value, hash.T }));
-  combine_64(seed, pack_64(simd::uint2 { hash.denseRows, hash.sparseRows }));
+  combine_64(seed, pack_64(simd::uint2 { hash.loadRows ? 0 : hash.denseRows, hash.loadRows ? 0 : hash.sparseRows }));
   combine_64(seed, pack_64(simd::uint2 { hash.H, hash.D }));
   combine_64(seed, pack_64(simd::uint2 { hash.K, hash.sinkHeadStride }));
   combine_32(seed, hash.slidingWindow);
-  combine_32(seed, pack_32(simd::ushort2 { (unsigned short)(hash.attentionSinks ? 1 : 0), (unsigned short)(hash.isCausal ? 1 : 0) }));
+  combine_32(seed, pack_32(simd::ushort2 { (unsigned short)((hash.attentionSinks ? 1 : 0) | (hash.loadRows ? 2 : 0)), (unsigned short)(hash.isCausal ? 1 : 0) }));
   combine_32(seed, reinterpret_cast<const uint32_t&>(hash.scale));
   return seed;
 }
@@ -49,13 +51,16 @@ std::pair<SparseIndexedAttentionKernelDescriptor, PipelineValue<SparseIndexedAtt
   SparseIndexedAttentionKernelDescriptor kernelDesc;
   kernelDesc.memoryPrecision = memoryPrecision;
   kernelDesc.attentionSinks = attentionSinks;
+  kernelDesc.loadRows = loadRows;
 
   auto createPipeline =
   [=](MTL::Library* library) -> MTL::ComputePipelineState* {
     auto constants = NS::TransferPtr(MTL::FunctionConstantValues::alloc()->init());
     constants->setConstantValue(&T, MTL::DataTypeUInt, NS::UInteger(0));
-    constants->setConstantValue(&denseRows, MTL::DataTypeUInt, NS::UInteger(1));
-    constants->setConstantValue(&sparseRows, MTL::DataTypeUInt, NS::UInteger(2));
+    if (!loadRows) {
+      constants->setConstantValue(&denseRows, MTL::DataTypeUInt, NS::UInteger(1));
+      constants->setConstantValue(&sparseRows, MTL::DataTypeUInt, NS::UInteger(2));
+    }
     constants->setConstantValue(&H, MTL::DataTypeUInt, NS::UInteger(3));
     constants->setConstantValue(&D, MTL::DataTypeUInt, NS::UInteger(4));
     constants->setConstantValue(&K, MTL::DataTypeUInt, NS::UInteger(5));

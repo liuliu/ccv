@@ -6,6 +6,7 @@
 struct SparseIndexedAttentionKernelDescriptor {
   GEMMOperandPrecision memoryPrecision = GEMMOperandPrecision::FP16;
   bool attentionSinks = false;
+  bool loadRows = false;
 
   bool operator==(const SparseIndexedAttentionKernelDescriptor& rhs) const;
 };

@@ -24,6 +24,7 @@ struct SparseIndexedAttentionDescriptor {
   uint32_t slidingWindow = 0;
   uint32_t sinkHeadStride = 0;
   float scale = 1;
+  bool loadRows = false;
 
   bool operator==(const SparseIndexedAttentionDescriptor& rhs) const;
 

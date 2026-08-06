@@ -10131,6 +10131,8 @@ TEST_CASE("sparse indexed attention with MFA FP16 DS4-native shape")
 	REQUIRE(generic_fp32_status == 0, "generic MFA FP32 sparse indexed attention should match CPU reference (status=%d max abs %g relative %g at %d: CPU %g GPU %g)", generic_fp32_status, max_abs, max_relative, max_idx, expected, actual);
 	const int generic_t9_status = _mps_sparse_indexed_attention_compare(CCV_16F, 5, 9, 64, 128, 7, 9, 3, 1, 0, 1e-2, &max_abs, &max_relative, &max_idx, &expected, &actual);
 	REQUIRE(generic_t9_status == 0, "generic MFA FP16 sparse indexed attention T=9 should match CPU reference (status=%d max abs %g relative %g at %d: CPU %g GPU %g)", generic_t9_status, max_abs, max_relative, max_idx, expected, actual);
+	const int generic_runtime_rows_status = _mps_sparse_indexed_attention_compare(CCV_16F, 5, 9, 64, 128, 13, 19, 3, 1, 0, 1e-2, &max_abs, &max_relative, &max_idx, &expected, &actual);
+	REQUIRE(generic_runtime_rows_status == 0, "generic MFA FP16 sparse indexed attention should reuse its pipeline with runtime dense and sparse rows (status=%d max abs %g relative %g at %d: CPU %g GPU %g)", generic_runtime_rows_status, max_abs, max_relative, max_idx, expected, actual);
 	const int generic_no_sink_status = _mps_sparse_indexed_attention_compare(CCV_16F, 5, 5, 64, 96, 6, 7, 2, 0, 0, 1e-2, &max_abs, &max_relative, &max_idx, &expected, &actual);
 	REQUIRE(generic_no_sink_status == 0, "generic MFA FP16 sparse indexed attention without sinks should match CPU reference (status=%d max abs %g relative %g at %d: CPU %g GPU %g)", generic_no_sink_status, max_abs, max_relative, max_idx, expected, actual);
 }
