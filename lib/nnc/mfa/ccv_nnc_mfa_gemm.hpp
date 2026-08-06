@@ -20,6 +20,8 @@ typedef struct {
   uint32_t batch_stride_b;
   uint32_t batch_stride_c;
   uint32_t batch_stride_d;
+  uint32_t leading_dimension_a;
+  uint32_t leading_dimension_c;
   uint8_t loadM;
 } ccv_nnc_mfa_gemm_params_t;
 

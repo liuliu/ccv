@@ -247,6 +247,25 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	b_batch_size = b_nd < 3 ? 1 : b->info.dim[b_nd - 3];
 	for (i = 0; i < b_nd - 3; i++)
 		b_batch_size *= b->info.dim[i];
+	// Reinterpret [T, G, 1, K] x [G, N, K]^T as G batches of [T, K] x [N, K]^T.
+	const int is_interleaved_batched_gemm_shape =
+		a_nd == 4 && w_nd == 3 && b_nd == 4 &&
+		!is_transpose_a && is_transpose_w && !bias &&
+		adim[0] > 0 && adim[1] > 1 && adim[2] == 1 && adim[3] > 0 &&
+		w->info.dim[0] == adim[1] && w->info.dim[1] > 0 && w->info.dim[2] == adim[3] &&
+		b->info.dim[0] == adim[0] && b->info.dim[1] == adim[1] && b->info.dim[2] == 1 && b->info.dim[3] == w->info.dim[1] &&
+		a_rows == 1 && b_rows == 1;
+	const uint64_t interleaved_batch_count = is_interleaved_batched_gemm_shape ? (uint64_t)adim[0] * adim[1] : 0;
+	const uint64_t interleaved_a_leading_dimension = is_interleaved_batched_gemm_shape ? (uint64_t)adim[1] * adim[3] : 0;
+	const uint64_t interleaved_w_batch_stride = is_interleaved_batched_gemm_shape ? (uint64_t)w->info.dim[1] * w->info.dim[2] : 0;
+	const uint64_t interleaved_c_leading_dimension = is_interleaved_batched_gemm_shape ? (uint64_t)adim[1] * b->info.dim[3] : 0;
+	const int is_interleaved_batched_gemm =
+		is_interleaved_batched_gemm_shape &&
+		interleaved_batch_count <= INT_MAX &&
+		a_batch_size == (int)interleaved_batch_count && w_batch_size == adim[1] && b_batch_size == (int)interleaved_batch_count &&
+		interleaved_a_leading_dimension <= UINT32_MAX &&
+		interleaved_w_batch_stride <= UINT32_MAX &&
+		interleaved_c_leading_dimension <= UINT32_MAX;
 	if (a_batch_size == 1 && b_batch_size > 1)
 		a_batch_inc = 0;
 	if (w_batch_size == 1 && b_batch_size > 1)
@@ -279,6 +298,11 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 			(a_datatype == w_datatype) &&
 			(a_datatype == b->info.datatype) &&
 			(bias ? (a_datatype == bias->info.datatype) : 1);
+		const int is_interleaved_batched_dense_gemm =
+			is_interleaved_batched_gemm &&
+			CCV_GET_DATA_TYPE(a->info.datatype) != CCV_QX &&
+			CCV_GET_DATA_TYPE(w->info.datatype) != CCV_QX &&
+			CCV_GET_DATA_TYPE(b->info.datatype) != CCV_QX;
 
 		int is_supported_dtype = 0;
 		uint32_t mtl_data_type = UINT32_MAX;
@@ -387,7 +411,7 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 			ccv_nnc_mfa_context_supported(context) &&
 			!(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA);
 		const int is_mfa_supported =
-			ccv_nnc_mfa_context_supported(context) && is_contiguous && is_same_dtype && is_supported_dtype && (!is_batched || is_mfa_compatible_batch) && !(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA) && (is_mfa_gemv || !(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_GEMM));
+			ccv_nnc_mfa_context_supported(context) && is_contiguous && is_same_dtype && is_supported_dtype && (!is_batched || is_mfa_compatible_batch || is_interleaved_batched_dense_gemm) && !(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA) && (is_mfa_gemv || !(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_GEMM));
 
 		size_t a_data_size = 0;
 		if (CCV_GET_DATA_TYPE(a->info.datatype) == CCV_QX && ((a_qx_subtype >= 0x400 && a_qx_subtype <= 0x800) || a_qx_subtype == CCV_NNC_QX_8I_ROWWISE || a_qx_subtype == CCV_NNC_QX_8I_ROWWISE_X))
@@ -606,7 +630,7 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 				{
 					ccv_nnc_mfa_log_message("  Unsupported data type.");
 				}
-				if (is_batched && !is_mfa_compatible_batch)
+				if (is_batched && !is_mfa_compatible_batch && !is_interleaved_batched_dense_gemm)
 				{
 					ccv_nnc_mfa_log_message("  Unsupported batch.");
 				}
@@ -618,7 +642,7 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 			// On supported devices, use Metal directly.
 			ccv_nnc_mfa_gemm_params_t params = {
 				.data_type = mtl_data_type,
-				.M = (uint32_t)b_rows, // C_rows
+				.M = (uint32_t)(is_interleaved_batched_dense_gemm ? adim[0] : b_rows), // C_rows
 				.N = (uint32_t)b_cols, // C_cols
 				.K = (uint32_t)w_rows, // B_rows
 				.A_trans = (is_transpose_a ? 1 : 0),
@@ -626,13 +650,15 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 				.D_trans = 0,
 				.fused_bias = (bias ? 1 : 0),
 				.register_float = (is_downcast ? 0 : 1),
-				.use_neural_accelerators = !(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS) && ccv_nnc_mfa_has_neural_accelerators(context) && (mtl_data_type != 121 || ccv_nnc_mfa_neural_accelerators_support_bfloat(context)),
+				.use_neural_accelerators = !is_interleaved_batched_dense_gemm && !(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS) && ccv_nnc_mfa_has_neural_accelerators(context) && (mtl_data_type != 121 || ccv_nnc_mfa_neural_accelerators_support_bfloat(context)),
 
-				.batch_dimension = b_batch_size,
-				.batch_stride_a = a_batch_size > 1 ? ccv_max(a_batch_stride, b_rows * w_rows) : 0,
-				.batch_stride_b = w_batch_size > 1 ? b_cols * w_rows : 0,
-				.batch_stride_c = b_batch_size > 1 ? ccv_max(b_batch_stride, b_rows * b_cols) : 0,
+				.batch_dimension = (uint32_t)(is_interleaved_batched_dense_gemm ? adim[1] : b_batch_size),
+				.batch_stride_a = is_interleaved_batched_dense_gemm ? (uint32_t)w_rows : (a_batch_size > 1 ? ccv_max(a_batch_stride, b_rows * w_rows) : 0),
+				.batch_stride_b = is_interleaved_batched_dense_gemm ? (uint32_t)interleaved_w_batch_stride : (w_batch_size > 1 ? b_cols * w_rows : 0),
+				.batch_stride_c = is_interleaved_batched_dense_gemm ? (uint32_t)b_cols : (b_batch_size > 1 ? ccv_max(b_batch_stride, b_rows * b_cols) : 0),
 				.batch_stride_d = bias_batch_size > 1 ? b_cols : 0,
+				.leading_dimension_a = is_interleaved_batched_dense_gemm ? (uint32_t)interleaved_a_leading_dimension : 0,
+				.leading_dimension_c = is_interleaved_batched_dense_gemm ? (uint32_t)interleaved_c_leading_dimension : 0,
 				.loadM = load_m && !is_transpose_a,
 			};
 			mtl_buffer_t* scratch = 0;

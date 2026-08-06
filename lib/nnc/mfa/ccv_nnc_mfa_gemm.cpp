@@ -423,7 +423,15 @@ void ccv_nnc_mfa_encode_gemm(mfa::context* context, ccv_nnc_mfa_gemm_params_t pa
     }
     gemmDesc.transposeState = simd::uchar3 { params.A_trans, params.B_trans, params.D_trans };
     gemmDesc.registerPrecisionC = (params.register_float) ? std::optional(GEMMOperandPrecision::FP32) : std::nullopt;
-    gemmDesc.leadingDimensions = std::nullopt;
+    if (params.leading_dimension_a || params.leading_dimension_c) {
+      gemmDesc.leadingDimensions = simd::uint3 {
+        params.leading_dimension_a,
+        0,
+        params.leading_dimension_c,
+      };
+    } else {
+      gemmDesc.leadingDimensions = std::nullopt;
+    }
     gemmDesc.loadPreviousC = false;
     gemmDesc.useBias = params.fused_bias;
     gemmDesc.loadM = params.loadM;

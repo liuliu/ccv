@@ -3968,6 +3968,96 @@ TEST_CASE("generalized batched gemm with batch (2, 4) compare mps")
 	ccv_nnc_tensor_free(bt);
 }
 
+TEST_CASE("mps forward interleaved batched dense gemm generic")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_MPS));
+	const int T = 17;
+	const int G = 3;
+	const int N = 64;
+	const int K = 128;
+	ccv_nnc_tensor_t* const ha = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, T, G, 1, K), 0);
+	ccv_nnc_tensor_t* const hw = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, G, N, K), 0);
+	ccv_nnc_tensor_t* const a_ref = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, G, T, K), 0);
+	ccv_nnc_tensor_t* const w_ref = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, G, N, K), 0);
+	ccv_nnc_tensor_t* const b_ref = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, G, T, N), 0);
+	float* const a_values = (float*)ccmalloc(sizeof(float) * T * G * K);
+	float* const w_values = (float*)ccmalloc(sizeof(float) * G * N * K);
+	int t, g, n, k;
+	for (t = 0; t < T; t++)
+		for (g = 0; g < G; g++)
+			for (k = 0; k < K; k++)
+			{
+				const float value = (float)(((t * 5 + g * 11 + k * 7) % 17) - 8) / 64.0f;
+				a_values[(t * G + g) * K + k] = value;
+				a_ref->data.f32[(g * T + t) * K + k] = value;
+			}
+	for (g = 0; g < G; g++)
+		for (n = 0; n < N; n++)
+			for (k = 0; k < K; k++)
+			{
+				const float value = (float)(((g * 13 + n * 5 + k * 3) % 19) - 9) / 128.0f;
+				w_values[(g * N + n) * K + k] = value;
+				w_ref->data.f32[(g * N + n) * K + k] = value;
+			}
+	ccv_float_to_half_precision(a_values, (uint16_t*)ha->data.f16, T * G * K);
+	ccv_float_to_half_precision(w_values, (uint16_t*)hw->data.f16, G * N * K);
+	ccfree(a_values);
+	ccfree(w_values);
+	ccv_nnc_cmd_exec(CMD_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(1, 2)), ccv_nnc_no_hint, 0, TENSOR_LIST(a_ref, w_ref), TENSOR_LIST(b_ref), 0);
+	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, T, G, 1, K), 0);
+	ccv_nnc_tensor_t* const w = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, G, N, K), 0);
+	ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, T, G, 1, N), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha, hw), TENSOR_LIST(a, w), 0);
+	const uint64_t old_flags = ccv_nnc_flags();
+	ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA);
+	ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA_GEMM);
+	ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS);
+	const int status = ccv_nnc_cmd_exec(CMD_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(1, 2)), ccv_nnc_no_hint, 0, TENSOR_LIST(a, w), TENSOR_LIST(b), 0);
+	if (old_flags & CCV_NNC_DISABLE_MFA)
+		ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA);
+	else
+		ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA);
+	if (old_flags & CCV_NNC_DISABLE_MFA_GEMM)
+		ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA_GEMM);
+	else
+		ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA_GEMM);
+	if (old_flags & CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS)
+		ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS);
+	else
+		ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS);
+	REQUIRE_EQ(status, CCV_NNC_EXEC_SUCCESS, "interleaved batched dense GEMM should execute through generic MFA");
+	ccv_nnc_tensor_t* const hb = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, T, G, 1, N), 0);
+	ccv_nnc_tensor_t* const b_actual = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, T, G, 1, N), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(b), TENSOR_LIST(hb), 0);
+	ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(hb), TENSOR_LIST(b_actual), 0);
+	float max_relative_diff = 0;
+	int max_diff_idx = 0;
+	for (t = 0; t < T; t++)
+		for (g = 0; g < G; g++)
+			for (n = 0; n < N; n++)
+			{
+				const int actual_idx = (t * G + g) * N + n;
+				const int expected_idx = (g * T + t) * N + n;
+				const float actual = b_actual->data.f32[actual_idx];
+				const float expected = b_ref->data.f32[expected_idx];
+				const float denom = ccv_max(ccv_max(fabsf(actual), fabsf(expected)), 1);
+				const float relative_diff = fabsf(actual - expected) / denom;
+				if (relative_diff > max_relative_diff)
+					max_relative_diff = relative_diff, max_diff_idx = actual_idx;
+			}
+	REQUIRE(max_relative_diff <= 2e-3, "interleaved batched dense GEMM should match CPU reference (max relative diff %g at %d)", max_relative_diff, max_diff_idx);
+	ccv_nnc_tensor_free(ha);
+	ccv_nnc_tensor_free(hw);
+	ccv_nnc_tensor_free(a_ref);
+	ccv_nnc_tensor_free(w_ref);
+	ccv_nnc_tensor_free(b_ref);
+	ccv_nnc_tensor_free(a);
+	ccv_nnc_tensor_free(w);
+	ccv_nnc_tensor_free(b);
+	ccv_nnc_tensor_free(hb);
+	ccv_nnc_tensor_free(b_actual);
+}
+
 TEST_CASE("generalized batched gemm with batch (2, 4) and broadcast compare mps")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_MPS));
