@@ -7,6 +7,11 @@ typedef struct {
   uint32_t mrows;
   uint32_t nrows;
   uint32_t ncols;
+  uint32_t batch_dimension;
+  uint32_t batch_stride_weights;
+  uint32_t batch_stride_vector;
+  uint32_t batch_stride_output;
+  uint32_t batch_stride_scale;
   uint8_t fused_bias;
 } ccv_nnc_mfa_scaled_gemv_params_t;
 

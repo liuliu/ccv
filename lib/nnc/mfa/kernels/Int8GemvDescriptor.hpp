@@ -2,6 +2,7 @@
 #define MFA_INT8GEMVDESCRIPTOR_HPP_
 
 #include <simd/simd.h>
+#include <optional>
 #include <utility>
 #include "PipelineValue.hpp"
 #include "DeviceProperties.hpp"
@@ -13,16 +14,17 @@ constexpr uint32_t kInt8GemvSIMDGroupsPerThreadgroup = 4;
 struct Int8GemvKernelDescriptor {
   uint8_t fusedBias;
   uint8_t mrows;
+  uint8_t batched;
   uint32_t format;
   GEMMOperandPrecision memoryPrecision;
-  constexpr bool operator==(const Int8GemvKernelDescriptor& rhs) const { return fusedBias == rhs.fusedBias && mrows == rhs.mrows && format == rhs.format && memoryPrecision == rhs.memoryPrecision; }
+  constexpr bool operator==(const Int8GemvKernelDescriptor& rhs) const { return fusedBias == rhs.fusedBias && mrows == rhs.mrows && batched == rhs.batched && format == rhs.format && memoryPrecision == rhs.memoryPrecision; }
 };
 
 template<>
 struct std::hash<Int8GemvKernelDescriptor>
 {
   std::size_t operator()(const Int8GemvKernelDescriptor& hash) const noexcept {
-    return std::hash<uint64_t>()((uint64_t)hash.fusedBias | ((uint64_t)hash.mrows << 8) | ((uint64_t)hash.memoryPrecision.value << 16) | ((uint64_t)hash.format << 32));
+    return std::hash<uint64_t>()((uint64_t)hash.fusedBias | ((uint64_t)hash.mrows << 8) | ((uint64_t)hash.memoryPrecision.value << 16) | ((uint64_t)hash.batched << 24) | ((uint64_t)hash.format << 32));
   }
 };
 
@@ -40,6 +42,8 @@ struct Int8GemvDescriptor {
   uint32_t nrows;
 
   uint32_t ncols;
+
+  std::optional<simd::uint4> batchStrides;
 
   bool operator==(const Int8GemvDescriptor& rhs) const;
 

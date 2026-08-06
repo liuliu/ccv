@@ -14,6 +14,8 @@ struct Int8GemvKernel {
 
   uint8_t mrows;
 
+  uint8_t batched;
+
   uint32_t format;
 
   GEMMOperandPrecision memoryPrecision;
@@ -23,6 +25,7 @@ struct Int8GemvKernel {
 private:
   std::string createSource() const noexcept;
   std::string createConstants() const noexcept;
+  void specializeBatchedSource(std::string& shader) const noexcept;
 };
 
 #endif

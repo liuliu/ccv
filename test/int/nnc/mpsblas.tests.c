@@ -1316,12 +1316,11 @@ static int _mps_forward_scaled_gemm_validate_batched(const int datatype, const i
 	return 0;
 }
 
-static int _mps_forward_scaled_gemm_validate_interleaved_batched(const int token_dim, double* const max_abs_ref, double* const max_rel_ref)
+static int _mps_forward_scaled_gemm_validate_interleaved_batched(const int token_dim, const int n_dim, double* const max_abs_ref, double* const max_rel_ref)
 {
 	const int datatype = CCV_16F;
 	const int format = CCV_NNC_QX_8I_ROWWISE_IQ2_XXS;
 	const int group_dim = 3;
-	const int n_dim = 64;
 	const int k_dim = 256;
 	const ccv_nnc_tensor_param_t ha_params = CPU_TENSOR_NHWC(16F, token_dim, group_dim, 1, k_dim);
 	const ccv_nnc_tensor_param_t hwd_params = CPU_TENSOR_NHWC(16F, group_dim, n_dim, k_dim);
@@ -2568,8 +2567,23 @@ TEST_CASE("mps forward interleaved batched gemm with row-wise 8i-x weight NAInt8
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_MPS));
 	double max_abs = 0;
 	double max_rel = 0;
-	REQUIRE_EQ(_mps_forward_scaled_gemm_validate_interleaved_batched(17, &max_abs, &max_rel), 0, "multi-token interleaved batched scaled GEMM validation should run");
+	REQUIRE_EQ(_mps_forward_scaled_gemm_validate_interleaved_batched(17, 64, &max_abs, &max_rel), 0, "multi-token interleaved batched scaled GEMM validation should run");
 	REQUIRE(max_rel < 2e-3, "multi-token interleaved batched NAInt8MatMul should match the fp16 reference, max_abs=%g max_rel=%g", max_abs, max_rel);
+}
+
+TEST_CASE("mps forward interleaved batched gemv with row-wise 8i-x weight Int8Gemv")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_MPS));
+	const uint64_t old_flags = ccv_nnc_flags();
+	ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA_GEMM);
+	double max_abs = 0;
+	double max_rel = 0;
+	const int status = _mps_forward_scaled_gemm_validate_interleaved_batched(1, 256, &max_abs, &max_rel);
+	if (!(old_flags & CCV_NNC_DISABLE_MFA_GEMM)) {
+		ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA_GEMM);
+	}
+	REQUIRE_EQ(status, 0, "single-token interleaved batched scaled GEMV validation should run");
+	REQUIRE(max_rel < 2e-3, "single-token interleaved batched Int8Gemv should match the fp16 reference, max_abs=%g max_rel=%g", max_abs, max_rel);
 }
 
 TEST_CASE("mps forward batched gemm with padded A view and broadcast row-wise 8i weight NA")

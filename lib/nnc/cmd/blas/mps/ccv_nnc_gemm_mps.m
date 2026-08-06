@@ -310,6 +310,15 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 			CCV_GET_DATA_TYPE(a->info.datatype) != CCV_QX &&
 			w_qx_8i_rowwise &&
 			CCV_GET_DATA_TYPE(b->info.datatype) != CCV_QX;
+		const uint64_t interleaved_scaled_gemv_w_batch_payload_bits =
+			is_interleaved_batched_scaled_gemm && w_8i_rowwise_x_format ?
+			(uint64_t)w_cols * (((uint64_t)w_rows + ccv_nnc_8i_rowwise_x_group_size(w_8i_rowwise_x_format) - 1) / ccv_nnc_8i_rowwise_x_group_size(w_8i_rowwise_x_format)) * ccv_nnc_8i_rowwise_x_group_bits(w_8i_rowwise_x_format) : 0;
+		const uint64_t interleaved_scaled_gemv_w_batch_stride = w_8i_rowwise_x_format ?
+			(interleaved_scaled_gemv_w_batch_payload_bits + 7) / 8 : interleaved_w_batch_stride;
+		const int is_interleaved_batched_scaled_gemv =
+			is_interleaved_batched_scaled_gemm && adim[0] == 1 &&
+			(!w_8i_rowwise_x_format || (interleaved_scaled_gemv_w_batch_payload_bits % 8) == 0) &&
+			interleaved_scaled_gemv_w_batch_stride <= UINT32_MAX;
 
 		int is_supported_dtype = 0;
 		uint32_t mtl_data_type = UINT32_MAX;
@@ -412,7 +421,7 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 			is_transpose_w &&
 			(w_rows % 4) == 0 &&
 			(!w_8i_rowwise_x_format || ((w_rows % 256) == 0 && (w_cols % 256) == 0)) &&
-			!is_batched &&
+			(!is_batched || is_interleaved_batched_scaled_gemv) &&
 			is_contiguous &&
 			is_same_dtype &&
 			is_supported_dtype &&
@@ -440,6 +449,11 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 				.mrows = (uint32_t)a_rows,
 				.ncols = (uint32_t)w_rows,
 				.nrows = (uint32_t)w_cols,
+				.batch_dimension = is_interleaved_batched_scaled_gemv ? (uint32_t)adim[1] : 0,
+				.batch_stride_weights = is_interleaved_batched_scaled_gemv ? (uint32_t)interleaved_scaled_gemv_w_batch_stride : 0,
+				.batch_stride_vector = is_interleaved_batched_scaled_gemv ? (uint32_t)w_rows : 0,
+				.batch_stride_output = is_interleaved_batched_scaled_gemv ? (uint32_t)b_cols : 0,
+				.batch_stride_scale = is_interleaved_batched_scaled_gemv ? (uint32_t)b_cols : 0,
 				.fused_bias = bias ? 1 : 0,
 			};
 			ccv_nnc_mfa_prepare_scaled_gemv(context, params);

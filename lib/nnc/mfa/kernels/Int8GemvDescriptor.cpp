@@ -11,7 +11,8 @@ bool Int8GemvDescriptor::operator==(const Int8GemvDescriptor& rhs) const {
   format == rhs.format &&
   memoryPrecision == rhs.memoryPrecision &&
   nrows == rhs.nrows &&
-  ncols == rhs.ncols;
+  ncols == rhs.ncols &&
+  simd_all(batchStrides.value_or(simd::uint4(UINT32_MAX)) == rhs.batchStrides.value_or(simd::uint4(UINT32_MAX)));
 }
 
 std::size_t std::hash<Int8GemvDescriptor>::operator()(const Int8GemvDescriptor& hash) const noexcept {
@@ -20,6 +21,12 @@ std::size_t std::hash<Int8GemvDescriptor>::operator()(const Int8GemvDescriptor& 
   seed = combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.memoryPrecision.value, (unsigned int)hash.fusedBias | ((unsigned int)hash.mrows << 8) }));
   seed = combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.format, (unsigned int)hash.nrows }));
   seed = combine_64(seed, hash.ncols);
+  if (hash.batchStrides.has_value()) {
+    seed = combine_32(seed, hash.batchStrides.value()[0]);
+    seed = combine_32(seed, hash.batchStrides.value()[1]);
+    seed = combine_32(seed, hash.batchStrides.value()[2]);
+    seed = combine_32(seed, hash.batchStrides.value()[3]);
+  }
   return seed;
 }
 
@@ -101,6 +108,7 @@ std::pair<Int8GemvKernelDescriptor, PipelineValue<Int8GemvKernel>*> Int8GemvDesc
   Int8GemvKernelDescriptor kernelDesc;
   kernelDesc.fusedBias = fusedBias;
   kernelDesc.mrows = mrows;
+  kernelDesc.batched = batchStrides.has_value();
   kernelDesc.format = format;
   kernelDesc.memoryPrecision = memoryPrecision;
 
@@ -114,6 +122,16 @@ std::pair<Int8GemvKernelDescriptor, PipelineValue<Int8GemvKernel>*> Int8GemvDesc
     constants->setConstantValue(&nrows, MTL::DataTypeUInt, NS::UInteger(1));
     constants->setConstantValue(&groupSize, MTL::DataTypeUInt, NS::UInteger(3));
     constants->setConstantValue(&groupsPerRow, MTL::DataTypeUInt, NS::UInteger(4));
+    if (batchStrides.has_value()) {
+      const uint32_t batchStrideWeights = batchStrides.value()[0];
+      const uint32_t batchStrideVector = batchStrides.value()[1];
+      const uint32_t batchStrideOutput = batchStrides.value()[2];
+      const uint32_t batchStrideScale = batchStrides.value()[3];
+      constants->setConstantValue(&batchStrideWeights, MTL::DataTypeUInt, NS::UInteger(5));
+      constants->setConstantValue(&batchStrideVector, MTL::DataTypeUInt, NS::UInteger(6));
+      constants->setConstantValue(&batchStrideOutput, MTL::DataTypeUInt, NS::UInteger(7));
+      constants->setConstantValue(&batchStrideScale, MTL::DataTypeUInt, NS::UInteger(8));
+    }
 
     NS::String* swiftName = NS::String::string("int8_gemv", NS::UTF8StringEncoding);
     NS::Error* error = nil;

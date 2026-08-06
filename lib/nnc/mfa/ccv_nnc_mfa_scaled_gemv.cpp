@@ -39,6 +39,15 @@ void ccv_nnc_mfa_encode_scaled_gemv(ccv_nnc_mfa_context_t* context, ccv_nnc_mfa_
   CCV_NNC_MFA_PRECONDITION(num_tensors == 3 || num_tensors == 4);
   CCV_NNC_MFA_PRECONDITION((params.fused_bias && num_tensors == 4) || (!params.fused_bias && num_tensors == 3));
   CCV_NNC_MFA_PRECONDITION(params.mrows == 1 || params.mrows == 2 || params.mrows == 3);
+  const uint32_t batchDimension = params.batch_dimension > 1 ? params.batch_dimension : 1;
+  if (batchDimension > 1) {
+    CCV_NNC_MFA_PRECONDITION(params.mrows == 1);
+    CCV_NNC_MFA_PRECONDITION(!params.fused_bias);
+    CCV_NNC_MFA_PRECONDITION(params.batch_stride_weights > 0);
+    CCV_NNC_MFA_PRECONDITION(params.batch_stride_vector > 0);
+    CCV_NNC_MFA_PRECONDITION(params.batch_stride_output > 0);
+    CCV_NNC_MFA_PRECONDITION(params.batch_stride_scale > 0);
+  }
   CCV_NNC_MFA_PRECONDITION(params.format == 0 || ((params.ncols % 256) == 0 && (params.nrows % 256) == 0));
   CCV_NNC_MFA_PRECONDITION(params.format != 0 || (params.ncols % 4) == 0);
 
@@ -49,7 +58,17 @@ void ccv_nnc_mfa_encode_scaled_gemv(ccv_nnc_mfa_context_t* context, ccv_nnc_mfa_
   descriptor.memoryPrecision = io_precision(params.data_type);
   descriptor.nrows = params.nrows;
   descriptor.ncols = params.ncols;
-  const size_t scale_buffer_offset = params.format == 0 ? (((size_t)params.nrows * params.ncols + 127) & ~(size_t)127) : (size_t)descriptor.inputScaleOffset();
+  if (batchDimension > 1) {
+    descriptor.batchStrides = simd::uint4 {
+      params.batch_stride_weights,
+      params.batch_stride_vector,
+      params.batch_stride_output,
+      params.batch_stride_scale,
+    };
+  }
+  const size_t scale_buffer_offset = batchDimension > 1 ?
+    (((size_t)params.batch_stride_weights * batchDimension + 127) & ~(size_t)127) :
+    (params.format == 0 ? (((size_t)params.nrows * params.ncols + 127) & ~(size_t)127) : (size_t)descriptor.inputScaleOffset());
 
   auto pool = NS::AutoreleasePool::alloc()->init();
   auto& shaderCache = context->kernel_cache;
@@ -74,7 +93,7 @@ void ccv_nnc_mfa_encode_scaled_gemv(ccv_nnc_mfa_context_t* context, ccv_nnc_mfa_
     encoder->useResource(tensors[3], MTL::ResourceUsageRead);
   }
 
-  MTL::Size gridSize = MTL::Size((params.nrows + kInt8GemvRowsPerThreadgroup - 1) / kInt8GemvRowsPerThreadgroup, 1, 1);
+  MTL::Size gridSize = MTL::Size((params.nrows + kInt8GemvRowsPerThreadgroup - 1) / kInt8GemvRowsPerThreadgroup, 1, batchDimension);
   CCV_NNC_MFA_PRECONDITION(gridSize.width > 0);
   encoder->dispatchThreadgroups(gridSize, MTL::Size(kInt8GemvSIMDGroupsPerThreadgroup * 32, 1, 1));
   command_batch->finishCommand(encoder);

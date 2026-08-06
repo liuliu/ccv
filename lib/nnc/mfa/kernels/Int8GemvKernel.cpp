@@ -729,10 +729,14 @@ kernel void int8_gemv(
 Int8GemvKernel::Int8GemvKernel(Int8GemvKernelDescriptor descriptor, MTL::Device* const device) {
   fusedBias = descriptor.fusedBias;
   mrows = descriptor.mrows;
+  batched = descriptor.batched;
   format = descriptor.format;
   memoryPrecision = descriptor.memoryPrecision;
+  CCV_NNC_MFA_PRECONDITION(!batched || (mrows == 1 && !fusedBias));
 
   source = createSource();
+  if (batched)
+    specializeBatchedSource(source);
 
   {
     auto string = NS::String::string(source.c_str(), NS::UTF8StringEncoding);
@@ -3495,6 +3499,25 @@ kernel void int8_gemv(
   return shader;
 }
 
+void Int8GemvKernel::specializeBatchedSource(std::string& shader) const noexcept {
+  static constexpr char threadgroupPosition[] = "  uint tgpig [[threadgroup_position_in_grid]],\n";
+  const size_t threadgroupPositionOffset = shader.find(threadgroupPosition);
+  CCV_NNC_MFA_PRECONDITION(threadgroupPositionOffset != std::string::npos);
+  CCV_NNC_MFA_PRECONDITION(shader.find(threadgroupPosition, threadgroupPositionOffset + 1) == std::string::npos);
+  shader.replace(threadgroupPositionOffset, sizeof(threadgroupPosition) - 1, "  uint3 tgpig [[threadgroup_position_in_grid]],\n");
+
+  static constexpr char rowBase[] = "  const uint rb = tgpig * ROWS;\n";
+  const size_t rowBaseOffset = shader.find(rowBase);
+  CCV_NNC_MFA_PRECONDITION(rowBaseOffset != std::string::npos);
+  CCV_NNC_MFA_PRECONDITION(shader.find(rowBase, rowBaseOffset + 1) == std::string::npos);
+  shader.replace(rowBaseOffset, sizeof(rowBase) - 1, R"(  src0 += tgpig.z * weights_batch_stride;
+  src1 += tgpig.z * vector_batch_stride;
+  dst += tgpig.z * output_batch_stride;
+  scales += tgpig.z * scale_batch_stride;
+  const uint rb = tgpig.x * ROWS;
+)");
+}
+
 std::string Int8GemvKernel::createConstants() const noexcept {
   std::string defines = "";
   if (memoryPrecision == GEMMOperandPrecision::FP32) {
@@ -3521,6 +3544,16 @@ std::string Int8GemvKernel::createConstants() const noexcept {
     defines += "constant uint group_size [[function_constant(3)]];";
     defines += "\n";
     defines += "constant uint groups_per_row [[function_constant(4)]];";
+    defines += "\n";
+  }
+  if (batched) {
+    defines += "constant uint weights_batch_stride [[function_constant(5)]];";
+    defines += "\n";
+    defines += "constant uint vector_batch_stride [[function_constant(6)]];";
+    defines += "\n";
+    defines += "constant uint output_batch_stride [[function_constant(7)]];";
+    defines += "\n";
+    defines += "constant uint scale_batch_stride [[function_constant(8)]];";
     defines += "\n";
   }
   return defines;
