@@ -8,6 +8,7 @@ NAScaledDotProductArgPartitionKernel::NAScaledDotProductArgPartitionKernel(NASca
   scoreBlockM = descriptor.scoreBlockM;
   scoreBlockN = descriptor.scoreBlockN;
   scoreSIMDGroups = descriptor.scoreSIMDGroups;
+  loadC = descriptor.loadC;
   scoreThreadgroupSize = MTL::Size(scoreSIMDGroups * 32, 1, 1);
   topKThreadgroupSize = MTL::Size(1, 1, 1);
   topKTileThreadgroupSize = MTL::Size(512, 1, 1);
@@ -31,6 +32,13 @@ std::string NAScaledDotProductArgPartitionKernel::createSource() const noexcept 
   source.SetValue("topk_threads", "512");
   source.SetValue("topk_values_per_thread", "4");
   source.SetValue("topk_sort_values", "2048");
+  source.SetValue("C_FUNCTION_CONSTANT", loadC ? "" : "constant uint C [[function_constant(1)]];\n");
+  source.SetValue("LOAD_C_PARAMETER", loadC ? ", uniform<uint> C" : "");
+  source.SetValue("VISIBLE_COUNT_FOR_TOKEN", loadC ? "visible_count_for_token(t, C)" : "visible_count_for_token(t)");
+  source.SetValue("INDEX_SCORE_C_ARGUMENT", loadC ? "  constant uint& C_buf [[buffer(4)]],\n" : "");
+  source.SetValue("TOPK_SERIAL_C_ARGUMENT", loadC ? "  constant uint& C_buf [[buffer(2)]],\n" : "");
+  source.SetValue("TOPK_C_ARGUMENT", loadC ? "  constant uint& C_buf [[buffer(3)]],\n" : "");
+  source.SetValue("LOAD_C_VALUE", loadC ? "  const uniform<uint> C = make_uniform(C_buf);\n" : "");
   source += R"(
 #include <metal_stdlib>
 #include <metal_tensor>
@@ -41,15 +49,14 @@ using namespace mpp::tensor_ops;
 typedef {{memory_precision}} real;
 
 constant uint T [[function_constant(0)]];
-constant uint C [[function_constant(1)]];
-constant uint H [[function_constant(2)]];
+{{C_FUNCTION_CONSTANT}}constant uint H [[function_constant(2)]];
 constant uint D [[function_constant(3)]];
 constant uint compression_ratio [[function_constant(4)]];
 constant bool is_causal [[function_constant(5)]];
 constant float scale [[function_constant(6)]];
 constant int query_offset [[function_constant(7)]];
 
-inline uint visible_count_for_token(uint t) {
+inline uint visible_count_for_token(uint t{{LOAD_C_PARAMETER}}) {
   if (!is_causal) {
     return C;
   }
@@ -191,11 +198,11 @@ kernel void index_score(
   device real* k [[buffer(1)]],
   device const real* head_w [[buffer(2)]],
   device float* scores [[buffer(3)]],
-  ushort tid [[thread_index_in_threadgroup]],
+{{INDEX_SCORE_C_ARGUMENT}}  ushort tid [[thread_index_in_threadgroup]],
   ushort sgid [[simdgroup_index_in_threadgroup]],
   uint2 tgid [[threadgroup_position_in_grid]]
 ) {
-  const uint c_start = tgid.x * {{score_block_n}};
+{{LOAD_C_VALUE}}  const uint c_start = tgid.x * {{score_block_n}};
   const uint t_start = tgid.y * {{score_block_m}};
   auto Q = tensor<device real, dextents<int32_t, 2>, tensor_inline>(q, dextents<int32_t, 2>(H * D, T));
   auto K = tensor<device real, dextents<int32_t, 2>, tensor_inline>(k, dextents<int32_t, 2>(D, C));
@@ -250,7 +257,7 @@ kernel void index_score(
     const uint t = t_start + row;
     const uint c = c_start + col;
     if (t < T && c < C) {
-      const uint visible = visible_count_for_token(t);
+      const uint visible = {{VISIBLE_COUNT_FOR_TOKEN}};
       float score = -3.402823466e+38f;
       if (c < visible) {
         score = 0;
@@ -267,9 +274,9 @@ kernel void index_score(
 kernel void topk_serial(
   device const float* scores [[buffer(0)]],
   device int* selected [[buffer(1)]],
-  uint t [[thread_position_in_grid]]
+{{TOPK_SERIAL_C_ARGUMENT}}  uint t [[thread_position_in_grid]]
 ) {
-  if (t >= T) {
+{{LOAD_C_VALUE}}  if (t >= T) {
     return;
   }
   float top_scores[{{kth}}];
@@ -279,7 +286,7 @@ kernel void topk_serial(
     top_indices[i] = -1;
     selected[t * {{kth}} + i] = -1;
   }
-  const uint visible = visible_count_for_token(t);
+  const uint visible = {{VISIBLE_COUNT_FOR_TOKEN}};
   uint top_count = 0;
   for (uint c = 0; c < visible; ++c) {
     const float score = scores[t * C + c];
@@ -305,10 +312,10 @@ kernel void topk_tile(
   device const float* scores [[buffer(0)]],
   device float* candidate_scores [[buffer(1)]],
   device int* candidate_indices [[buffer(2)]],
-  uint2 tgid [[threadgroup_position_in_grid]],
+{{TOPK_C_ARGUMENT}}  uint2 tgid [[threadgroup_position_in_grid]],
   uint tid [[thread_index_in_threadgroup]]
 ) {
-  const uint tile = tgid.x;
+{{LOAD_C_VALUE}}  const uint tile = tgid.x;
   const uint t = tgid.y;
   if (t >= T) {
     return;
@@ -316,7 +323,7 @@ kernel void topk_tile(
   threadgroup float tile_scores[{{topk_sort_values}}];
   threadgroup int tile_indices[{{topk_sort_values}}];
   const uint c_start = tile * {{topk_tile_c}};
-  const uint visible = visible_count_for_token(t);
+  const uint visible = {{VISIBLE_COUNT_FOR_TOKEN}};
   for (uint i = tid; i < {{topk_sort_values}}; i += {{topk_threads}}) {
     const uint c = c_start + i;
     if (c < C && c < visible) {
@@ -341,10 +348,10 @@ kernel void topk_merge(
   device const float* candidate_scores [[buffer(0)]],
   device const int* candidate_indices [[buffer(1)]],
   device int* selected [[buffer(2)]],
-  uint t [[threadgroup_position_in_grid]],
+{{TOPK_C_ARGUMENT}}  uint t [[threadgroup_position_in_grid]],
   uint tid [[thread_index_in_threadgroup]]
 ) {
-  if (t >= T) {
+{{LOAD_C_VALUE}}  if (t >= T) {
     return;
   }
   threadgroup float merge_scores[{{topk_sort_values}}];

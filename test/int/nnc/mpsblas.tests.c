@@ -9811,6 +9811,8 @@ TEST_CASE("scaled dot product arg partition with MFA FP16 DS4-native shape")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SCALED_DOT_PRODUCT_ARG_PARTITION_FORWARD, CCV_NNC_BACKEND_MPS));
 	REQUIRE_EQ(_mps_scaled_dot_product_arg_partition_compare(3, 8, 64, 128, 4, 1, 4, 29, CCV_16F, 0, 0), 0, "MFA FP16 selected ids should match CPU reference");
+	REQUIRE_EQ(_mps_scaled_dot_product_arg_partition_compare(3, 1024, 64, 128, 512, 0, 4, 0, CCV_16F, 0, 0), 0, "MFA FP16 selected ids should match CPU reference before runtime C reuse");
+	REQUIRE_EQ(_mps_scaled_dot_product_arg_partition_compare(3, 4096, 64, 128, 512, 0, 4, 0, CCV_16F, 0, 0), 0, "MFA FP16 should reuse its pipeline with runtime C");
 }
 
 TEST_CASE("scaled dot product arg partition with generic MFA FP16 DS4-native shape")

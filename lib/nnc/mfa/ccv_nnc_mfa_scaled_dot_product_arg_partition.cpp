@@ -109,7 +109,7 @@ void ccv_nnc_mfa_encode_scaled_dot_product_arg_partition(ccv_nnc_mfa_context_t* 
   };
 
   auto encodePipeline =
-  [&](auto pipelineValue, const auto& descriptor) {
+  [&](auto pipelineValue, const auto& descriptor, const bool loadC) {
     auto kernel = pipelineValue->kernel;
     auto scorePipeline = pipelineValue->pipeline;
     auto topKSerialPipeline = pipelineValue->second;
@@ -137,6 +137,9 @@ void ccv_nnc_mfa_encode_scaled_dot_product_arg_partition(ccv_nnc_mfa_context_t* 
       scoreEncoder->setBuffer(tensors[1], tensor_offsets[1], 1);
       scoreEncoder->setBuffer(tensors[2], tensor_offsets[2], 2);
       scoreEncoder->setBuffer(scratch, 0, 3);
+      if (loadC) {
+        scoreEncoder->setBytes(&params.C, sizeof(params.C), 4);
+      }
       const uint32_t xBlocks = (params.C + descriptor.scoreBlockN - 1) / descriptor.scoreBlockN;
       const uint32_t yBlocks = (params.T + descriptor.scoreBlockM - 1) / descriptor.scoreBlockM;
       scoreEncoder->dispatchThreadgroups(MTL::Size(xBlocks, yBlocks, 1), kernel->scoreThreadgroupSize);
@@ -150,6 +153,9 @@ void ccv_nnc_mfa_encode_scaled_dot_product_arg_partition(ccv_nnc_mfa_context_t* 
       topKTileEncoder->setBuffer(scratch, 0, 0);
       topKTileEncoder->setBuffer(scratch, candidateScoreOffset, 1);
       topKTileEncoder->setBuffer(scratch, candidateIndexOffset, 2);
+      if (loadC) {
+        topKTileEncoder->setBytes(&params.C, sizeof(params.C), 3);
+      }
       topKTileEncoder->dispatchThreadgroups(MTL::Size(topKTiles, params.T, 1), kernel->topKTileThreadgroupSize);
       command_batch->finishCommand(topKTileEncoder);
 
@@ -160,6 +166,9 @@ void ccv_nnc_mfa_encode_scaled_dot_product_arg_partition(ccv_nnc_mfa_context_t* 
       topKMergeEncoder->setBuffer(scratch, candidateScoreOffset, 0);
       topKMergeEncoder->setBuffer(scratch, candidateIndexOffset, 1);
       topKMergeEncoder->setBuffer(tensors[3], tensor_offsets[3], 2);
+      if (loadC) {
+        topKMergeEncoder->setBytes(&params.C, sizeof(params.C), 3);
+      }
       topKMergeEncoder->dispatchThreadgroups(MTL::Size(params.T, 1, 1), kernel->topKMergeThreadgroupSize);
       command_batch->finishCommand(topKMergeEncoder);
     } else {
@@ -169,6 +178,9 @@ void ccv_nnc_mfa_encode_scaled_dot_product_arg_partition(ccv_nnc_mfa_context_t* 
       topKEncoder->useResource(tensors[3], MTL::ResourceUsageWrite);
       topKEncoder->setBuffer(scratch, 0, 0);
       topKEncoder->setBuffer(tensors[3], tensor_offsets[3], 1);
+      if (loadC) {
+        topKEncoder->setBytes(&params.C, sizeof(params.C), 2);
+      }
       topKEncoder->dispatchThreadgroups(MTL::Size(params.T, 1, 1), kernel->topKThreadgroupSize);
       command_batch->finishCommand(topKEncoder);
     }
@@ -180,14 +192,15 @@ void ccv_nnc_mfa_encode_scaled_dot_product_arg_partition(ccv_nnc_mfa_context_t* 
   if (params.use_neural_accelerators) {
     NAScaledDotProductArgPartitionDescriptor descriptor;
     setDescriptor(descriptor);
+    descriptor.loadC = true;
     auto pipelineValue = shaderCache.findKernel<NAScaledDotProductArgPartitionKernel, NAScaledDotProductArgPartitionDescriptor, NAScaledDotProductArgPartitionKernelDescriptor>(descriptor, context->device.get(), dprops);
     pool->drain();
-    encodePipeline(pipelineValue, descriptor);
+    encodePipeline(pipelineValue, descriptor, descriptor.loadC);
   } else {
     ScaledDotProductArgPartitionDescriptor descriptor;
     setDescriptor(descriptor);
     auto pipelineValue = shaderCache.findKernel<ScaledDotProductArgPartitionKernel, ScaledDotProductArgPartitionDescriptor, ScaledDotProductArgPartitionKernelDescriptor>(descriptor, context->device.get(), dprops);
     pool->drain();
-    encodePipeline(pipelineValue, descriptor);
+    encodePipeline(pipelineValue, descriptor, false);
   }
 }

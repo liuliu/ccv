@@ -25,6 +25,7 @@ struct NAScaledDotProductArgPartitionDescriptor {
   uint16_t scoreBlockM = 16;
   uint16_t scoreBlockN = 32;
   uint16_t scoreSIMDGroups = 4;
+  bool loadC = false;
 
   bool operator==(const NAScaledDotProductArgPartitionDescriptor& rhs) const;
 
