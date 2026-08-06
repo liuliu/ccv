@@ -17,6 +17,7 @@ struct NAInt8MatMulKernel {
   GEMMOperandPrecision ioPrecision;
   bool useBias;
   bool loadM;
+  bool useLeadingDimensions;
   uint16_t activationQuantizeThreads;
   uint32_t groupM;
   uint32_t groupN;

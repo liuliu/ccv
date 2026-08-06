@@ -33,6 +33,7 @@ bool NAInt8MatMulDescriptor::operator==(const NAInt8MatMulDescriptor& rhs) const
     batchDimension == rhs.batchDimension &&
     ioPrecision == rhs.ioPrecision &&
     simd_all(batchStrides.value_or(simd::uint4(UINT32_MAX)) == rhs.batchStrides.value_or(simd::uint4(UINT32_MAX))) &&
+    simd_all(leadingDimensions.value_or(simd::uint2(UINT32_MAX)) == rhs.leadingDimensions.value_or(simd::uint2(UINT32_MAX))) &&
     packedABatchStride == rhs.packedABatchStride &&
     aScaleBatchStride == rhs.aScaleBatchStride &&
     useBias == rhs.useBias &&
@@ -55,6 +56,10 @@ std::size_t std::hash<NAInt8MatMulDescriptor>::operator()(const NAInt8MatMulDesc
     combine_32(seed, hash.batchStrides.value()[2]);
     combine_32(seed, hash.batchStrides.value()[3]);
   }
+  if (hash.leadingDimensions.has_value()) {
+    combine_32(seed, hash.leadingDimensions.value()[0]);
+    combine_32(seed, hash.leadingDimensions.value()[1]);
+  }
   combine_32(seed, hash.packedABatchStride.value_or(0));
   combine_32(seed, hash.aScaleBatchStride.value_or(0));
   combine_32(seed, hash.useBias ? 1 : 0);
@@ -72,7 +77,8 @@ NAInt8MatMulKernelDescriptor NAInt8MatMulDescriptor::kernelDescriptor() const no
       loadM,
       256,
       groupM(matrixDimensions[0]),
-      groupN(matrixDimensions[1]));
+      groupN(matrixDimensions[1]),
+      leadingDimensions.has_value());
 }
 
 std::pair<NAInt8MatMulKernelDescriptor, PipelineValue<NAInt8MatMulKernel> *> NAInt8MatMulDescriptor::findKernel(
@@ -124,6 +130,12 @@ std::pair<NAInt8MatMulKernelDescriptor, PipelineValue<NAInt8MatMulKernel> *> NAI
     constants->setConstantValue(&batchStrideAScale, MTL::DataTypeUInt, NS::UInteger(19));
     constants->setConstantValue(&batchStrideBScale, MTL::DataTypeUInt, NS::UInteger(20));
     constants->setConstantValue(&batchStridePackedA, MTL::DataTypeUInt, NS::UInteger(21));
+    if (this->leadingDimensions.has_value()) {
+      const uint32_t leadingDimensionA = this->leadingDimensions.value()[0];
+      const uint32_t leadingDimensionC = this->leadingDimensions.value()[1];
+      constants->setConstantValue(&leadingDimensionA, MTL::DataTypeUInt, NS::UInteger(22));
+      constants->setConstantValue(&leadingDimensionC, MTL::DataTypeUInt, NS::UInteger(23));
+    }
     NS::Error* error = nil;
     auto functionName = NS::String::string(functionNameString, NS::UTF8StringEncoding);
     auto function = NS::TransferPtr(kernel->library->newFunction(functionName, constants.get(), &error));

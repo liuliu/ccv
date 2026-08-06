@@ -29,6 +29,7 @@ NAInt8MatMulKernel::NAInt8MatMulKernel(
   ioPrecision = descriptor.ioPrecision;
   useBias = descriptor.useBias;
   loadM = descriptor.loadM;
+  useLeadingDimensions = descriptor.useLeadingDimensions;
   activationQuantizeThreads = descriptor.activationQuantizeThreads;
   groupM = descriptor.groupM;
   groupN = descriptor.groupN;
@@ -67,6 +68,14 @@ std::string NAInt8MatMulKernel::createSource() const noexcept {
   source.SetValue("GROUP_M", std::to_string(groupM));
   source.SetValue("GROUP_N", std::to_string(groupN));
   source.SetValue("IO_TYPE", ioPrecision.name());
+  source.SetValue("LEADING_DIMENSION_CONSTANTS", useLeadingDimensions ? "constant uint A_leading_dimension [[function_constant(22)]];\nconstant uint C_leading_dimension [[function_constant(23)]];\n" : "");
+  source.SetValue("QUANTIZATION_BASES", useLeadingDimensions ? "  const uint src_base = row * A_leading_dimension;\n  const uint dst_base = row * K;\n" : "  const uint base = row * K;\n");
+  source.SetValue("QUANTIZATION_VECTOR_BASES", useLeadingDimensions ? "    const uint src_vector_base = src_base / 4;\n    const uint dst_vector_base = dst_base / 4;\n" : "    const uint vector_base = row * vectors_per_row;\n");
+  source.SetValue("QUANTIZATION_SOURCE_VECTOR_BASE", useLeadingDimensions ? "src_vector_base" : "vector_base");
+  source.SetValue("QUANTIZATION_DESTINATION_VECTOR_BASE", useLeadingDimensions ? "dst_vector_base" : "vector_base");
+  source.SetValue("QUANTIZATION_SOURCE_BASE", useLeadingDimensions ? "src_base" : "base");
+  source.SetValue("QUANTIZATION_DESTINATION_BASE", useLeadingDimensions ? "dst_base" : "base");
+  source.SetValue("C_LEADING_DIMENSION", useLeadingDimensions ? "C_leading_dimension" : "N");
   source += R"(
 #include <metal_stdlib>
 #include <metal_tensor>
@@ -123,7 +132,7 @@ constant uint bias_batch_stride [[function_constant(18)]];
 constant uint A_scale_batch_stride [[function_constant(19)]];
 constant uint B_scale_batch_stride [[function_constant(20)]];
 constant uint A_packed_batch_stride [[function_constant(21)]];
-
+{{LEADING_DIMENSION_CONSTANTS}}
 inline float quantize_reduce_max(float value,
                                  threadgroup float* scratch,
                                  ushort sgid,
@@ -191,14 +200,12 @@ kernel void quantize_activation(
     scales += A_scale_batch_stride * tgid.z;
   }
   float local_max = 0.0f;
-  const uint base = row * K;
-  if ((K % 4) == 0) {
+{{QUANTIZATION_BASES}}  if ((K % 4) == 0) {
     const uint vectors_per_row = K / 4;
     device const {{IO_TYPE}}4* src4 = reinterpret_cast<device const {{IO_TYPE}}4*>(src);
     device char4* dst4 = reinterpret_cast<device char4*>(dst);
-    const uint vector_base = row * vectors_per_row;
-    for (uint i = tid; i < vectors_per_row; i += {{QUANT_THREADS}}) {
-      const float4 value = float4(src4[vector_base + i]);
+{{QUANTIZATION_VECTOR_BASES}}    for (uint i = tid; i < vectors_per_row; i += {{QUANT_THREADS}}) {
+      const float4 value = float4(src4[{{QUANTIZATION_SOURCE_VECTOR_BASE}} + i]);
       local_max = max(local_max, max(max(fabs(value[0]), fabs(value[1])), max(fabs(value[2]), fabs(value[3]))));
     }
     const float max_abs = quantize_reduce_max(local_max, scratch, sgid, lane_id);
@@ -207,20 +214,20 @@ kernel void quantize_activation(
     if (tid == 0)
       scales[row] = ({{IO_TYPE}})scale;
     for (uint i = tid; i < vectors_per_row; i += {{QUANT_THREADS}}) {
-      const int4 rounded = int4(rint(float4(src4[vector_base + i]) * inv_scale));
-      dst4[vector_base + i] = char4(clamp(rounded, int4(-127), int4(127)));
+      const int4 rounded = int4(rint(float4(src4[{{QUANTIZATION_SOURCE_VECTOR_BASE}} + i]) * inv_scale));
+      dst4[{{QUANTIZATION_DESTINATION_VECTOR_BASE}} + i] = char4(clamp(rounded, int4(-127), int4(127)));
     }
   } else {
     for (uint i = tid; i < K; i += {{QUANT_THREADS}})
-      local_max = max(local_max, fabs((float)src[base + i]));
+      local_max = max(local_max, fabs((float)src[{{QUANTIZATION_SOURCE_BASE}} + i]));
     const float max_abs = quantize_reduce_max(local_max, scratch, sgid, lane_id);
     const float scale = max_abs > 0.0f ? max_abs / 127.0f : (1.0f / 127.0f);
     const float inv_scale = max_abs > 0.0f ? 127.0f / max_abs : 127.0f;
     if (tid == 0)
       scales[row] = ({{IO_TYPE}})scale;
     for (uint i = tid; i < K; i += {{QUANT_THREADS}}) {
-      const int rounded = (int)rint((float)src[base + i] * inv_scale);
-      dst[base + i] = (int8_t)clamp(rounded, -127, 127);
+      const int rounded = (int)rint((float)src[{{QUANTIZATION_SOURCE_BASE}} + i] * inv_scale);
+      dst[{{QUANTIZATION_DESTINATION_BASE}} + i] = (int8_t)clamp(rounded, -127, 127);
     }
   }
 }
@@ -293,7 +300,7 @@ kernel void int8_matmul(
 
   A_buf += M_group_start * K;
   B_buf += N_group_start * K;
-  C_buf += M_group_start * N;
+  C_buf += M_group_start * {{C_LEADING_DIMENSION}};
   A_scale_buf += M_group_start;
   B_scale_buf += N_group_start;
 )";
@@ -344,7 +351,7 @@ kernel void int8_matmul(
       auto mB = B.slice<dynamic_extent, {{BLOCK_N}}>(K / {{BLOCK_K}} * {{BLOCK_K}}, N_group_offset);
       residual_op.run(mA, mB, cT);
     }
-    auto mC = C_buf + M_group_offset * N + N_block_start;
+    auto mC = C_buf + M_group_offset * {{C_LEADING_DIMENSION}} + N_block_start;
     #pragma clang loop unroll(full)
     for (unsigned short i = 0; i < cT.get_capacity(); ++i) {
       if (cT.is_valid_element(i)) {
@@ -359,7 +366,7 @@ kernel void int8_matmul(
 )";
   }
   source += R"(
-        mC[idx[1] * N + idx[0]] = ({{IO_TYPE}})value;
+        mC[idx[1] * {{C_LEADING_DIMENSION}} + idx[0]] = ({{IO_TYPE}})value;
       }
     }
   } else {
@@ -381,7 +388,7 @@ kernel void int8_matmul(
         cT[i] = 0;
     }
     matmul_op.run(mA, mB, cT);
-    auto mC = C_buf + M_group_offset * N + N_block_start;
+    auto mC = C_buf + M_group_offset * {{C_LEADING_DIMENSION}} + N_block_start;
     #pragma clang loop unroll(full)
     for (unsigned short i = 0; i < cT.get_capacity(); ++i) {
       if (cT.is_valid_element(i)) {
@@ -399,7 +406,7 @@ kernel void int8_matmul(
 )";
   }
   source += R"(
-          mC[row * N + col] = ({{IO_TYPE}})value;
+          mC[row * {{C_LEADING_DIMENSION}} + col] = ({{IO_TYPE}})value;
         }
       }
     }

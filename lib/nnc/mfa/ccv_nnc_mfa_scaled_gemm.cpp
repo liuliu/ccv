@@ -77,6 +77,8 @@ static bool use_na_int8_matmul_small_m(ccv_nnc_mfa_scaled_gemm_params_t params) 
   const uint32_t high_k_max_m = splitK > 1 ? kNAInt8MatMulSmallMReducedMaxM : 8;
   const uint32_t max_m = params.K >= kNAInt8MatMulSmallMHighK ? high_k_max_m : kNAInt8MatMulSmallMLowKMaxM;
   return params.use_neural_accelerators &&
+    !params.leading_dimension_a &&
+    !params.leading_dimension_c &&
     params.M <= max_m &&
     params.batch_dimension == 1 &&
     (params.K % kNAInt8MatMulSmallMPack) == 0 &&
@@ -116,6 +118,15 @@ void ccv_nnc_mfa_encode_scaled_gemm(mfa::context* context, ccv_nnc_mfa_scaled_ge
   matmulDesc.ioPrecision = io_precision(params.data_type);
   matmulDesc.matrixDimensions = simd::uint3 { params.M, params.N, params.K };
   matmulDesc.loadM = params.loadM;
+  if (params.leading_dimension_a || params.leading_dimension_c) {
+    CCV_NNC_MFA_PRECONDITION(params.leading_dimension_a && params.leading_dimension_c);
+    matmulDesc.leadingDimensions = simd::uint2 {
+      params.leading_dimension_a,
+      params.leading_dimension_c,
+    };
+  } else {
+    matmulDesc.leadingDimensions = std::nullopt;
+  }
   if (params.batch_dimension > 1) {
     simd::uint4 batchStrides;
     batchStrides[0] = params.batch_stride_a;

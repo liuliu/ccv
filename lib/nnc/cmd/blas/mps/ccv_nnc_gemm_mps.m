@@ -303,6 +303,11 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 			CCV_GET_DATA_TYPE(a->info.datatype) != CCV_QX &&
 			CCV_GET_DATA_TYPE(w->info.datatype) != CCV_QX &&
 			CCV_GET_DATA_TYPE(b->info.datatype) != CCV_QX;
+		const int is_interleaved_batched_scaled_gemm =
+			is_interleaved_batched_gemm &&
+			CCV_GET_DATA_TYPE(a->info.datatype) != CCV_QX &&
+			w_qx_8i_rowwise &&
+			CCV_GET_DATA_TYPE(b->info.datatype) != CCV_QX;
 
 		int is_supported_dtype = 0;
 		uint32_t mtl_data_type = UINT32_MAX;
@@ -385,7 +390,7 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 			is_contiguous &&
 			is_same_dtype &&
 			is_supported_dtype &&
-			(!is_batched || is_mfa_compatible_batch) &&
+			(!is_batched || is_mfa_compatible_batch || is_interleaved_batched_scaled_gemm) &&
 			(!bias || bias_batch_size == 1 || bias_batch_size == b_batch_size) &&
 			ccv_nnc_mfa_context_supported(context) &&
 			!(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA) &&
@@ -419,7 +424,7 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 		size_t w_data_size = 0;
 		if (CCV_GET_DATA_TYPE(w->info.datatype) == CCV_QX && ((w_qx_subtype >= 0x400 && w_qx_subtype <= 0x800) || w_qx_subtype == CCV_NNC_QX_8I_ROWWISE || w_qx_subtype == CCV_NNC_QX_8I_ROWWISE_X))
 			w_data_size = _ccv_nnc_qx_fp_data_size(w->info);
-		const uint32_t w_8i_rowwise_rows = (uint32_t)((size_t)(w_batch_size > 1 ? b_batch_size : 1) * b_cols);
+		const uint32_t w_8i_rowwise_rows = (uint32_t)((size_t)(w_batch_size > 1 ? (is_interleaved_batched_scaled_gemm ? w_batch_size : b_batch_size) : 1) * b_cols);
 		const uint32_t w_8i_rowwise_cols = (uint32_t)w_rows;
 		const size_t w_8i_rowwise_data_size = w_8i_rowwise_x_format ? _ccv_nnc_8i_rowwise_data_size(w_8i_rowwise_rows, w_8i_rowwise_cols, w_datatype) : 0;
 
@@ -515,16 +520,18 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 		{
 			ccv_nnc_mfa_scaled_gemm_params_t params = {
 				.data_type = mtl_data_type,
-				.M = (uint32_t)b_rows,
+				.M = (uint32_t)(is_interleaved_batched_scaled_gemm ? adim[0] : b_rows),
 				.N = (uint32_t)b_cols,
 				.K = (uint32_t)w_rows,
 				.fused_bias = (bias ? 1 : 0),
 				.use_neural_accelerators = 1,
-				.batch_dimension = b_batch_size,
-				.batch_stride_a = a_batch_size > 1 ? ccv_max(a_batch_stride, b_rows * w_rows) : 0,
-				.batch_stride_b = w_batch_size > 1 ? b_cols * w_rows : 0,
-				.batch_stride_c = b_batch_size > 1 ? ccv_max(b_batch_stride, b_rows * b_cols) : 0,
+				.batch_dimension = is_interleaved_batched_scaled_gemm ? (uint32_t)adim[1] : b_batch_size,
+				.batch_stride_a = is_interleaved_batched_scaled_gemm ? (uint32_t)w_rows : (a_batch_size > 1 ? ccv_max(a_batch_stride, b_rows * w_rows) : 0),
+				.batch_stride_b = is_interleaved_batched_scaled_gemm ? (uint32_t)interleaved_w_batch_stride : (w_batch_size > 1 ? b_cols * w_rows : 0),
+				.batch_stride_c = is_interleaved_batched_scaled_gemm ? (uint32_t)b_cols : (b_batch_size > 1 ? ccv_max(b_batch_stride, b_rows * b_cols) : 0),
 				.batch_stride_d = bias_batch_size > 1 ? b_cols : 0,
+				.leading_dimension_a = is_interleaved_batched_scaled_gemm ? (uint32_t)interleaved_a_leading_dimension : 0,
+				.leading_dimension_c = is_interleaved_batched_scaled_gemm ? (uint32_t)interleaved_c_leading_dimension : 0,
 				.loadM = load_m,
 			};
 			ccv_nnc_mfa_prepare_scaled_gemm(context, params);

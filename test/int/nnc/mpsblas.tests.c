@@ -1316,6 +1316,92 @@ static int _mps_forward_scaled_gemm_validate_batched(const int datatype, const i
 	return 0;
 }
 
+static int _mps_forward_scaled_gemm_validate_interleaved_batched(const int token_dim, double* const max_abs_ref, double* const max_rel_ref)
+{
+	const int datatype = CCV_16F;
+	const int format = CCV_NNC_QX_8I_ROWWISE_IQ2_XXS;
+	const int group_dim = 3;
+	const int n_dim = 64;
+	const int k_dim = 256;
+	const ccv_nnc_tensor_param_t ha_params = CPU_TENSOR_NHWC(16F, token_dim, group_dim, 1, k_dim);
+	const ccv_nnc_tensor_param_t hwd_params = CPU_TENSOR_NHWC(16F, group_dim, n_dim, k_dim);
+	const ccv_nnc_tensor_param_t hb_params = CPU_TENSOR_NHWC(16F, token_dim, group_dim, 1, n_dim);
+	const ccv_nnc_tensor_param_t a_params = GPU_TENSOR_NHWC(000, 16F, token_dim, group_dim, 1, k_dim);
+	const ccv_nnc_tensor_param_t w_params = GPU_TENSOR_NHWC(000, 16F, group_dim, n_dim, k_dim);
+	const ccv_nnc_tensor_param_t b_params = GPU_TENSOR_NHWC(000, 16F, token_dim, group_dim, 1, n_dim);
+	ccv_nnc_tensor_t* const ha = ccv_nnc_tensor_new(0, ha_params, 0);
+	ccv_nnc_tensor_t* const hwd = ccv_nnc_tensor_new(0, hwd_params, 0);
+	ccv_nnc_tensor_t* const hwq = ccv_nnc_tensor_new(0, ccv_nnc_tensor_8i_rowwise_x(hwd_params, format), 0);
+	ccv_nnc_tensor_t* const hb = ccv_nnc_tensor_new(0, hb_params, 0);
+	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, a_params, 0);
+	ccv_nnc_tensor_t* const w = ccv_nnc_tensor_new(0, ccv_nnc_tensor_8i_rowwise_x(w_params, format), 0);
+	ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, b_params, 0);
+	float* const a_values = (float*)ccmalloc(sizeof(float) * token_dim * group_dim * k_dim);
+	float* const w_values = (float*)ccmalloc(sizeof(float) * group_dim * n_dim * k_dim);
+	int t, g, j, k;
+	for (t = 0; t < token_dim; t++)
+		for (g = 0; g < group_dim; g++)
+			for (k = 0; k < k_dim; k++)
+				a_values[((t * group_dim + g) * k_dim) + k] = _mps_forward_scaled_gemm_a_batched_value(g, t, k);
+	for (g = 0; g < group_dim; g++)
+		for (j = 0; j < n_dim; j++)
+			for (k = 0; k < k_dim; k++)
+				w_values[((g * n_dim + j) * k_dim) + k] = _mps_forward_scaled_gemm_w_batched_value(g, j, k);
+	ccv_float_to_half_precision(a_values, (uint16_t*)ha->data.u8, token_dim * group_dim * k_dim);
+	ccv_float_to_half_precision(w_values, (uint16_t*)hwd->data.u8, group_dim * n_dim * k_dim);
+	ccfree(w_values);
+	ccfree(a_values);
+	const size_t qsize = ccv_nnc_quantize_8i_rowwise_x(hwd->data.u8, datatype, CCV_TENSOR_CPU_MEMORY, (size_t)group_dim * n_dim * k_dim, k_dim, format, 0, 0, hwq->data.u8, ccv_nnc_tensor_data_size_without_padding(hwq->info));
+	int status = qsize == ccv_nnc_tensor_data_size_without_padding(hwq->info) ? CCV_NNC_EXEC_SUCCESS : CCV_NNC_EXEC_INVALID;
+	if (status == CCV_NNC_EXEC_SUCCESS)
+		ccv_nnc_dequantize_8i_rowwise_x(hwq->data.u8, datatype, CCV_TENSOR_CPU_MEMORY, qsize, k_dim, format, hwd->data.u8, (size_t)group_dim * n_dim * k_dim);
+	if (status == CCV_NNC_EXEC_SUCCESS)
+		status = ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha, hwq), TENSOR_LIST(a, w), 0);
+	if (status == CCV_NNC_EXEC_SUCCESS)
+		status = ccv_nnc_cmd_exec(CMD_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(1, 2)), ccv_nnc_no_hint, 0, TENSOR_LIST(a, w), TENSOR_LIST(b), 0);
+	if (status == CCV_NNC_EXEC_SUCCESS)
+		status = ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(b), TENSOR_LIST(hb), 0);
+	if (status == CCV_NNC_EXEC_SUCCESS)
+	{
+		float* const a_ref = (float*)ccmalloc(sizeof(float) * token_dim * group_dim * k_dim);
+		float* const w_ref = (float*)ccmalloc(sizeof(float) * group_dim * n_dim * k_dim);
+		float* const actual = (float*)ccmalloc(sizeof(float) * token_dim * group_dim * n_dim);
+		_mps_forward_scaled_gemm_quantized_reference(datatype, ha->data.u8, token_dim * group_dim, k_dim, a_ref);
+		_mps_forward_scaled_gemm_to_float(datatype, hwd->data.u8, group_dim * n_dim * k_dim, w_ref);
+		_mps_forward_scaled_gemm_to_float(datatype, hb->data.u8, token_dim * group_dim * n_dim, actual);
+		double max_abs = 0;
+		double max_rel = 0;
+		for (t = 0; t < token_dim; t++)
+			for (g = 0; g < group_dim; g++)
+				for (j = 0; j < n_dim; j++)
+				{
+					float expected = 0;
+					for (k = 0; k < k_dim; k++)
+						expected += a_ref[((t * group_dim + g) * k_dim) + k] * w_ref[((g * n_dim + j) * k_dim) + k];
+					const float value = actual[((t * group_dim + g) * n_dim) + j];
+					const double diff = fabs((double)value - (double)expected);
+					const double denom = ccv_max(1.0, ccv_max(fabs((double)value), fabs((double)expected)));
+					max_abs = ccv_max(max_abs, diff);
+					max_rel = ccv_max(max_rel, diff / denom);
+				}
+		if (max_abs_ref)
+			*max_abs_ref = max_abs;
+		if (max_rel_ref)
+			*max_rel_ref = max_rel;
+		ccfree(actual);
+		ccfree(w_ref);
+		ccfree(a_ref);
+	}
+	ccv_nnc_tensor_free(b);
+	ccv_nnc_tensor_free(w);
+	ccv_nnc_tensor_free(a);
+	ccv_nnc_tensor_free(hb);
+	ccv_nnc_tensor_free(hwq);
+	ccv_nnc_tensor_free(hwd);
+	ccv_nnc_tensor_free(ha);
+	return status == CCV_NNC_EXEC_SUCCESS ? 0 : -1;
+}
+
 static int _mps_forward_scaled_gemm_compare_dense_format(const int datatype, const int use_bias, const int m_dim, const int n_dim, const int k_dim, const int format, double* const max_abs_ref, double* const max_rel_ref)
 {
 	ccv_nnc_tensor_param_t ga_params = {
@@ -2475,6 +2561,15 @@ TEST_CASE("mps forward batched gemm with batched row-wise 8i weight and bias NA"
 	max_rel = 0;
 	REQUIRE_EQ(_mps_forward_scaled_gemm_validate_batched(CCV_16BF, 1, 1, 1, &max_abs, &max_rel), 0, "batched scaled GEMM validation with batched weight and bias should run");
 	REQUIRE(max_rel < 5e-3, "batched quantized NAInt8MatMul should match batched-weight bf16 reference, max_abs=%g max_rel=%g", max_abs, max_rel);
+}
+
+TEST_CASE("mps forward interleaved batched gemm with row-wise 8i-x weight NAInt8MatMul")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_MPS));
+	double max_abs = 0;
+	double max_rel = 0;
+	REQUIRE_EQ(_mps_forward_scaled_gemm_validate_interleaved_batched(17, &max_abs, &max_rel), 0, "multi-token interleaved batched scaled GEMM validation should run");
+	REQUIRE(max_rel < 2e-3, "multi-token interleaved batched NAInt8MatMul should match the fp16 reference, max_abs=%g max_rel=%g", max_abs, max_rel);
 }
 
 TEST_CASE("mps forward batched gemm with padded A view and broadcast row-wise 8i weight NA")
