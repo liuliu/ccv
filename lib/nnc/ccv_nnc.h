@@ -372,6 +372,7 @@ typedef struct {
 		} unique_consecutive;
 		struct {
 			int bincount; /**< [scatter_add.bincount] Potentially how many unique items there will be, 0 if unknown. */
+			int count_per_output; /**< [scatter_add.count_per_output] Exact number of input rows mapped to each output row, 0 if not guaranteed. */
 		} scatter_add;
 		struct {
 			int axis; /**< [all_to_all.axis] The axis selected to split and concatenate along. */
@@ -5184,11 +5185,12 @@ CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_partition(const int kth, const int a
 CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_unique_consecutive(const int bincount, const char* const name);
 /**
  * A scatter add model.
- * @param name The unique name of the model.
  * @param bincount How many original elements will be, it needs to be non-zero.
+ * @param count_per_output The exact number of input rows mapped to each output row, or 0 if not guaranteed.
+ * @param name The unique name of the model.
  * @return A scatter add model.
  */
-CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_scatter_add(const int bincount, const char* const name);
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_scatter_add(const int bincount, const int count_per_output, const char* const name);
 /**
  * A segmented dense layer model. Note that the input would be activation, indices and count.
  * @param segments / experts How many segments in this layer.

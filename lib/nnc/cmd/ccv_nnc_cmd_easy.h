@@ -312,7 +312,7 @@
 // CCV_NNC_SCALED_DOT_PRODUCT_ATTENTION_BACKWARD
 #define CMD_SCALED_DOT_PRODUCT_ATTENTION_BACKWARD(_scale, _is_causal) ccv_nnc_cmd(CCV_NNC_SCALED_DOT_PRODUCT_ATTENTION_BACKWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.scaled_dot_product_attention={.scale=_scale,.is_causal=_is_causal}}), 0)
 // CCV_NNC_SCATTER_ADD_FORWARD
-#define CMD_SCATTER_ADD_FORWARD(_bincount) ccv_nnc_cmd(CCV_NNC_SCATTER_ADD_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.scatter_add={.bincount=_bincount}}), 0)
+#define CMD_SCATTER_ADD_FORWARD(_bincount, _count_per_output) ccv_nnc_cmd(CCV_NNC_SCATTER_ADD_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.scatter_add={.bincount=_bincount,.count_per_output=_count_per_output}}), 0)
 // CCV_NNC_SCATTER_ADD_BACKWARD
 #define CMD_SCATTER_ADD_BACKWARD(_bincount) ccv_nnc_cmd(CCV_NNC_SCATTER_ADD_BACKWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.scatter_add={.bincount=_bincount}}), 0)
 // CCV_NNC_SEGMENTED_SWIGLU_FORWARD

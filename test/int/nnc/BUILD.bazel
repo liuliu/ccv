@@ -93,6 +93,16 @@ cc_binary(
 )
 
 cc_binary(
+	name = "scatter_add.tests",
+	srcs = ["scatter_add.tests.c"],
+	copts = ccv_default_copts(),
+	deps = [
+		"//test:case",
+		"//lib:nnc"
+	]
+)
+
+cc_binary(
 	name = "dynamic.graph.tests",
 	srcs = ["dynamic.graph.tests.c"],
 	copts = ccv_default_copts(),

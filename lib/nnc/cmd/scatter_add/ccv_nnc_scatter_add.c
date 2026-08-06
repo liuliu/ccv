@@ -42,6 +42,6 @@ REGISTER_COMMAND(CCV_NNC_SCATTER_ADD_BACKWARD)(ccv_nnc_cmd_registry_t* const reg
 }
 
 //@REGISTER_EASY_COMMAND_MACRO(CCV_NNC_SCATTER_ADD_FORWARD)
-#define CMD_SCATTER_ADD_FORWARD(_bincount) ccv_nnc_cmd(CCV_NNC_SCATTER_ADD_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.scatter_add={.bincount=_bincount}}), 0)
+#define CMD_SCATTER_ADD_FORWARD(_bincount, _count_per_output) ccv_nnc_cmd(CCV_NNC_SCATTER_ADD_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.scatter_add={.bincount=_bincount,.count_per_output=_count_per_output}}), 0)
 //@REGISTER_EASY_COMMAND_MACRO(CCV_NNC_SCATTER_ADD_BACKWARD)
 #define CMD_SCATTER_ADD_BACKWARD(_bincount) ccv_nnc_cmd(CCV_NNC_SCATTER_ADD_BACKWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.scatter_add={.bincount=_bincount}}), 0)

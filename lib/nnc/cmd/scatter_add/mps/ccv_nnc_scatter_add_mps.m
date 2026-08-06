@@ -33,7 +33,38 @@ static int _ccv_nnc_scatter_add_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint
 	assert(indices->info.datatype == CCV_32S);
 	assert(a_cols == b_cols);
 	assert(a->info.datatype == b->info.datatype);
+	const int count_per_output = cmd.info.scatter_add.count_per_output;
+	if (count_per_output < 0 || (count_per_output > 0 && (int64_t)b_rows * count_per_output != a_rows))
+		return CCV_NNC_EXEC_INVALID;
 	@autoreleasepool {
+		ccv_nnc_mfa_context_t* const context = ccv_nnc_default_mfa_context();
+		const int mfa_shape = a_rows > 0 && b_rows > 0 && a_nd == 2 && b_nd == 2 && a_cols % 4 == 0 &&
+			(b_rows == 1 || count_per_output > 0);
+		const int mfa_data_type = a->info.datatype == CCV_16F ? 16 :
+			(a->info.datatype == CCV_32F ? 3 : 0);
+		if (mfa_shape && mfa_data_type && CCV_IS_TENSOR_CONTIGUOUS(a) &&
+			CCV_IS_TENSOR_CONTIGUOUS(indices) && CCV_IS_TENSOR_CONTIGUOUS(b) &&
+			ccv_nnc_mfa_context_supported(context) && !(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA))
+		{
+			const ccv_nnc_mfa_scatter_add_params_t params = {
+				.data_type = (uint64_t)mfa_data_type,
+				.input_rows = (uint32_t)a_rows,
+				.output_rows = (uint32_t)b_rows,
+				.columns = (uint32_t)a_cols,
+				.count_per_output = (uint32_t)count_per_output,
+			};
+			ccv_nnc_mfa_prepare_scatter_add(context, params);
+			mtl_command_batch_t* const command_batch = ccv_nnc_stream_context_start_command_batch(stream_context);
+			mtl_buffer_t* tensors[4] = {
+				mpgetbuffer(inputs[0]), mpgetbuffer(inputs[1]), mpgetbuffer(outputs[0]), NULL,
+			};
+			size_t tensor_offsets[3] = {
+				(size_t)mpgetoffset(inputs[0]), (size_t)mpgetoffset(inputs[1]), (size_t)mpgetoffset(outputs[0]),
+			};
+			ccv_nnc_mfa_encode_scatter_add(context, params, command_batch, tensors, tensor_offsets);
+			ccv_nnc_stream_context_finish_command_batch(stream_context, command_batch);
+			return CCV_NNC_EXEC_SUCCESS;
+		}
 		MPSCommandBuffer* command_buffer = ccv_nnc_stream_context_start_mps_command_buffer(stream_context);
 		ccv_nnc_mps_graph_key_t key = ccv_nnc_mps_graph_key_new(cmd, 0, hint, flags, inputs, input_size, outputs, output_size);
 		int idx[2];

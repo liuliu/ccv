@@ -5196,18 +5196,19 @@ typedef struct {
 	ccv_cnnp_model_t super;
 	ccv_nnc_tensor_symbol_t output;
 	int bincount;
+	int count_per_output;
 } ccv_cnnp_model_scatter_add_t;
 
 static void _ccv_cnnp_scatter_add_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
 {
 	ccv_cnnp_model_scatter_add_t* const self = (ccv_cnnp_model_scatter_add_t*)super;
-	PRINT(CCV_CLI_VERBOSE, "[cnnp_scatter_add_build] - bincount: %d\n", self->bincount);
+	PRINT(CCV_CLI_VERBOSE, "[cnnp_scatter_add_build] - bincount: %d, count_per_output: %d\n", self->bincount, self->count_per_output);
 	ccv_nnc_tensor_param_t params = ccv_nnc_tensor_symbol_params(graph, inputs[0]);
 	assert(output_size == 1);
 	assert(self->bincount > 0);
 	params.dim[0] = self->bincount;
 	outputs[0] = ccv_nnc_tensor_symbol_new(graph, params, 0);
-	ccv_nnc_graph_exec_symbol_new(graph, CMD_SCATTER_ADD_FORWARD(self->bincount), inputs, input_size, outputs, output_size, "scatter_add");
+	ccv_nnc_graph_exec_symbol_new(graph, CMD_SCATTER_ADD_FORWARD(self->bincount, self->count_per_output), inputs, input_size, outputs, output_size, "scatter_add");
 }
 
 static ccv_cnnp_model_t* _ccv_cnnp_scatter_add_copy(const ccv_cnnp_model_t* const self, void* const context);
@@ -5217,15 +5218,17 @@ static const ccv_cnnp_model_vtab_t ccv_cnnp_scatter_add_isa = {
 	.copy = _ccv_cnnp_scatter_add_copy,
 };
 
-ccv_cnnp_model_t* ccv_cnnp_scatter_add(const int bincount, const char* const name)
+ccv_cnnp_model_t* ccv_cnnp_scatter_add(const int bincount, const int count_per_output, const char* const name)
 {
 	assert(bincount > 0);
+	assert(count_per_output >= 0);
 	ccv_cnnp_model_scatter_add_t* const model_scatter_add = (ccv_cnnp_model_scatter_add_t*)cccalloc(1, sizeof(ccv_cnnp_model_scatter_add_t));
 	model_scatter_add->super.isa = &ccv_cnnp_scatter_add_isa;
 	model_scatter_add->super.input_size = 0;
 	model_scatter_add->super.outputs = &model_scatter_add->output;
 	model_scatter_add->super.output_size = 1;
 	model_scatter_add->bincount = bincount;
+	model_scatter_add->count_per_output = count_per_output;
 	ccv_cnnp_model_copy_name(&model_scatter_add->super, name);
 	return (ccv_cnnp_model_t*)model_scatter_add;
 }
@@ -5233,7 +5236,7 @@ ccv_cnnp_model_t* ccv_cnnp_scatter_add(const int bincount, const char* const nam
 static ccv_cnnp_model_t* _ccv_cnnp_scatter_add_copy(const ccv_cnnp_model_t* const super, void* const context)
 {
 	ccv_cnnp_model_scatter_add_t* const self = (ccv_cnnp_model_scatter_add_t*)super;
-	return ccv_cnnp_scatter_add(self->bincount, self->super.name);
+	return ccv_cnnp_scatter_add(self->bincount, self->count_per_output, self->super.name);
 }
 
 // MARK - Segmented Dense Layer
