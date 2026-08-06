@@ -9194,7 +9194,7 @@ TEST_CASE("scaled dot product arg partition cpu reference")
 	memcpy(k->data.f32, k_data, sizeof(k_data));
 	head_w->data.f32[0] = 1;
 	head_w->data.f32[1] = -2;
-	ccv_nnc_cmd_exec(CMD_SCALED_DOT_PRODUCT_ARG_PARTITION_FORWARD(3, 1, 0, 4), ccv_nnc_no_hint, 0, TENSOR_LIST(q, k, head_w), TENSOR_LIST(selected), 0);
+	ccv_nnc_cmd_exec(CMD_SCALED_DOT_PRODUCT_ARG_PARTITION_FORWARD(3, 1, 0, 4, 0), ccv_nnc_no_hint, 0, TENSOR_LIST(q, k, head_w), TENSOR_LIST(selected), 0);
 	const int expected[] = { 1, 3, 0 };
 	REQUIRE_ARRAY_EQ(int, selected->data.i32, expected, 3, "arg partition should apply relu before head weights and sort descending");
 	ccv_nnc_tensor_free(q);
@@ -9215,7 +9215,7 @@ TEST_CASE("scaled dot product arg partition causal compression cpu reference")
 	k->data.f32[0] = 1;
 	k->data.f32[1] = 2;
 	k->data.f32[2] = 3;
-	ccv_nnc_cmd_exec(CMD_SCALED_DOT_PRODUCT_ARG_PARTITION_FORWARD(3, 1, 1, 4), ccv_nnc_no_hint, 0, TENSOR_LIST(q, k, head_w), TENSOR_LIST(selected), 0);
+	ccv_nnc_cmd_exec(CMD_SCALED_DOT_PRODUCT_ARG_PARTITION_FORWARD(3, 1, 1, 4, 7), ccv_nnc_no_hint, 0, TENSOR_LIST(q, k, head_w), TENSOR_LIST(selected), 0);
 	const int expected[] = {
 		0, 1, -1,
 		0, 1, -1,
@@ -9230,13 +9230,38 @@ TEST_CASE("scaled dot product arg partition causal compression cpu reference")
 	ccv_nnc_tensor_free(selected);
 }
 
+TEST_CASE("scaled dot product arg partition uses the absolute query offset for causal compression")
+{
+	ccv_nnc_tensor_t* const q = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 4, 1, 1), 0);
+	ccv_nnc_tensor_t* const k = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 40, 1), 0);
+	ccv_nnc_tensor_t* const head_w = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 4, 1), 0);
+	ccv_nnc_tensor_t* const selected = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, 4, 4), 0);
+	int i;
+	for (i = 0; i < 4; i++)
+		q->data.f32[i] = head_w->data.f32[i] = 1;
+	for (i = 0; i < 40; i++)
+		k->data.f32[i] = i + 1;
+	ccv_nnc_cmd_exec(CMD_SCALED_DOT_PRODUCT_ARG_PARTITION_FORWARD(4, 1, 1, 4, 159), ccv_nnc_no_hint, 0, TENSOR_LIST(q, k, head_w), TENSOR_LIST(selected), 0);
+	const int expected[] = {
+		39, 38, 37, 36,
+		39, 38, 37, 36,
+		39, 38, 37, 36,
+		39, 38, 37, 36,
+	};
+	REQUIRE_ARRAY_EQ(int, selected->data.i32, expected, 16, "all four queries should see all 40 completed compressed rows");
+	ccv_nnc_tensor_free(q);
+	ccv_nnc_tensor_free(k);
+	ccv_nnc_tensor_free(head_w);
+	ccv_nnc_tensor_free(selected);
+}
+
 TEST_CASE("scaled dot product arg partition cpu reference pads an empty key set")
 {
 	ccv_nnc_tensor_t* const q = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 3, 2, 4), 0);
 	ccv_nnc_tensor_t* const k = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 0, 4), 0);
 	ccv_nnc_tensor_t* const head_w = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 3, 2), 0);
 	ccv_nnc_tensor_t* const selected = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, 3, 5), 0);
-	REQUIRE_EQ(CCV_NNC_EXEC_SUCCESS, ccv_nnc_cmd_exec(CMD_SCALED_DOT_PRODUCT_ARG_PARTITION_FORWARD(5, 1, 1, 4), ccv_nnc_no_hint, 0, TENSOR_LIST(q, k, head_w), TENSOR_LIST(selected), 0), "arg partition should accept an empty key set");
+	REQUIRE_EQ(CCV_NNC_EXEC_SUCCESS, ccv_nnc_cmd_exec(CMD_SCALED_DOT_PRODUCT_ARG_PARTITION_FORWARD(5, 1, 1, 4, 0), ccv_nnc_no_hint, 0, TENSOR_LIST(q, k, head_w), TENSOR_LIST(selected), 0), "arg partition should accept an empty key set");
 	const int expected[] = {
 		-1, -1, -1, -1, -1,
 		-1, -1, -1, -1, -1,
@@ -9296,7 +9321,7 @@ static void _mps_scaled_dot_product_arg_partition_to_float(const int datatype, c
 		assert(0);
 }
 
-static int _mps_scaled_dot_product_arg_partition_compare(const int T, const int C, const int H, const int D, const int kth, const int is_causal, const int compression_ratio, const int datatype, const int force_graph, const int force_generic_mfa)
+static int _mps_scaled_dot_product_arg_partition_compare(const int T, const int C, const int H, const int D, const int kth, const int is_causal, const int compression_ratio, const int query_offset, const int datatype, const int force_graph, const int force_generic_mfa)
 {
 	ccv_nnc_tensor_t* const hq = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, T, H, D), 0);
 	ccv_nnc_tensor_t* const hk = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, C, D), 0);
@@ -9319,7 +9344,7 @@ static int _mps_scaled_dot_product_arg_partition_compare(const int T, const int 
 	_mps_scaled_dot_product_arg_partition_to_float(datatype, hq_input, hq->data.f32, T * H * D);
 	_mps_scaled_dot_product_arg_partition_to_float(datatype, hk_input, hk->data.f32, C * D);
 	_mps_scaled_dot_product_arg_partition_to_float(datatype, hhead_w_input, hhead_w->data.f32, T * H);
-	ccv_nnc_cmd_t cmd = CMD_SCALED_DOT_PRODUCT_ARG_PARTITION_FORWARD(kth, 1, is_causal, compression_ratio);
+	ccv_nnc_cmd_t cmd = CMD_SCALED_DOT_PRODUCT_ARG_PARTITION_FORWARD(kth, 1, is_causal, compression_ratio, query_offset);
 	ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(hq, hk, hhead_w), TENSOR_LIST(href), 0);
 	ccv_nnc_tensor_param_t q_params = GPU_TENSOR_NHWC(000, 32F, T, H, D);
 	q_params.datatype = datatype;
@@ -9377,43 +9402,51 @@ static int _mps_scaled_dot_product_arg_partition_compare(const int T, const int 
 TEST_CASE("scaled dot product arg partition with MPSGraph")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SCALED_DOT_PRODUCT_ARG_PARTITION_FORWARD, CCV_NNC_BACKEND_MPS));
-	REQUIRE_EQ(_mps_scaled_dot_product_arg_partition_compare(5, 6, 2, 4, 8, 1, 4, CCV_32F, 1, 0), 0, "MPSGraph selected ids should match CPU reference");
-	REQUIRE_EQ(_mps_scaled_dot_product_arg_partition_compare(10, 2, 2, 4, 3, 1, 4, CCV_32F, 1, 0), 0, "MPSGraph selected ids should pad zero-visible causal compression rows");
-	REQUIRE_EQ(_mps_scaled_dot_product_arg_partition_compare(5, 0, 2, 4, 3, 1, 4, CCV_32F, 1, 0), 0, "MPSGraph selected ids should pad an empty compressed key set");
+	REQUIRE_EQ(_mps_scaled_dot_product_arg_partition_compare(5, 6, 2, 4, 8, 1, 4, 19, CCV_32F, 1, 0), 0, "MPSGraph selected ids should match CPU reference");
+	REQUIRE_EQ(_mps_scaled_dot_product_arg_partition_compare(10, 2, 2, 4, 3, 1, 4, -2, CCV_32F, 1, 0), 0, "MPSGraph selected ids should pad zero-visible causal compression rows");
+	REQUIRE_EQ(_mps_scaled_dot_product_arg_partition_compare(5, 0, 2, 4, 3, 1, 4, 0, CCV_32F, 1, 0), 0, "MPSGraph selected ids should pad an empty compressed key set");
+	REQUIRE_EQ(_mps_scaled_dot_product_arg_partition_compare(4, 40, 2, 4, 4, 1, 4, 0, CCV_32F, 1, 0), 0, "MPSGraph should respect a zero query offset");
+	REQUIRE_EQ(_mps_scaled_dot_product_arg_partition_compare(4, 40, 2, 4, 4, 1, 4, 159, CCV_32F, 1, 0), 0, "MPSGraph should respect an explicit absolute query offset");
 }
 
 TEST_CASE("scaled dot product arg partition enumeration with MFA")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SCALED_DOT_PRODUCT_ARG_PARTITION_FORWARD, CCV_NNC_BACKEND_MPS));
-	REQUIRE_EQ(_mps_scaled_dot_product_arg_partition_compare(5, 6, 2, 4, 8, 1, 4, CCV_32F, 0, 1), 0, "MFA should enumerate every visible compressed row");
-	REQUIRE_EQ(_mps_scaled_dot_product_arg_partition_compare(3, 2, 2, 4, 4, 0, 4, CCV_32F, 0, 1), 0, "MFA should enumerate non-causal compressed rows");
-	REQUIRE_EQ(_mps_scaled_dot_product_arg_partition_compare(5, 0, 2, 4, 3, 1, 4, CCV_32F, 0, 1), 0, "MFA should pad an empty compressed key set");
+	REQUIRE_EQ(_mps_scaled_dot_product_arg_partition_compare(5, 6, 2, 4, 8, 1, 4, 19, CCV_32F, 0, 1), 0, "MFA should enumerate every visible compressed row");
+	REQUIRE_EQ(_mps_scaled_dot_product_arg_partition_compare(3, 2, 2, 4, 4, 0, 4, 0, CCV_32F, 0, 1), 0, "MFA should enumerate non-causal compressed rows");
+	REQUIRE_EQ(_mps_scaled_dot_product_arg_partition_compare(5, 0, 2, 4, 3, 1, 4, 0, CCV_32F, 0, 1), 0, "MFA should pad an empty compressed key set");
+	REQUIRE_EQ(_mps_scaled_dot_product_arg_partition_compare(4, 3, 2, 4, 4, 1, 4, 0, CCV_32F, 0, 1), 0, "MFA enumeration should respect a zero query offset");
+	REQUIRE_EQ(_mps_scaled_dot_product_arg_partition_compare(4, 3, 2, 4, 4, 1, 4, 159, CCV_32F, 0, 1), 0, "MFA enumeration should respect an explicit absolute query offset");
 }
 
 TEST_CASE("scaled dot product arg partition with MFA DS4-native shape")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SCALED_DOT_PRODUCT_ARG_PARTITION_FORWARD, CCV_NNC_BACKEND_MPS));
-	REQUIRE_EQ(_mps_scaled_dot_product_arg_partition_compare(3, 8, 64, 128, 4, 1, 4, CCV_32F, 0, 0), 0, "MFA selected ids should match CPU reference");
-	REQUIRE_EQ(_mps_scaled_dot_product_arg_partition_compare(160, 32, 64, 128, 8, 1, 4, CCV_32F, 0, 0), 0, "MFA selected ids should pad zero-visible causal compression rows");
+	REQUIRE_EQ(_mps_scaled_dot_product_arg_partition_compare(3, 8, 64, 128, 4, 1, 4, 29, CCV_32F, 0, 0), 0, "MFA selected ids should match CPU reference");
+	REQUIRE_EQ(_mps_scaled_dot_product_arg_partition_compare(160, 32, 64, 128, 8, 1, 4, -32, CCV_32F, 0, 0), 0, "MFA selected ids should pad zero-visible causal compression rows");
+	REQUIRE_EQ(_mps_scaled_dot_product_arg_partition_compare(4, 40, 64, 128, 4, 1, 4, 0, CCV_32F, 0, 0), 0, "MFA should respect a zero query offset");
+	REQUIRE_EQ(_mps_scaled_dot_product_arg_partition_compare(4, 40, 64, 128, 4, 1, 4, 159, CCV_32F, 0, 0), 0, "MFA should respect an explicit absolute query offset");
 }
 
 TEST_CASE("scaled dot product arg partition with MFA FP16 DS4-native shape")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SCALED_DOT_PRODUCT_ARG_PARTITION_FORWARD, CCV_NNC_BACKEND_MPS));
-	REQUIRE_EQ(_mps_scaled_dot_product_arg_partition_compare(3, 8, 64, 128, 4, 1, 4, CCV_16F, 0, 0), 0, "MFA FP16 selected ids should match CPU reference");
+	REQUIRE_EQ(_mps_scaled_dot_product_arg_partition_compare(3, 8, 64, 128, 4, 1, 4, 29, CCV_16F, 0, 0), 0, "MFA FP16 selected ids should match CPU reference");
 }
 
 TEST_CASE("scaled dot product arg partition with generic MFA FP16 DS4-native shape")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SCALED_DOT_PRODUCT_ARG_PARTITION_FORWARD, CCV_NNC_BACKEND_MPS));
-	REQUIRE_EQ(_mps_scaled_dot_product_arg_partition_compare(3, 8, 64, 128, 4, 1, 4, CCV_16F, 0, 1), 0, "generic MFA FP16 selected ids should match CPU reference");
-	REQUIRE_EQ(_mps_scaled_dot_product_arg_partition_compare(160, 32, 64, 128, 8, 1, 4, CCV_16F, 0, 1), 0, "generic MFA FP16 selected ids should pad zero-visible causal compression rows");
+	REQUIRE_EQ(_mps_scaled_dot_product_arg_partition_compare(3, 8, 64, 128, 4, 1, 4, 29, CCV_16F, 0, 1), 0, "generic MFA FP16 selected ids should match CPU reference");
+	REQUIRE_EQ(_mps_scaled_dot_product_arg_partition_compare(160, 32, 64, 128, 8, 1, 4, -32, CCV_16F, 0, 1), 0, "generic MFA FP16 selected ids should pad zero-visible causal compression rows");
+	REQUIRE_EQ(_mps_scaled_dot_product_arg_partition_compare(4, 40, 64, 128, 4, 1, 4, 0, CCV_16F, 0, 1), 0, "generic MFA should respect a zero query offset");
+	REQUIRE_EQ(_mps_scaled_dot_product_arg_partition_compare(4, 40, 64, 128, 4, 1, 4, 159, CCV_16F, 0, 1), 0, "generic MFA should respect an explicit absolute query offset");
 }
 
 TEST_CASE("scaled dot product arg partition with MFA BF16 DS4-native shape")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SCALED_DOT_PRODUCT_ARG_PARTITION_FORWARD, CCV_NNC_BACKEND_MPS));
-	const int status = _mps_scaled_dot_product_arg_partition_compare(3, 8, 64, 128, 4, 1, 4, CCV_16BF, 0, 0);
+	const int status = _mps_scaled_dot_product_arg_partition_compare(3, 8, 64, 128, 4, 1, 4, 29, CCV_16BF, 0, 0);
 	GUARD_ELSE_RETURN(status != -1);
 	REQUIRE_EQ(status, 0, "MFA BF16 selected ids should match CPU reference");
 }

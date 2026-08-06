@@ -34,6 +34,7 @@ struct Config {
   int kth = 512;
   int is_causal = 1;
   int compression_ratio = 4;
+  int query_offset = 32256;
   int warmup = 2;
   int timed = 5;
   int scan_score_tiles = 0;
@@ -321,6 +322,7 @@ StageProfile benchmark_mfa_stages(
   descriptor.D = (uint32_t)config.D;
   descriptor.kth = (uint32_t)config.kth;
   descriptor.compressionRatio = (uint32_t)config.compression_ratio;
+  descriptor.queryOffset = config.query_offset;
   descriptor.scale = scale;
   descriptor.isCausal = config.is_causal != 0;
   DeviceProperties dprops = DeviceProperties();
@@ -392,6 +394,7 @@ Stats benchmark_score_stage_variant(
   descriptor.D = (uint32_t)config.D;
   descriptor.kth = (uint32_t)config.kth;
   descriptor.compressionRatio = (uint32_t)config.compression_ratio;
+  descriptor.queryOffset = config.query_offset;
   descriptor.scale = scale;
   descriptor.isCausal = config.is_causal != 0;
   descriptor.scoreBlockM = score_block_m;
@@ -430,7 +433,7 @@ bool parse_positive(const char* const text, int* const value)
 
 void print_usage(const char* const argv0)
 {
-  std::cerr << "usage: " << argv0 << " [T C H D kth causal compression_ratio warmup timed [scan_score_tiles]]\n";
+  std::cerr << "usage: " << argv0 << " [T C H D kth causal compression_ratio query_offset warmup timed [scan_score_tiles]]\n";
 }
 
 } // namespace
@@ -439,12 +442,12 @@ int main(int argc, char** argv)
 {
   ccv_nnc_init();
   Config config;
-  if (argc > 1 && argc != 10 && argc != 11)
+  if (argc > 1 && argc != 11 && argc != 12)
   {
     print_usage(argv[0]);
     return 1;
   }
-  if (argc >= 10)
+  if (argc >= 11)
   {
     if (!parse_positive(argv[1], &config.T) ||
         !parse_positive(argv[2], &config.C) ||
@@ -452,15 +455,21 @@ int main(int argc, char** argv)
         !parse_positive(argv[4], &config.D) ||
         !parse_positive(argv[5], &config.kth) ||
         !parse_positive(argv[7], &config.compression_ratio) ||
-        !parse_positive(argv[8], &config.warmup) ||
-        !parse_positive(argv[9], &config.timed))
+        !parse_positive(argv[9], &config.warmup) ||
+        !parse_positive(argv[10], &config.timed))
     {
       print_usage(argv[0]);
       return 1;
     }
     config.is_causal = std::atoi(argv[6]) != 0;
-    if (argc == 11)
-      config.scan_score_tiles = std::atoi(argv[10]) != 0;
+    config.query_offset = std::atoi(argv[8]);
+    if (config.query_offset < 0)
+    {
+      print_usage(argv[0]);
+      return 1;
+    }
+    if (argc == 12)
+      config.scan_score_tiles = std::atoi(argv[11]) != 0;
   }
   if (config.H != 64 || config.D != 128 || config.kth > 1024)
   {
@@ -520,7 +529,7 @@ int main(int argc, char** argv)
   ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(hq, hk, hhead_w, hsdpa_q, hsdpa_k, hsdpa_v), TENSOR_LIST(q, k, head_w, sdpa_q, sdpa_k, sdpa_v), stream);
   ccv_nnc_stream_context_wait(stream);
 
-  ccv_nnc_cmd_t sdpap_cmd = CMD_SCALED_DOT_PRODUCT_ARG_PARTITION_FORWARD(config.kth, sdpap_scale, config.is_causal, config.compression_ratio);
+  ccv_nnc_cmd_t sdpap_cmd = CMD_SCALED_DOT_PRODUCT_ARG_PARTITION_FORWARD(config.kth, sdpap_scale, config.is_causal, config.compression_ratio, config.query_offset);
   ccv_nnc_cmd_t sdpa_cmd = CMD_SCALED_DOT_PRODUCT_ATTENTION_FORWARD(sdpa_scale, config.is_causal);
   sdpa_cmd.info.scaled_dot_product_attention.flags = CCV_NNC_GEMM_16F;
 
@@ -532,6 +541,7 @@ int main(int argc, char** argv)
             << " kth=" << config.kth
             << " causal=" << config.is_causal
             << " compression_ratio=" << config.compression_ratio
+            << " query_offset=" << config.query_offset
             << " warmup=" << config.warmup
             << " timed=" << config.timed
             << " dtype=fp16\n";

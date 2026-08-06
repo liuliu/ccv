@@ -14,6 +14,7 @@ bool NAScaledDotProductArgPartitionDescriptor::operator==(const NAScaledDotProdu
   D == rhs.D &&
   kth == rhs.kth &&
   compressionRatio == rhs.compressionRatio &&
+  queryOffset == rhs.queryOffset &&
   scale == rhs.scale &&
   isCausal == rhs.isCausal &&
   scoreBlockM == rhs.scoreBlockM &&
@@ -28,6 +29,7 @@ std::size_t std::hash<NAScaledDotProductArgPartitionDescriptor>::operator()(cons
   combine_64(seed, pack_64(simd::uint2 { hash.C, hash.H }));
   combine_64(seed, pack_64(simd::uint2 { hash.D, hash.kth }));
   combine_64(seed, pack_64(simd::uint2 { hash.compressionRatio, hash.isCausal ? 1u : 0u }));
+  combine_32(seed, static_cast<uint32_t>(hash.queryOffset));
   combine_32(seed, pack_32(simd::ushort2 { hash.scoreBlockM, hash.scoreBlockN }));
   combine_32(seed, pack_32(simd::ushort2 { hash.scoreSIMDGroups, 0 }));
   combine_32(seed, reinterpret_cast<const uint32_t&>(hash.scale));
@@ -64,6 +66,7 @@ std::pair<NAScaledDotProductArgPartitionKernelDescriptor, PipelineValue<NAScaled
     constants->setConstantValue(&compressionRatio, MTL::DataTypeUInt, NS::UInteger(4));
     constants->setConstantValue(&isCausal, MTL::DataTypeBool, NS::UInteger(5));
     constants->setConstantValue(&scale, MTL::DataTypeFloat, NS::UInteger(6));
+    constants->setConstantValue(&queryOffset, MTL::DataTypeInt, NS::UInteger(7));
     NS::String* swiftName = NS::String::string(name, NS::UTF8StringEncoding);
     NS::Error* error = nil;
     auto function = NS::TransferPtr(library->newFunction(swiftName, constants.get(), &error));

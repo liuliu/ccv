@@ -50,6 +50,7 @@ void ccv_nnc_mfa_encode_scaled_dot_product_arg_partition_enumerate(ccv_nnc_mfa_c
   descriptor.C = params.C;
   descriptor.kth = params.kth;
   descriptor.compressionRatio = params.compression_ratio;
+  descriptor.queryOffset = params.query_offset;
   descriptor.isCausal = params.is_causal != 0;
 
   auto pool = NS::AutoreleasePool::alloc()->init();
@@ -101,6 +102,7 @@ void ccv_nnc_mfa_encode_scaled_dot_product_arg_partition(ccv_nnc_mfa_context_t* 
     descriptor.D = params.D;
     descriptor.kth = params.kth;
     descriptor.compressionRatio = params.compression_ratio;
+    descriptor.queryOffset = params.query_offset;
     descriptor.scale = params.scale;
     descriptor.isCausal = params.is_causal != 0;
     _ccv_nnc_mfa_sdpap_score_tile(params, &descriptor.scoreBlockM, &descriptor.scoreBlockN, &descriptor.scoreSIMDGroups);

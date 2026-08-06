@@ -19,6 +19,7 @@ struct NAScaledDotProductArgPartitionDescriptor {
   uint32_t D = 0;
   uint32_t kth = 0;
   uint32_t compressionRatio = 1;
+  int32_t queryOffset = 0;
   float scale = 1;
   bool isCausal = false;
   uint16_t scoreBlockM = 16;

@@ -11,12 +11,11 @@
 #include <dispatch/dispatch.h>
 #endif
 
-static inline int _ccv_nnc_sdpap_visible_count(const int T, const int C, const int t, const int is_causal, const int compression_ratio)
+static inline int _ccv_nnc_sdpap_visible_count(const int C, const int t, const int is_causal, const int compression_ratio, const int query_offset)
 {
 	if (!is_causal)
 		return C;
-	const int q_start = C * compression_ratio - T;
-	int visible = (q_start + t + 1) / compression_ratio;
+	int visible = (query_offset + t + 1) / compression_ratio;
 	if (visible < 0)
 		visible = 0;
 	else if (visible > C)
@@ -75,6 +74,7 @@ static int _ccv_nnc_scaled_dot_product_arg_partition_forw(const ccv_nnc_cmd_t cm
 	const float scale = cmd.info.scaled_dot_product_arg_partition.scale;
 	const int is_causal = cmd.info.scaled_dot_product_arg_partition.is_causal;
 	const int compression_ratio = cmd.info.scaled_dot_product_arg_partition.compression_ratio;
+	const int query_offset = cmd.info.scaled_dot_product_arg_partition.query_offset;
 	assert(C == 0 || k_nd == 2);
 	assert(C == 0 || k->info.dim[1] == D);
 	assert(head_w->info.dim[0] == T);
@@ -89,7 +89,7 @@ static int _ccv_nnc_scaled_dot_product_arg_partition_forw(const ccv_nnc_cmd_t cm
 		for (t = 0; t < T; t++)
 		{
 			int* const selected_t = selected->data.i32 + t * kth;
-			const int visible = _ccv_nnc_sdpap_visible_count(T, C, t, is_causal, compression_ratio);
+			const int visible = _ccv_nnc_sdpap_visible_count(C, t, is_causal, compression_ratio, query_offset);
 			for (c = 0; c < kth; c++)
 				selected_t[c] = c < visible ? c : -1;
 		}
@@ -103,7 +103,7 @@ static int _ccv_nnc_scaled_dot_product_arg_partition_forw(const ccv_nnc_cmd_t cm
 		int* const selected_t = selected->data.i32 + t * kth;
 		for (d = 0; d < kth; d++)
 			selected_t[d] = -1;
-		const int visible = _ccv_nnc_sdpap_visible_count(T, C, t, is_causal, compression_ratio);
+		const int visible = _ccv_nnc_sdpap_visible_count(C, t, is_causal, compression_ratio, query_offset);
 		int top_count = 0;
 		if (visible <= 0)
 			continue;

@@ -51,6 +51,6 @@ REGISTER_COMMAND(CCV_NNC_SCALED_DOT_PRODUCT_ARG_PARTITION_BACKWARD)(ccv_nnc_cmd_
 }
 
 //@REGISTER_EASY_COMMAND_MACRO(CCV_NNC_SCALED_DOT_PRODUCT_ARG_PARTITION_FORWARD)
-#define CMD_SCALED_DOT_PRODUCT_ARG_PARTITION_FORWARD(_kth, _scale, _is_causal, _compression_ratio) ccv_nnc_cmd(CCV_NNC_SCALED_DOT_PRODUCT_ARG_PARTITION_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.scaled_dot_product_arg_partition={.scale=_scale,.kth=_kth,.is_causal=_is_causal,.compression_ratio=_compression_ratio}}), 0)
+#define CMD_SCALED_DOT_PRODUCT_ARG_PARTITION_FORWARD(_kth, _scale, _is_causal, _compression_ratio, _query_offset) ccv_nnc_cmd(CCV_NNC_SCALED_DOT_PRODUCT_ARG_PARTITION_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.scaled_dot_product_arg_partition={.scale=_scale,.kth=_kth,.is_causal=_is_causal,.compression_ratio=_compression_ratio,.query_offset=_query_offset}}), 0)
 //@REGISTER_EASY_COMMAND_MACRO(CCV_NNC_SCALED_DOT_PRODUCT_ARG_PARTITION_BACKWARD)
-#define CMD_SCALED_DOT_PRODUCT_ARG_PARTITION_BACKWARD(_kth, _scale, _is_causal, _compression_ratio) ccv_nnc_cmd(CCV_NNC_SCALED_DOT_PRODUCT_ARG_PARTITION_BACKWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.scaled_dot_product_arg_partition={.scale=_scale,.kth=_kth,.is_causal=_is_causal,.compression_ratio=_compression_ratio}}), 0)
+#define CMD_SCALED_DOT_PRODUCT_ARG_PARTITION_BACKWARD(_kth, _scale, _is_causal, _compression_ratio, _query_offset) ccv_nnc_cmd(CCV_NNC_SCALED_DOT_PRODUCT_ARG_PARTITION_BACKWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.scaled_dot_product_arg_partition={.scale=_scale,.kth=_kth,.is_causal=_is_causal,.compression_ratio=_compression_ratio,.query_offset=_query_offset}}), 0)

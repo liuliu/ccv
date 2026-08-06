@@ -16,6 +16,7 @@ struct ScaledDotProductArgPartitionEnumerateDescriptor {
   uint32_t C = 0;
   uint32_t kth = 0;
   uint32_t compressionRatio = 1;
+  int32_t queryOffset = 0;
   bool isCausal = false;
 
   bool operator==(const ScaledDotProductArgPartitionEnumerateDescriptor& rhs) const;

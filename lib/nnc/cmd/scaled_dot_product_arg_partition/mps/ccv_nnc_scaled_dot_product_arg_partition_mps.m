@@ -19,6 +19,7 @@ static int _ccv_nnc_scaled_dot_product_arg_partition_enumerate(const ccv_nnc_cmd
 				.C = (uint32_t)C,
 				.kth = (uint32_t)kth,
 				.compression_ratio = (uint32_t)compression_ratio,
+				.query_offset = cmd.info.scaled_dot_product_arg_partition.query_offset,
 				.is_causal = (uint8_t)(cmd.info.scaled_dot_product_arg_partition.is_causal != 0),
 			};
 			ccv_nnc_mfa_prepare_scaled_dot_product_arg_partition_enumerate(context, params);
@@ -45,9 +46,9 @@ static int _ccv_nnc_scaled_dot_product_arg_partition_enumerate(const ccv_nnc_cmd
 				MPSGraphTensor* const token = [graph coordinateAlongAxis:0 withShape:shape name:nil];
 				MPSGraphTensor* const token_f = [graph castTensor:token toType:MPSDataTypeFloat32 name:nil];
 				MPSGraphTensor* const position_f = [graph castTensor:position toType:MPSDataTypeFloat32 name:nil];
-				MPSGraphTensor* const q_start = [graph constantWithScalar:(float)(C * compression_ratio - T + 1) dataType:MPSDataTypeFloat32];
+				MPSGraphTensor* const query_offset = [graph constantWithScalar:(float)(cmd.info.scaled_dot_product_arg_partition.query_offset + 1) dataType:MPSDataTypeFloat32];
 				MPSGraphTensor* const ratio = [graph constantWithScalar:(float)compression_ratio dataType:MPSDataTypeFloat32];
-				MPSGraphTensor* visible = [graph floorWithTensor:[graph divisionWithPrimaryTensor:[graph additionWithPrimaryTensor:token_f secondaryTensor:q_start name:nil] secondaryTensor:ratio name:nil] name:nil];
+				MPSGraphTensor* visible = [graph floorWithTensor:[graph divisionWithPrimaryTensor:[graph additionWithPrimaryTensor:token_f secondaryTensor:query_offset name:nil] secondaryTensor:ratio name:nil] name:nil];
 				visible = [graph maximumWithPrimaryTensor:visible secondaryTensor:[graph constantWithScalar:0.0f dataType:MPSDataTypeFloat32] name:nil];
 				visible = [graph minimumWithPrimaryTensor:visible secondaryTensor:[graph constantWithScalar:(float)C dataType:MPSDataTypeFloat32] name:nil];
 				valid = [graph lessThanWithPrimaryTensor:position_f secondaryTensor:visible name:nil];
@@ -136,6 +137,7 @@ static int _ccv_nnc_scaled_dot_product_arg_partition_forw(const ccv_nnc_cmd_t cm
 				.D = (uint32_t)D,
 				.kth = (uint32_t)kth,
 				.compression_ratio = (uint32_t)compression_ratio,
+				.query_offset = cmd.info.scaled_dot_product_arg_partition.query_offset,
 				.scale = cmd.info.scaled_dot_product_arg_partition.scale,
 				.is_causal = (uint8_t)(cmd.info.scaled_dot_product_arg_partition.is_causal != 0),
 				.use_neural_accelerators = (uint8_t)use_neural_accelerators,
@@ -203,9 +205,9 @@ static int _ccv_nnc_scaled_dot_product_arg_partition_forw(const ccv_nnc_cmd_t cm
 					MPSGraphTensor* mps_c = [graph coordinateAlongAxis:1 withShape:score_shape name:nil];
 					MPSGraphTensor* mps_t_f = [graph castTensor:mps_t toType:MPSDataTypeFloat32 name:nil];
 					MPSGraphTensor* mps_c_f = [graph castTensor:mps_c toType:MPSDataTypeFloat32 name:nil];
-					MPSGraphTensor* mps_q_start = [graph constantWithScalar:(float)(C * compression_ratio - T + 1) dataType:MPSDataTypeFloat32];
+					MPSGraphTensor* mps_query_offset = [graph constantWithScalar:(float)(cmd.info.scaled_dot_product_arg_partition.query_offset + 1) dataType:MPSDataTypeFloat32];
 					MPSGraphTensor* mps_ratio = [graph constantWithScalar:(float)compression_ratio dataType:MPSDataTypeFloat32];
-					MPSGraphTensor* mps_visible = [graph floorWithTensor:[graph divisionWithPrimaryTensor:[graph additionWithPrimaryTensor:mps_t_f secondaryTensor:mps_q_start name:nil] secondaryTensor:mps_ratio name:nil] name:nil];
+					MPSGraphTensor* mps_visible = [graph floorWithTensor:[graph divisionWithPrimaryTensor:[graph additionWithPrimaryTensor:mps_t_f secondaryTensor:mps_query_offset name:nil] secondaryTensor:mps_ratio name:nil] name:nil];
 					MPSGraphTensor* mps_visible_min = [graph constantWithScalar:0.0f dataType:MPSDataTypeFloat32];
 					MPSGraphTensor* mps_visible_max = [graph constantWithScalar:(float)C dataType:MPSDataTypeFloat32];
 					mps_visible = [graph maximumWithPrimaryTensor:mps_visible secondaryTensor:mps_visible_min name:nil];
@@ -227,9 +229,9 @@ static int _ccv_nnc_scaled_dot_product_arg_partition_forw(const ccv_nnc_cmd_t cm
 					MPSGraphTensor* mps_pos = [graph coordinateAlongAxis:1 withShape:topk_shape name:nil];
 					MPSGraphTensor* mps_t_f = [graph castTensor:mps_t toType:MPSDataTypeFloat32 name:nil];
 					MPSGraphTensor* mps_pos_f = [graph castTensor:mps_pos toType:MPSDataTypeFloat32 name:nil];
-					MPSGraphTensor* mps_q_start = [graph constantWithScalar:(float)(C * compression_ratio - T + 1) dataType:MPSDataTypeFloat32];
+					MPSGraphTensor* mps_query_offset = [graph constantWithScalar:(float)(cmd.info.scaled_dot_product_arg_partition.query_offset + 1) dataType:MPSDataTypeFloat32];
 					MPSGraphTensor* mps_ratio = [graph constantWithScalar:(float)compression_ratio dataType:MPSDataTypeFloat32];
-					MPSGraphTensor* mps_visible = [graph floorWithTensor:[graph divisionWithPrimaryTensor:[graph additionWithPrimaryTensor:mps_t_f secondaryTensor:mps_q_start name:nil] secondaryTensor:mps_ratio name:nil] name:nil];
+					MPSGraphTensor* mps_visible = [graph floorWithTensor:[graph divisionWithPrimaryTensor:[graph additionWithPrimaryTensor:mps_t_f secondaryTensor:mps_query_offset name:nil] secondaryTensor:mps_ratio name:nil] name:nil];
 					MPSGraphTensor* mps_visible_min = [graph constantWithScalar:0.0f dataType:MPSDataTypeFloat32];
 					MPSGraphTensor* mps_visible_max = [graph constantWithScalar:(float)C dataType:MPSDataTypeFloat32];
 					mps_visible = [graph maximumWithPrimaryTensor:mps_visible secondaryTensor:mps_visible_min name:nil];

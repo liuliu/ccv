@@ -11,6 +11,7 @@ bool ScaledDotProductArgPartitionEnumerateDescriptor::operator==(const ScaledDot
   C == rhs.C &&
   kth == rhs.kth &&
   compressionRatio == rhs.compressionRatio &&
+  queryOffset == rhs.queryOffset &&
   isCausal == rhs.isCausal;
 }
 
@@ -19,6 +20,7 @@ std::size_t std::hash<ScaledDotProductArgPartitionEnumerateDescriptor>::operator
   std::size_t seed = 0;
   combine_64(seed, pack_64(simd::uint2 { hash.T, hash.C }));
   combine_64(seed, pack_64(simd::uint2 { hash.kth, hash.compressionRatio }));
+  combine_32(seed, static_cast<uint32_t>(hash.queryOffset));
   combine_32(seed, hash.isCausal ? 1 : 0);
   return seed;
 }
@@ -46,6 +48,7 @@ std::pair<ScaledDotProductArgPartitionEnumerateKernelDescriptor, PipelineValue<S
     constants->setConstantValue(&kth, MTL::DataTypeUInt, NS::UInteger(2));
     constants->setConstantValue(&compressionRatio, MTL::DataTypeUInt, NS::UInteger(3));
     constants->setConstantValue(&isCausal, MTL::DataTypeBool, NS::UInteger(4));
+    constants->setConstantValue(&queryOffset, MTL::DataTypeInt, NS::UInteger(5));
     NS::String* swiftName = NS::String::string("enumerate", NS::UTF8StringEncoding);
     NS::Error* error = nil;
     auto function = NS::TransferPtr(library->newFunction(swiftName, constants.get(), &error));

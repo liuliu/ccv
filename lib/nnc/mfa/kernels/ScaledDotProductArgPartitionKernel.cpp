@@ -53,13 +53,13 @@ constant uint D [[function_constant(3)]];
 constant uint compression_ratio [[function_constant(4)]];
 constant bool is_causal [[function_constant(5)]];
 constant float scale [[function_constant(6)]];
+constant int query_offset [[function_constant(7)]];
 
 inline uint visible_count_for_token(uint t) {
   if (!is_causal) {
     return C;
   }
-  const int q_start = int(C * compression_ratio) - int(T);
-  int visible = (q_start + int(t) + 1) / int(compression_ratio);
+  int visible = (query_offset + int(t) + 1) / int(compression_ratio);
   visible = max(visible, 0);
   visible = min(visible, int(C));
   return uint(visible);

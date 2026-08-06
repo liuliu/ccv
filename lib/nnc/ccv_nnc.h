@@ -323,6 +323,7 @@ typedef struct {
 			int kth; /**< [scaled_dot_product_arg_partition.kth] How many compressed-row ids to retain per query token. */
 			int is_causal; /**< [scaled_dot_product_arg_partition.is_causal] Whether to apply DS4 compressed causal visibility. */
 			int compression_ratio; /**< [scaled_dot_product_arg_partition.compression_ratio] Token-to-compressed-row ratio for causal visibility. */
+			int query_offset; /**< [scaled_dot_product_arg_partition.query_offset] Absolute token offset of the first query row. */
 		} scaled_dot_product_arg_partition;
 		struct {
 			float scale; /**< [sparse_indexed_attention.scale] The scale we multiple to the dot product of Q & K. */
