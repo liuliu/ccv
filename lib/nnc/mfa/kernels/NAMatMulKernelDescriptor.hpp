@@ -180,6 +180,9 @@ struct NAMatMulKernelDescriptor {
   /// Whether M is loaded from a buffer or not.
   bool loadM;
 
+  /// Whether A / C use runtime leading dimensions.
+  bool useLeadingDimensions;
+
   /// Rebase A / C to shared M-row groups. 0 disables grouping.
   uint32_t groupM;
 
@@ -191,7 +194,7 @@ struct NAMatMulKernelDescriptor {
   NAMatMulKernelDescriptor() = delete;
   
   /// Initialize the kernel descriptor.
-  NAMatMulKernelDescriptor(simd::ushort3 blockDimensions, GEMMOperandPrecisions memoryPrecisions, GEMMOperandPrecisions registerPrecisions, uint16_t splitK, uint16_t executionSIMDGroups, bool threadBarrierOverK, simd::uchar3 transposeState, bool useBias, bool loadM, uint32_t groupM, uint32_t groupN) noexcept;
+  NAMatMulKernelDescriptor(simd::ushort3 blockDimensions, GEMMOperandPrecisions memoryPrecisions, GEMMOperandPrecisions registerPrecisions, uint16_t splitK, uint16_t executionSIMDGroups, bool threadBarrierOverK, simd::uchar3 transposeState, bool useBias, bool loadM, uint32_t groupM, uint32_t groupN, bool useLeadingDimensions = false) noexcept;
   
   bool operator==(const NAMatMulKernelDescriptor& rhs) const;
 };

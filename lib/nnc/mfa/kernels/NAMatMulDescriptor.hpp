@@ -32,6 +32,8 @@ struct NAMatMulDescriptor {
 
   std::optional<GEMMOperandPrecision> registerPrecisionC;
 
+  std::optional<simd::uint2> leadingDimensions;
+
   std::optional<simd::uint4> batchStrides;
   
   simd::uchar3 transposeState;

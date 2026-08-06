@@ -55,6 +55,7 @@ NAMatMulKernel::NAMatMulKernel(NAMatMulKernelDescriptor descriptor, MTL::Device 
   transposeState = descriptor.transposeState;
   useBias = descriptor.useBias;
   loadM = descriptor.loadM;
+  useLeadingDimensions = descriptor.useLeadingDimensions;
   groupM = descriptor.groupM;
   groupN = descriptor.groupN;
 
@@ -149,6 +150,25 @@ inline uint2 morton_decode_rectangular_2d(uint code,
   source.SetValue("SPLIT_K", std::to_string(splitK));
   source.SetValue("GROUP_M", std::to_string(groupM));
   source.SetValue("GROUP_N", std::to_string(groupN));
+  source.SetValue("A_LEADING_DIMENSION", useLeadingDimensions ? "A_leading_dimension" : "K");
+  source.SetValue("A_STRIDE_DECLARATION", useLeadingDimensions ? "  const array<uint, 2> A_strides = { 1, A_leading_dimension };\n" : "");
+  source.SetValue("A_TENSOR_STRIDES", useLeadingDimensions ? ", A_strides" : "");
+  if (useLeadingDimensions && splitK == 1) {
+    source.SetValue("C_GROUP_OFFSET", "M_group_start * C_leading_dimension");
+    source.SetValue("C_STRIDE_DECLARATION", "  const array<uint, 2> C_strides = { 1, C_leading_dimension };\n");
+    source.SetValue("C_TENSOR_STRIDES", ", C_strides");
+    source.SetValue("EDGE_C_BASE_OFFSET", "M_group_offset * C_leading_dimension");
+    source.SetValue("EDGE_C_ROW_STRIDE", "C_leading_dimension");
+  } else {
+    const std::string splitKString = std::to_string(splitK);
+    source.SetValue("C_GROUP_OFFSET", splitK > 1 ? "M_group_start * N * " + splitKString : "M_group_start * N");
+    source.SetValue("C_STRIDE_DECLARATION", "");
+    source.SetValue("C_TENSOR_STRIDES", "");
+    source.SetValue("EDGE_C_BASE_OFFSET", "M_group_offset * " + splitKString + " * N");
+    source.SetValue("EDGE_C_ROW_STRIDE", splitKString + " * N");
+  }
+  source.SetValue("REDUCE_SUM_2_DESTINATION", useLeadingDimensions ? "B_buf[tpig.x / (N / 2) * (C_leading_dimension / 2) + tpig.x % (N / 2)]" : "B_buf[tpig.x]");
+  source.SetValue("REDUCE_SUM_DESTINATION", useLeadingDimensions ? "B_buf[tpig.x / N * C_leading_dimension + tpig.x % N]" : "B_buf[tpig.x]");
 
   source += createConstants();
 
@@ -388,21 +408,15 @@ kernel void matmul(device {{MEMORY_NAME_A}} *A_buf [[buffer(0)]],
   }
   if (!transposed('A')) {
     source += R"(
-  A_buf = A_buf + M_group_start * K;
+  A_buf = A_buf + M_group_start * {{A_LEADING_DIMENSION}};
 )";
   }
-  if (splitK > 1) {
-    source += R"(
-  C_buf = C_buf + M_group_start * N * {{SPLIT_K}};
+  source += R"(
+  C_buf = C_buf + {{C_GROUP_OFFSET}};
 )";
-  } else {
-    source += R"(
-  C_buf = C_buf + M_group_start * N;
-)";
-  }
   if (!transposed('A')) {
     source += R"(
-  auto A = tensor<device {{MEMORY_NAME_A}},  dextents<int32_t, 2>, tensor_inline>(A_buf, dextents<int32_t, 2>(K, M_group_size));
+{{A_STRIDE_DECLARATION}}  auto A = tensor<device {{MEMORY_NAME_A}},  dextents<int32_t, 2>, tensor_inline>(A_buf, dextents<int32_t, 2>(K, M_group_size){{A_TENSOR_STRIDES}});
 )";
   } else {
     source += R"(
@@ -419,7 +433,7 @@ kernel void matmul(device {{MEMORY_NAME_A}} *A_buf [[buffer(0)]],
 )";
   }
   source += R"(
-  auto C = tensor<device {{MEMORY_NAME_C}},  dextents<int32_t, 2>, tensor_inline>(C_buf, dextents<int32_t, 2>(N * {{SPLIT_K}}, M_group_size));
+{{C_STRIDE_DECLARATION}}  auto C = tensor<device {{MEMORY_NAME_C}},  dextents<int32_t, 2>, tensor_inline>(C_buf, dextents<int32_t, 2>(N * {{SPLIT_K}}, M_group_size){{C_TENSOR_STRIDES}});
 )";
   if (useBias) {
     if (transposeState[2]) {
@@ -564,7 +578,7 @@ kernel void matmul(device {{MEMORY_NAME_A}} *A_buf [[buffer(0)]],
     // Since OS 26.2, cT.store(mC) is no longer safe store (not respecting C size). Doing this manually.
 )";
   source += R"(
-    auto mC = C_buf + M_group_offset * {{SPLIT_K}} * N + {{SPLIT_K_STORE_OFFSET}};
+    auto mC = C_buf + {{EDGE_C_BASE_OFFSET}} + {{SPLIT_K_STORE_OFFSET}};
 )";
   source += R"(
     const int N_edge = N - tgid.x * {{BLOCK_DIMENSIONS_N}};
@@ -574,7 +588,7 @@ kernel void matmul(device {{MEMORY_NAME_A}} *A_buf [[buffer(0)]],
       if(cT.is_valid_element(k)) {
         auto idx = cT.get_multidimensional_index(k);
         if (idx[0] < N_edge && idx[1] < M_edge) {
-          mC[idx[1] * {{SPLIT_K}} * N + idx[0]] = cT[k];
+          mC[idx[1] * {{EDGE_C_ROW_STRIDE}} + idx[0]] = cT[k];
         }
       }
     }
@@ -617,7 +631,7 @@ kernel void reduce_sum_2(device {{MEMORY_NAME_C}}2 *A_buf [[buffer(0)]],
   for (unsigned int k = 1; k < {{SPLIT_K}}; k++) {
     val += A_buf[k * {{BLOCK_DIMENSIONS_N_DIV_2}}];
   }
-  B_buf[tpig.x] = val;
+  {{REDUCE_SUM_2_DESTINATION}} = val;
 }
 
 kernel void reduce_sum(device {{MEMORY_NAME_C}} *A_buf [[buffer(0)]],
@@ -650,7 +664,7 @@ kernel void reduce_sum(device {{MEMORY_NAME_C}} *A_buf [[buffer(0)]],
   for (unsigned int k = 1; k < {{SPLIT_K}}; k++) {
     val += A_buf[k * {{BLOCK_DIMENSIONS_N}}];
   }
-  B_buf[tpig.x] = val;
+  {{REDUCE_SUM_DESTINATION}} = val;
 }
 )";
   }
@@ -670,6 +684,12 @@ constant uint B_batch_stride [[function_constant(16)]];
 constant uint C_batch_stride [[function_constant(17)]];
 constant uint bias_batch_stride [[function_constant(18)]];
 )";
+  if (useLeadingDimensions) {
+    constants += R"(
+constant uint A_leading_dimension [[function_constant(5)]];
+constant uint C_leading_dimension [[function_constant(7)]];
+)";
+  }
   if (!loadM) {
     constants += R"(
 constant uint M [[function_constant(0)]];

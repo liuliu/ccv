@@ -28,6 +28,7 @@ bool NAMatMulDescriptor::operator==(const NAMatMulDescriptor& rhs) const {
   return
   (batchDimension == rhs.batchDimension) &&
   simd_all(lhsMatrixDimensions == rhsMatrixDimensions) &&
+  simd_all(leadingDimensions.value_or(simd::uint2(UINT32_MAX)) == rhs.leadingDimensions.value_or(simd::uint2(UINT32_MAX))) &&
   simd_all(batchStrides.value_or(simd::uint4(UINT32_MAX)) == rhs.batchStrides.value_or(simd::uint4(UINT32_MAX))) &&
   memoryPrecisions == rhs.memoryPrecisions &&
   registerPrecisionC == rhs.registerPrecisionC &&
@@ -44,6 +45,10 @@ std::size_t std::hash<NAMatMulDescriptor>::operator()(const NAMatMulDescriptor& 
   combine_32(seed, hash.loadM ? groupM(hash.matrixDimensions[0]) : hash.matrixDimensions[0]);
   combine_32(seed, hash.matrixDimensions[1]);
   combine_32(seed, hash.matrixDimensions[2]);
+  if (hash.leadingDimensions.has_value()) {
+    combine_32(seed, hash.leadingDimensions.value()[0]);
+    combine_32(seed, hash.leadingDimensions.value()[1]);
+  }
   if (hash.batchStrides.has_value()) {
     combine_32(seed, hash.batchStrides.value()[0]);
     combine_32(seed, hash.batchStrides.value()[1]);
@@ -129,6 +134,12 @@ std::pair<NAMatMulKernelDescriptor, PipelineValue<NAMatMulKernel> *> NAMatMulDes
     constants->setConstantValue(&batchStrideB, MTL::DataTypeUInt, 16);
     constants->setConstantValue(&batchStrideC, MTL::DataTypeUInt, 17);
     constants->setConstantValue(&batchStrideBias, MTL::DataTypeUInt, 18);
+    if (this->leadingDimensions.has_value()) {
+      auto leadingDimensionA = this->leadingDimensions.value()[0];
+      auto leadingDimensionC = this->leadingDimensions.value()[1];
+      constants->setConstantValue(&leadingDimensionA, MTL::DataTypeUInt, 5);
+      constants->setConstantValue(&leadingDimensionC, MTL::DataTypeUInt, 7);
+    }
 
     NS::String* swiftName = NS::String::string("matmul", NS::UTF8StringEncoding);
     NS::Error* error = nil;
@@ -222,7 +233,7 @@ std::pair<NAMatMulKernelDescriptor, PipelineValue<NAMatMulKernel> *> NAMatMulDes
   const bool threadBarrierOverK = NAMatMulDescriptor::threadBarrierOverK(this->matrixDimensions[2], splitK);
   const uint32_t groupMValue = groupM(this->matrixDimensions[0]);
   const uint32_t groupNValue = this->transposeState[1] ? groupN(this->matrixDimensions[1]) : 0;
-  auto kernelDesc = NAMatMulKernelDescriptor(simd::ushort3 { 128, 64, 64 }, this->memoryPrecisions, registerPrecisions, splitK, 4, threadBarrierOverK, this->transposeState, this->useBias, this->loadM, groupMValue, groupNValue);
+  auto kernelDesc = NAMatMulKernelDescriptor(simd::ushort3 { 128, 64, 64 }, this->memoryPrecisions, registerPrecisions, splitK, 4, threadBarrierOverK, this->transposeState, this->useBias, this->loadM, groupMValue, groupNValue, this->leadingDimensions.has_value());
   NAMatMulKernel* kernel = createKernel(kernelDesc);
   auto pipelines = createPipeline(kernel->library.get(), splitK, (this->matrixDimensions[1] % 2) == 0);
 

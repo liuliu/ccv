@@ -38,6 +38,8 @@ struct NAMatMulKernel {
 
   bool loadM;
 
+  bool useLeadingDimensions;
+
   uint32_t groupM;
 
   uint32_t groupN;
