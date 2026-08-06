@@ -14,6 +14,7 @@ struct NASparseIndexedAttentionKernelDescriptor {
   GEMMOperandPrecision memoryPrecision = GEMMOperandPrecision::FP16;
   bool attentionSinks = false;
   bool denseOnly = false;
+  bool loadRows = false;
   NASparseIndexedAttentionVariant variant = NASparseIndexedAttentionVariant::Threadgroup16;
 
   bool operator==(const NASparseIndexedAttentionKernelDescriptor& rhs) const;

@@ -67,7 +67,7 @@ void ccv_nnc_mfa_encode_sparse_indexed_attention(ccv_nnc_mfa_context_t* context,
   };
 
   auto encodeNAPipeline =
-  [&](auto pipelineValue) {
+  [&](auto pipelineValue, const auto& descriptor) {
     auto kernel = pipelineValue->kernel;
     auto pipeline = pipelineValue->pipeline;
     auto encoder = command_batch->startCommand();
@@ -87,6 +87,10 @@ void ccv_nnc_mfa_encode_sparse_indexed_attention(ccv_nnc_mfa_context_t* context,
       encoder->setBuffer(tensors[6], tensor_offsets[6], 4);
     }
     encoder->setBuffer(tensors[7], tensor_offsets[7], 5);
+    if (descriptor.loadRows) {
+      const uint32_t runtimeRows[2] = { params.dense_rows, params.sparse_rows };
+      encoder->setBytes(runtimeRows, sizeof(runtimeRows), 6);
+    }
     encoder->dispatchThreadgroups(kernel->threadgroupsPerGrid(params.T, params.H), kernel->threadgroupSize());
     command_batch->finishCommand(encoder);
   };
@@ -229,10 +233,11 @@ void ccv_nnc_mfa_encode_sparse_indexed_attention(ccv_nnc_mfa_context_t* context,
   } else if (params.use_neural_accelerators) {
     NASparseIndexedAttentionDescriptor descriptor;
     setDescriptor(descriptor);
+    descriptor.loadRows = true;
     descriptor.variant = static_cast<NASparseIndexedAttentionVariant>(params.variant);
     auto pipelineValue = shaderCache.findKernel<NASparseIndexedAttentionKernel, NASparseIndexedAttentionDescriptor, NASparseIndexedAttentionKernelDescriptor>(descriptor, context->device.get(), dprops);
     pool->drain();
-    encodeNAPipeline(pipelineValue);
+    encodeNAPipeline(pipelineValue, descriptor);
   } else {
     SparseIndexedAttentionDescriptor descriptor;
     setDescriptor(descriptor);

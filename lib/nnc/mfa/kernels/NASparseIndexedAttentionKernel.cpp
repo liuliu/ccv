@@ -55,6 +55,7 @@ NASparseIndexedAttentionKernel::NASparseIndexedAttentionKernel(NASparseIndexedAt
   memoryPrecision = descriptor.memoryPrecision;
   attentionSinks = descriptor.attentionSinks;
   denseOnly = descriptor.denseOnly;
+  loadRows = descriptor.loadRows;
   variant = descriptor.variant;
   source = createSource();
   auto string = NS::String::string(source.c_str(), NS::UTF8StringEncoding);
@@ -189,8 +190,12 @@ using namespace mpp::tensor_ops;
 
 typedef {{REAL}} real;
 
-constant uint T [[function_constant(0)]];
-constant uint dense_rows [[function_constant(1)]];
+constant uint T [[function_constant(0)]];\)";
+  if (!loadRows) {
+    source += R"(
+constant uint dense_rows [[function_constant(1)]];\)";
+  }
+  source += R"(
 constant uint H [[function_constant(3)]];
 constant bool is_causal [[function_constant(5)]];
 constant uint sink_head_stride [[function_constant(6)]];
@@ -210,11 +215,21 @@ kernel void sparse_indexed_attention(
 )";
   }
   source += R"(
-  device real* out [[buffer(5)]],
+  device real* out [[buffer(5)]],\)";
+  if (loadRows) {
+    source += R"(
+  constant uint2& runtime_rows [[buffer(6)]],\)";
+  }
+  source += R"(
   threadgroup uchar* threadgroup_block [[threadgroup(0)]],
   ushort sgid [[simdgroup_index_in_threadgroup]],
   uint2 tgid [[threadgroup_position_in_grid]]
-) {
+) {\)";
+  if (loadRows) {
+    source += R"(
+  const uniform<uint> dense_rows = make_uniform(runtime_rows.x);\)";
+  }
+  source += R"(
   const uint head_base = tgid.x * {{HEAD_GROUP}}u;
   const uint token = tgid.y * {{DENSE_EXECUTION_SIMD_GROUPS}}u + uint(sgid);
   if (head_base >= H || token >= T) {
@@ -520,9 +535,13 @@ using namespace mpp::tensor_ops;
 
 typedef {{REAL}} real;
 
-constant uint T [[function_constant(0)]];
+constant uint T [[function_constant(0)]];\)";
+  if (!loadRows) {
+    source += R"(
 constant uint dense_rows [[function_constant(1)]];
-constant uint sparse_rows [[function_constant(2)]];
+constant uint sparse_rows [[function_constant(2)]];\)";
+  }
+  source += R"(
 constant uint H [[function_constant(3)]];
 constant uint K [[function_constant(4)]];
 constant bool is_causal [[function_constant(5)]];
@@ -545,12 +564,23 @@ kernel void sparse_indexed_attention(
 )";
   }
   source += R"(
-  device real* out [[buffer(5)]],
+  device real* out [[buffer(5)]],\)";
+  if (loadRows) {
+    source += R"(
+  constant uint2& runtime_rows [[buffer(6)]],\)";
+  }
+  source += R"(
   threadgroup uchar* threadgroup_block [[threadgroup(0)]],
   ushort sgid [[simdgroup_index_in_threadgroup]],
   ushort tid [[thread_index_in_threadgroup]],
   uint2 tgid [[threadgroup_position_in_grid]]
-) {
+) {\)";
+  if (loadRows) {
+    source += R"(
+  const uniform<uint> dense_rows = make_uniform(runtime_rows.x);
+  const uniform<uint> sparse_rows = make_uniform(runtime_rows.y);\)";
+  }
+  source += R"(
   const uint head_base = (tgid.x * {{SPARSE_EXECUTION_SIMD_GROUPS}}u + uint(sgid)) * {{SPARSE_HEAD_GROUP}}u;
   const uint token = tgid.y;
   if (token >= T || head_base >= H) {
@@ -788,9 +818,13 @@ using namespace mpp::tensor_ops;
 
 typedef {{REAL}} real;
 
-constant uint T [[function_constant(0)]];
+constant uint T [[function_constant(0)]];\)";
+  if (!loadRows) {
+    source += R"(
 constant uint dense_rows [[function_constant(1)]];
-constant uint sparse_rows [[function_constant(2)]];
+constant uint sparse_rows [[function_constant(2)]];\)";
+  }
+  source += R"(
 constant uint H [[function_constant(3)]];
 constant uint K [[function_constant(4)]];
 constant bool is_causal [[function_constant(5)]];
@@ -812,12 +846,23 @@ kernel void sparse_indexed_attention(
 )";
   }
   source += R"(
-  device real* out [[buffer(5)]],
+  device real* out [[buffer(5)]],\)";
+  if (loadRows) {
+    source += R"(
+  constant uint2& runtime_rows [[buffer(6)]],\)";
+  }
+  source += R"(
   threadgroup uchar* threadgroup_block [[threadgroup(0)]],
   ushort sgid [[simdgroup_index_in_threadgroup]],
   ushort tid [[thread_index_in_threadgroup]],
   uint2 tgid [[threadgroup_position_in_grid]]
-) {
+) {\)";
+  if (loadRows) {
+    source += R"(
+  const uniform<uint> dense_rows = make_uniform(runtime_rows.x);
+  const uniform<uint> sparse_rows = make_uniform(runtime_rows.y);\)";
+  }
+  source += R"(
   const uint head_base = (tgid.x * {{SPARSE_EXECUTION_SIMD_GROUPS_D128}}u + uint(sgid)) * {{SPARSE_HEAD_GROUP_D128}}u;
   const uint token = tgid.y;
   if (token >= T || head_base >= H) {

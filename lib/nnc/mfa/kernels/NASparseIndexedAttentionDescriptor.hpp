@@ -23,6 +23,7 @@ struct NASparseIndexedAttentionDescriptor {
   uint32_t slidingWindow = 0;
   uint32_t sinkHeadStride = 0;
   float scale = 1;
+  bool loadRows = false;
   NASparseIndexedAttentionVariant variant = NASparseIndexedAttentionVariant::Threadgroup16;
 
   bool operator==(const NASparseIndexedAttentionDescriptor& rhs) const;

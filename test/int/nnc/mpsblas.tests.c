@@ -10119,6 +10119,8 @@ TEST_CASE("sparse indexed attention with MFA FP16 DS4-native shape")
 	REQUIRE_EQ(threadgroup24_status, 0, "MFA FP16 sparse indexed attention threadgroup24 should match CPU reference");
 	const int threadgroup64_status = _mps_sparse_indexed_attention_compare(CCV_16F, 3, 5, 64, 512, 4, 8, 4, 1, 0, 1e-2, &max_abs, &max_relative, &max_idx, &expected, &actual);
 	REQUIRE_EQ(threadgroup64_status, 0, "MFA FP16 sparse indexed attention threadgroup64 should match CPU reference");
+	const int threadgroup64_runtime_rows_status = _mps_sparse_indexed_attention_compare(CCV_16F, 3, 5, 64, 512, 13, 19, 4, 1, 0, 1e-2, &max_abs, &max_relative, &max_idx, &expected, &actual);
+	REQUIRE(threadgroup64_runtime_rows_status == 0, "MFA FP16 sparse indexed attention threadgroup64 should reuse its pipeline with runtime dense and sparse rows (status=%d max abs %g relative %g at %d: CPU %g GPU %g)", threadgroup64_runtime_rows_status, max_abs, max_relative, max_idx, expected, actual);
 	const int threadgroup64_t1_status = _mps_sparse_indexed_attention_compare(CCV_16F, 3, 1, 64, 512, 4, 8, 4, 1, 0, 1e-2, &max_abs, &max_relative, &max_idx, &expected, &actual);
 	REQUIRE_EQ(threadgroup64_t1_status, 0, "MFA FP16 sparse indexed attention threadgroup64 T=1 should match CPU reference");
 	const int threadgroup64_d128_status = _mps_sparse_indexed_attention_compare(CCV_16F, 4, 5, 64, 128, 4, 8, 4, 1, 0, 1e-2, &max_abs, &max_relative, &max_idx, &expected, &actual);

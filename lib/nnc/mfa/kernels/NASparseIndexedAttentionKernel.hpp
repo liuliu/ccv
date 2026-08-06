@@ -21,6 +21,7 @@ struct NASparseIndexedAttentionKernel {
   GEMMOperandPrecision memoryPrecision;
   bool attentionSinks;
   bool denseOnly;
+  bool loadRows;
   NASparseIndexedAttentionVariant variant;
   std::string source;
   NS::SharedPtr<MTL::Library> library;
