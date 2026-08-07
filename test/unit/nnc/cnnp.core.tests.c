@@ -2005,6 +2005,55 @@ TEST_CASE("use move semantics to write output to the empty space of the input te
 	ccv_cnnp_model_free(final);
 }
 
+TEST_CASE("use set semantics to initialize a variable")
+{
+	const ccv_cnnp_model_io_t input = ccv_cnnp_input();
+	const ccv_cnnp_model_io_t variable = ccv_cnnp_model_apply(ccv_cnnp_variable(CPU_TENSOR_NHWC(32F, 2), "variable"), MODEL_IO_LIST());
+	const ccv_cnnp_model_io_t initialized = ccv_cnnp_model_apply(ccv_cnnp_set(1.5, "set"), MODEL_IO_LIST(variable));
+	const ccv_cnnp_model_io_t output = ccv_cnnp_model_apply(ccv_cnnp_sum("sum"), MODEL_IO_LIST(input, initialized));
+	ccv_cnnp_model_t* const model = ccv_cnnp_model_new(MODEL_IO_LIST(input), MODEL_IO_LIST(output), 0, "set variable");
+	const ccv_nnc_tensor_param_t params = CPU_TENSOR_NHWC(32F, 2);
+	ccv_cnnp_model_compile(model, TENSOR_PARAM_LIST(params), CMD_NOOP(), CMD_NOOP());
+	ccv_nnc_tensor_t* const input_tensor = ccv_nnc_tensor_new(0, params, 0);
+	ccv_nnc_tensor_t* const output_tensor = ccv_nnc_tensor_new(0, params, 0);
+	input_tensor->data.f32[0] = 2;
+	input_tensor->data.f32[1] = -3;
+	ccv_cnnp_model_evaluate(model, (ccv_cnnp_evaluate_param_t){}, TENSOR_LIST(input_tensor), TENSOR_LIST(output_tensor), 0, 0);
+	REQUIRE_EQ_WITH_TOLERANCE(output_tensor->data.f32[0], 3.5, 1e-5, "set should initialize the first element of the variable");
+	REQUIRE_EQ_WITH_TOLERANCE(output_tensor->data.f32[1], -1.5, 1e-5, "set should initialize the second element of the variable");
+	ccv_nnc_tensor_free(input_tensor);
+	ccv_nnc_tensor_free(output_tensor);
+	ccv_cnnp_model_free(model);
+}
+
+TEST_CASE("set writes through a tensor alias")
+{
+	const ccv_cnnp_model_io_t input = ccv_cnnp_input();
+	const ccv_cnnp_model_io_t destination = ccv_cnnp_model_apply(
+		ccv_cnnp_reshape(CCV_TENSOR_FORMAT_NHWC, DIM_ALLOC(1), DIM_ALLOC(1), DIM_ALLOC(1), "reshape"), MODEL_IO_LIST(input));
+	const ccv_cnnp_model_io_t initialized = ccv_cnnp_model_apply(ccv_cnnp_set(1.5, "set"), MODEL_IO_LIST(destination));
+	const ccv_cnnp_model_io_t addend = ccv_cnnp_input();
+	const ccv_cnnp_model_io_t output = ccv_cnnp_model_apply(ccv_cnnp_sum("sum"), MODEL_IO_LIST(initialized, addend));
+	ccv_cnnp_model_t* const model = ccv_cnnp_model_new(MODEL_IO_LIST(input, addend), MODEL_IO_LIST(output), 0, "set alias");
+	const ccv_nnc_tensor_param_t input_params = CPU_TENSOR_NHWC(32F, 2);
+	const ccv_nnc_tensor_param_t addend_params = CPU_TENSOR_NHWC(32F, 1);
+	ccv_cnnp_model_compile(model, TENSOR_PARAM_LIST(input_params, addend_params), CMD_NOOP(), CMD_NOOP());
+	ccv_nnc_tensor_t* const input_tensor = ccv_nnc_tensor_new(0, input_params, 0);
+	ccv_nnc_tensor_t* const addend_tensor = ccv_nnc_tensor_new(0, addend_params, 0);
+	ccv_nnc_tensor_t* const output_tensor = ccv_nnc_tensor_new(0, addend_params, 0);
+	input_tensor->data.f32[0] = 3;
+	input_tensor->data.f32[1] = -2;
+	addend_tensor->data.f32[0] = 4;
+	ccv_cnnp_model_evaluate(model, (ccv_cnnp_evaluate_param_t){}, TENSOR_LIST(input_tensor, addend_tensor), TENSOR_LIST(output_tensor), 0, 0);
+	REQUIRE_EQ_WITH_TOLERANCE(output_tensor->data.f32[0], 5.5, 1e-5, "set output should contain the initialized value");
+	REQUIRE_EQ_WITH_TOLERANCE(input_tensor->data.f32[0], 3, 1e-5, "set should leave elements outside of the alias unchanged");
+	REQUIRE_EQ_WITH_TOLERANCE(input_tensor->data.f32[1], 1.5, 1e-5, "set should update the aliased input storage");
+	ccv_nnc_tensor_free(input_tensor);
+	ccv_nnc_tensor_free(addend_tensor);
+	ccv_nnc_tensor_free(output_tensor);
+	ccv_cnnp_model_free(model);
+}
+
 TEST_CASE("use variable and move semantics to co-locate input in the same tensor")
 {
 	const ccv_cnnp_model_io_t input0 = ccv_cnnp_input();

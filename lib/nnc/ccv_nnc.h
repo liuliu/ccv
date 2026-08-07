@@ -5057,6 +5057,14 @@ CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_scalar(const int type, const int for
  */
 CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_variable(const ccv_nnc_tensor_param_t params, const char* const name);
 /**
+ * Set every element of the input tensor to a scalar value. The input tensor is modified in place and
+ * returned as the output. This is usually paired with ccv_cnnp_variable to initialize its value.
+ * @param value The scalar value to set.
+ * @param name The unique name of the model.
+ * @return A model that sets its input tensor to the given value.
+ */
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_set(const float value, const char* const name);
+/**
  * Send a tensor to a GPU device.
  * @param device_id The GPU device id to place the output tensor on.
  * @param name The unique name of the model.

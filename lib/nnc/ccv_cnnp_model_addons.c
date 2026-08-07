@@ -4480,6 +4480,49 @@ static ccv_cnnp_model_t* _ccv_cnnp_variable_copy(const ccv_cnnp_model_t* const s
 	return ccv_cnnp_variable(self->params, self->super.name);
 }
 
+// MARK - Set Layer
+
+typedef struct {
+	ccv_cnnp_model_t super;
+	float value;
+	ccv_nnc_tensor_symbol_t output;
+} ccv_cnnp_model_set_t;
+
+static void _ccv_cnnp_set_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
+{
+	PRINT(CCV_CLI_VERBOSE, "[cnnp_set_build] -\n");
+	assert(input_size == 1);
+	assert(output_size == 1);
+	ccv_cnnp_model_set_t* const self = (ccv_cnnp_model_set_t*)super;
+	outputs[0] = inputs[0];
+	ccv_nnc_graph_exec_symbol_new(graph, CMD_SET_FORWARD(self->value), 0, 0, outputs, 1, "set");
+}
+
+static ccv_cnnp_model_t* _ccv_cnnp_set_copy(const ccv_cnnp_model_t* const super, void* const context);
+
+static const ccv_cnnp_model_vtab_t ccv_cnnp_set_isa = {
+	.build = _ccv_cnnp_set_build,
+	.copy = _ccv_cnnp_set_copy,
+};
+
+ccv_cnnp_model_t* ccv_cnnp_set(const float value, const char* const name)
+{
+	ccv_cnnp_model_set_t* const model_set = (ccv_cnnp_model_set_t*)cccalloc(1, sizeof(ccv_cnnp_model_set_t));
+	model_set->super.isa = &ccv_cnnp_set_isa;
+	model_set->super.input_size = 1;
+	model_set->super.outputs = &model_set->output;
+	model_set->super.output_size = 1;
+	ccv_cnnp_model_copy_name(&model_set->super, name);
+	model_set->value = value;
+	return (ccv_cnnp_model_t*)model_set;
+}
+
+static ccv_cnnp_model_t* _ccv_cnnp_set_copy(const ccv_cnnp_model_t* const super, void* const context)
+{
+	const ccv_cnnp_model_set_t* const self = (const ccv_cnnp_model_set_t*)super;
+	return ccv_cnnp_set(self->value, self->super.name);
+}
+
 // MARK - Send Layer
 
 typedef struct {
