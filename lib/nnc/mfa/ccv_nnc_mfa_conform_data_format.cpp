@@ -19,6 +19,14 @@ void ccv_nnc_mfa_encode_conform_data_format(ccv_nnc_mfa_context_t* context, ccv_
   CCV_NNC_MFA_PRECONDITION(numTensors == 2);
 
   ConformDataFormatDescriptor descriptor;
+  if (params.data_type == MTL::DataTypeHalf) {
+    descriptor.memoryPrecision = GEMMOperandPrecision::FP16;
+  } else if (params.data_type == MTL::DataTypeBFloat) {
+    descriptor.memoryPrecision = GEMMOperandPrecision::BF16;
+  } else {
+    CCV_NNC_MFA_PRECONDITION(params.data_type == MTL::DataTypeFloat);
+    descriptor.memoryPrecision = GEMMOperandPrecision::FP32;
+  }
   descriptor.rowCount = params.row_count;
   descriptor.headDim = params.head_dim;
   descriptor.preservedTail = params.preserved_tail;

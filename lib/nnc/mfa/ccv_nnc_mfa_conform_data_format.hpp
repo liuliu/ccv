@@ -2,6 +2,7 @@
 #define GUARD_ccv_nnc_mfa_conform_data_format_hpp
 
 typedef struct {
+  uint64_t data_type;
   uint32_t row_count;
   uint32_t head_dim;
   uint32_t preserved_tail;

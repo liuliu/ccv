@@ -143,6 +143,117 @@ TEST_CASE("conform data format MPSGraph fallback matches CPU reference")
 	ccv_nnc_tensor_free(input);
 }
 
+TEST_CASE("conform data format supports half and bfloat on CPU, MFA, and MPSGraph")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_CONFORM_DATA_FORMAT_FORWARD, CCV_NNC_BACKEND_MPS));
+	const uint64_t old_flags = ccv_nnc_flags();
+	const int datatypes[] = { CCV_16F, CCV_16BF };
+	const int rows = 4;
+	const int head_dim = 192;
+	const int count = rows * head_dim;
+	float values[4 * 192];
+	dsfmt_t dsfmt;
+	dsfmt_init_gen_rand(&dsfmt, 5);
+	_conform_data_format_fill(&dsfmt, values, count);
+	memset(values, 0, sizeof(float) * 64);
+	values[0] = 448.0f;
+	values[1] = 1.0625f;
+	values[2] = 1.1875f;
+	values[3] = -1.0625f;
+	int d;
+	for (d = 0; d < 2; d++)
+	{
+		ccv_nnc_tensor_param_t cpu_params = CPU_TENSOR_NHWC(16F, 4, 192);
+		cpu_params.datatype = datatypes[d];
+		ccv_nnc_tensor_param_t gpu_params = GPU_TENSOR_NHWC(000, 16F, 4, 192);
+		gpu_params.datatype = datatypes[d];
+		ccv_nnc_tensor_t* const input = ccv_nnc_tensor_new(0, cpu_params, 0);
+		ccv_nnc_tensor_t* const expected = ccv_nnc_tensor_new(0, cpu_params, 0);
+		ccv_nnc_tensor_t* const actual = ccv_nnc_tensor_new(0, cpu_params, 0);
+		ccv_nnc_tensor_t* const gpu_input = ccv_nnc_tensor_new(0, gpu_params, 0);
+		ccv_nnc_tensor_t* const gpu_output = ccv_nnc_tensor_new(0, gpu_params, 0);
+		if (datatypes[d] == CCV_16F)
+			ccv_float_to_half_precision(values, (uint16_t*)input->data.f16, count);
+		else
+			ccv_float_to_bfloat(values, (uint16_t*)input->data.f16, count);
+		const ccv_nnc_cmd_t cpu_cmd = CMD_CONFORM_DATA_FORMAT_FORWARD(CCV_NNC_FP8_E4M3, 64);
+		REQUIRE_EQ(CCV_NNC_EXEC_SUCCESS, ccv_nnc_cmd_exec(cpu_cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(input), TENSOR_LIST(expected), 0), "CPU E4M3 reference should support datatype %d", datatypes[d]);
+		REQUIRE_EQ(CCV_NNC_EXEC_SUCCESS, ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(input), TENSOR_LIST(gpu_input), 0), "input datatype %d should transfer to Metal", datatypes[d]);
+		ccv_nnc_cmd_t mps_cmd = cpu_cmd;
+		mps_cmd.backend = CCV_NNC_BACKEND_MPS;
+		int disable_mfa;
+		for (disable_mfa = 0; disable_mfa < 2; disable_mfa++)
+		{
+			if (disable_mfa)
+				ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA);
+			else
+				ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA);
+			const int status = ccv_nnc_cmd_exec(mps_cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(gpu_input), TENSOR_LIST(gpu_output), 0);
+			REQUIRE_EQ(CCV_NNC_EXEC_SUCCESS, ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(gpu_output), TENSOR_LIST(actual), 0), "Metal result should transfer to CPU");
+			REQUIRE_EQ(CCV_NNC_EXEC_SUCCESS, status, "%s E4M3 conformance should support datatype %d", disable_mfa ? "MPSGraph" : "MFA", datatypes[d]);
+			REQUIRE_ARRAY_EQ(uint16_t, (uint16_t*)expected->data.f16, (uint16_t*)actual->data.f16, count, "%s E4M3 conformance should match the CPU reference for datatype %d", disable_mfa ? "MPSGraph" : "MFA", datatypes[d]);
+		}
+		ccv_nnc_tensor_free(gpu_output);
+		ccv_nnc_tensor_free(gpu_input);
+		ccv_nnc_tensor_free(actual);
+		ccv_nnc_tensor_free(expected);
+		ccv_nnc_tensor_free(input);
+	}
+	_conform_data_format_restore_mfa_flag(old_flags);
+}
+
+TEST_CASE("conform data format half and bfloat copy paths preserve every element")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_CONFORM_DATA_FORMAT_BACKWARD, CCV_NNC_BACKEND_MPS));
+	const int datatypes[] = { CCV_16F, CCV_16BF };
+	const int count = 3 * 128;
+	float values[3 * 128];
+	dsfmt_t dsfmt;
+	dsfmt_init_gen_rand(&dsfmt, 6);
+	_conform_data_format_fill(&dsfmt, values, count);
+	int d;
+	for (d = 0; d < 2; d++)
+	{
+		ccv_nnc_tensor_param_t cpu_params = CPU_TENSOR_NHWC(16F, 3, 128);
+		cpu_params.datatype = datatypes[d];
+		ccv_nnc_tensor_param_t gpu_params = GPU_TENSOR_NHWC(000, 16F, 3, 128);
+		gpu_params.datatype = datatypes[d];
+		ccv_nnc_tensor_t* const input = ccv_nnc_tensor_new(0, cpu_params, 0);
+		ccv_nnc_tensor_t* const cpu_backward = ccv_nnc_tensor_new(0, cpu_params, 0);
+		ccv_nnc_tensor_t* const actual_backward = ccv_nnc_tensor_new(0, cpu_params, 0);
+		ccv_nnc_tensor_t* const actual_forward = ccv_nnc_tensor_new(0, cpu_params, 0);
+		ccv_nnc_tensor_t* const gpu_input = ccv_nnc_tensor_new(0, gpu_params, 0);
+		ccv_nnc_tensor_t* const gpu_backward = ccv_nnc_tensor_new(0, gpu_params, 0);
+		ccv_nnc_tensor_t* const gpu_forward = ccv_nnc_tensor_new(0, gpu_params, 0);
+		if (datatypes[d] == CCV_16F)
+			ccv_float_to_half_precision(values, (uint16_t*)input->data.f16, count);
+		else
+			ccv_float_to_bfloat(values, (uint16_t*)input->data.f16, count);
+		const ccv_nnc_cmd_t cpu_backward_cmd = CMD_CONFORM_DATA_FORMAT_BACKWARD(CCV_NNC_FP8_E4M3, 64);
+		REQUIRE_EQ(CCV_NNC_EXEC_SUCCESS, ccv_nnc_cmd_exec(cpu_backward_cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(input, 0, 0), TENSOR_LIST(cpu_backward), 0), "CPU E4M3 backward should support datatype %d", datatypes[d]);
+		REQUIRE_ARRAY_EQ(uint16_t, (uint16_t*)input->data.f16, (uint16_t*)cpu_backward->data.f16, count, "CPU E4M3 backward should preserve datatype %d", datatypes[d]);
+		REQUIRE_EQ(CCV_NNC_EXEC_SUCCESS, ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(input), TENSOR_LIST(gpu_input), 0), "input should transfer to Metal");
+		ccv_nnc_cmd_t backward = cpu_backward_cmd;
+		backward.backend = CCV_NNC_BACKEND_MPS;
+		ccv_nnc_cmd_t all_tail = CMD_CONFORM_DATA_FORMAT_FORWARD(CCV_NNC_FP8_E4M3, 128);
+		all_tail.backend = CCV_NNC_BACKEND_MPS;
+		const int backward_status = ccv_nnc_cmd_exec(backward, ccv_nnc_no_hint, 0, TENSOR_LIST(gpu_input, 0, 0), TENSOR_LIST(gpu_backward), 0);
+		const int forward_status = ccv_nnc_cmd_exec(all_tail, ccv_nnc_no_hint, 0, TENSOR_LIST(gpu_input), TENSOR_LIST(gpu_forward), 0);
+		REQUIRE_EQ(CCV_NNC_EXEC_SUCCESS, ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(gpu_backward, gpu_forward), TENSOR_LIST(actual_backward, actual_forward), 0), "Metal copies should transfer to CPU");
+		REQUIRE_EQ(CCV_NNC_EXEC_SUCCESS, backward_status, "Metal E4M3 backward should support datatype %d", datatypes[d]);
+		REQUIRE_EQ(CCV_NNC_EXEC_SUCCESS, forward_status, "Metal all-tail E4M3 forward should support datatype %d", datatypes[d]);
+		REQUIRE_ARRAY_EQ(uint16_t, (uint16_t*)input->data.f16, (uint16_t*)actual_backward->data.f16, count, "Metal E4M3 backward should preserve every datatype %d element", datatypes[d]);
+		REQUIRE_ARRAY_EQ(uint16_t, (uint16_t*)input->data.f16, (uint16_t*)actual_forward->data.f16, count, "Metal all-tail E4M3 forward should preserve every datatype %d element", datatypes[d]);
+		ccv_nnc_tensor_free(gpu_forward);
+		ccv_nnc_tensor_free(gpu_backward);
+		ccv_nnc_tensor_free(gpu_input);
+		ccv_nnc_tensor_free(actual_forward);
+		ccv_nnc_tensor_free(actual_backward);
+		ccv_nnc_tensor_free(cpu_backward);
+		ccv_nnc_tensor_free(input);
+	}
+}
+
 TEST_CASE("conform data format backward and all-tail forward copy on Metal")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_CONFORM_DATA_FORMAT_BACKWARD, CCV_NNC_BACKEND_MPS));

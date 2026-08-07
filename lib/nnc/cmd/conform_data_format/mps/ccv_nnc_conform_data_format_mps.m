@@ -11,7 +11,9 @@ static int _ccv_nnc_conform_data_format_validate(const ccv_nnc_cmd_t cmd, const 
 {
 	if (cmd.info.conform_data_format.datatype != CCV_NNC_FP8_E4M3 || !a || !b)
 		return 0;
-	if (a->info.datatype != CCV_32F || b->info.datatype != CCV_32F || !CCV_IS_TENSOR_CONTIGUOUS(a) || !CCV_IS_TENSOR_CONTIGUOUS(b))
+	if (a->info.datatype != b->info.datatype ||
+		(a->info.datatype != CCV_32F && a->info.datatype != CCV_16F && a->info.datatype != CCV_16BF) ||
+		!CCV_IS_TENSOR_CONTIGUOUS(a) || !CCV_IS_TENSOR_CONTIGUOUS(b))
 		return 0;
 	const int a_nd = ccv_nnc_tensor_nd(a->info.dim);
 	const int b_nd = ccv_nnc_tensor_nd(b->info.dim);
@@ -36,7 +38,7 @@ static int _ccv_nnc_conform_data_format_copy(const ccv_nnc_tensor_view_t* const 
 		id<MTLCommandBuffer> const mtl_command_buffer = command_buffer.commandBuffer;
 		id<MTLBlitCommandEncoder> const encoder = [mtl_command_buffer blitCommandEncoder];
 		if (mpgetbuffer((ccv_nnc_tensor_t*)a) != mpgetbuffer((ccv_nnc_tensor_t*)b) || mpgetoffset((ccv_nnc_tensor_t*)a) != mpgetoffset((ccv_nnc_tensor_t*)b))
-			[encoder copyFromBuffer:mpgetbuffer((ccv_nnc_tensor_t*)a) sourceOffset:mpgetoffset((ccv_nnc_tensor_t*)a) toBuffer:mpgetbuffer((ccv_nnc_tensor_t*)b) destinationOffset:mpgetoffset((ccv_nnc_tensor_t*)b) size:sizeof(float) * ccv_nnc_tensor_count(a->info)];
+			[encoder copyFromBuffer:mpgetbuffer((ccv_nnc_tensor_t*)a) sourceOffset:mpgetoffset((ccv_nnc_tensor_t*)a) toBuffer:mpgetbuffer((ccv_nnc_tensor_t*)b) destinationOffset:mpgetoffset((ccv_nnc_tensor_t*)b) size:CCV_GET_DATA_TYPE_SIZE(a->info.datatype) * ccv_nnc_tensor_count(a->info)];
 		[encoder endEncoding];
 		ccv_nnc_stream_context_finish_mps_command_buffer(stream_context, command_buffer);
 	}
@@ -70,12 +72,13 @@ static MPSGraphTensor* _ccv_nnc_conform_data_format_bucket(MPSGraph* const graph
 	return [graph selectWithPredicateTensor:predicate truePredicateTensor:v falsePredicateTensor:dequant name:nil];
 }
 
-static MPSGraphTensor* _ccv_nnc_conform_data_format_graph(MPSGraph* const graph, MPSGraphTensor* const x, NSArray<NSNumber*>* const original_shape, const size_t count, const int head_dim, const int preserved_tail)
+static MPSGraphTensor* _ccv_nnc_conform_data_format_graph(MPSGraph* const graph, MPSGraphTensor* const x, NSArray<NSNumber*>* const original_shape, const size_t count, const int head_dim, const int preserved_tail, const int datatype)
 {
 	const int prefix = head_dim - preserved_tail;
 	const int blocks_per_row = prefix / CCV_NNC_CONFORM_DATA_FORMAT_BLOCK_SIZE;
 	const size_t rows = count / head_dim;
-	MPSGraphTensor* const rows_2d = [graph reshapeTensor:x withShape:@[@(rows), @(head_dim)] name:nil];
+	MPSGraphTensor* const x_f32 = datatype == CCV_32F ? x : [graph castTensor:x toType:MPSDataTypeFloat32 name:@"x_float"];
+	MPSGraphTensor* const rows_2d = [graph reshapeTensor:x_f32 withShape:@[@(rows), @(head_dim)] name:nil];
 	MPSGraphTensor* const prefix_tensor = [graph sliceTensor:rows_2d dimension:1 start:0 length:prefix name:nil];
 	MPSGraphTensor* const blocks = [graph reshapeTensor:prefix_tensor withShape:@[@(rows * blocks_per_row), @CCV_NNC_CONFORM_DATA_FORMAT_BLOCK_SIZE] name:nil];
 	MPSGraphTensor* const abs_blocks = _ccv_nnc_conform_data_format_abs(graph, blocks);
@@ -108,7 +111,8 @@ static MPSGraphTensor* _ccv_nnc_conform_data_format_graph(MPSGraph* const graph,
 		MPSGraphTensor* const tail = [graph sliceTensor:rows_2d dimension:1 start:prefix length:preserved_tail name:nil];
 		output = [graph concatTensor:output withTensor:tail dimension:1 name:nil];
 	}
-	return [graph reshapeTensor:output withShape:original_shape name:nil];
+	output = [graph reshapeTensor:output withShape:original_shape name:nil];
+	return datatype == CCV_32F ? output : [graph castTensor:output toType:ccv_nnc_mps_datatype(datatype) name:@"output"];
 }
 
 static int _ccv_nnc_conform_data_format_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
@@ -131,6 +135,7 @@ static int _ccv_nnc_conform_data_format_forw(const ccv_nnc_cmd_t cmd, const ccv_
 		if (count <= UINT32_MAX && rows <= UINT32_MAX && ccv_nnc_mfa_context_supported(context) && !(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA))
 		{
 			const ccv_nnc_mfa_conform_data_format_params_t params = {
+				.data_type = a->info.datatype == CCV_16F ? 16 : (a->info.datatype == CCV_16BF ? 121 : 3),
 				.row_count = (uint32_t)rows,
 				.head_dim = (uint32_t)head_dim,
 				.preserved_tail = (uint32_t)preserved_tail,
@@ -158,7 +163,7 @@ static int _ccv_nnc_conform_data_format_forw(const ccv_nnc_cmd_t cmd, const ccv_
 			MPSGraphTensor* const mps_a = ccv_nnc_mps_graph_tensor_input(graph, a, a->info.dim, a->stride, &mps_input_a);
 			[input_tensors addObject:mps_input_a];
 			[input_shapes addObject:ccv_nnc_mps_graph_tensor_input_shape(a, a->info.dim, a->stride)];
-			[result_tensors addObject:_ccv_nnc_conform_data_format_graph(graph, mps_a, shape, count, head_dim, preserved_tail)];
+			[result_tensors addObject:_ccv_nnc_conform_data_format_graph(graph, mps_a, shape, count, head_dim, preserved_tail, a->info.datatype)];
 		});
 		MPSGraphTensorData* const data_a = ccv_nnc_mps_graph_tensor_data(a, a->info.dim, a->stride);
 		ccv_nnc_mps_graph_executable_result(executable, command_buffer, @[data_a], &b, (int*[]){ b->info.dim }, (int*[]){ b->stride }, 1, 0);
@@ -182,7 +187,7 @@ static int _ccv_nnc_conform_data_format_back(const ccv_nnc_cmd_t cmd, const ccv_
 REGISTER_COMMAND_BACKEND(CCV_NNC_CONFORM_DATA_FORMAT_FORWARD, CCV_NNC_BACKEND_MPS)(ccv_nnc_cmd_backend_registry_t* const registry)
 {
 	registry->tensor_formats = CCV_TENSOR_FORMAT_NHWC | CCV_TENSOR_FORMAT_NCHW | CCV_TENSOR_FORMAT_CHWN;
-	registry->tensor_datatypes = CCV_32F;
+	registry->tensor_datatypes = CCV_32F | CCV_16F | CCV_16BF;
 	registry->tensor_memory = CCV_TENSOR_GPU_MEMORY;
 	registry->algorithms = 1;
 	registry->exec = _ccv_nnc_conform_data_format_forw;
@@ -191,7 +196,7 @@ REGISTER_COMMAND_BACKEND(CCV_NNC_CONFORM_DATA_FORMAT_FORWARD, CCV_NNC_BACKEND_MP
 REGISTER_COMMAND_BACKEND(CCV_NNC_CONFORM_DATA_FORMAT_BACKWARD, CCV_NNC_BACKEND_MPS)(ccv_nnc_cmd_backend_registry_t* const registry)
 {
 	registry->tensor_formats = CCV_TENSOR_FORMAT_NHWC | CCV_TENSOR_FORMAT_NCHW | CCV_TENSOR_FORMAT_CHWN;
-	registry->tensor_datatypes = CCV_32F;
+	registry->tensor_datatypes = CCV_32F | CCV_16F | CCV_16BF;
 	registry->tensor_memory = CCV_TENSOR_GPU_MEMORY;
 	registry->algorithms = 1;
 	registry->exec = _ccv_nnc_conform_data_format_back;

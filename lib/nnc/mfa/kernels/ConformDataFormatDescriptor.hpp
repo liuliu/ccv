@@ -4,16 +4,18 @@
 #include <utility>
 #include "PipelineValue.hpp"
 #include "DeviceProperties.hpp"
+#include "GEMMOperandPrecision.hpp"
 
 struct ConformDataFormatKernelDescriptor {
   bool loadM;
-  constexpr bool operator==(const ConformDataFormatKernelDescriptor& rhs) const { return loadM == rhs.loadM; }
+  GEMMOperandPrecision memoryPrecision;
+  constexpr bool operator==(const ConformDataFormatKernelDescriptor& rhs) const { return loadM == rhs.loadM && memoryPrecision == rhs.memoryPrecision; }
 };
 
 template<>
 struct std::hash<ConformDataFormatKernelDescriptor>
 {
-  std::size_t operator()(const ConformDataFormatKernelDescriptor& hash) const noexcept { return hash.loadM ? 1 : 0; }
+  std::size_t operator()(const ConformDataFormatKernelDescriptor& hash) const noexcept { return (hash.loadM ? 1 : 0) | ((std::size_t)hash.memoryPrecision.value << 1); }
 };
 
 struct ConformDataFormatKernel;
@@ -24,6 +26,8 @@ struct ConformDataFormatDescriptor {
   uint32_t preservedTail;
 
   bool loadM;
+
+  GEMMOperandPrecision memoryPrecision;
 
   bool operator==(const ConformDataFormatDescriptor& rhs) const;
 

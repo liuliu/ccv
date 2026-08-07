@@ -4,6 +4,7 @@
 ConformDataFormatKernel::ConformDataFormatKernel(ConformDataFormatKernelDescriptor descriptor, MTL::Device* const device)
 {
   loadM = descriptor.loadM;
+  memoryPrecision = descriptor.memoryPrecision;
   const std::string source = createSource();
   threadgroupSize = MTL::Size(64, 1, 1);
   auto string = NS::String::string(source.c_str(), NS::UTF8StringEncoding);
@@ -126,6 +127,20 @@ kernel void conform_data_format(
     const std::string::size_type rowCountPosition = shader.find("  const uint prefix = head_dim - preserved_tail;");
     CCV_NNC_MFA_PRECONDITION(rowCountPosition != std::string::npos);
     shader.insert(rowCountPosition, "  const uniform<uint> row_count = make_uniform(loadM[0]);\n");
+  }
+  if (memoryPrecision != GEMMOperandPrecision::FP32) {
+    const std::string sourceType = "device const float* source";
+    const std::string::size_type sourceTypePosition = shader.find(sourceType);
+    CCV_NNC_MFA_PRECONDITION(sourceTypePosition != std::string::npos);
+    shader.replace(sourceTypePosition, sourceType.size(), "device const " + memoryPrecision.name() + "* source");
+    const std::string destinationType = "device float* destination";
+    const std::string::size_type destinationTypePosition = shader.find(destinationType);
+    CCV_NNC_MFA_PRECONDITION(destinationTypePosition != std::string::npos);
+    shader.replace(destinationTypePosition, destinationType.size(), "device " + memoryPrecision.name() + "* destination");
+    const std::string destinationValue = "  destination[index] = conform_e4m3(clamp(value / scale, -448.0f, 448.0f)) * scale;";
+    const std::string::size_type destinationValuePosition = shader.find(destinationValue);
+    CCV_NNC_MFA_PRECONDITION(destinationValuePosition != std::string::npos);
+    shader.replace(destinationValuePosition, destinationValue.size(), "  destination[index] = (" + memoryPrecision.name() + ")(conform_e4m3(clamp(value / scale, -448.0f, 448.0f)) * scale);");
   }
   return shader;
 }

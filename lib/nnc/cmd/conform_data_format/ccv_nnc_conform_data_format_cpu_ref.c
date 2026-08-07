@@ -76,7 +76,9 @@ static int _ccv_nnc_conform_data_format_validate(const ccv_nnc_cmd_t cmd, const 
 {
 	if (cmd.info.conform_data_format.datatype != CCV_NNC_FP8_E4M3 || !a || !b)
 		return 0;
-	if (a->info.datatype != CCV_32F || b->info.datatype != CCV_32F || !CCV_IS_TENSOR_CONTIGUOUS(a) || !CCV_IS_TENSOR_CONTIGUOUS(b))
+	if (a->info.datatype != b->info.datatype ||
+		(a->info.datatype != CCV_32F && a->info.datatype != CCV_16F && a->info.datatype != CCV_16BF) ||
+		!CCV_IS_TENSOR_CONTIGUOUS(a) || !CCV_IS_TENSOR_CONTIGUOUS(b))
 		return 0;
 	const int a_nd = ccv_nnc_tensor_nd(a->info.dim);
 	const int b_nd = ccv_nnc_tensor_nd(b->info.dim);
@@ -103,14 +105,40 @@ static int _ccv_nnc_conform_data_format_forw(const ccv_nnc_cmd_t cmd, const ccv_
 	int head_dim;
 	if (!_ccv_nnc_conform_data_format_validate(cmd, a, b, &head_dim))
 		return CCV_NNC_EXEC_INVALID;
-	const size_t rows = ccv_nnc_tensor_count(a->info) / head_dim;
-	const float* const ap = a->data.f32;
-	float* const bp = b->data.f32;
+	const size_t count = ccv_nnc_tensor_count(a->info);
+	const size_t rows = count / head_dim;
+	float* workspace = 0;
+	const float* ap;
+	float* bp;
+	if (a->info.datatype == CCV_32F)
+	{
+		ap = a->data.f32;
+		bp = b->data.f32;
+	} else {
+		workspace = (float*)ccmalloc(sizeof(float) * count);
+		if (a->info.datatype == CCV_16F)
+			ccv_half_precision_to_float((const uint16_t*)a->data.f16, workspace, count);
+		else
+			ccv_bfloat_to_float((const uint16_t*)a->data.f16, workspace, count);
+		ap = bp = workspace;
+	}
 	const int preserved_tail = cmd.info.conform_data_format.preserved_tail;
 	size_t i;
 	for (i = 0; i < rows; i++)
 		if (!_ccv_nnc_conform_data_format_e4m3_row(ap + i * head_dim, bp + i * head_dim, head_dim, preserved_tail))
+		{
+			if (workspace)
+				ccfree(workspace);
 			return CCV_NNC_EXEC_INVALID;
+		}
+	if (workspace)
+	{
+		if (b->info.datatype == CCV_16F)
+			ccv_float_to_half_precision(workspace, (uint16_t*)b->data.f16, count);
+		else
+			ccv_float_to_bfloat(workspace, (uint16_t*)b->data.f16, count);
+		ccfree(workspace);
+	}
 	return CCV_NNC_EXEC_SUCCESS;
 }
 
@@ -123,15 +151,15 @@ static int _ccv_nnc_conform_data_format_back(const ccv_nnc_cmd_t cmd, const ccv_
 	int head_dim;
 	if (!_ccv_nnc_conform_data_format_validate(cmd, g, h, &head_dim))
 		return CCV_NNC_EXEC_INVALID;
-	if (g->data.f32 != h->data.f32)
-		memcpy(h->data.f32, g->data.f32, sizeof(float) * ccv_nnc_tensor_count(g->info));
+	if (g->data.u8 != h->data.u8)
+		memcpy(h->data.u8, g->data.u8, CCV_GET_DATA_TYPE_SIZE(g->info.datatype) * ccv_nnc_tensor_count(g->info));
 	return CCV_NNC_EXEC_SUCCESS;
 }
 
 REGISTER_COMMAND_BACKEND(CCV_NNC_CONFORM_DATA_FORMAT_FORWARD, CCV_NNC_BACKEND_CPU_REF)(ccv_nnc_cmd_backend_registry_t* const registry)
 {
 	registry->tensor_formats = CCV_TENSOR_FORMAT_NHWC | CCV_TENSOR_FORMAT_NCHW | CCV_TENSOR_FORMAT_CHWN;
-	registry->tensor_datatypes = CCV_32F;
+	registry->tensor_datatypes = CCV_32F | CCV_16F | CCV_16BF;
 	registry->tensor_memory = CCV_TENSOR_CPU_MEMORY;
 	registry->algorithms = 1;
 	registry->exec = _ccv_nnc_conform_data_format_forw;
@@ -140,7 +168,7 @@ REGISTER_COMMAND_BACKEND(CCV_NNC_CONFORM_DATA_FORMAT_FORWARD, CCV_NNC_BACKEND_CP
 REGISTER_COMMAND_BACKEND(CCV_NNC_CONFORM_DATA_FORMAT_BACKWARD, CCV_NNC_BACKEND_CPU_REF)(ccv_nnc_cmd_backend_registry_t* const registry)
 {
 	registry->tensor_formats = CCV_TENSOR_FORMAT_NHWC | CCV_TENSOR_FORMAT_NCHW | CCV_TENSOR_FORMAT_CHWN;
-	registry->tensor_datatypes = CCV_32F;
+	registry->tensor_datatypes = CCV_32F | CCV_16F | CCV_16BF;
 	registry->tensor_memory = CCV_TENSOR_CPU_MEMORY;
 	registry->algorithms = 1;
 	registry->exec = _ccv_nnc_conform_data_format_back;

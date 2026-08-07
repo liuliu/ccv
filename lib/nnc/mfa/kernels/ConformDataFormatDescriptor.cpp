@@ -7,6 +7,7 @@
 bool ConformDataFormatDescriptor::operator==(const ConformDataFormatDescriptor& rhs) const
 {
   return
+  memoryPrecision == rhs.memoryPrecision &&
   loadM == rhs.loadM &&
   (loadM || rowCount == rhs.rowCount) &&
   headDim == rhs.headDim &&
@@ -20,6 +21,7 @@ std::size_t std::hash<ConformDataFormatDescriptor>::operator()(const ConformData
   combine_64(seed, pack_64(simd::uint2 { hash.loadM ? 0 : hash.rowCount, hash.headDim }));
   combine_32(seed, hash.preservedTail);
   combine_32(seed, hash.loadM ? 1 : 0);
+  combine_32(seed, hash.memoryPrecision.value);
   return seed;
 }
 
@@ -27,6 +29,7 @@ std::pair<ConformDataFormatKernelDescriptor, PipelineValue<ConformDataFormatKern
 {
   ConformDataFormatKernelDescriptor kernelDescriptor;
   kernelDescriptor.loadM = loadM;
+  kernelDescriptor.memoryPrecision = memoryPrecision;
   ConformDataFormatKernel* kernel;
   auto iterator = libraryCache->find(kernelDescriptor);
   if (iterator != libraryCache->end()) {
