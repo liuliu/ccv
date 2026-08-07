@@ -177,6 +177,8 @@ static int _ccv_nnc_set_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 	cudnnHandle_t cudnn = ccv_nnc_stream_context_get_cudnn(stream_context);
 	for (i = 0; i < output_size; i++)
 	{
+		if (outputs[i]->info.dim[0] == 0)
+			continue;
 		if (outputs[i]->info.datatype == CCV_32S)
 		{
 			int v = (int)cmd.info.blas.a[0];
@@ -205,6 +207,8 @@ static int _ccv_nnc_set_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 	cudnnHandle_t cudnn = ccv_nnc_stream_context_get_cudnn(stream_context);
 	for (i = 0; i < output_size; i++)
 	{
+		if (outputs[i]->info.dim[0] == 0)
+			continue;
 		const ccv_nnc_cudnn_tensor_view_descriptor_t a = ccv_nnc_cudnn_get_tensor_view_descriptor_for_op(stream_context, (const ccv_nnc_tensor_view_t*)outputs[i]);
 		if (outputs[i]->info.datatype == CCV_64F)
 		{

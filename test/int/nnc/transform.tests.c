@@ -11,6 +11,32 @@ TEST_SETUP()
 	ccv_nnc_init();
 }
 
+TEST_CASE("set forward and backward skip empty tensors on CPU")
+{
+	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 0, 128), 0);
+	ccv_nnc_cmd_t set = CMD_SET_FORWARD(1);
+	set.backend = CCV_NNC_BACKEND_CPU_REF;
+	REQUIRE_EQ(CCV_NNC_EXEC_SUCCESS, ccv_nnc_cmd_exec(set, ccv_nnc_no_hint, 0, TENSOR_LIST(), TENSOR_LIST(a), 0), "CPU set forward should skip an empty tensor");
+	set = CMD_SET_BACKWARD(1);
+	set.backend = CCV_NNC_BACKEND_CPU_REF;
+	REQUIRE_EQ(CCV_NNC_EXEC_SUCCESS, ccv_nnc_cmd_exec(set, ccv_nnc_no_hint, 0, TENSOR_LIST(), TENSOR_LIST(a), 0), "CPU set backward should skip an empty tensor");
+	ccv_nnc_tensor_free(a);
+}
+
+TEST_CASE("set forward and backward skip empty tensors on MPS")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SET_FORWARD, CCV_NNC_BACKEND_MPS) &&
+		ccv_nnc_cmd_ok(CCV_NNC_SET_BACKWARD, CCV_NNC_BACKEND_MPS));
+	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 0, 128), 0);
+	ccv_nnc_cmd_t set = CMD_SET_FORWARD(1);
+	set.backend = CCV_NNC_BACKEND_MPS;
+	REQUIRE_EQ(CCV_NNC_EXEC_SUCCESS, ccv_nnc_cmd_exec(set, ccv_nnc_no_hint, 0, TENSOR_LIST(), TENSOR_LIST(a), 0), "MPS set forward should skip an empty tensor");
+	set = CMD_SET_BACKWARD(1);
+	set.backend = CCV_NNC_BACKEND_MPS;
+	REQUIRE_EQ(CCV_NNC_EXEC_SUCCESS, ccv_nnc_cmd_exec(set, ccv_nnc_no_hint, 0, TENSOR_LIST(), TENSOR_LIST(a), 0), "MPS set backward should skip an empty tensor");
+	ccv_nnc_tensor_free(a);
+}
+
 TEST_CASE("data conversion from float to half precision")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_DATATYPE_CONVERSION_FORWARD, CCV_NNC_BACKEND_GPU_REF) || ccv_nnc_cmd_ok(CCV_NNC_DATATYPE_CONVERSION_FORWARD, CCV_NNC_BACKEND_MPS));

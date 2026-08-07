@@ -5556,6 +5556,20 @@ TEST_CASE("compare set with cudnn in integer")
 	ccv_nnc_tensor_free(ga);
 }
 
+TEST_CASE("set forward and backward with cudnn skip empty tensors")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SET_FORWARD, CCV_NNC_BACKEND_GPU_CUDNN) &&
+		ccv_nnc_cmd_ok(CCV_NNC_SET_BACKWARD, CCV_NNC_BACKEND_GPU_CUDNN));
+	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 0, 128), 0);
+	ccv_nnc_cmd_t set = CMD_SET_FORWARD(1);
+	set.backend = CCV_NNC_BACKEND_GPU_CUDNN;
+	REQUIRE_EQ(CCV_NNC_EXEC_SUCCESS, ccv_nnc_cmd_exec(set, ccv_nnc_no_hint, 0, TENSOR_LIST(), TENSOR_LIST(a), 0), "cuDNN set forward should skip an empty tensor");
+	set = CMD_SET_BACKWARD(1);
+	set.backend = CCV_NNC_BACKEND_GPU_CUDNN;
+	REQUIRE_EQ(CCV_NNC_EXEC_SUCCESS, ccv_nnc_cmd_exec(set, ccv_nnc_no_hint, 0, TENSOR_LIST(), TENSOR_LIST(a), 0), "cuDNN set backward should skip an empty tensor");
+	ccv_nnc_tensor_free(a);
+}
+
 TEST_CASE("broadcasting semantics for add [[1, 2, 3], [4, 5, 6]] + [7, 8, 9]")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_ADD_FORWARD, CCV_NNC_BACKEND_GPU_CUDNN));

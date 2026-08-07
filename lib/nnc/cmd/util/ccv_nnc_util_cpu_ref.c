@@ -709,10 +709,18 @@ static int _ccv_nnc_set_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 {
 	int i;
 	if (cmd.info.blas.a[0] == 0)
+	{
 		for (i = 0; i < output_size; i++)
+		{
+			if (outputs[i]->info.dim[0] == 0)
+				continue;
 			ccv_nnc_tensor_zero(outputs[i]);
-	else
+		}
+	} else {
 		for (i = 0; i < output_size; i++)
+		{
+			if (outputs[i]->info.dim[0] == 0)
+				continue;
 			if (outputs[i]->info.datatype == CCV_16F)
 				_ccv_nnc_tensor_set_cpu_ref_f16((ccv_nnc_tensor_view_t*)outputs[i], cmd.info.blas.a[0]);
 			else if (outputs[i]->info.datatype == CCV_16BF)
@@ -725,6 +733,8 @@ static int _ccv_nnc_set_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 				_ccv_nnc_tensor_set_cpu_ref_i32((ccv_nnc_tensor_view_t*)outputs[i], (int)cmd.info.blas.a[0]);
 			else
 				{ assert(0); }
+		}
+	}
 	return CCV_NNC_EXEC_SUCCESS;
 }
 
@@ -732,7 +742,11 @@ static int _ccv_nnc_set_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 {
 	int i;
 	for (i = 0; i < output_size; i++)
+	{
+		if (outputs[i]->info.dim[0] == 0)
+			continue;
 		ccv_nnc_tensor_zero(outputs[i]);
+	}
 	return CCV_NNC_EXEC_SUCCESS;
 }
 

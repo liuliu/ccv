@@ -169,7 +169,7 @@ static int _ccv_nnc_set_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 	for (i = 0; i < output_size; i++)
 		executable_output_size += outputs[i]->info.dim[0] != 0;
 	if (executable_output_size == 0)
-		return CCV_NNC_EXEC_INVALID;
+		return CCV_NNC_EXEC_SUCCESS;
 	@autoreleasepool {
 		MPSCommandBuffer* command_buffer = ccv_nnc_stream_context_start_mps_command_buffer(stream_context);
 		for (i = 0; i < output_size; i++)
@@ -201,7 +201,7 @@ static int _ccv_nnc_set_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 	for (i = 0; i < output_size; i++)
 		executable_output_size += outputs[i]->info.dim[0] != 0;
 	if (executable_output_size == 0)
-		return CCV_NNC_EXEC_INVALID;
+		return CCV_NNC_EXEC_SUCCESS;
 	@autoreleasepool {
 		MPSCommandBuffer* command_buffer = ccv_nnc_stream_context_start_mps_command_buffer(stream_context);
 		for (i = 0; i < output_size; i++)
