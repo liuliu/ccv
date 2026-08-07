@@ -11,6 +11,8 @@
 struct RMSNormCmulKernelDescriptor {
 	GEMMOperandPrecision aPrecision;
 	GEMMOperandPrecision rotationPrecision;
+	GEMMOperandPrecision scalePrecision;
+	bool elementwiseAffine;
 
 	bool operator==(const RMSNormCmulKernelDescriptor& rhs) const;
 };
@@ -26,9 +28,11 @@ struct RMSNormCmulDescriptor {
 	float epsilon;
 	GEMMOperandPrecision aPrecision;
 	GEMMOperandPrecision rotationPrecision;
+	GEMMOperandPrecision scalePrecision;
 	uint32_t columnCount;
 	uint32_t broadcastRatio;
 	uint32_t rowsPerThreadgroup;
+	bool elementwiseAffine;
 
 	bool operator==(const RMSNormCmulDescriptor& rhs) const;
 	std::pair<RMSNormCmulKernelDescriptor, PipelineValue<RMSNormCmulKernel>*> findKernel(MTL::Device* const device, const DeviceProperties& dprops, NS::Array* const binaryArchivesToRead, MTL::BinaryArchive* const binaryArchiveToWrite, const std::string& pathToWrite, std::unordered_map<RMSNormCmulKernelDescriptor, std::unique_ptr<RMSNormCmulKernel>>* const libraryCache) const noexcept;

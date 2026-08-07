@@ -2550,6 +2550,60 @@ TEST_CASE("evaluate cnnp swish mul")
 	ccv_cnnp_model_free(final);
 }
 
+TEST_CASE("evaluate cnnp rmsnorm cmul with and without affine weight")
+{
+	const ccv_cnnp_model_io_t x = ccv_cnnp_input();
+	const ccv_cnnp_model_io_t rotation = ccv_cnnp_input();
+	ccv_cnnp_model_t* const affine_layer0 = ccv_cnnp_rmsnorm_cmul(1e-6, DIM_ALLOC(2), 1, 1, 1, "affine_rmsnorm_cmul");
+	ccv_cnnp_model_t* const affine_layer = ccv_cnnp_model_copy(affine_layer0, 1);
+	ccv_cnnp_model_free(affine_layer0);
+	const ccv_cnnp_model_io_t affine_y = ccv_cnnp_model_apply(affine_layer, MODEL_IO_LIST(x, rotation));
+	ccv_cnnp_model_t* const plain_layer = ccv_cnnp_rmsnorm_cmul(1e-6, DIM_ALLOC(2), 1, 0, 0, "plain_rmsnorm_cmul");
+	const ccv_cnnp_model_io_t plain_y = ccv_cnnp_model_apply(plain_layer, MODEL_IO_LIST(x, rotation));
+	ccv_cnnp_model_t* const final = ccv_cnnp_model_new(MODEL_IO_LIST(x, rotation), MODEL_IO_LIST(affine_y, plain_y), 1, "rmsnorm_cmul");
+	const ccv_nnc_tensor_param_t x_params = CPU_TENSOR_NHWC(32F, 3, 4, 18);
+	const ccv_nnc_tensor_param_t rotation_params = CPU_TENSOR_NHWC(32F, 3, 1, 18);
+	ccv_cnnp_model_compile(final, TENSOR_PARAM_LIST(x_params, rotation_params), CMD_NOOP(), CMD_NOOP());
+	ccv_nnc_tensor_param_t output_params[2] = {};
+	ccv_cnnp_model_tensor_auto(final, output_params, 2);
+	REQUIRE_ARRAY_EQ(int, output_params[0].dim, x_params.dim, CCV_NNC_MAX_DIM_ALLOC, "affine rmsnorm cmul output should have the input shape");
+	REQUIRE_ARRAY_EQ(int, output_params[1].dim, x_params.dim, CCV_NNC_MAX_DIM_ALLOC, "non-affine rmsnorm cmul output should have the input shape");
+	ccv_nnc_tensor_t* const x_tensor = ccv_nnc_tensor_new(0, x_params, 0);
+	ccv_nnc_tensor_t* const rotation_tensor = ccv_nnc_tensor_new(0, rotation_params, 0);
+	ccv_nnc_tensor_t* const affine_y_tensor = ccv_nnc_tensor_new(0, output_params[0], 0);
+	ccv_nnc_tensor_t* const plain_y_tensor = ccv_nnc_tensor_new(0, output_params[1], 0);
+	ccv_nnc_tensor_t* const expected_affine = ccv_nnc_tensor_new(0, x_params, 0);
+	ccv_nnc_tensor_t* const expected_plain = ccv_nnc_tensor_new(0, x_params, 0);
+	ccv_nnc_tensor_t* const scale = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, 1, 18), 0);
+	dsfmt_t dsfmt;
+	dsfmt_init_gen_rand(&dsfmt, 40);
+	int i;
+	for (i = 0; i < 3 * 4 * 18; i++)
+		x_tensor->data.f32[i] = (dsfmt_genrand_open_close(&dsfmt) * 2 - 1) * 3;
+	for (i = 0; i < 3 * 18; i++)
+		rotation_tensor->data.f32[i] = (dsfmt_genrand_open_close(&dsfmt) * 2 - 1) * 2;
+	for (i = 0; i < 18; i++)
+		scale->data.f32[i] = (dsfmt_genrand_open_close(&dsfmt) * 2 - 1) * 2;
+	ccv_cnnp_model_set_parameter(final, ccv_cnnp_model_parameters(affine_layer, ALL_PARAMETERS, 0), scale);
+	ccv_cnnp_model_evaluate(final, (ccv_cnnp_evaluate_param_t){}, TENSOR_LIST(x_tensor, rotation_tensor), TENSOR_LIST(affine_y_tensor, plain_y_tensor), 0, 0);
+	ccv_nnc_cmd_t affine_cmd = CMD_RMSNORM_CMUL_FORWARD(1e-6, 1, 2);
+	affine_cmd.backend = CCV_NNC_BACKEND_CPU_REF;
+	ccv_nnc_cmd_exec(affine_cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(x_tensor, rotation_tensor, scale), TENSOR_LIST(expected_affine), 0);
+	ccv_nnc_cmd_t plain_cmd = CMD_RMSNORM_CMUL_FORWARD(1e-6, 0, 2);
+	plain_cmd.backend = CCV_NNC_BACKEND_CPU_REF;
+	ccv_nnc_cmd_exec(plain_cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(x_tensor, rotation_tensor), TENSOR_LIST(expected_plain), 0);
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, affine_y_tensor->data.f32, expected_affine->data.f32, 3 * 4 * 18, 1e-6, "affine cnnp rmsnorm cmul should match the fused op");
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, plain_y_tensor->data.f32, expected_plain->data.f32, 3 * 4 * 18, 1e-6, "non-affine cnnp rmsnorm cmul should match the fused op");
+	ccv_nnc_tensor_free(x_tensor);
+	ccv_nnc_tensor_free(rotation_tensor);
+	ccv_nnc_tensor_free(affine_y_tensor);
+	ccv_nnc_tensor_free(plain_y_tensor);
+	ccv_nnc_tensor_free(expected_affine);
+	ccv_nnc_tensor_free(expected_plain);
+	ccv_nnc_tensor_free(scale);
+	ccv_cnnp_model_free(final);
+}
+
 TEST_CASE("evaluate cnnp rmsnorm gated")
 {
 	const ccv_cnnp_model_io_t x = ccv_cnnp_input();

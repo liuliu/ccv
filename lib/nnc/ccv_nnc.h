@@ -195,6 +195,7 @@ typedef struct {
 			int axis[CCV_NNC_MAX_DIM_ALLOC]; /**< [rmsnorm_cmul.axis[]] The axis selected to compute the root mean square. */
 			int count; /**< [rmsnorm_cmul.count] The number of axes selected. */
 			float epsilon; /**< [rmsnorm_cmul.epsilon] The epsilon for RMS normalization before complex multiplication. */
+			int elementwise_affine; /**< [rmsnorm_cmul.elementwise_affine] Whether it supports scale. */
 		} rmsnorm_cmul;
 		struct {
 			int nesterov; /**< [sgd.nesterov] Nesterov accelerated gradient. */
@@ -4760,6 +4761,18 @@ CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_group_norm(const int group_axis, con
  * @return A rmsnorm model.
  */
 CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_rmsnorm(const float epsilon, const int axis[CCV_NNC_MAX_DIM_ALLOC], const int axis_count, const int elementwise_affine, const float scale, const int is_trainable, const char* const name);
+/**
+ * A rmsnorm complex multiplication model.
+ * Computes RMSNorm(x) complex-multiplied by rotation, optionally with an elementwise scale.
+ * @param epsilon The epsilon in rmsnorm parameter.
+ * @param axis The axis are the feature axis to compute norm.
+ * @param axis_count How many axis we count as feature.
+ * @param elementwise_affine Whether it contains scale.
+ * @param is_trainable Whether the parameters of this model can be trained.
+ * @param name The unique name of the model.
+ * @return A rmsnorm complex multiplication model.
+ */
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_rmsnorm_cmul(const float epsilon, const int axis[CCV_NNC_MAX_DIM_ALLOC], const int axis_count, const int elementwise_affine, const int is_trainable, const char* const name);
 /**
  * A rmsnorm gated model.
  * Computes RMSNorm(x) * swish(gate), optionally with an elementwise scale.

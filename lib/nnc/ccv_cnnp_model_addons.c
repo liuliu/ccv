@@ -3159,6 +3159,103 @@ static ccv_cnnp_model_t* _ccv_cnnp_rmsnorm_copy(const ccv_cnnp_model_t* const su
 	return ccv_cnnp_rmsnorm(self->params.rmsnorm.epsilon, self->params.rmsnorm.axis, self->params.rmsnorm.count, self->params.rmsnorm.elementwise_affine, self->params.rmsnorm.scale, self->super.is_trainable, self->super.name);
 }
 
+// MARK - RMSNorm CMul Layer
+
+typedef struct {
+	ccv_cnnp_model_t super;
+	ccv_nnc_tensor_symbol_t output;
+	ccv_nnc_tensor_symbol_t scale;
+	ccv_nnc_cmd_param_t params;
+} ccv_cnnp_model_rmsnorm_cmul_t;
+
+static void _ccv_cnnp_rmsnorm_cmul_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
+{
+	PRINT(CCV_CLI_VERBOSE, "[cnnp_rmsnorm_cmul_build] -\n");
+	assert(input_size == 2);
+	assert(output_size == 1);
+	ccv_cnnp_model_rmsnorm_cmul_t* const self = (ccv_cnnp_model_rmsnorm_cmul_t*)super;
+	const ccv_nnc_tensor_param_t params = ccv_nnc_tensor_symbol_params(graph, inputs[0]);
+	const ccv_nnc_tensor_param_t rotation_params = ccv_nnc_tensor_symbol_params(graph, inputs[1]);
+	ccv_nnc_tensor_param_t scale_params = params;
+	const int nd = ccv_nnc_tensor_nd(params.dim);
+	int i;
+	for (i = 0; i < nd; i++)
+		scale_params.dim[i] = 1;
+	for (i = 0; i < self->params.rmsnorm_cmul.count; i++)
+		scale_params.dim[self->params.rmsnorm_cmul.axis[i]] = params.dim[self->params.rmsnorm_cmul.axis[i]];
+	if (self->params.rmsnorm_cmul.elementwise_affine)
+	{
+		if (!self->scale.graph)
+			self->scale = ccv_nnc_tensor_symbol_new(graph, scale_params, "scale");
+	}
+	const ccv_nnc_tensor_symbol_t scale = self->params.rmsnorm_cmul.elementwise_affine ? ccv_cnnp_model_get_symbol(super, self->scale) : NO_TENSOR_SYMBOL;
+	const ccv_nnc_cmd_t rmsnorm_cmul = ccv_nnc_cmd(CCV_NNC_RMSNORM_CMUL_FORWARD, 0, self->params, 0);
+	ccv_nnc_tensor_param_t output_params;
+	if (self->params.rmsnorm_cmul.elementwise_affine)
+		ccv_nnc_hint_tensor_auto(rmsnorm_cmul, (ccv_nnc_tensor_param_t []){
+				params,
+				rotation_params,
+				scale_params,
+			}, 3, ccv_nnc_no_hint, &output_params, 1);
+	else
+		ccv_nnc_hint_tensor_auto(rmsnorm_cmul, (ccv_nnc_tensor_param_t []){
+				params,
+				rotation_params,
+			}, 2, ccv_nnc_no_hint, &output_params, 1);
+	outputs[0] = ccv_nnc_tensor_symbol_new(graph, output_params, 0);
+	if (self->params.rmsnorm_cmul.elementwise_affine)
+		ccv_nnc_graph_exec_symbol_new(graph, rmsnorm_cmul, TENSOR_SYMBOL_LIST(inputs[0], inputs[1], scale), outputs, output_size, "rmsnorm_cmul");
+	else
+		ccv_nnc_graph_exec_symbol_new(graph, rmsnorm_cmul, inputs, input_size, outputs, output_size, "rmsnorm_cmul");
+}
+
+static void _ccv_cnnp_rmsnorm_cmul_init_states(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_cnnp_state_initializer_f initializer, void* const context)
+{
+	ccv_cnnp_model_rmsnorm_cmul_t* const self = (ccv_cnnp_model_rmsnorm_cmul_t*)super;
+	if (self->scale.graph)
+		initializer(context, CMD_SET_FORWARD(1), ccv_nnc_no_hint, 0, 0, self->scale);
+}
+
+static void _ccv_cnnp_rmsnorm_cmul_add_to_parameter(ccv_cnnp_model_t* const super, const ccv_cnnp_add_to_array_f add_to_array, void* const parameters, const int is_trainable)
+{
+	ccv_cnnp_model_rmsnorm_cmul_t* const self = (ccv_cnnp_model_rmsnorm_cmul_t*)super;
+	if (self->scale.graph)
+		add_to_array(parameters, self->scale, is_trainable);
+}
+
+static ccv_cnnp_model_t* _ccv_cnnp_rmsnorm_cmul_copy(const ccv_cnnp_model_t* const super, void* const context);
+
+static const ccv_cnnp_model_vtab_t ccv_cnnp_rmsnorm_cmul_isa = {
+	.build = _ccv_cnnp_rmsnorm_cmul_build,
+	.init_states = _ccv_cnnp_rmsnorm_cmul_init_states,
+	.add_to_parameter = _ccv_cnnp_rmsnorm_cmul_add_to_parameter,
+	.copy = _ccv_cnnp_rmsnorm_cmul_copy,
+};
+
+ccv_cnnp_model_t* ccv_cnnp_rmsnorm_cmul(const float epsilon, const int axis[CCV_NNC_MAX_DIM_ALLOC], const int axis_count, const int elementwise_affine, const int is_trainable, const char* const name)
+{
+	ccv_cnnp_model_rmsnorm_cmul_t* const model_rmsnorm_cmul = (ccv_cnnp_model_rmsnorm_cmul_t*)cccalloc(1, sizeof(ccv_cnnp_model_rmsnorm_cmul_t));
+	model_rmsnorm_cmul->super.isa = &ccv_cnnp_rmsnorm_cmul_isa;
+	model_rmsnorm_cmul->super.input_size = 2;
+	model_rmsnorm_cmul->super.outputs = &model_rmsnorm_cmul->output;
+	model_rmsnorm_cmul->super.output_size = 1;
+	model_rmsnorm_cmul->super.is_trainable = is_trainable;
+	ccv_cnnp_model_copy_name(&model_rmsnorm_cmul->super, name);
+	model_rmsnorm_cmul->scale.d = CCV_NNC_NO_TENSOR_SYMBOL;
+	model_rmsnorm_cmul->scale.graph = 0;
+	model_rmsnorm_cmul->params.rmsnorm_cmul.epsilon = epsilon;
+	model_rmsnorm_cmul->params.rmsnorm_cmul.count = axis_count;
+	model_rmsnorm_cmul->params.rmsnorm_cmul.elementwise_affine = elementwise_affine;
+	memcpy(model_rmsnorm_cmul->params.rmsnorm_cmul.axis, axis, sizeof(int) * axis_count);
+	return (ccv_cnnp_model_t*)model_rmsnorm_cmul;
+}
+
+static ccv_cnnp_model_t* _ccv_cnnp_rmsnorm_cmul_copy(const ccv_cnnp_model_t* const super, void* const context)
+{
+	const ccv_cnnp_model_rmsnorm_cmul_t* const self = (const ccv_cnnp_model_rmsnorm_cmul_t*)super;
+	return ccv_cnnp_rmsnorm_cmul(self->params.rmsnorm_cmul.epsilon, self->params.rmsnorm_cmul.axis, self->params.rmsnorm_cmul.count, self->params.rmsnorm_cmul.elementwise_affine, self->super.is_trainable, self->super.name);
+}
+
 // MARK - RMSNorm Gated Layer
 
 typedef struct {

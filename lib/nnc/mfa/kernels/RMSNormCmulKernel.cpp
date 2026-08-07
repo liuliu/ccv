@@ -29,10 +29,13 @@ RMSNormCmulKernel::RMSNormCmulKernel(RMSNormCmulKernelDescriptor descriptor, MTL
 	constants << "typedef " << _rmsnorm_cmul_type2(descriptor.aPrecision) << " realA2;\n";
 	constants << "typedef " << _rmsnorm_cmul_type(descriptor.rotationPrecision) << " realRotation;\n";
 	constants << "typedef " << _rmsnorm_cmul_type2(descriptor.rotationPrecision) << " realRotation2;\n";
+	constants << "typedef " << _rmsnorm_cmul_type(descriptor.scalePrecision) << " realScale;\n";
+	constants << "typedef " << _rmsnorm_cmul_type2(descriptor.scalePrecision) << " realScale2;\n";
 	constants << "constant uint column_count [[function_constant(0)]];\n";
 	constants << "constant uint broadcast_ratio [[function_constant(1)]];\n";
 	constants << "constant float epsilon [[function_constant(2)]];\n";
 	constants << "constant uint rows_per_threadgroup [[function_constant(3)]];\n";
+	constants << "constant bool elementwise_affine = " << (descriptor.elementwiseAffine ? "true" : "false") << ";\n";
 	source = constants.str() + R"(
 #include <metal_stdlib>
 using namespace metal;
@@ -56,7 +59,8 @@ inline float threadgroup_inv_rms(float square_sum, threadgroup float* partials, 
 kernel void rmsnorm_cmul(
 	device const realA2* source [[buffer(0)]],
 	device const realRotation2* rotation [[buffer(1)]],
-	device realA2* destination [[buffer(2)]],
+	device const realScale2* scale [[buffer(2)]],
+	device realA2* destination [[buffer(3)]],
 	uint tid [[thread_index_in_threadgroup]],
 	uint simd_lane [[thread_index_in_simdgroup]],
 	uint simd_group [[simdgroup_index_in_threadgroup]],
@@ -82,6 +86,8 @@ kernel void rmsnorm_cmul(
 		const float inv_rms = threadgroup_inv_rms(dot(value, value), partials, tid, simd_lane, simd_group);
 		if (tid < complex_count) {
 			value *= inv_rms;
+			if (elementwise_affine)
+				value *= float2(scale[tid]);
 			const float2 result = float2(value.x * rotate.x - value.y * rotate.y, value.x * rotate.y + value.y * rotate.x);
 			destination[source_offset + tid] = realA2(result);
 		}
