@@ -134,7 +134,8 @@ static int _ccv_nnc_rmsnorm_cmul_broadcastable(const ccv_nnc_tensor_view_t* cons
 static int _ccv_nnc_rmsnorm_cmul_broadcast_ratio(const ccv_nnc_tensor_view_t* const a, const ccv_nnc_tensor_view_t* const rotation)
 {
 	const int a_nd = ccv_nnc_tensor_nd(a->info.dim);
-	if (a_nd != ccv_nnc_tensor_nd(rotation->info.dim))
+	const int rotation_nd = ccv_nnc_tensor_nd(rotation->info.dim);
+	if (a_nd != rotation_nd)
 		return 0;
 	int i;
 	int equal = 1;
@@ -142,9 +143,13 @@ static int _ccv_nnc_rmsnorm_cmul_broadcast_ratio(const ccv_nnc_tensor_view_t* co
 		equal = equal && a->info.dim[i] == rotation->info.dim[i];
 	if (equal)
 		return 1;
-	if (a_nd == 3 && a->info.dim[0] == rotation->info.dim[0] && rotation->info.dim[1] == 1 && a->info.dim[2] == rotation->info.dim[2])
-		return a->info.dim[1];
-	return 0;
+	// The native kernel reuses one rotation row across the penultimate dimension.
+	if (a_nd < 2 || rotation->info.dim[a_nd - 2] != 1 || a->info.dim[a_nd - 1] != rotation->info.dim[a_nd - 1])
+		return 0;
+	for (i = 0; i < a_nd - 2; i++)
+		if (a->info.dim[i] != rotation->info.dim[i])
+			return 0;
+	return a->info.dim[a_nd - 2];
 }
 
 static int _ccv_nnc_rmsnorm_cmul_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)

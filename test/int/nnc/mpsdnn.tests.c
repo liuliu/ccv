@@ -3787,7 +3787,7 @@ TEST_CASE("compare rmsnorm cmul with affine weight using cpu ref")
 	ccv_nnc_tensor_free(expected);
 }
 
-TEST_CASE("compare rmsnorm cmul with affine weight at production shape through mfa and graph")
+TEST_CASE("compare rmsnorm cmul with affine weight at rank-4 production shape through mfa and graph")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_RMSNORM_CMUL_FORWARD, CCV_NNC_BACKEND_MPS));
 	const int token_count = 17;
@@ -3795,26 +3795,26 @@ TEST_CASE("compare rmsnorm cmul with affine weight at production shape through m
 	const int channels = 512;
 	const int element_count = token_count * head_count * channels;
 	const int rotation_count = token_count * channels;
-	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, token_count, head_count, channels), 0);
-	ccv_nnc_tensor_t* const rotation = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, token_count, 1, channels), 0);
-	ccv_nnc_tensor_t* const exact_rotation = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, token_count, head_count, channels), 0);
+	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, 1, token_count, head_count, channels), 0);
+	ccv_nnc_tensor_t* const rotation = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 1, token_count, 1, channels), 0);
+	ccv_nnc_tensor_t* const exact_rotation = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 1, token_count, head_count, channels), 0);
 	ccv_nnc_tensor_t* const shared_rotation = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, channels), 0);
-	ccv_nnc_tensor_t* const scale = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 1, 1, channels), 0);
-	ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, token_count, head_count, channels), 0);
-	ccv_nnc_tensor_t* const ha = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, token_count, head_count, channels), 0);
-	ccv_nnc_tensor_t* const hrotation = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, token_count, 1, channels), 0);
-	ccv_nnc_tensor_t* const hexact_rotation = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, token_count, head_count, channels), 0);
+	ccv_nnc_tensor_t* const scale = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 1, 1, 1, channels), 0);
+	ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, 1, token_count, head_count, channels), 0);
+	ccv_nnc_tensor_t* const ha = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, token_count, head_count, channels), 0);
+	ccv_nnc_tensor_t* const hrotation = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, token_count, 1, channels), 0);
+	ccv_nnc_tensor_t* const hexact_rotation = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, token_count, head_count, channels), 0);
 	ccv_nnc_tensor_t* const hshared_rotation = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, channels), 0);
-	ccv_nnc_tensor_t* const hscale = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, 1, channels), 0);
-	ccv_nnc_tensor_t* const ha16 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, token_count, head_count, channels), 0);
-	ccv_nnc_tensor_t* const hy = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, token_count, head_count, channels), 0);
-	ccv_nnc_tensor_t* const hy16 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, token_count, head_count, channels), 0);
-	ccv_nnc_tensor_t* const expected = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, token_count, head_count, channels), 0);
-	ccv_nnc_tensor_t* const expected16 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, token_count, head_count, channels), 0);
-	ccv_nnc_tensor_t* const exact_expected = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, token_count, head_count, channels), 0);
-	ccv_nnc_tensor_t* const exact_expected16 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, token_count, head_count, channels), 0);
-	ccv_nnc_tensor_t* const shared_expected = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, token_count, head_count, channels), 0);
-	ccv_nnc_tensor_t* const shared_expected16 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, token_count, head_count, channels), 0);
+	ccv_nnc_tensor_t* const hscale = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, 1, 1, channels), 0);
+	ccv_nnc_tensor_t* const ha16 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, 1, token_count, head_count, channels), 0);
+	ccv_nnc_tensor_t* const hy = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, token_count, head_count, channels), 0);
+	ccv_nnc_tensor_t* const hy16 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, 1, token_count, head_count, channels), 0);
+	ccv_nnc_tensor_t* const expected = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, token_count, head_count, channels), 0);
+	ccv_nnc_tensor_t* const expected16 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, 1, token_count, head_count, channels), 0);
+	ccv_nnc_tensor_t* const exact_expected = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, token_count, head_count, channels), 0);
+	ccv_nnc_tensor_t* const exact_expected16 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, 1, token_count, head_count, channels), 0);
+	ccv_nnc_tensor_t* const shared_expected = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, token_count, head_count, channels), 0);
+	ccv_nnc_tensor_t* const shared_expected16 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, 1, token_count, head_count, channels), 0);
 	dsfmt_t dsfmt;
 	dsfmt_init_gen_rand(&dsfmt, 32);
 	int i;
@@ -3829,10 +3829,10 @@ TEST_CASE("compare rmsnorm cmul with affine weight at production shape through m
 	memcpy(hshared_rotation->data.f32, hrotation->data.f32, sizeof(float) * channels);
 	ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha), TENSOR_LIST(ha16), 0);
 	ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha16), TENSOR_LIST(ha), 0);
-	ccv_nnc_cmd_t cmd = CMD_RMSNORM_CMUL_FORWARD(1e-6, 1, 2);
+	ccv_nnc_cmd_t cmd = CMD_RMSNORM_CMUL_FORWARD(1e-6, 1, 3);
 	cmd.backend = CCV_NNC_BACKEND_CPU_REF;
 	REQUIRE_EQ(CCV_NNC_EXEC_SUCCESS, ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(ha, hrotation, hscale), TENSOR_LIST(expected), 0), "rmsnorm cmul cpu ref should produce the affine production-shape reference");
-	ccv_nnc_cmd_t exact_cmd = CMD_RMSNORM_CMUL_FORWARD(1e-4, 1, 2);
+	ccv_nnc_cmd_t exact_cmd = CMD_RMSNORM_CMUL_FORWARD(1e-4, 1, 3);
 	exact_cmd.backend = CCV_NNC_BACKEND_CPU_REF;
 	REQUIRE_EQ(CCV_NNC_EXEC_SUCCESS, ccv_nnc_cmd_exec(exact_cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(ha, hexact_rotation, hscale), TENSOR_LIST(exact_expected), 0), "rmsnorm cmul cpu ref should produce the affine exact-rotation reference");
 	REQUIRE_EQ(CCV_NNC_EXEC_SUCCESS, ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(ha, hshared_rotation, hscale), TENSOR_LIST(shared_expected), 0), "rmsnorm cmul cpu ref should support affine weight with standard rotation broadcasting");
