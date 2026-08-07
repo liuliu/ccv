@@ -5,8 +5,10 @@ GemvKernel::GemvKernel(GemvKernelDescriptor descriptor, MTL::Device* const devic
   fusedBias = descriptor.fusedBias;
   mrows = descriptor.mrows;
   batched = descriptor.batched;
+  cooperative = descriptor.cooperative;
   memoryPrecision = descriptor.memoryPrecision;
   CCV_NNC_MFA_PRECONDITION(!batched || (mrows == 1 && !fusedBias));
+  CCV_NNC_MFA_PRECONDITION(!cooperative || (!batched && mrows == 1 && memoryPrecision == GEMMOperandPrecision::FP32));
 
   source = createSource();
 
@@ -20,7 +22,75 @@ GemvKernel::GemvKernel(GemvKernelDescriptor descriptor, MTL::Device* const devic
 
 std::string GemvKernel::createSource() const noexcept {
   std::string shader = createConstants() + "\n";
-  if (mrows == 3) {
+  if (cooperative) {
+    shader += R"(
+#include <metal_stdlib>
+using namespace metal;
+
+kernel void gemv(
+  device const real *src0 [[buffer(0)]],
+  device const real *src1 [[buffer(1)]],
+  device real *dst [[buffer(2)]],
+)";
+    if (fusedBias) {
+      shader += R"(
+  device const real *bias [[buffer(3)]],
+)";
+    }
+    shader += R"(
+  uint tgpig [[threadgroup_position_in_grid]],
+  uint sgitg [[simdgroup_index_in_threadgroup]],
+  uint tiisg [[thread_index_in_simdgroup]]
+) {
+  constexpr uint ROWS_PER_THREADGROUP = 2;
+  const uint rowBase = tgpig * ROWS_PER_THREADGROUP;
+  const uint row0 = rowBase;
+  const uint row1 = rowBase + 1;
+  const uint vectorCount = ncols / 4;
+  device const real4* matrix = (device const real4*)src0;
+  device const real4* vector = (device const real4*)src1;
+
+  float sum0 = 0;
+  float sum1 = 0;
+  for (uint i = sgitg * 32 + tiisg; i < vectorCount; i += SIMD_GROUPS * 32) {
+    const float4 v = float4(vector[i]);
+    if (row0 < nrows)
+      sum0 += dot(float4(matrix[(ulong)row0 * vectorCount + i]), v);
+    if (row1 < nrows)
+      sum1 += dot(float4(matrix[(ulong)row1 * vectorCount + i]), v);
+  }
+  sum0 = simd_sum(sum0);
+  sum1 = simd_sum(sum1);
+
+  threadgroup float partials[ROWS_PER_THREADGROUP * 32];
+  if (tiisg == 0) {
+    partials[sgitg] = sum0;
+    partials[32 + sgitg] = sum1;
+  }
+  threadgroup_barrier(mem_flags::mem_threadgroup);
+
+  if (sgitg == 0 && tiisg < ROWS_PER_THREADGROUP) {
+    const uint row = rowBase + tiisg;
+    if (row < nrows) {
+      float sum = 0;
+      for (uint i = 0; i < SIMD_GROUPS; i++)
+        sum += partials[tiisg * 32 + i];
+)";
+    if (fusedBias) {
+      shader += R"(
+      dst[row] = bias[row] + (real)sum;
+)";
+    } else {
+      shader += R"(
+      dst[row] = (real)sum;
+)";
+    }
+    shader += R"(
+    }
+  }
+}
+    )";
+  } else if (mrows == 3) {
     shader += R"(
 #include <metal_stdlib>
 using namespace metal;
@@ -423,6 +493,10 @@ std::string GemvKernel::createConstants() const noexcept {
   if (memoryPrecision == GEMMOperandPrecision::FP32) {
     defines += std::string("typedef float real;");
     defines += "\n";
+    if (cooperative) {
+      defines += std::string("typedef float4 real4;");
+      defines += "\n";
+    }
   } else if (memoryPrecision == GEMMOperandPrecision::BF16) {
     defines += std::string("typedef bfloat real;");
     defines += "\n";
@@ -436,7 +510,10 @@ std::string GemvKernel::createConstants() const noexcept {
   defines += "\n";
   defines += "constant uint nrows [[function_constant(2)]];";
   defines += "\n";
-  if (batched) {
+  if (cooperative) {
+    defines += "constant uint SIMD_GROUPS [[function_constant(3)]];";
+    defines += "\n";
+  } else if (batched) {
     defines += "constant uint A_batch_stride [[function_constant(3)]];";
     defines += "\n";
     defines += "constant uint B_batch_stride [[function_constant(4)]];";

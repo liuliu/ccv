@@ -3,12 +3,14 @@
 #include "../ccv_nnc_mfa_hash.hpp"
 #include "../ccv_nnc_mfa_error.hpp"
 
+#include <algorithm>
 #include <cstring>
 
 bool GemvDescriptor::operator==(const GemvDescriptor& rhs) const {
   return
   fusedBias == rhs.fusedBias &&
   mrows == rhs.mrows &&
+  cooperative == rhs.cooperative &&
   memoryPrecision == rhs.memoryPrecision &&
   nrows == rhs.nrows &&
   ncols == rhs.ncols &&
@@ -33,10 +35,16 @@ uint32_t GemvDescriptor::rowsPerThreadgroup(MTL::Device* const device) noexcept 
   return rows;
 }
 
+uint32_t GemvDescriptor::cooperativeSIMDGroups(MTL::Device* const device, const uint32_t ncols) noexcept {
+  const uint32_t simdGroups = ncols >= 3072 ? 32 : ncols >= 1536 ? 16 : 8;
+  const uint32_t maxSIMDGroups = (uint32_t)device->maxThreadsPerThreadgroup().width / 32;
+  return std::max<uint32_t>(1, std::min(simdGroups, maxSIMDGroups));
+}
+
 std::size_t std::hash<GemvDescriptor>::operator()(const GemvDescriptor& hash) const noexcept {
   using namespace ccv::nnc::mfa::hash;
   std::size_t seed = 0;
-  combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.memoryPrecision.value, (unsigned int)hash.fusedBias | ((unsigned int)hash.mrows << 8) }));
+  combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.memoryPrecision.value, (unsigned int)hash.fusedBias | ((unsigned int)hash.mrows << 8) | ((unsigned int)hash.cooperative << 16) }));
   combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.nrows, (unsigned int)hash.ncols }));
   if (hash.batchStrides.has_value()) {
     combine_32(seed, hash.batchStrides.value()[0]);
@@ -63,6 +71,7 @@ std::pair<GemvKernelDescriptor, PipelineValue<GemvKernel>*> GemvDescriptor::find
   kernelDesc.fusedBias = fusedBias;
   kernelDesc.mrows = mrows;
   kernelDesc.batched = batchStrides.has_value();
+  kernelDesc.cooperative = cooperative;
   kernelDesc.memoryPrecision = memoryPrecision;
 
   auto createPipeline =
@@ -73,7 +82,10 @@ std::pair<GemvKernelDescriptor, PipelineValue<GemvKernel>*> GemvDescriptor::find
     constants->setConstantValue(&rows, MTL::DataTypeUInt, NS::UInteger(0));
     constants->setConstantValue(&ncols, MTL::DataTypeUInt, NS::UInteger(1));
     constants->setConstantValue(&nrows, MTL::DataTypeUInt, NS::UInteger(2));
-    if (batchStrides.has_value()) {
+    if (cooperative) {
+      const uint32_t simdGroups = cooperativeSIMDGroups(device, ncols);
+      constants->setConstantValue(&simdGroups, MTL::DataTypeUInt, NS::UInteger(3));
+    } else if (batchStrides.has_value()) {
       const uint32_t batchStrideA = batchStrides.value()[0];
       const uint32_t batchStrideB = batchStrides.value()[1];
       const uint32_t batchStrideC = batchStrides.value()[2];

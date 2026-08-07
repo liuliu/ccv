@@ -32,6 +32,11 @@ void ccv_nnc_mfa_encode_gemv(ccv_nnc_mfa_context_t* context, ccv_nnc_mfa_gemv_pa
   GemvDescriptor descriptor;
   descriptor.fusedBias = params.fused_bias ? 1 : 0;
   descriptor.mrows = (uint8_t)params.mrows;
+  descriptor.cooperative = params.data_type == MTL::DataTypeFloat &&
+    batchDimension == 1 && params.mrows == 1 && params.nrows <= 64 &&
+    params.ncols >= 512 && params.ncols % 4 == 0 &&
+    tensor_offsets[0] % (sizeof(float) * 4) == 0 &&
+    tensor_offsets[1] % (sizeof(float) * 4) == 0;
   if (params.data_type == MTL::DataTypeFloat) {
     descriptor.memoryPrecision = GEMMOperandPrecision::FP32;
   } else if (params.data_type == MTL::DataTypeBFloat) {
@@ -64,9 +69,13 @@ void ccv_nnc_mfa_encode_gemv(ccv_nnc_mfa_context_t* context, ccv_nnc_mfa_gemv_pa
     encoder->useResource(tensors[3], MTL::ResourceUsageRead);
   }
 
-  const uint32_t rowsPerThreadgroup = GemvDescriptor::rowsPerThreadgroup(context->device.get());
+  const uint32_t rowsPerThreadgroup = descriptor.cooperative ? 2 :
+    GemvDescriptor::rowsPerThreadgroup(context->device.get());
+  const uint32_t simdGroups = descriptor.cooperative ?
+    GemvDescriptor::cooperativeSIMDGroups(context->device.get(), params.ncols) : rowsPerThreadgroup;
   MTL::Size gridSize = MTL::Size((params.nrows + rowsPerThreadgroup - 1) / rowsPerThreadgroup, 1, batchDimension);
   CCV_NNC_MFA_PRECONDITION(gridSize.width > 0);
-  encoder->dispatchThreadgroups(gridSize, MTL::Size(rowsPerThreadgroup * 32, 1, 1));
+  CCV_NNC_MFA_PRECONDITION(simdGroups * 32 <= pipeline->maxTotalThreadsPerThreadgroup());
+  encoder->dispatchThreadgroups(gridSize, MTL::Size(simdGroups * 32, 1, 1));
   command_batch->finishCommand(encoder);
 }

@@ -12,15 +12,16 @@ struct GemvKernelDescriptor {
   uint8_t fusedBias;
   uint8_t mrows;
   uint8_t batched;
+  uint8_t cooperative = 0;
   GEMMOperandPrecision memoryPrecision;
-  constexpr bool operator==(const GemvKernelDescriptor& rhs) const { return fusedBias == rhs.fusedBias && mrows == rhs.mrows && batched == rhs.batched && memoryPrecision == rhs.memoryPrecision; }
+  constexpr bool operator==(const GemvKernelDescriptor& rhs) const { return fusedBias == rhs.fusedBias && mrows == rhs.mrows && batched == rhs.batched && cooperative == rhs.cooperative && memoryPrecision == rhs.memoryPrecision; }
 };
 
 template<>
 struct std::hash<GemvKernelDescriptor>
 {
   std::size_t operator()(const GemvKernelDescriptor& hash) const noexcept {
-    return std::hash<int>()((int)hash.fusedBias | ((int)hash.mrows << 8) | ((int)hash.memoryPrecision.value << 16) | ((int)hash.batched << 24));
+    return std::hash<int>()((int)hash.fusedBias | ((int)hash.mrows << 8) | ((int)hash.memoryPrecision.value << 16) | ((int)hash.batched << 24) | ((int)hash.cooperative << 25));
   }
 };
 
@@ -30,6 +31,8 @@ struct GemvDescriptor {
   uint8_t fusedBias;
 
   uint8_t mrows;
+
+  uint8_t cooperative = 0;
 
   GEMMOperandPrecision memoryPrecision;
 
@@ -42,6 +45,8 @@ struct GemvDescriptor {
   bool operator==(const GemvDescriptor& rhs) const;
 
   static uint32_t rowsPerThreadgroup(MTL::Device* const device) noexcept;
+
+  static uint32_t cooperativeSIMDGroups(MTL::Device* const device, const uint32_t ncols) noexcept;
 
   std::pair<GemvKernelDescriptor, PipelineValue<GemvKernel>*> findKernel(MTL::Device* const device, const DeviceProperties& dprops, NS::Array* const binaryArchivesToRead, MTL::BinaryArchive* const binaryArchiveToWrite, const std::string& pathToWrite, std::unordered_map<GemvKernelDescriptor, std::unique_ptr<GemvKernel>> *const libraryCache) const noexcept;
 };
