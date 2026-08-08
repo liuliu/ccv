@@ -330,36 +330,30 @@ TEST_CASE("scatter add sums rows directly for one output with MFA")
 	ccv_nnc_tensor_free(output);
 }
 
-TEST_CASE("scatter add reduces a fixed count of half precision rows per output with MFA")
+TEST_CASE("scatter add reduces six float rows per output at 4096 outputs with MFA")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SCATTER_ADD_FORWARD, CCV_NNC_BACKEND_MPS));
-	const int output_rows = 7;
+	const int output_rows = 4096;
 	const int count_per_output = 6;
 	const int input_rows = output_rows * count_per_output;
 	const int columns = 64;
-	ccv_nnc_tensor_t* const input32 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, input_rows, columns), 0);
+	ccv_nnc_tensor_t* const input = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, input_rows, columns), 0);
 	ccv_nnc_tensor_t* const indices = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, input_rows), 0);
 	int i;
 	for (i = 0; i < input_rows * columns; i++)
-		input32->data.f32[i] = (float)((i % 13) - 6) * 0.125f;
+		input->data.f32[i] = (float)((i % 13) - 6) * 0.125f;
 	for (i = 0; i < input_rows; i++)
 		indices->data.i32[i] = (i * 5) % output_rows;
-	ccv_nnc_tensor_t* const input = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, input_rows, columns), 0);
-	ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(input32), TENSOR_LIST(input), 0);
-	ccv_nnc_tensor_t* const expected = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, output_rows, columns), 0);
+	ccv_nnc_tensor_t* const expected = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, output_rows, columns), 0);
 	ccv_nnc_cmd_exec(CMD_SCATTER_ADD_FORWARD(output_rows, 0), ccv_nnc_no_hint, 0, TENSOR_LIST(input, indices), TENSOR_LIST(expected), 0);
-	ccv_nnc_tensor_t* const gpu_input = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, input_rows, columns), 0);
+	ccv_nnc_tensor_t* const gpu_input = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, input_rows, columns), 0);
 	ccv_nnc_tensor_t* const gpu_indices = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32S, input_rows), 0);
-	ccv_nnc_tensor_t* const gpu_output = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, output_rows, columns), 0);
-	ccv_nnc_tensor_t* const output = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, output_rows, columns), 0);
+	ccv_nnc_tensor_t* const gpu_output = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, output_rows, columns), 0);
+	ccv_nnc_tensor_t* const output = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, output_rows, columns), 0);
 	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(input, indices), TENSOR_LIST(gpu_input, gpu_indices), 0);
 	ccv_nnc_cmd_exec(CMD_SCATTER_ADD_FORWARD(output_rows, count_per_output), ccv_nnc_no_hint, 0, TENSOR_LIST(gpu_input, gpu_indices), TENSOR_LIST(gpu_output), 0);
 	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(gpu_output), TENSOR_LIST(output), 0);
-	ccv_nnc_tensor_t* const output32 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, output_rows, columns), 0);
-	ccv_nnc_tensor_t* const expected32 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, output_rows, columns), 0);
-	ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(output, expected), TENSOR_LIST(output32, expected32), 0);
-	REQUIRE_TENSOR_EQ(output32, expected32, "fixed-count MFA scatter should match the CPU reference");
-	ccv_nnc_tensor_free(input32);
+	REQUIRE_TENSOR_EQ(output, expected, "fixed-count MFA scatter should match the CPU reference");
 	ccv_nnc_tensor_free(input);
 	ccv_nnc_tensor_free(indices);
 	ccv_nnc_tensor_free(expected);
@@ -367,8 +361,72 @@ TEST_CASE("scatter add reduces a fixed count of half precision rows per output w
 	ccv_nnc_tensor_free(gpu_indices);
 	ccv_nnc_tensor_free(gpu_output);
 	ccv_nnc_tensor_free(output);
-	ccv_nnc_tensor_free(output32);
-	ccv_nnc_tensor_free(expected32);
+}
+
+TEST_CASE("scatter add deterministically reduces a non-power-of-two fixed count with MFA")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SCATTER_ADD_FORWARD, CCV_NNC_BACKEND_MPS));
+	const int output_rows = 5;
+	const int count_per_output = 17;
+	const int input_rows = output_rows * count_per_output;
+	const int columns = 64;
+	ccv_nnc_tensor_t* const input = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, input_rows, columns), 0);
+	ccv_nnc_tensor_t* const indices = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, input_rows), 0);
+	int i;
+	for (i = 0; i < input_rows * columns; i++)
+	{
+		switch (i % 4)
+		{
+			case 0:
+				input->data.f32[i] = 10000;
+				break;
+			case 1:
+				input->data.f32[i] = 0.25;
+				break;
+			case 2:
+				input->data.f32[i] = -10000;
+				break;
+			default:
+				input->data.f32[i] = 0.125;
+				break;
+		}
+	}
+	for (i = 0; i < input_rows; i++)
+		indices->data.i32[i] = i % output_rows;
+	uint32_t random = 1;
+	for (i = input_rows - 1; i > 0; i--)
+	{
+		random = random * 1664525u + 1013904223u;
+		const int j = random % (i + 1);
+		const int swap = indices->data.i32[i];
+		indices->data.i32[i] = indices->data.i32[j];
+		indices->data.i32[j] = swap;
+	}
+	ccv_nnc_tensor_t* const expected = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, output_rows, columns), 0);
+	ccv_nnc_cmd_exec(CMD_SCATTER_ADD_FORWARD(output_rows, 0), ccv_nnc_no_hint, 0, TENSOR_LIST(input, indices), TENSOR_LIST(expected), 0);
+	ccv_nnc_tensor_t* const gpu_input = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, input_rows, columns), 0);
+	ccv_nnc_tensor_t* const gpu_indices = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32S, input_rows), 0);
+	ccv_nnc_tensor_t* const gpu_output = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, output_rows, columns), 0);
+	ccv_nnc_tensor_t* const first_output = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, output_rows, columns), 0);
+	ccv_nnc_tensor_t* const output = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, output_rows, columns), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(input, indices), TENSOR_LIST(gpu_input, gpu_indices), 0);
+	ccv_nnc_cmd_exec(CMD_SCATTER_ADD_FORWARD(output_rows, count_per_output), ccv_nnc_no_hint, 0, TENSOR_LIST(gpu_input, gpu_indices), TENSOR_LIST(gpu_output), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(gpu_output), TENSOR_LIST(first_output), 0);
+	REQUIRE_TENSOR_EQ(first_output, expected, "fixed-count MFA scatter should reduce in input-row order");
+	for (i = 0; i < 10; i++)
+	{
+		ccv_nnc_cmd_exec(CMD_SCATTER_ADD_FORWARD(output_rows, count_per_output), ccv_nnc_no_hint, 0, TENSOR_LIST(gpu_input, gpu_indices), TENSOR_LIST(gpu_output), 0);
+		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(gpu_output), TENSOR_LIST(output), 0);
+		REQUIRE_TENSOR_EQ(output, first_output, "fixed-count MFA scatter should be deterministic");
+	}
+	ccv_nnc_tensor_free(input);
+	ccv_nnc_tensor_free(indices);
+	ccv_nnc_tensor_free(expected);
+	ccv_nnc_tensor_free(gpu_input);
+	ccv_nnc_tensor_free(gpu_indices);
+	ccv_nnc_tensor_free(gpu_output);
+	ccv_nnc_tensor_free(first_output);
+	ccv_nnc_tensor_free(output);
 }
 
 #include "case_main.h"

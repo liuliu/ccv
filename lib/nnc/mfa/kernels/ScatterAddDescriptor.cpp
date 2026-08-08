@@ -38,8 +38,9 @@ std::pair<ScatterAddKernelDescriptor, PipelineValue<ScatterAddKernel>*> ScatterA
 	PipelineValue<ScatterAddKernel>* const output = new PipelineValue<ScatterAddKernel> {
 		kernel, pipeline("scatter_add_single_output")
 	};
-	output->second = pipeline("scatter_add_clear_counts");
+	output->second = pipeline("scatter_add_clear");
 	output->third = pipeline("scatter_add_build_inverse");
-	output->fourth = pipeline("scatter_add_reduce");
+	output->fourth = pipeline("scatter_add_sort_inverse");
+	output->fifth = pipeline("scatter_add_reduce");
 	return std::make_pair(kernel_desc, output);
 }

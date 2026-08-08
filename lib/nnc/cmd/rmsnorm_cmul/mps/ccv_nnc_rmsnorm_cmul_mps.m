@@ -161,6 +161,8 @@ static int _ccv_nnc_rmsnorm_cmul_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hin
 	const ccv_nnc_tensor_view_t* const rotation = (const ccv_nnc_tensor_view_t*)inputs[1];
 	const ccv_nnc_tensor_view_t* const scale = elementwise_affine ? (const ccv_nnc_tensor_view_t*)inputs[2] : 0;
 	ccv_nnc_tensor_view_t* const b = (ccv_nnc_tensor_view_t*)outputs[0];
+	if (a->info.dim[0] == 0 || b->info.dim[0] == 0)
+		return CCV_NNC_EXEC_SUCCESS;
 	const int a_nd = ccv_nnc_tensor_nd(a->info.dim);
 	assert(a_nd >= 1);
 	assert(cmd.info.rmsnorm_cmul.count == 1);

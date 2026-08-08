@@ -14,6 +14,8 @@ static int _ccv_nnc_rmsnorm_cmul_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hin
 	const ccv_nnc_tensor_t* const rotation = inputs[1];
 	const ccv_nnc_tensor_t* const scale = elementwise_affine ? inputs[2] : 0;
 	ccv_nnc_tensor_t* const b = outputs[0];
+	if (a->info.dim[0] == 0 || b->info.dim[0] == 0)
+		return CCV_NNC_EXEC_SUCCESS;
 	assert(a->info.datatype == CCV_32F);
 	assert(rotation->info.datatype == CCV_32F);
 	assert(!scale || scale->info.datatype == CCV_32F);
