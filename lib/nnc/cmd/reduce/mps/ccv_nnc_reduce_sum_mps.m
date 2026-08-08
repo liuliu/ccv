@@ -10,7 +10,7 @@ static int _ccv_nnc_reduce_sum_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 	assert(input_size == 1);
 	assert(output_size == 1);
 	if (inputs[0]->info.dim[0] == 0 || outputs[0]->info.dim[0] == 0)
-		return CCV_NNC_EXEC_INVALID;
+		return CCV_NNC_EXEC_SUCCESS;
 	ccv_nnc_tensor_view_t atv = ccv_nnc_get_tensor_view(inputs[0]);
 	ccv_nnc_tensor_view_t btv = ccv_nnc_get_tensor_view(outputs[0]);
 	ccv_nnc_tensor_view_t* tvs[] = {

@@ -10,7 +10,7 @@ static int _ccv_nnc_rmsnorm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t h
 	assert(input_size == 2 || input_size == 1);
 	assert(output_size == 2);
 	if (inputs[0]->info.dim[0] == 0 || outputs[0]->info.dim[0] == 0 || outputs[1]->info.dim[0] == 0)
-		return CCV_NNC_EXEC_INVALID;
+		return CCV_NNC_EXEC_SUCCESS;
 	ccv_nnc_tensor_view_t at = ccv_nnc_get_tensor_view(inputs[0]);
 	const int elementwise_affine = cmd.info.rmsnorm.elementwise_affine;
 	const float output_scale = cmd.info.rmsnorm.scale;

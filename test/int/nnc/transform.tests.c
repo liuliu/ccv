@@ -105,6 +105,62 @@ TEST_CASE("mps transpose skips empty tensors")
 	ccv_nnc_tensor_free(b);
 }
 
+TEST_CASE("MPS DeepSeek 4 compressor operations skip empty tensors")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_MPS) &&
+		ccv_nnc_cmd_ok(CCV_NNC_ADD_FORWARD, CCV_NNC_BACKEND_MPS) &&
+		ccv_nnc_cmd_ok(CCV_NNC_SOFTMAX_FORWARD, CCV_NNC_BACKEND_MPS) &&
+		ccv_nnc_cmd_ok(CCV_NNC_MUL_FORWARD, CCV_NNC_BACKEND_MPS) &&
+		ccv_nnc_cmd_ok(CCV_NNC_REDUCE_SUM_FORWARD, CCV_NNC_BACKEND_MPS) &&
+		ccv_nnc_cmd_ok(CCV_NNC_RMSNORM_FORWARD, CCV_NNC_BACKEND_MPS) &&
+		ccv_nnc_cmd_ok(CCV_NNC_CMUL_FORWARD, CCV_NNC_BACKEND_MPS) &&
+		ccv_nnc_cmd_ok(CCV_NNC_WALSH_HADAMARD_TRANSFORM_FORWARD, CCV_NNC_BACKEND_MPS) &&
+		ccv_nnc_cmd_ok(CCV_NNC_CONFORM_DATA_FORMAT_FORWARD, CCV_NNC_BACKEND_MPS) &&
+		ccv_nnc_cmd_ok(CCV_NNC_CONFORM_DATA_FORMAT_BACKWARD, CCV_NNC_BACKEND_MPS));
+	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, 0, 128), 0);
+	ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, 0, 128), 0);
+	ccv_nnc_tensor_t* const c = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, 0, 128), 0);
+	ccv_nnc_tensor_t* const reduced = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, 0, 1), 0);
+	ccv_nnc_tensor_t* const saved_inv_std = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, 0, 1), 0);
+	ccv_nnc_tensor_t* const weight = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, 128, 128), 0);
+	ccv_nnc_cmd_t op = CMD_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(0, 1));
+	op.backend = CCV_NNC_BACKEND_MPS;
+	REQUIRE_EQ(CCV_NNC_EXEC_SUCCESS, ccv_nnc_cmd_exec(op, ccv_nnc_no_hint, 0, TENSOR_LIST(a, weight), TENSOR_LIST(c), 0), "empty compressor GEMM should be skipped");
+	op = CMD_ADD_FORWARD(1, 1);
+	op.backend = CCV_NNC_BACKEND_MPS;
+	REQUIRE_EQ(CCV_NNC_EXEC_SUCCESS, ccv_nnc_cmd_exec(op, ccv_nnc_no_hint, 0, TENSOR_LIST(a, b), TENSOR_LIST(c), 0), "empty compressor add should be skipped");
+	op = CMD_SOFTMAX_FORWARD();
+	op.backend = CCV_NNC_BACKEND_MPS;
+	REQUIRE_EQ(CCV_NNC_EXEC_SUCCESS, ccv_nnc_cmd_exec(op, ccv_nnc_no_hint, 0, TENSOR_LIST(a), TENSOR_LIST(c), 0), "empty compressor softmax should be skipped");
+	op = CMD_MUL_FORWARD(1);
+	op.backend = CCV_NNC_BACKEND_MPS;
+	REQUIRE_EQ(CCV_NNC_EXEC_SUCCESS, ccv_nnc_cmd_exec(op, ccv_nnc_no_hint, 0, TENSOR_LIST(a, b), TENSOR_LIST(c), 0), "empty compressor multiply should be skipped");
+	op = CMD_REDUCE_SUM_FORWARD(1);
+	op.backend = CCV_NNC_BACKEND_MPS;
+	REQUIRE_EQ(CCV_NNC_EXEC_SUCCESS, ccv_nnc_cmd_exec(op, ccv_nnc_no_hint, 0, TENSOR_LIST(a), TENSOR_LIST(reduced), 0), "empty compressor reduction should be skipped");
+	op = CMD_RMSNORM_FORWARD(1e-6, 0, 1);
+	op.backend = CCV_NNC_BACKEND_MPS;
+	REQUIRE_EQ(CCV_NNC_EXEC_SUCCESS, ccv_nnc_cmd_exec(op, ccv_nnc_no_hint, 0, TENSOR_LIST(a), TENSOR_LIST(c, saved_inv_std), 0), "empty compressor RMSNorm should be skipped");
+	op = CMD_CMUL_FORWARD();
+	op.backend = CCV_NNC_BACKEND_MPS;
+	REQUIRE_EQ(CCV_NNC_EXEC_SUCCESS, ccv_nnc_cmd_exec(op, ccv_nnc_no_hint, 0, TENSOR_LIST(a, b), TENSOR_LIST(c), 0), "empty compressor complex multiply should be skipped");
+	op = CMD_WALSH_HADAMARD_TRANSFORM_FORWARD(1);
+	op.backend = CCV_NNC_BACKEND_MPS;
+	REQUIRE_EQ(CCV_NNC_EXEC_SUCCESS, ccv_nnc_cmd_exec(op, ccv_nnc_no_hint, 0, TENSOR_LIST(a), TENSOR_LIST(c), 0), "empty indexer Walsh-Hadamard transform should be skipped");
+	op = CMD_CONFORM_DATA_FORMAT_FORWARD(CCV_NNC_FP8_E4M3, 64);
+	op.backend = CCV_NNC_BACKEND_MPS;
+	REQUIRE_EQ(CCV_NNC_EXEC_SUCCESS, ccv_nnc_cmd_exec(op, ccv_nnc_no_hint, 0, TENSOR_LIST(a), TENSOR_LIST(c), 0), "empty compressed-state conform data format should be skipped");
+	op = CMD_CONFORM_DATA_FORMAT_BACKWARD(CCV_NNC_FP8_E4M3, 64);
+	op.backend = CCV_NNC_BACKEND_MPS;
+	REQUIRE_EQ(CCV_NNC_EXEC_SUCCESS, ccv_nnc_cmd_exec(op, ccv_nnc_no_hint, 0, TENSOR_LIST(a), TENSOR_LIST(c), 0), "empty compressed-state conform data format gradient should be skipped");
+	ccv_nnc_tensor_free(a);
+	ccv_nnc_tensor_free(b);
+	ccv_nnc_tensor_free(c);
+	ccv_nnc_tensor_free(reduced);
+	ccv_nnc_tensor_free(saved_inv_std);
+	ccv_nnc_tensor_free(weight);
+}
+
 TEST_CASE("mps format transform skips empty tensors across formats")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_FORMAT_TRANSFORM_FORWARD, CCV_NNC_BACKEND_MPS));

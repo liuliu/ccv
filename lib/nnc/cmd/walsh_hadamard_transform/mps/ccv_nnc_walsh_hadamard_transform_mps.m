@@ -17,7 +17,7 @@ static int _ccv_nnc_walsh_hadamard_transform_forw(const ccv_nnc_cmd_t cmd, const
 	assert(output_size == 1);
 	ccv_nnc_tensor_view_t* const b = (ccv_nnc_tensor_view_t*)outputs[0];
 	if (a->info.dim[0] == 0 || b->info.dim[0] == 0)
-		return CCV_NNC_EXEC_INVALID;
+		return CCV_NNC_EXEC_SUCCESS;
 	const int a_nd = ccv_nnc_tensor_nd(a->info.dim);
 	const int b_nd = ccv_nnc_tensor_nd(b->info.dim);
 	assert(a_nd == b_nd);

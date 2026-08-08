@@ -12,7 +12,7 @@ static int _ccv_nnc_softmax_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t h
 	const ccv_nnc_tensor_view_t* const a = (const ccv_nnc_tensor_view_t*)inputs[0];
 	ccv_nnc_tensor_view_t* const b = (ccv_nnc_tensor_view_t*)outputs[0];
 	if (a->info.dim[0] == 0 || b->info.dim[0] == 0)
-		return CCV_NNC_EXEC_INVALID;
+		return CCV_NNC_EXEC_SUCCESS;
 	@autoreleasepool {
 		MPSCommandBuffer* command_buffer = ccv_nnc_stream_context_start_mps_command_buffer(stream_context);
 		const int a_nd = ccv_nnc_tensor_nd(a->info.dim);

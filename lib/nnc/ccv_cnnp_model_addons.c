@@ -582,6 +582,15 @@ static void _ccv_cnnp_reshape_build(ccv_cnnp_model_t* const super, ccv_nnc_symbo
 		PRINT(CCV_CLI_VERBOSE, ")\n");
 	}
 	ccv_nnc_tensor_param_t params = ccv_nnc_tensor_symbol_params(graph, inputs[0]);
+	if (params.dim[0] == 0)
+	{
+		int ofs[CCV_NNC_MAX_DIM_ALLOC] = {};
+		int stride[CCV_NNC_MAX_DIM_ALLOC] = {};
+		if (ccv_nnc_tensor_symbol_alias_params(graph, inputs[0], ofs, stride) < 0)
+			ccv_nnc_tensor_get_stride(params.dim, stride);
+		outputs[0] = ccv_nnc_tensor_symbol_alias_new(graph, inputs[0], ofs, stride, params, 0);
+		return;
+	}
 	int dim[CCV_NNC_MAX_DIM_ALLOC];
 	memcpy(dim, self->dim, sizeof(dim));
 	int i, auto_idx = -1;

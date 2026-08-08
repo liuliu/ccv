@@ -121,6 +121,10 @@ static int _ccv_nnc_conform_data_format_forw(const ccv_nnc_cmd_t cmd, const ccv_
 		return CCV_NNC_EXEC_INVALID;
 	const ccv_nnc_tensor_view_t* const a = (const ccv_nnc_tensor_view_t*)inputs[0];
 	ccv_nnc_tensor_view_t* const b = (ccv_nnc_tensor_view_t*)outputs[0];
+	if (!a || !b)
+		return CCV_NNC_EXEC_INVALID;
+	if (a->info.dim[0] == 0 || b->info.dim[0] == 0)
+		return CCV_NNC_EXEC_SUCCESS;
 	int head_dim;
 	if (!_ccv_nnc_conform_data_format_validate(cmd, a, b, &head_dim))
 		return CCV_NNC_EXEC_INVALID;
@@ -178,6 +182,10 @@ static int _ccv_nnc_conform_data_format_back(const ccv_nnc_cmd_t cmd, const ccv_
 		return CCV_NNC_EXEC_INVALID;
 	const ccv_nnc_tensor_view_t* const g = (const ccv_nnc_tensor_view_t*)inputs[0];
 	ccv_nnc_tensor_view_t* const h = (ccv_nnc_tensor_view_t*)outputs[0];
+	if (!g || !h)
+		return CCV_NNC_EXEC_INVALID;
+	if (g->info.dim[0] == 0 || h->info.dim[0] == 0)
+		return CCV_NNC_EXEC_SUCCESS;
 	int head_dim;
 	if (!_ccv_nnc_conform_data_format_validate(cmd, g, h, &head_dim))
 		return CCV_NNC_EXEC_INVALID;

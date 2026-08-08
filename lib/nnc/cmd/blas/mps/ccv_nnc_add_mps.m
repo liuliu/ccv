@@ -21,7 +21,7 @@ static int _ccv_nnc_add_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 	const ccv_nnc_tensor_view_t* const a = (const ccv_nnc_tensor_view_t*)inputs[0];
 	ccv_nnc_tensor_view_t* const c = (ccv_nnc_tensor_view_t*)outputs[0];
 	if (a->info.dim[0] == 0 || (inputs[1] && inputs[1]->info.dim[0] == 0) || c->info.dim[0] == 0)
-		return CCV_NNC_EXEC_INVALID;
+		return CCV_NNC_EXEC_SUCCESS;
 	if (inputs[1] == 0)
 	{
 		@autoreleasepool {

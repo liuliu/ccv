@@ -4,6 +4,7 @@
 #include <ccv.h>
 #include <nnc/ccv_nnc.h>
 #include <nnc/ccv_nnc_easy.h>
+#include <nnc/_ccv_cnnp_model.h>
 #include "3rdparty/dsfmt/dSFMT.h"
 
 TEST_SETUP()
@@ -1289,6 +1290,34 @@ TEST_CASE("a compiled model updates move destination aliases across absorbed sha
 	ccv_nnc_tensor_free(output);
 	ccv_nnc_tensor_free(cache);
 	ccv_nnc_tensor_free(current);
+	ccv_cnnp_model_free(model);
+}
+
+TEST_CASE("cnnp reshape propagates an empty input through a new alias")
+{
+	const ccv_cnnp_model_io_t input = ccv_cnnp_input();
+	ccv_cnnp_model_t* const reshape = ccv_cnnp_reshape(
+		CCV_TENSOR_FORMAT_NHWC, DIM_ALLOC(2, 3), DIM_ALLOC(4, 1), DIM_ALLOC(9, 2), "reshape");
+	const ccv_cnnp_model_io_t output = ccv_cnnp_model_apply(reshape, MODEL_IO_LIST(input));
+	ccv_cnnp_model_t* const model = ccv_cnnp_model_new(MODEL_IO_LIST(input), MODEL_IO_LIST(output), 0, "empty reshape");
+	const ccv_nnc_tensor_param_t input_params = CPU_TENSOR_NCHW(32F, 0, 7);
+	ccv_cnnp_model_compile(model, TENSOR_PARAM_LIST(input_params), CMD_NOOP(), CMD_NOOP());
+
+	ccv_nnc_tensor_param_t output_params = {};
+	ccv_cnnp_model_tensor_auto(model, &output_params, 1);
+	REQUIRE_EQ(output_params.format, input_params.format, "an empty reshape should preserve the input format");
+	REQUIRE_EQ(output_params.datatype, input_params.datatype, "an empty reshape should preserve the input datatype");
+	REQUIRE_EQ(output_params.reserved, input_params.reserved, "an empty reshape should preserve the input datatype metadata");
+	REQUIRE_EQ(CCV_TENSOR_GET_MEMORY(output_params.type), CCV_TENSOR_GET_MEMORY(input_params.type), "an empty reshape should preserve the input memory type");
+	REQUIRE(memcmp(output_params.dim, input_params.dim, sizeof(input_params.dim)) == 0, "an empty reshape should preserve the input dimensions");
+	const ccv_nnc_tensor_symbol_t alias_to = ccv_nnc_tensor_symbol_alias_to(model->graph, reshape->outputs[0]);
+	REQUIRE_EQ(alias_to.d, model->inputs[0].d, "the empty reshape should still create an alias to its input");
+	int ofs[CCV_NNC_MAX_DIM_ALLOC] = {};
+	int stride[CCV_NNC_MAX_DIM_ALLOC] = {};
+	REQUIRE_EQ(ccv_nnc_tensor_symbol_alias_params(model->graph, reshape->outputs[0], ofs, stride), 0, "the reshape output should be an alias");
+	REQUIRE(memcmp(ofs, DIM_ALLOC(), sizeof(ofs)) == 0, "the empty alias should propagate the source offset");
+	REQUIRE(memcmp(stride, DIM_ALLOC(), sizeof(stride)) == 0, "the empty alias should ignore the requested stride");
+
 	ccv_cnnp_model_free(model);
 }
 
