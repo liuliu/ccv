@@ -373,24 +373,6 @@ TEST_CASE("scatter add deterministically reduces a non-power-of-two fixed count 
 	ccv_nnc_tensor_t* const input = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, input_rows, columns), 0);
 	ccv_nnc_tensor_t* const indices = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, input_rows), 0);
 	int i;
-	for (i = 0; i < input_rows * columns; i++)
-	{
-		switch (i % 4)
-		{
-			case 0:
-				input->data.f32[i] = 10000;
-				break;
-			case 1:
-				input->data.f32[i] = 0.25;
-				break;
-			case 2:
-				input->data.f32[i] = -10000;
-				break;
-			default:
-				input->data.f32[i] = 0.125;
-				break;
-		}
-	}
 	for (i = 0; i < input_rows; i++)
 		indices->data.i32[i] = i % output_rows;
 	uint32_t random = 1;
@@ -401,6 +383,15 @@ TEST_CASE("scatter add deterministically reduces a non-power-of-two fixed count 
 		const int swap = indices->data.i32[i];
 		indices->data.i32[i] = indices->data.i32[j];
 		indices->data.i32[j] = swap;
+	}
+	int seen[5] = {0};
+	for (i = 0; i < input_rows; i++)
+	{
+		const int slot = seen[indices->data.i32[i]]++;
+		const float value = slot == 0 ? 1e20f : (slot == 2 ? -1e20f : 1);
+		int j;
+		for (j = 0; j < columns; j++)
+			input->data.f32[i * columns + j] = value;
 	}
 	ccv_nnc_tensor_t* const expected = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, output_rows, columns), 0);
 	ccv_nnc_cmd_exec(CMD_SCATTER_ADD_FORWARD(output_rows, 0), ccv_nnc_no_hint, 0, TENSOR_LIST(input, indices), TENSOR_LIST(expected), 0);
