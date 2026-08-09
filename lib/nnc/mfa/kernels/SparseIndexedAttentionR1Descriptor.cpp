@@ -80,7 +80,7 @@ SparseIndexedAttentionR1Descriptor SparseIndexedAttentionR1Descriptor::select(
   const uint64_t maximumRows = (uint64_t)visibleDenseRows + K;
   if (maximumRows < 2048) {
     descriptor.mode = Mode::direct;
-    descriptor.simdgroups = directSIMDGroups(D, memoryPrecision);
+    descriptor.simdgroups = std::min(8u, directSIMDGroups(D, memoryPrecision));
     descriptor.workgroups = 1;
   } else {
     descriptor.mode = Mode::splitReduce;
