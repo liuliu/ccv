@@ -45,7 +45,9 @@ void ccv_nnc_mfa_encode_hyper_connection(ccv_nnc_mfa_context_t* context, ccv_nnc
 		encoder->useResource(tensors[3], MTL::ResourceUsageRead);
 		encoder->useResource(tensors[7], MTL::ResourceUsageWrite);
 	}
-	const uint32_t threads = params.operation == 0 ? 32 : 256;
+	uint32_t threads = params.operation == 0 ? 32 : 256;
+	if (params.row_count == 1 && params.operation != 0)
+		threads = (uint32_t)pipelineValue->pipeline->maxTotalThreadsPerThreadgroup();
 	encoder->dispatchThreadgroups(MTL::Size(params.row_count, 1, 1), MTL::Size(threads, 1, 1));
 	command_batch->finishCommand(encoder);
 }

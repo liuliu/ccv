@@ -145,12 +145,12 @@ TEST_CASE("hyper connection rejects incompatible tensor shapes")
 	ccv_nnc_tensor_free(valid_mix);
 }
 
-TEST_CASE("hyper connection Metal implementation matches CPU reference")
+TEST_CASE("hyper connection Metal row-one implementation matches CPU reference")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_HYPER_CONNECTION_FORWARD, CCV_NNC_BACKEND_MPS));
-	const int rows = 7;
+	const int rows = 1;
 	const int hc = 4;
-	const int hidden = 4096;
+	const int hidden = 4097;
 	const int mix_dim = 2 * hc + hc * hc;
 	const ccv_nnc_cmd_t cmd = CMD_HYPER_CONNECTION_FORWARD(hc, 20, 1e-6);
 	ccv_nnc_tensor_t* const hmix = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, mix_dim), 0);
