@@ -412,35 +412,13 @@ int main(int argc, char** argv)
   ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA_ATTENTION);
   ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS);
 
-  struct Variant {
-    int algorithm;
-    const char* name;
-  };
-  const Variant variants[] = {
-    {0, "sparse_indexed_attention_mfa_tg_h16"},
-    {1, "sparse_indexed_attention_mfa_tg_h24"},
-    {3, "sparse_indexed_attention_mfa_tg_h64"},
-    {5, "sparse_indexed_attention_mfa_generic"},
-    {6, "sparse_indexed_attention_mfa_r1"},
-  };
-  const Variant variants_d128[] = {
-    {4, "sparse_indexed_attention_mfa_tg_h64_d128"},
-    {6, "sparse_indexed_attention_mfa_r1"},
-  };
-  const Variant* const active_variants = (config.D == 128) ? variants_d128 : variants;
-  const int variant_count = (config.D == 128) ? (int)(sizeof(variants_d128) / sizeof(variants_d128[0])) : (int)(sizeof(variants) / sizeof(variants[0]));
-  std::vector<Stats> sia_stats(variant_count);
+  Stats sia_stats;
   Stats sdpa_shared_stats;
   Stats sdpa_token_stats;
-  for (int i = 0; i < variant_count; ++i)
+  if (!benchmark_sparse_indexed_attention(sia_cmd, q, dense, sparse, indices, sinks, out, stream, config, &sia_stats))
   {
-    ccv_nnc_cmd_t variant_cmd = sia_cmd;
-    variant_cmd.algorithm = active_variants[i].algorithm;
-    if (!benchmark_sparse_indexed_attention(variant_cmd, q, dense, sparse, indices, sinks, out, stream, config, &sia_stats[i]))
-    {
-      std::cerr << active_variants[i].name << " benchmark failed\n";
-      return 1;
-    }
+    std::cerr << "shape-selected sparse indexed attention benchmark failed\n";
+    return 1;
   }
   if (!benchmark_sdpa_with_index_select(index_select_cmd, sdpa_cmd, baseline_source, shared_gather_indices, shared_gathered_kv, (ccv_nnc_tensor_t*)shared_q, (ccv_nnc_tensor_t*)shared_kv, (ccv_nnc_tensor_t*)shared_kv, shared_mask, sinks, sdpa_o_shared, stream, config, &sdpa_shared_stats))
   {
@@ -452,17 +430,15 @@ int main(int argc, char** argv)
     std::cerr << "per-token-index NAAttention baseline failed\n";
     return 1;
   }
-  for (int i = 0; i < variant_count; ++i)
-    print_stats(active_variants[i].name, sia_stats[i]);
+  print_stats("sparse_indexed_attention_mfa_shape_selected", sia_stats);
   print_stats("sdpa_na_attention_shared_index_select_baseline", sdpa_shared_stats);
   print_stats("sdpa_na_attention_token_index_select_baseline", sdpa_token_stats);
-  for (int i = 0; i < variant_count; ++i)
-    std::cout << active_variants[i].name
-              << " speedup_over_shared_index_select_na_attention_median=" << sdpa_shared_stats.median_ms / sia_stats[i].median_ms
-              << " sia_over_shared_index_select_na_attention_median=" << sia_stats[i].median_ms / sdpa_shared_stats.median_ms
-              << " speedup_over_token_index_select_na_attention_median=" << sdpa_token_stats.median_ms / sia_stats[i].median_ms
-              << " sia_over_token_index_select_na_attention_median=" << sia_stats[i].median_ms / sdpa_token_stats.median_ms
-              << "\n";
+  std::cout << "sparse_indexed_attention_mfa_shape_selected"
+            << " speedup_over_shared_index_select_na_attention_median=" << sdpa_shared_stats.median_ms / sia_stats.median_ms
+            << " sia_over_shared_index_select_na_attention_median=" << sia_stats.median_ms / sdpa_shared_stats.median_ms
+            << " speedup_over_token_index_select_na_attention_median=" << sdpa_token_stats.median_ms / sia_stats.median_ms
+            << " sia_over_token_index_select_na_attention_median=" << sia_stats.median_ms / sdpa_token_stats.median_ms
+            << "\n";
 
   restore_flag(saved_flags, CCV_NNC_DISABLE_MFA);
   restore_flag(saved_flags, CCV_NNC_DISABLE_MFA_ATTENTION);

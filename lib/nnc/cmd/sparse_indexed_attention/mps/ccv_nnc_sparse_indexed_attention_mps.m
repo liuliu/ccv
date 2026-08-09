@@ -126,34 +126,16 @@ static int _ccv_nnc_sparse_indexed_attention_forw(const ccv_nnc_cmd_t cmd, const
 			return CCV_NNC_EXEC_INVALID;
 		if (mtl_data_type == 121 && !ccv_nnc_mfa_neural_accelerators_support_bfloat(context))
 			return CCV_NNC_EXEC_INVALID;
-		if (cmd.algorithm >= 7)
-			return CCV_NNC_EXEC_INVALID;
-		if (cmd.algorithm == 2)
-			return CCV_NNC_EXEC_INVALID;
-		const int force_neural_accelerators = cmd.algorithm >= 0 && cmd.algorithm < 5;
-		const int force_generic = cmd.algorithm == 5;
-		const int force_r1 = cmd.algorithm == 6;
 		const int kv_is_shared = mpgetbuffer((ccv_nnc_tensor_t*)dense_k) == mpgetbuffer((ccv_nnc_tensor_t*)dense_v) && dense_k->dataof == dense_v->dataof &&
 			mpgetbuffer((ccv_nnc_tensor_t*)sparse_k) == mpgetbuffer((ccv_nnc_tensor_t*)sparse_v) && sparse_k->dataof == sparse_v->dataof;
 		if (!kv_is_shared)
 			return CCV_NNC_EXEC_INVALID;
-		const int r1_shape = T == 1 && D > 0 && D <= 512 && mtl_data_type != 3;
-		if (force_r1 && !r1_shape)
-			return CCV_NNC_EXEC_INVALID;
-		const int use_r1 = force_r1 || (cmd.algorithm < 0 && r1_shape);
-		const int na_shape = H == 64 && (D == 512 || D == 128);
-		int use_neural_accelerators = !use_r1 && !force_generic && mtl_data_type != 3 && na_shape && !(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS) && ccv_nnc_mfa_has_neural_accelerators(context);
-		uint32_t variant = 0;
-		if (use_neural_accelerators)
-		{
-			variant = (cmd.algorithm < 0) ? ((D == 128) ? 4 : 3) : (uint32_t)cmd.algorithm;
-			if ((D == 128 && (variant != 4 || K == 0)) || (D == 512 && variant >= 4))
-				use_neural_accelerators = 0;
-		}
-		if (force_neural_accelerators && !use_neural_accelerators)
-			return CCV_NNC_EXEC_INVALID;
+		const int use_r1 = T == 1 && D > 0 && D <= 512 && mtl_data_type != 3;
+		const int na_shape = H == 64 && (D == 512 || (D == 128 && K > 0));
+		const int use_neural_accelerators = !use_r1 && mtl_data_type != 3 && na_shape && !(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS) && ccv_nnc_mfa_has_neural_accelerators(context);
 		if (!use_neural_accelerators && D > 512)
 			return CCV_NNC_EXEC_INVALID;
+		const uint32_t variant = use_neural_accelerators ? ((D == 128) ? 4 : 3) : 0;
 		const ccv_nnc_mfa_sparse_indexed_attention_params_t params = {
 			.data_type = mtl_data_type,
 			.use_neural_accelerators = (uint8_t)use_neural_accelerators,
@@ -210,7 +192,7 @@ REGISTER_COMMAND_BACKEND(CCV_NNC_SPARSE_INDEXED_ATTENTION_FORWARD, CCV_NNC_BACKE
 	registry->tensor_formats = CCV_TENSOR_FORMAT_NHWC;
 	registry->tensor_datatypes = CCV_32F | CCV_16F | CCV_16BF | CCV_32S;
 	registry->tensor_memory = CCV_TENSOR_GPU_MEMORY;
-	registry->algorithms = 7;
+	registry->algorithms = 1;
 	registry->exec = _ccv_nnc_sparse_indexed_attention_forw;
 }
 
