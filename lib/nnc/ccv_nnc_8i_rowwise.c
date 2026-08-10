@@ -1,12 +1,22 @@
 #include "ccv_nnc.h"
 #include "ccv_nnc_internal.h"
 #include <float.h>
+#include <limits.h>
 #include "ccv_nnc_8i_rowwise_packed_grids.inc"
+#ifdef USE_DISPATCH
+#include <dispatch/dispatch.h>
+#endif
 #ifdef HAVE_CUDA
 #include "gpu/ccv_nnc_compat.h"
 #elif defined(HAVE_MPS)
 #include "mps/ccv_nnc_mps.h"
 #endif
+
+enum {
+	CCV_NNC_8I_ROWWISE_X_REFINEMENT_STEPS = 8,
+	CCV_NNC_8I_ROWWISE_IQ2_CANDIDATES = 16,
+	CCV_NNC_8I_ROWWISE_IQ3_CANDIDATES = 24,
+};
 
 static int _ccv_nnc_8i_rowwise_x_group_size(const int format)
 {
@@ -255,6 +265,52 @@ typedef struct {
 	uint32_t signs;
 } ccv_nnc_8i_rowwise_packed_group_t;
 
+static void _ccv_nnc_8i_rowwise_packed_nearest_candidates(const uint8_t* const grid, const int grid_size, const int lanes, const int levels, const int code_count, const int candidate_count, uint16_t* const candidates)
+{
+	assert(candidate_count <= CCV_NNC_8I_ROWWISE_IQ3_CANDIDATES);
+	assert(candidate_count <= grid_size);
+	int code;
+	for (code = 0; code < code_count; code++)
+	{
+		uint8_t target[8];
+		int value = code;
+		int j;
+		for (j = 0; j < lanes; j++)
+		{
+			target[j] = (uint8_t)(value % levels);
+			value /= levels;
+		}
+		int best_distance[CCV_NNC_8I_ROWWISE_IQ3_CANDIDATES];
+		int k;
+		for (k = 0; k < candidate_count; k++)
+		{
+			best_distance[k] = INT_MAX;
+			candidates[(size_t)code * candidate_count + k] = 0;
+		}
+		int index;
+		for (index = 0; index < grid_size; index++)
+		{
+			int distance = 0;
+			for (j = 0; j < lanes; j++)
+			{
+				const int d = (int)grid[(size_t)index * lanes + j] - target[j];
+				distance += d * d;
+			}
+			if (distance >= best_distance[candidate_count - 1])
+				continue;
+			k = candidate_count - 1;
+			while (k > 0 && distance < best_distance[k - 1])
+			{
+				best_distance[k] = best_distance[k - 1];
+				candidates[(size_t)code * candidate_count + k] = candidates[(size_t)code * candidate_count + k - 1];
+				--k;
+			}
+			best_distance[k] = distance;
+			candidates[(size_t)code * candidate_count + k] = (uint16_t)index;
+		}
+	}
+}
+
 static void _ccv_nnc_8i_rowwise_packed_quant_q5(const double* const y, const double* const w, ccv_nnc_8i_rowwise_packed_group_t* const group)
 {
 	double best_sse = DBL_MAX;
@@ -463,68 +519,92 @@ static int _ccv_nnc_8i_rowwise_packed_iq2xxs_value(const int index, const int la
 enum {
 	CCV_NNC_8I_ROWWISE_PACKED_IQ2XXS_GRID_SIZE = 256,
 	CCV_NNC_8I_ROWWISE_PACKED_IQ2S_GRID_SIZE = 1024,
+	CCV_NNC_8I_ROWWISE_PACKED_IQ2_CODE_COUNT = 6561,
 };
 
 static const int ccv_nnc_8i_rowwise_packed_iq2xxs_scales[16] = {1, 2, 3, 4, 5, 6, 7, 8, 10, 12, 14, 16, 20, 24, 28, 32};
+static int ccv_nnc_8i_rowwise_packed_iq2_scale_initialized = 0;
+static uint8_t ccv_nnc_8i_rowwise_packed_iq2xxs_scale_level[33][3];
 static int ccv_nnc_8i_rowwise_packed_iq2xxs_initialized = 0;
+static int ccv_nnc_8i_rowwise_packed_iq2xxs_candidates_initialized = 0;
+static uint8_t ccv_nnc_8i_rowwise_packed_iq2xxs_level[CCV_NNC_8I_ROWWISE_PACKED_IQ2XXS_GRID_SIZE][8];
 static uint8_t ccv_nnc_8i_rowwise_packed_iq2xxs_scaled_value[33][CCV_NNC_8I_ROWWISE_PACKED_IQ2XXS_GRID_SIZE][8];
+static uint16_t ccv_nnc_8i_rowwise_packed_iq2xxs_candidates[CCV_NNC_8I_ROWWISE_PACKED_IQ2_CODE_COUNT][CCV_NNC_8I_ROWWISE_IQ2_CANDIDATES];
+
+static void _ccv_nnc_8i_rowwise_packed_iq2_scale_init(void)
+{
+	if (ccv_nnc_8i_rowwise_packed_iq2_scale_initialized)
+		return;
+	int scale, level;
+	for (scale = 1; scale <= 32; scale++)
+		for (level = 0; level < 3; level++)
+			ccv_nnc_8i_rowwise_packed_iq2xxs_scale_level[scale][level] = (uint8_t)ccv_min((1 + level * 2) * scale, 127);
+	ccv_nnc_8i_rowwise_packed_iq2_scale_initialized = 1;
+}
 
 static void _ccv_nnc_8i_rowwise_packed_iq2xxs_init(void)
 {
 	if (ccv_nnc_8i_rowwise_packed_iq2xxs_initialized)
 		return;
+	_ccv_nnc_8i_rowwise_packed_iq2_scale_init();
 	int index, j, scale;
+	for (index = 0; index < CCV_NNC_8I_ROWWISE_PACKED_IQ2XXS_GRID_SIZE; index++)
+		for (j = 0; j < 8; j++)
+			ccv_nnc_8i_rowwise_packed_iq2xxs_level[index][j] = (uint8_t)((_ccv_nnc_8i_rowwise_packed_iq2xxs_value(index, j) - 1) / 2);
 	for (scale = 1; scale <= 32; scale++)
+	{
 		for (index = 0; index < CCV_NNC_8I_ROWWISE_PACKED_IQ2XXS_GRID_SIZE; index++)
 			for (j = 0; j < 8; j++)
-				ccv_nnc_8i_rowwise_packed_iq2xxs_scaled_value[scale][index][j] = (uint8_t)ccv_min(_ccv_nnc_8i_rowwise_packed_iq2xxs_value(index, j) * scale, 127);
+				ccv_nnc_8i_rowwise_packed_iq2xxs_scaled_value[scale][index][j] = ccv_nnc_8i_rowwise_packed_iq2xxs_scale_level[scale][ccv_nnc_8i_rowwise_packed_iq2xxs_level[index][j]];
+	}
 	ccv_nnc_8i_rowwise_packed_iq2xxs_initialized = 1;
 }
 
-static double _ccv_nnc_8i_rowwise_packed_iq2xxs_sse(const double* const y, const double* const w, const int lane, const int scale, const int index, const int sign_index)
+static void _ccv_nnc_8i_rowwise_packed_iq2xxs_candidates_init(void)
 {
-	const uint8_t* const mag = ccv_nnc_8i_rowwise_packed_iq2xxs_scaled_value[scale][index];
-	const uint8_t signs = ccv_nnc_8i_rowwise_packed_iq2xxs_ksigns[sign_index];
-	int j;
-	double sse = 0;
-	for (j = 0; j < 8; j++)
-	{
-		const int q8 = (signs & (1u << j)) ? -(int)mag[j] : (int)mag[j];
-		const double d = (double)q8 - y[lane + j];
-		sse += w[lane + j] * d * d;
-	}
-	return sse;
+	if (ccv_nnc_8i_rowwise_packed_iq2xxs_candidates_initialized)
+		return;
+	_ccv_nnc_8i_rowwise_packed_iq2xxs_init();
+	_ccv_nnc_8i_rowwise_packed_nearest_candidates(&ccv_nnc_8i_rowwise_packed_iq2xxs_level[0][0], CCV_NNC_8I_ROWWISE_PACKED_IQ2XXS_GRID_SIZE, 8, 3, CCV_NNC_8I_ROWWISE_PACKED_IQ2_CODE_COUNT, CCV_NNC_8I_ROWWISE_IQ2_CANDIDATES, &ccv_nnc_8i_rowwise_packed_iq2xxs_candidates[0][0]);
+	ccv_nnc_8i_rowwise_packed_iq2xxs_candidates_initialized = 1;
 }
 
-static double _ccv_nnc_8i_rowwise_packed_iq2xxs_best_sign_sse(const double* const y, const double* const w, const int lane, const int scale, const int index, int* const sign_index)
+enum {
+	CCV_NNC_8I_ROWWISE_PACKED_IQ2XS_GRID_SIZE = 512,
+};
+
+static int ccv_nnc_8i_rowwise_packed_iq2xs_initialized = 0;
+static int ccv_nnc_8i_rowwise_packed_iq2xs_candidates_initialized = 0;
+static uint8_t ccv_nnc_8i_rowwise_packed_iq2xs_level[CCV_NNC_8I_ROWWISE_PACKED_IQ2XS_GRID_SIZE][8];
+static uint8_t ccv_nnc_8i_rowwise_packed_iq2xs_scaled_value[16][CCV_NNC_8I_ROWWISE_PACKED_IQ2XS_GRID_SIZE][8];
+static uint16_t ccv_nnc_8i_rowwise_packed_iq2xs_candidates[CCV_NNC_8I_ROWWISE_PACKED_IQ2_CODE_COUNT][CCV_NNC_8I_ROWWISE_IQ2_CANDIDATES];
+
+static void _ccv_nnc_8i_rowwise_packed_iq2xs_init(void)
 {
-	const uint8_t* const mag = ccv_nnc_8i_rowwise_packed_iq2xxs_scaled_value[scale][index];
-	uint8_t signs = 0;
-	int negative_count = 0;
-	int j;
-	for (j = 0; j < 8; j++)
-		if (y[lane + j] < 0)
-		{
-			signs |= (uint8_t)(1u << j);
-			negative_count++;
-		}
-	if (negative_count & 1)
-	{
-		int best_flip = 0;
-		double best_cost = DBL_MAX;
+	if (ccv_nnc_8i_rowwise_packed_iq2xs_initialized)
+		return;
+	_ccv_nnc_8i_rowwise_packed_iq2_scale_init();
+	int index, j, scale_code;
+	for (index = 0; index < CCV_NNC_8I_ROWWISE_PACKED_IQ2XS_GRID_SIZE; index++)
 		for (j = 0; j < 8; j++)
-		{
-			const double cost = w[lane + j] * (double)mag[j] * fabs(y[lane + j]);
-			if (cost < best_cost)
-			{
-				best_cost = cost;
-				best_flip = j;
-			}
-		}
-		signs ^= (uint8_t)(1u << best_flip);
+			ccv_nnc_8i_rowwise_packed_iq2xs_level[index][j] = (uint8_t)((_ccv_nnc_8i_rowwise_packed_iq2_value(ccv_nnc_8i_rowwise_packed_iq2xs_grid, index, j) - 1) / 2);
+	for (scale_code = 0; scale_code < 16; scale_code++)
+	{
+		const int scale = ccv_nnc_8i_rowwise_packed_iq2xxs_scales[scale_code];
+		for (index = 0; index < CCV_NNC_8I_ROWWISE_PACKED_IQ2XS_GRID_SIZE; index++)
+			for (j = 0; j < 8; j++)
+				ccv_nnc_8i_rowwise_packed_iq2xs_scaled_value[scale_code][index][j] = ccv_nnc_8i_rowwise_packed_iq2xxs_scale_level[scale][ccv_nnc_8i_rowwise_packed_iq2xs_level[index][j]];
 	}
-	*sign_index = signs & 0x7f;
-	return _ccv_nnc_8i_rowwise_packed_iq2xxs_sse(y, w, lane, scale, index, *sign_index);
+	ccv_nnc_8i_rowwise_packed_iq2xs_initialized = 1;
+}
+
+static void _ccv_nnc_8i_rowwise_packed_iq2xs_candidates_init(void)
+{
+	if (ccv_nnc_8i_rowwise_packed_iq2xs_candidates_initialized)
+		return;
+	_ccv_nnc_8i_rowwise_packed_iq2xs_init();
+	_ccv_nnc_8i_rowwise_packed_nearest_candidates(&ccv_nnc_8i_rowwise_packed_iq2xs_level[0][0], CCV_NNC_8I_ROWWISE_PACKED_IQ2XS_GRID_SIZE, 8, 3, CCV_NNC_8I_ROWWISE_PACKED_IQ2_CODE_COUNT, CCV_NNC_8I_ROWWISE_IQ2_CANDIDATES, &ccv_nnc_8i_rowwise_packed_iq2xs_candidates[0][0]);
+	ccv_nnc_8i_rowwise_packed_iq2xs_candidates_initialized = 1;
 }
 
 static int ccv_nnc_8i_rowwise_packed_iq2s_initialized = 0;
@@ -606,12 +686,16 @@ static int _ccv_nnc_8i_rowwise_packed_iq3s_value(const int index, const int lane
 
 #define CCV_NNC_8I_ROWWISE_PACKED_IQ3S_GRID_SIZE (512)
 #define CCV_NNC_8I_ROWWISE_PACKED_IQ3XXS_GRID_SIZE (256)
+#define CCV_NNC_8I_ROWWISE_PACKED_IQ3_CODE_COUNT (4096)
 
 static int ccv_nnc_8i_rowwise_packed_iq3s_initialized = 0;
 static uint8_t ccv_nnc_8i_rowwise_packed_iq3s_scaled_value[17][CCV_NNC_8I_ROWWISE_PACKED_IQ3S_GRID_SIZE][4];
 
 static int ccv_nnc_8i_rowwise_packed_iq3xxs_initialized = 0;
+static int ccv_nnc_8i_rowwise_packed_iq3xxs_candidates_initialized = 0;
+static uint8_t ccv_nnc_8i_rowwise_packed_iq3xxs_level[CCV_NNC_8I_ROWWISE_PACKED_IQ3XXS_GRID_SIZE][4];
 static uint8_t ccv_nnc_8i_rowwise_packed_iq3xxs_scaled_value[17][CCV_NNC_8I_ROWWISE_PACKED_IQ3XXS_GRID_SIZE][4];
+static uint16_t ccv_nnc_8i_rowwise_packed_iq3xxs_candidates[CCV_NNC_8I_ROWWISE_PACKED_IQ3_CODE_COUNT][CCV_NNC_8I_ROWWISE_IQ3_CANDIDATES];
 
 static void _ccv_nnc_8i_rowwise_packed_iq3s_init(void)
 {
@@ -630,11 +714,23 @@ static void _ccv_nnc_8i_rowwise_packed_iq3xxs_init(void)
 	if (ccv_nnc_8i_rowwise_packed_iq3xxs_initialized)
 		return;
 	int index, j, scale;
+	for (index = 0; index < CCV_NNC_8I_ROWWISE_PACKED_IQ3XXS_GRID_SIZE; index++)
+		for (j = 0; j < 4; j++)
+			ccv_nnc_8i_rowwise_packed_iq3xxs_level[index][j] = (uint8_t)((_ccv_nnc_8i_rowwise_packed_iq3xxs_value(index, j) - 1) / 2);
 	for (scale = 1; scale <= 16; scale++)
 		for (index = 0; index < CCV_NNC_8I_ROWWISE_PACKED_IQ3XXS_GRID_SIZE; index++)
 			for (j = 0; j < 4; j++)
-				ccv_nnc_8i_rowwise_packed_iq3xxs_scaled_value[scale][index][j] = (uint8_t)ccv_min(_ccv_nnc_8i_rowwise_packed_iq3xxs_value(index, j) * scale, 127);
+				ccv_nnc_8i_rowwise_packed_iq3xxs_scaled_value[scale][index][j] = (uint8_t)ccv_min((1 + ccv_nnc_8i_rowwise_packed_iq3xxs_level[index][j] * 2) * scale, 127);
 	ccv_nnc_8i_rowwise_packed_iq3xxs_initialized = 1;
+}
+
+static void _ccv_nnc_8i_rowwise_packed_iq3xxs_candidates_init(void)
+{
+	if (ccv_nnc_8i_rowwise_packed_iq3xxs_candidates_initialized)
+		return;
+	_ccv_nnc_8i_rowwise_packed_iq3xxs_init();
+	_ccv_nnc_8i_rowwise_packed_nearest_candidates(&ccv_nnc_8i_rowwise_packed_iq3xxs_level[0][0], CCV_NNC_8I_ROWWISE_PACKED_IQ3XXS_GRID_SIZE, 4, 8, CCV_NNC_8I_ROWWISE_PACKED_IQ3_CODE_COUNT, CCV_NNC_8I_ROWWISE_IQ3_CANDIDATES, &ccv_nnc_8i_rowwise_packed_iq3xxs_candidates[0][0]);
+	ccv_nnc_8i_rowwise_packed_iq3xxs_candidates_initialized = 1;
 }
 
 static double _ccv_nnc_8i_rowwise_packed_iq3s_sse(const double* const ay, const double* const w, const int lane, const int scale, const int index)
@@ -651,17 +747,41 @@ static double _ccv_nnc_8i_rowwise_packed_iq3s_sse(const double* const ay, const 
 	return sse;
 }
 
-static double _ccv_nnc_8i_rowwise_packed_iq3xxs_sse(const double* const ay, const double* const w, const int lane, const int scale, const int index)
+static inline double _ccv_nnc_8i_rowwise_packed_iq2_cost(const double cost[8][3], const uint8_t* const levels)
 {
-	const uint8_t* const mag = ccv_nnc_8i_rowwise_packed_iq3xxs_scaled_value[scale][index];
-	double d = (double)mag[0] - ay[lane];
-	double sse = w[lane] * d * d;
-	d = (double)mag[1] - ay[lane + 1];
-	sse += w[lane + 1] * d * d;
-	d = (double)mag[2] - ay[lane + 2];
-	sse += w[lane + 2] * d * d;
-	d = (double)mag[3] - ay[lane + 3];
-	sse += w[lane + 3] * d * d;
+	double sse = 0;
+	int j;
+	for (j = 0; j < 8; j++)
+		sse += cost[j][levels[j]];
+	return sse;
+}
+
+static inline double _ccv_nnc_8i_rowwise_packed_safe_lower_bound(const double value)
+{
+	return nextafter(value - (fabs(value) + 1) * (64 * DBL_EPSILON), -INFINITY);
+}
+
+static inline double _ccv_nnc_8i_rowwise_packed_iq2xxs_cost(const double cost[8][3], const double flipped_cost[8][3], const double flip_metric[8][3], const uint8_t* const levels, const uint8_t signs, const int flip_sign, int* const sign_index)
+{
+	int best_flip = -1;
+	int j;
+	if (flip_sign)
+	{
+		double best_flip_metric = DBL_MAX;
+		for (j = 0; j < 8; j++)
+		{
+			const double metric = flip_metric[j][levels[j]];
+			if (metric < best_flip_metric)
+			{
+				best_flip_metric = metric;
+				best_flip = j;
+			}
+		}
+	}
+	double sse = 0;
+	for (j = 0; j < 8; j++)
+		sse += j == best_flip ? flipped_cost[j][levels[j]] : cost[j][levels[j]];
+	*sign_index = (signs ^ (best_flip >= 0 ? (uint8_t)(1u << best_flip) : 0)) & 0x7f;
 	return sse;
 }
 
@@ -686,18 +806,97 @@ static void _ccv_nnc_8i_rowwise_packed_quant_iq2_xxs(const double* const y, cons
 			int best_sub_grid = 0;
 			int best_sub_sign = 0;
 			const int lane = sg * 8;
-			int index;
-			for (index = 0; index < CCV_NNC_8I_ROWWISE_PACKED_IQ2XXS_GRID_SIZE; index++)
+			uint8_t signs = 0;
+			int negative_count = 0;
+			double cost[8][3];
+			double flipped_cost[8][3];
+			double flip_metric[8][3];
+			int j;
+			for (j = 0; j < 8; j++)
+			{
+				if (y[lane + j] < 0)
 				{
-					int sign;
-					const double sse = _ccv_nnc_8i_rowwise_packed_iq2xxs_best_sign_sse(y, w, lane, scale, index, &sign);
-					if (sse < best_sub_sse)
+					signs |= (uint8_t)(1u << j);
+					negative_count++;
+				}
+				int level;
+				for (level = 0; level < 3; level++)
+				{
+					const int mag = ccv_nnc_8i_rowwise_packed_iq2xxs_scale_level[scale][level];
+					const int q8 = (signs & (1u << j)) ? -mag : mag;
+					double d = (double)q8 - y[lane + j];
+					cost[j][level] = w[lane + j] * d * d;
+					d = (double)-q8 - y[lane + j];
+					flipped_cost[j][level] = w[lane + j] * d * d;
+					flip_metric[j][level] = w[lane + j] * (double)mag * fabs(y[lane + j]);
+				}
+			}
+			int target_code = 0;
+			int code_multiplier = 1;
+			uint8_t target_levels[8];
+			double lower_bound_base = 0;
+			double lower_bound_ratio = DBL_MAX;
+			double lower_bound_flip = DBL_MAX;
+			for (j = 0; j < 8; j++)
+			{
+				int target_level = 0;
+				if (cost[j][1] < cost[j][target_level])
+					target_level = 1;
+				if (cost[j][2] < cost[j][target_level])
+					target_level = 2;
+				target_levels[j] = (uint8_t)target_level;
+				target_code += target_level * code_multiplier;
+				code_multiplier *= 3;
+				lower_bound_base += cost[j][target_level];
+				int level;
+				for (level = 0; level < 3; level++)
+				{
+					if (level != target_level)
+					{
+						const int d = level - target_level;
+						lower_bound_ratio = ccv_min(lower_bound_ratio, (cost[j][level] - cost[j][target_level]) / (double)(d * d));
+					}
+					lower_bound_flip = ccv_min(lower_bound_flip, flipped_cost[j][level] - cost[j][level]);
+				}
+			}
+			int candidate;
+			for (candidate = 0; candidate < CCV_NNC_8I_ROWWISE_IQ2_CANDIDATES; candidate++)
+			{
+				const int index = ccv_nnc_8i_rowwise_packed_iq2xxs_candidates[target_code][candidate];
+				const uint8_t* const levels = ccv_nnc_8i_rowwise_packed_iq2xxs_level[index];
+				int sign_index;
+				const double sse = _ccv_nnc_8i_rowwise_packed_iq2xxs_cost(cost, flipped_cost, flip_metric, levels, signs, negative_count & 1, &sign_index);
+				if (sse < best_sub_sse || (sse == best_sub_sse && index < best_sub_grid))
+				{
+					best_sub_sse = sse;
+					best_sub_grid = index;
+					best_sub_sign = sign_index;
+				}
+			}
+			const uint8_t* const cutoff_levels = ccv_nnc_8i_rowwise_packed_iq2xxs_level[ccv_nnc_8i_rowwise_packed_iq2xxs_candidates[target_code][CCV_NNC_8I_ROWWISE_IQ2_CANDIDATES - 1]];
+			int cutoff_distance = 0;
+			for (j = 0; j < 8; j++)
+			{
+				const int d = (int)cutoff_levels[j] - target_levels[j];
+				cutoff_distance += d * d;
+			}
+			const double safe_ratio = nextafter(lower_bound_ratio, 0);
+			const double lower_bound = _ccv_nnc_8i_rowwise_packed_safe_lower_bound(lower_bound_base + safe_ratio * cutoff_distance + ((negative_count & 1) ? nextafter(lower_bound_flip, -INFINITY) : 0));
+			if (!(best_sub_sse < lower_bound))
+			{
+				int index;
+				for (index = 0; index < CCV_NNC_8I_ROWWISE_PACKED_IQ2XXS_GRID_SIZE; index++)
+				{
+					int sign_index;
+					const double sse = _ccv_nnc_8i_rowwise_packed_iq2xxs_cost(cost, flipped_cost, flip_metric, ccv_nnc_8i_rowwise_packed_iq2xxs_level[index], signs, negative_count & 1, &sign_index);
+					if (sse < best_sub_sse || (sse == best_sub_sse && index < best_sub_grid))
 					{
 						best_sub_sse = sse;
 						best_sub_grid = index;
-						best_sub_sign = sign;
+						best_sub_sign = sign_index;
 					}
 				}
+			}
 			group_sse += best_sub_sse;
 			group_grid[sg] = best_sub_grid;
 			group_sign[sg] = best_sub_sign;
@@ -812,11 +1011,10 @@ static void _ccv_nnc_8i_rowwise_packed_quant_iq2_s(const double* const y, const 
 
 static void _ccv_nnc_8i_rowwise_packed_quant_iq2_xs(const double* const y, const double* const w, ccv_nnc_8i_rowwise_packed_group_t* const group)
 {
-	static const int scales[16] = {1, 2, 3, 4, 5, 6, 7, 8, 10, 12, 14, 16, 20, 24, 28, 32};
+	assert(ccv_nnc_8i_rowwise_packed_iq2xs_initialized);
 	double best_sse = DBL_MAX;
 	int best_scale_code = 0;
 	int best_grid = 0;
-	int best_q8[16] = {0};
 	uint32_t signs = 0;
 	int j;
 	for (j = 0; j < 8; j++)
@@ -825,32 +1023,87 @@ static void _ccv_nnc_8i_rowwise_packed_quant_iq2_xs(const double* const y, const
 	int scale_code;
 	for (scale_code = 0; scale_code < 16; scale_code++)
 	{
-		const int scale = scales[scale_code];
-		int index;
-		for (index = 0; index < 512; index++)
+		double cost[8][3];
+		for (j = 0; j < 8; j++)
 		{
-			double sse = 0;
-			int q8[16] = {0};
-			for (j = 0; j < 8; j++)
+			int level;
+			for (level = 0; level < 3; level++)
 			{
-				const int mag = ccv_min(_ccv_nnc_8i_rowwise_packed_iq2_value(ccv_nnc_8i_rowwise_packed_iq2xs_grid, index, j) * scale, 127);
-				q8[j] = (signs & (1u << j)) ? -mag : mag;
-				const double d = q8[j] - y[j];
-				sse += w[j] * d * d;
+				const int mag = ccv_nnc_8i_rowwise_packed_iq2xxs_scale_level[ccv_nnc_8i_rowwise_packed_iq2xxs_scales[scale_code]][level];
+				const int q8 = (signs & (1u << j)) ? -mag : mag;
+				const double d = (double)q8 - y[j];
+				cost[j][level] = w[j] * d * d;
 			}
-			if (sse < best_sse)
+		}
+		int target_code = 0;
+		int code_multiplier = 1;
+		uint8_t target_levels[8];
+		double lower_bound_base = 0;
+		double lower_bound_ratio = DBL_MAX;
+		for (j = 0; j < 8; j++)
+		{
+			int target_level = 0;
+			if (cost[j][1] < cost[j][target_level])
+				target_level = 1;
+			if (cost[j][2] < cost[j][target_level])
+				target_level = 2;
+			target_levels[j] = (uint8_t)target_level;
+			target_code += target_level * code_multiplier;
+			code_multiplier *= 3;
+			lower_bound_base += cost[j][target_level];
+			int level;
+			for (level = 0; level < 3; level++)
+				if (level != target_level)
+				{
+					const int d = level - target_level;
+					lower_bound_ratio = ccv_min(lower_bound_ratio, (cost[j][level] - cost[j][target_level]) / (double)(d * d));
+				}
+		}
+		int candidate;
+		for (candidate = 0; candidate < CCV_NNC_8I_ROWWISE_IQ2_CANDIDATES; candidate++)
+		{
+			const int index = ccv_nnc_8i_rowwise_packed_iq2xs_candidates[target_code][candidate];
+			const uint8_t* const levels = ccv_nnc_8i_rowwise_packed_iq2xs_level[index];
+			const double sse = _ccv_nnc_8i_rowwise_packed_iq2_cost(cost, levels);
+			if (sse < best_sse || (sse == best_sse && scale_code == best_scale_code && index < best_grid))
 			{
 				best_sse = sse;
 				best_scale_code = scale_code;
 				best_grid = index;
-				memcpy(best_q8, q8, sizeof(best_q8));
+			}
+		}
+		const uint8_t* const cutoff_levels = ccv_nnc_8i_rowwise_packed_iq2xs_level[ccv_nnc_8i_rowwise_packed_iq2xs_candidates[target_code][CCV_NNC_8I_ROWWISE_IQ2_CANDIDATES - 1]];
+		int cutoff_distance = 0;
+		for (j = 0; j < 8; j++)
+		{
+			const int d = (int)cutoff_levels[j] - target_levels[j];
+			cutoff_distance += d * d;
+		}
+		const double lower_bound = _ccv_nnc_8i_rowwise_packed_safe_lower_bound(lower_bound_base + nextafter(lower_bound_ratio, 0) * cutoff_distance);
+		if (!(best_sse < lower_bound))
+		{
+			int index;
+			for (index = 0; index < CCV_NNC_8I_ROWWISE_PACKED_IQ2XS_GRID_SIZE; index++)
+			{
+				const double sse = _ccv_nnc_8i_rowwise_packed_iq2_cost(cost, ccv_nnc_8i_rowwise_packed_iq2xs_level[index]);
+				if (sse < best_sse || (sse == best_sse && scale_code == best_scale_code && index < best_grid))
+				{
+					best_sse = sse;
+					best_scale_code = scale_code;
+					best_grid = index;
+				}
 			}
 		}
 	}
 	group->scale = best_scale_code;
 	group->grid[0] = best_grid;
 	group->signs = signs;
-	memcpy(group->q8, best_q8, sizeof(best_q8));
+	memset(group->q8, 0, sizeof(group->q8));
+	for (j = 0; j < 8; j++)
+	{
+		const int mag = ccv_nnc_8i_rowwise_packed_iq2xs_scaled_value[best_scale_code][best_grid][j];
+		group->q8[j] = (signs & (1u << j)) ? -mag : mag;
+	}
 }
 
 static void _ccv_nnc_8i_rowwise_packed_quant_iq3_s(const double* const y, const double* const w, ccv_nnc_8i_rowwise_packed_group_t* const group)
@@ -937,14 +1190,70 @@ static void _ccv_nnc_8i_rowwise_packed_quant_iq3_xxs(const double* const y, cons
 			double best_sub_sse = DBL_MAX;
 			int best_sub_grid = 0;
 			const int lane = sg * 4;
-			int index;
-			for (index = 0; index < CCV_NNC_8I_ROWWISE_PACKED_IQ3XXS_GRID_SIZE; index++)
+			double cost[4][8];
+			for (j = 0; j < 4; j++)
 			{
-				const double sse = _ccv_nnc_8i_rowwise_packed_iq3xxs_sse(ay, w, lane, scale, index);
-				if (sse < best_sub_sse)
+				int level;
+				for (level = 0; level < 8; level++)
+				{
+					const int mag = ccv_min((1 + level * 2) * scale, 127);
+					const double d = (double)mag - ay[lane + j];
+					cost[j][level] = w[lane + j] * d * d;
+				}
+			}
+			int target_code = 0;
+			uint8_t target_levels[4];
+			double lower_bound_base = 0;
+			double lower_bound_ratio = DBL_MAX;
+			for (j = 0; j < 4; j++)
+			{
+				int target_level = 0;
+				int level;
+				for (level = 1; level < 8; level++)
+					if (cost[j][level] < cost[j][target_level])
+						target_level = level;
+				target_levels[j] = (uint8_t)target_level;
+				target_code |= target_level << (j * 3);
+				lower_bound_base += cost[j][target_level];
+				for (level = 0; level < 8; level++)
+					if (level != target_level)
+					{
+						const int d = level - target_level;
+						lower_bound_ratio = ccv_min(lower_bound_ratio, (cost[j][level] - cost[j][target_level]) / (double)(d * d));
+					}
+			}
+			int candidate;
+			for (candidate = 0; candidate < CCV_NNC_8I_ROWWISE_IQ3_CANDIDATES; candidate++)
+			{
+				const int index = ccv_nnc_8i_rowwise_packed_iq3xxs_candidates[target_code][candidate];
+				const uint8_t* const levels = ccv_nnc_8i_rowwise_packed_iq3xxs_level[index];
+				const double sse = cost[0][levels[0]] + cost[1][levels[1]] + cost[2][levels[2]] + cost[3][levels[3]];
+				if (sse < best_sub_sse || (sse == best_sub_sse && index < best_sub_grid))
 				{
 					best_sub_sse = sse;
 					best_sub_grid = index;
+				}
+			}
+			const uint8_t* const cutoff_levels = ccv_nnc_8i_rowwise_packed_iq3xxs_level[ccv_nnc_8i_rowwise_packed_iq3xxs_candidates[target_code][CCV_NNC_8I_ROWWISE_IQ3_CANDIDATES - 1]];
+			int cutoff_distance = 0;
+			for (j = 0; j < 4; j++)
+			{
+				const int d = (int)cutoff_levels[j] - target_levels[j];
+				cutoff_distance += d * d;
+			}
+			const double lower_bound = _ccv_nnc_8i_rowwise_packed_safe_lower_bound(lower_bound_base + nextafter(lower_bound_ratio, 0) * cutoff_distance);
+			if (!(best_sub_sse < lower_bound))
+			{
+				int index;
+				for (index = 0; index < CCV_NNC_8I_ROWWISE_PACKED_IQ3XXS_GRID_SIZE; index++)
+				{
+					const uint8_t* const levels = ccv_nnc_8i_rowwise_packed_iq3xxs_level[index];
+					const double sse = cost[0][levels[0]] + cost[1][levels[1]] + cost[2][levels[2]] + cost[3][levels[3]];
+					if (sse < best_sub_sse || (sse == best_sub_sse && index < best_sub_grid))
+					{
+						best_sub_sse = sse;
+						best_sub_grid = index;
+					}
 				}
 			}
 			group_sse += best_sub_sse;
@@ -1236,7 +1545,10 @@ CCV_WARN_UNUSED(size_t) ccv_nnc_quantize_8i_rowwise_x(const void* input, const i
 	switch (format)
 	{
 		case CCV_NNC_QX_8I_ROWWISE_IQ2_XXS:
-			_ccv_nnc_8i_rowwise_packed_iq2xxs_init();
+			_ccv_nnc_8i_rowwise_packed_iq2xxs_candidates_init();
+			break;
+		case CCV_NNC_QX_8I_ROWWISE_IQ2_XS:
+			_ccv_nnc_8i_rowwise_packed_iq2xs_candidates_init();
 			break;
 		case CCV_NNC_QX_8I_ROWWISE_IQ2_S:
 			_ccv_nnc_8i_rowwise_packed_iq2s_init();
@@ -1245,7 +1557,7 @@ CCV_WARN_UNUSED(size_t) ccv_nnc_quantize_8i_rowwise_x(const void* input, const i
 			_ccv_nnc_8i_rowwise_packed_iq3s_init();
 			break;
 		case CCV_NNC_QX_8I_ROWWISE_IQ3_XXS:
-			_ccv_nnc_8i_rowwise_packed_iq3xxs_init();
+			_ccv_nnc_8i_rowwise_packed_iq3xxs_candidates_init();
 			break;
 	}
 	uint8_t* const u8 = (uint8_t*)output;
@@ -1269,16 +1581,22 @@ CCV_WARN_UNUSED(size_t) ccv_nnc_quantize_8i_rowwise_x(const void* input, const i
 			rows_per_chunk = 8;
 			break;
 	}
+	rows_per_chunk = ccv_max(rows_per_chunk, (size_t)8);
 	const size_t row_chunks = (row_count + rows_per_chunk - 1) / rows_per_chunk;
+#ifdef USE_DISPATCH
+	dispatch_apply(row_chunks, dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^(size_t chunk_idx) {
+#else
 	parallel_for(chunk_idx, (int)row_chunks) {
+#endif
 		const size_t chunk_begin = (size_t)chunk_idx * rows_per_chunk;
 		const size_t chunk_end = ccv_min(chunk_begin + rows_per_chunk, row_count);
+		double* const row = (double*)ccmalloc(sizeof(double) * padded_row_length);
+		double* const weights = (double*)ccmalloc(sizeof(double) * padded_row_length);
+		ccv_nnc_8i_rowwise_packed_group_t* const groups = (ccv_nnc_8i_rowwise_packed_group_t*)ccmalloc(sizeof(ccv_nnc_8i_rowwise_packed_group_t) * groups_per_row);
+		ccv_nnc_8i_rowwise_packed_group_t* const best_groups = (ccv_nnc_8i_rowwise_packed_group_t*)ccmalloc(sizeof(ccv_nnc_8i_rowwise_packed_group_t) * groups_per_row);
 		size_t i;
 		for (i = chunk_begin; i < chunk_end; i++)
 		{
-			double* const row = (double*)ccmalloc(sizeof(double) * padded_row_length);
-			double* const weights = (double*)ccmalloc(sizeof(double) * padded_row_length);
-			int* const q8 = (int*)ccmalloc(sizeof(int) * padded_row_length);
 			const size_t row_start = i * row_length;
 			const float* const row_imatrix = _ccv_nnc_8i_rowwise_imatrix_for_row(imatrix, imatrix_length, row_length, row_count, i);
 			_ccv_nnc_8i_rowwise_packed_read_row(input, datatype, row_start, row_length, padded_row_length, row);
@@ -1294,12 +1612,16 @@ CCV_WARN_UNUSED(size_t) ccv_nnc_quantize_8i_rowwise_x(const void* input, const i
 			double scale = max_abs / 127.;
 			double best_scale = 0;
 			double best_sse = DBL_MAX;
+			int has_best = 0;
 			int k;
-			for (k = 0; k < 8; k++)
+			for (k = 0; k < CCV_NNC_8I_ROWWISE_X_REFINEMENT_STEPS; k++)
 			{
 				const double stored_scale = _ccv_nnc_8i_rowwise_packed_stored_scale(scale, datatype);
 				if (!(stored_scale > 0))
 					break;
+				double sse = 0;
+				double sum_qx = 0;
+				double sum_qq = 0;
 				size_t g;
 				for (g = 0; g < groups_per_row; g++)
 				{
@@ -1312,22 +1634,24 @@ CCV_WARN_UNUSED(size_t) ccv_nnc_quantize_8i_rowwise_x(const void* input, const i
 					}
 					ccv_nnc_8i_rowwise_packed_group_t group;
 					_ccv_nnc_8i_rowwise_packed_quant_group(format, y, w, &group);
-					memcpy(q8 + g * group_size, group.q8, sizeof(int) * group_size);
-				}
-				double sse = 0;
-				double sum_qx = 0;
-				double sum_qq = 0;
-				for (j = 0; j < row_length; j++)
-				{
-					const double d = row[j] - stored_scale * q8[j];
-					sse += weights[j] * d * d;
-					sum_qx += weights[j] * q8[j] * row[j];
-					sum_qq += weights[j] * q8[j] * q8[j];
+					groups[g] = group;
+					const size_t group_start = g * group_size;
+					const size_t group_end = ccv_min(group_start + group_size, row_length);
+					for (j = group_start; j < group_end; j++)
+					{
+						const int q8 = group.q8[j - group_start];
+						const double d = row[j] - stored_scale * q8;
+						sse += weights[j] * d * d;
+						sum_qx += weights[j] * q8 * row[j];
+						sum_qq += weights[j] * q8 * q8;
+					}
 				}
 				if (sse < best_sse)
 				{
 					best_sse = sse;
 					best_scale = stored_scale;
+					has_best = 1;
+					memcpy(best_groups, groups, sizeof(ccv_nnc_8i_rowwise_packed_group_t) * groups_per_row);
 				}
 				if (!(sum_qq > 0) || !(sum_qx > 0))
 					break;
@@ -1337,26 +1661,36 @@ CCV_WARN_UNUSED(size_t) ccv_nnc_quantize_8i_rowwise_x(const void* input, const i
 				scale = next_scale;
 			}
 			_ccv_nnc_8i_rowwise_packed_store_scale(scales, datatype, i, best_scale);
-			const double final_scale = best_scale > 0 ? best_scale : 1;
 			size_t g;
-			for (g = 0; g < groups_per_row; g++)
+			if (has_best)
 			{
-				double y[32] = {0};
-				double w[32] = {0};
-				for (j = 0; j < group_size; j++)
+				for (g = 0; g < groups_per_row; g++)
+					_ccv_nnc_8i_rowwise_packed_pack_group(u8, i * groups_per_row + g, format, best_groups + g);
+			} else {
+				for (g = 0; g < groups_per_row; g++)
 				{
-					y[j] = row[g * group_size + j] / final_scale;
-					w[j] = weights[g * group_size + j];
+					double y[32] = {0};
+					double w[32] = {0};
+					for (j = 0; j < group_size; j++)
+					{
+						y[j] = row[g * group_size + j];
+						w[j] = weights[g * group_size + j];
+					}
+					ccv_nnc_8i_rowwise_packed_group_t group;
+					_ccv_nnc_8i_rowwise_packed_quant_group(format, y, w, &group);
+					_ccv_nnc_8i_rowwise_packed_pack_group(u8, i * groups_per_row + g, format, &group);
 				}
-				ccv_nnc_8i_rowwise_packed_group_t group;
-				_ccv_nnc_8i_rowwise_packed_quant_group(format, y, w, &group);
-				_ccv_nnc_8i_rowwise_packed_pack_group(u8, i * groups_per_row + g, format, &group);
 			}
-			ccfree(q8);
-			ccfree(weights);
-			ccfree(row);
 		}
+		ccfree(best_groups);
+		ccfree(groups);
+		ccfree(weights);
+		ccfree(row);
+#ifdef USE_DISPATCH
+	});
+#else
 	} parallel_endfor
+#endif
 	return output_size;
 }
 
