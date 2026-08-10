@@ -131,6 +131,32 @@ inline short merge_partition_pairs(
   return a_end;
 }
 
+inline void merge_pair_at(
+  threadgroup const float* a_scores,
+  threadgroup const int* a_indices,
+  threadgroup const float* b_scores,
+  threadgroup const int* b_indices,
+  short a_size,
+  short b_size,
+  short rank,
+  thread float& score,
+  thread int& index
+) {
+  const short a_pos = merge_partition_pairs(a_scores, a_indices, b_scores, b_indices, a_size, b_size, rank);
+  const short b_pos = rank - a_pos;
+  const bool take_b = b_pos < b_size && (a_pos >= a_size || better_pair(b_scores[b_pos], b_indices[b_pos], a_scores[a_pos], a_indices[a_pos]));
+  if (take_b) {
+    score = b_scores[b_pos];
+    index = b_indices[b_pos];
+  } else if (a_pos < a_size) {
+    score = a_scores[a_pos];
+    index = a_indices[a_pos];
+  } else {
+    score = -3.402823466e+38f;
+    index = -1;
+  }
+}
+
 inline void merge_step_pairs(
   threadgroup const float* a_scores,
   threadgroup const int* a_indices,
@@ -187,17 +213,19 @@ inline void block_merge_sort_pairs(threadgroup float* group_scores, threadgroup 
     threadgroup const int* a_indices = group_indices + sort_start;
     threadgroup const float* b_scores = group_scores + sort_start + sort_size / 2;
     threadgroup const int* b_indices = group_indices + sort_start + sort_size / 2;
-    short a_size = sort_size / 2;
-    short b_size = sort_size / 2;
     const short sort_mid = {{topk_values_per_thread}} * merge_lane;
-    const short partition = merge_partition_pairs(a_scores, a_indices, b_scores, b_indices, a_size, b_size, sort_mid);
-    a_scores += partition;
-    a_indices += partition;
-    b_scores += sort_mid - partition;
-    b_indices += sort_mid - partition;
-    a_size -= partition;
-    b_size -= sort_mid - partition;
-    merge_step_pairs(a_scores, a_indices, b_scores, b_indices, a_size, b_size, local_scores, local_indices);
+    short a_size = min(short(sort_size / 2), short({{kth}}));
+    short b_size = a_size;
+    if (sort_mid < {{kth}}) {
+      const short partition = merge_partition_pairs(a_scores, a_indices, b_scores, b_indices, a_size, b_size, sort_mid);
+      a_scores += partition;
+      a_indices += partition;
+      b_scores += sort_mid - partition;
+      b_indices += sort_mid - partition;
+      a_size -= partition;
+      b_size -= sort_mid - partition;
+      merge_step_pairs(a_scores, a_indices, b_scores, b_indices, a_size, b_size, local_scores, local_indices);
+    }
   }
   threadgroup_barrier(mem_flags::mem_threadgroup);
   #pragma clang loop unroll(full)
@@ -392,31 +420,65 @@ kernel void topk_tile(
 kernel void topk_merge(
   device const float* candidate_scores [[buffer(0)]],
   device const int* candidate_indices [[buffer(1)]],
-  device int* selected [[buffer(2)]],
-{{TOPK_C_ARGUMENT}}  uint t [[threadgroup_position_in_grid]],
+  device float* reduced_scores [[buffer(2)]],
+  device int* reduced_indices [[buffer(3)]],
+  constant uint& num_lists [[buffer(4)]],
+  uint2 tgid [[threadgroup_position_in_grid]],
   uint tid [[thread_index_in_threadgroup]]
 ) {
-{{LOAD_C_VALUE}}  if (t >= T) {
+  const uint group = tgid.x;
+  const uint t = tgid.y;
+  if (t >= T) {
+    return;
+  }
+  const uint first_list = group * 4;
+  const uint list_count = min(num_lists - first_list, 4u);
+  const uint in_base = (t * num_lists + first_list) * {{kth}};
+  const uint output_lists = (num_lists + 3) / 4;
+  const uint out_base = (t * output_lists + group) * {{kth}};
+  if (list_count == 1) {
+    for (uint i = tid; i < {{kth}}; i += {{topk_threads}}) {
+      reduced_scores[out_base + i] = candidate_scores[in_base + i];
+      reduced_indices[out_base + i] = candidate_indices[in_base + i];
+    }
     return;
   }
   threadgroup float merge_scores[{{topk_sort_values}}];
   threadgroup int merge_indices[{{topk_sort_values}}];
-  const uint num_tiles = (C + {{topk_tile_c}} - 1) / {{topk_tile_c}};
-  const uint merge_count = num_tiles * {{kth}};
-  const uint in_base = t * merge_count;
-  for (uint i = tid; i < {{topk_sort_values}}; i += {{topk_threads}}) {
-    if (i < merge_count) {
-      merge_scores[i] = candidate_scores[in_base + i];
-      merge_indices[i] = candidate_indices[in_base + i];
-    } else {
-      merge_scores[i] = -3.402823466e+38f;
-      merge_indices[i] = -1;
-    }
+  const uint merge_count = list_count * {{kth}};
+  for (uint i = tid; i < merge_count; i += {{topk_threads}}) {
+    merge_scores[i] = candidate_scores[in_base + i];
+    merge_indices[i] = candidate_indices[in_base + i];
   }
   threadgroup_barrier(mem_flags::mem_threadgroup);
-  block_merge_sort_pairs(merge_scores, merge_indices, tid);
-  for (uint i = tid; i < {{kth}}; i += {{topk_threads}}) {
-    selected[t * {{kth}} + i] = merge_indices[i];
+  thread float pair_scores[2];
+  thread int pair_indices[2];
+  if (tid < {{kth}}) {
+    merge_pair_at(merge_scores, merge_indices, merge_scores + {{kth}}, merge_indices + {{kth}}, {{kth}}, {{kth}}, short(tid), pair_scores[0], pair_indices[0]);
+    if (list_count <= 2) {
+      reduced_scores[out_base + tid] = pair_scores[0];
+      reduced_indices[out_base + tid] = pair_indices[0];
+    } else {
+      merge_pair_at(merge_scores + 2 * {{kth}}, merge_indices + 2 * {{kth}}, merge_scores + 3 * {{kth}}, merge_indices + 3 * {{kth}}, {{kth}}, list_count == 4 ? {{kth}} : 0, short(tid), pair_scores[1], pair_indices[1]);
+    }
+  }
+  if (list_count <= 2) {
+    return;
+  }
+  threadgroup_barrier(mem_flags::mem_threadgroup);
+  if (tid < {{kth}}) {
+    merge_scores[tid] = pair_scores[0];
+    merge_indices[tid] = pair_indices[0];
+    merge_scores[{{kth}} + tid] = pair_scores[1];
+    merge_indices[{{kth}} + tid] = pair_indices[1];
+  }
+  threadgroup_barrier(mem_flags::mem_threadgroup);
+  if (tid < {{kth}}) {
+    float score;
+    int index;
+    merge_pair_at(merge_scores, merge_indices, merge_scores + {{kth}}, merge_indices + {{kth}}, {{kth}}, {{kth}}, short(tid), score, index);
+    reduced_scores[out_base + tid] = score;
+    reduced_indices[out_base + tid] = index;
   }
 }
 )";

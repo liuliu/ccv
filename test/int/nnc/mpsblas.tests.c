@@ -9887,6 +9887,7 @@ TEST_CASE("scaled dot product arg partition with MFA FP16 DS4-native shape")
 	REQUIRE_EQ(_mps_scaled_dot_product_arg_partition_compare(3, 1024, 64, 128, 512, 1, 4, 2048, CCV_16F, 0, 0), 0, "MFA FP16 causal score culling should match CPU reference");
 	REQUIRE_EQ(_mps_scaled_dot_product_arg_partition_compare(3, 1024, 64, 128, 512, 0, 4, 0, CCV_16F, 0, 0), 0, "MFA FP16 selected ids should match CPU reference before runtime C reuse");
 	REQUIRE_EQ(_mps_scaled_dot_product_arg_partition_compare(3, 4096, 64, 128, 512, 0, 4, 0, CCV_16F, 0, 0), 0, "MFA FP16 should reuse its pipeline with runtime C");
+	REQUIRE_EQ(_mps_scaled_dot_product_arg_partition_compare(1, 16384, 64, 128, 512, 1, 4, 65535, CCV_16F, 0, 0), 0, "MFA FP16 should hierarchically merge eight causal top-k tiles");
 }
 
 TEST_CASE("scaled dot product arg partition with generic MFA FP16 DS4-native shape")
@@ -9898,6 +9899,7 @@ TEST_CASE("scaled dot product arg partition with generic MFA FP16 DS4-native sha
 	REQUIRE_EQ(_mps_scaled_dot_product_arg_partition_compare(4, 40, 64, 128, 4, 1, 4, 159, CCV_16F, 0, 1), 0, "generic MFA should respect an explicit absolute query offset");
 	REQUIRE_EQ(_mps_scaled_dot_product_arg_partition_compare(3, 1024, 64, 128, 512, 0, 4, 0, CCV_16F, 0, 1), 0, "generic MFA FP16 selected ids should match CPU reference before runtime C reuse");
 	REQUIRE_EQ(_mps_scaled_dot_product_arg_partition_compare(3, 4096, 64, 128, 512, 0, 4, 0, CCV_16F, 0, 1), 0, "generic MFA FP16 should reuse its pipeline with runtime C");
+	REQUIRE_EQ(_mps_scaled_dot_product_arg_partition_compare(3, 8193, 64, 128, 512, 0, 4, 0, CCV_16F, 0, 1), 0, "generic MFA FP16 should reuse its pipeline across the old four-tile boundary");
 }
 
 TEST_CASE("scaled dot product arg partition with MFA BF16 DS4-native shape")

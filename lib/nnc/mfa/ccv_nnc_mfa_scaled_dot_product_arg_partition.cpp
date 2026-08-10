@@ -126,11 +126,17 @@ void ccv_nnc_mfa_encode_scaled_dot_product_arg_partition(ccv_nnc_mfa_context_t* 
     auto topKMergePipeline = pipelineValue->fourth;
 
     const uint32_t topKTileC = 2048;
-    const uint32_t topKMaxTiles = 4;
+    const uint32_t topKMergeLists = 4;
     const uint32_t topKTiles = (params.C + topKTileC - 1) / topKTileC;
-    const bool useTiledTopK = params.kth <= 512 && topKTiles <= topKMaxTiles;
+    const bool useTiledTopK = params.kth <= 512;
     const size_t scoreBytes = std::max<size_t>((size_t)params.T * params.C * sizeof(float), sizeof(float));
     const size_t candidateCount = useTiledTopK ? (size_t)params.T * topKTiles * params.kth : 0;
+    const uint32_t reducedTopKLists = (topKTiles + topKMergeLists - 1) / topKMergeLists;
+    const size_t reducedCandidateCount = useTiledTopK ? (size_t)params.T * reducedTopKLists * params.kth : 0;
+    const size_t reducedCandidateIndexOffset = _ccv_nnc_mfa_sdpap_align_up(reducedCandidateCount * sizeof(float), 16);
+    if (topKTiles > topKMergeLists) {
+      CCV_NNC_MFA_PRECONDITION(reducedCandidateIndexOffset + reducedCandidateCount * sizeof(int32_t) <= scoreBytes);
+    }
     const size_t candidateScoreOffset = _ccv_nnc_mfa_sdpap_align_up(scoreBytes, 16);
     const size_t candidateIndexOffset = _ccv_nnc_mfa_sdpap_align_up(candidateScoreOffset + candidateCount * sizeof(float), 16);
     const size_t scratchBytes = useTiledTopK ? candidateIndexOffset + candidateCount * sizeof(int32_t) : scoreBytes;
@@ -168,18 +174,36 @@ void ccv_nnc_mfa_encode_scaled_dot_product_arg_partition(ccv_nnc_mfa_context_t* 
       topKTileEncoder->dispatchThreadgroups(MTL::Size(topKTiles, params.T, 1), kernel->topKTileThreadgroupSize);
       command_batch->finishCommand(topKTileEncoder);
 
-      auto topKMergeEncoder = command_batch->startCommand();
-      topKMergeEncoder->setComputePipelineState(topKMergePipeline.get());
-      topKMergeEncoder->useResource(scratch, MTL::ResourceUsageRead);
-      topKMergeEncoder->useResource(tensors[3], MTL::ResourceUsageWrite);
-      topKMergeEncoder->setBuffer(scratch, candidateScoreOffset, 0);
-      topKMergeEncoder->setBuffer(scratch, candidateIndexOffset, 1);
-      topKMergeEncoder->setBuffer(tensors[3], tensor_offsets[3], 2);
-      if (loadC) {
-        topKMergeEncoder->setBytes(&params.C, sizeof(params.C), 3);
+      size_t inputScoreOffset = candidateScoreOffset;
+      size_t inputIndexOffset = candidateIndexOffset;
+      size_t outputScoreOffset = 0;
+      size_t outputIndexOffset = reducedCandidateIndexOffset;
+      uint32_t inputLists = topKTiles;
+      for (;;) {
+        const uint32_t outputLists = (inputLists + topKMergeLists - 1) / topKMergeLists;
+        const bool isFinal = outputLists == 1;
+        auto topKMergeEncoder = command_batch->startCommand();
+        topKMergeEncoder->setComputePipelineState(topKMergePipeline.get());
+        topKMergeEncoder->useResource(scratch, MTL::ResourceUsageRead | MTL::ResourceUsageWrite);
+        topKMergeEncoder->setBuffer(scratch, inputScoreOffset, 0);
+        topKMergeEncoder->setBuffer(scratch, inputIndexOffset, 1);
+        topKMergeEncoder->setBuffer(scratch, outputScoreOffset, 2);
+        if (isFinal) {
+          topKMergeEncoder->useResource(tensors[3], MTL::ResourceUsageWrite);
+          topKMergeEncoder->setBuffer(tensors[3], tensor_offsets[3], 3);
+        } else {
+          topKMergeEncoder->setBuffer(scratch, outputIndexOffset, 3);
+        }
+        topKMergeEncoder->setBytes(&inputLists, sizeof(inputLists), 4);
+        topKMergeEncoder->dispatchThreadgroups(MTL::Size(outputLists, params.T, 1), kernel->topKMergeThreadgroupSize);
+        command_batch->finishCommand(topKMergeEncoder);
+        if (isFinal) {
+          break;
+        }
+        inputLists = outputLists;
+        std::swap(inputScoreOffset, outputScoreOffset);
+        std::swap(inputIndexOffset, outputIndexOffset);
       }
-      topKMergeEncoder->dispatchThreadgroups(MTL::Size(params.T, 1, 1), kernel->topKMergeThreadgroupSize);
-      command_batch->finishCommand(topKMergeEncoder);
     } else {
       auto topKEncoder = command_batch->startCommand();
       topKEncoder->setComputePipelineState(topKSerialPipeline.get());
