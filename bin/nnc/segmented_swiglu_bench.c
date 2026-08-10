@@ -12,6 +12,9 @@
 typedef enum {
 	SEGMENTED_SWIGLU_ROWWISE,
 	SEGMENTED_SWIGLU_IQ2_XXS,
+	SEGMENTED_SWIGLU_IQ2_XS,
+	SEGMENTED_SWIGLU_IQ3_XXS,
+	SEGMENTED_SWIGLU_Q2_K,
 } segmented_swiglu_weight_format_t;
 
 typedef enum {
@@ -44,7 +47,19 @@ static int _segmented_swiglu_double_compare(const void* const a, const void* con
 
 static const char* _segmented_swiglu_format_name(const segmented_swiglu_weight_format_t format)
 {
-	return format == SEGMENTED_SWIGLU_IQ2_XXS ? "iq2_xxs" : "rowwise";
+	switch (format)
+	{
+		case SEGMENTED_SWIGLU_IQ2_XXS:
+			return "iq2_xxs";
+		case SEGMENTED_SWIGLU_IQ2_XS:
+			return "iq2_xs";
+		case SEGMENTED_SWIGLU_IQ3_XXS:
+			return "iq3_xxs";
+		case SEGMENTED_SWIGLU_Q2_K:
+			return "q2_k";
+		default:
+			return "rowwise";
+	}
 }
 
 static segmented_swiglu_weight_format_t _segmented_swiglu_parse_format(const char* const format)
@@ -53,15 +68,31 @@ static segmented_swiglu_weight_format_t _segmented_swiglu_parse_format(const cha
 		return SEGMENTED_SWIGLU_ROWWISE;
 	if (strcmp(format, "iq2_xxs") == 0 || strcmp(format, "IQ2_XXS") == 0)
 		return SEGMENTED_SWIGLU_IQ2_XXS;
-	fprintf(stderr, "weight format must be rowwise or iq2_xxs\n");
+	if (strcmp(format, "iq2_xs") == 0 || strcmp(format, "IQ2_XS") == 0)
+		return SEGMENTED_SWIGLU_IQ2_XS;
+	if (strcmp(format, "iq3_xxs") == 0 || strcmp(format, "IQ3_XXS") == 0)
+		return SEGMENTED_SWIGLU_IQ3_XXS;
+	if (strcmp(format, "q2_k") == 0 || strcmp(format, "Q2_K") == 0)
+		return SEGMENTED_SWIGLU_Q2_K;
+	fprintf(stderr, "weight format must be rowwise, iq2_xxs, iq2_xs, iq3_xxs, or q2_k\n");
 	exit(1);
 }
 
 static ccv_nnc_tensor_param_t _segmented_swiglu_quantized_params(const ccv_nnc_tensor_param_t dense_params, const segmented_swiglu_weight_format_t format)
 {
-	if (format == SEGMENTED_SWIGLU_IQ2_XXS)
-		return ccv_nnc_tensor_8i_rowwise_x(dense_params, CCV_NNC_QX_8I_ROWWISE_IQ2_XXS);
-	return ccv_nnc_tensor_8i_rowwise(dense_params);
+	switch (format)
+	{
+		case SEGMENTED_SWIGLU_IQ2_XXS:
+			return ccv_nnc_tensor_8i_rowwise_x(dense_params, CCV_NNC_QX_8I_ROWWISE_IQ2_XXS);
+		case SEGMENTED_SWIGLU_IQ2_XS:
+			return ccv_nnc_tensor_8i_rowwise_x(dense_params, CCV_NNC_QX_8I_ROWWISE_IQ2_XS);
+		case SEGMENTED_SWIGLU_IQ3_XXS:
+			return ccv_nnc_tensor_8i_rowwise_x(dense_params, CCV_NNC_QX_8I_ROWWISE_IQ3_XXS);
+		case SEGMENTED_SWIGLU_Q2_K:
+			return ccv_nnc_tensor_8i_rowwise_x(dense_params, CCV_NNC_QX_8I_ROWWISE_Q2_K);
+		default:
+			return ccv_nnc_tensor_8i_rowwise(dense_params);
+	}
 }
 
 static void _segmented_swiglu_fill_half(ccv_nnc_tensor_t* const tensor, const int row_length, const int multiplier, const int modulus, const float scale)
@@ -266,7 +297,7 @@ int main(int argc, char** argv)
 	const int experts = argc > 5 ? atoi(argv[5]) : 6;
 	if (warmup < 0 || iterations <= 0 || batch_size <= 0 || experts <= 0)
 	{
-		fprintf(stderr, "usage: %s [rowwise|iq2_xxs] [warmup>=0] [iterations>0] [batch_size>0] [experts>0]\n", argv[0]);
+		fprintf(stderr, "usage: %s [rowwise|iq2_xxs|iq2_xs|iq3_xxs|q2_k] [warmup>=0] [iterations>0] [batch_size>0] [experts>0]\n", argv[0]);
 		return 1;
 	}
 	ccv_nnc_init();
@@ -309,8 +340,8 @@ int main(int argc, char** argv)
 	fprintf(stderr, "synthesizing two %s weight tables (%.3f GiB each)...\n",
 		_segmented_swiglu_format_name(format),
 		(double)ccv_nnc_tensor_data_size_without_padding(q_params) / 1073741824.0);
-	_segmented_swiglu_fill_quantized(hgate_q, 29, format == SEGMENTED_SWIGLU_IQ2_XXS ? 1.0f / 1024 : 1.0f / 8192);
-	_segmented_swiglu_fill_quantized(hup_q, 37, format == SEGMENTED_SWIGLU_IQ2_XXS ? 1.0f / 1024 : 1.0f / 8192);
+	_segmented_swiglu_fill_quantized(hgate_q, 29, format != SEGMENTED_SWIGLU_ROWWISE ? 1.0f / 1024 : 1.0f / 8192);
+	_segmented_swiglu_fill_quantized(hup_q, 37, format != SEGMENTED_SWIGLU_ROWWISE ? 1.0f / 1024 : 1.0f / 8192);
 
 	ccv_nnc_tensor_param_t gpu_q_params = q_params;
 	gpu_q_params.type = CCV_TENSOR_GPU_MEMORY | 000;

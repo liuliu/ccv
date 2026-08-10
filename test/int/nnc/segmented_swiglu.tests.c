@@ -425,6 +425,14 @@ TEST_CASE("MPS segmented SwiGLU fuses IQ2_XXS decode")
 	_segmented_swiglu_mps_rowwise_case(CCV_NNC_QX_8I_ROWWISE_IQ2_XXS, 0, 0, 0, "IQ2_XXS decode without clamp", __case_result__);
 }
 
+TEST_CASE("MPS segmented SwiGLU fuses IQ2_XS, IQ3_XXS, and Q2_K decode")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SEGMENTED_SWIGLU_FORWARD, CCV_NNC_BACKEND_MPS));
+	_segmented_swiglu_mps_rowwise_case(CCV_NNC_QX_8I_ROWWISE_IQ2_XS, 0, 0, 10, "IQ2_XS decode", __case_result__);
+	_segmented_swiglu_mps_rowwise_case(CCV_NNC_QX_8I_ROWWISE_IQ3_XXS, 0, 0, 10, "IQ3_XXS decode", __case_result__);
+	_segmented_swiglu_mps_rowwise_case(CCV_NNC_QX_8I_ROWWISE_Q2_K, 0, 0, 10, "Q2_K decode", __case_result__);
+}
+
 TEST_CASE("MPS segmented SwiGLU broadcasts one activation row for rowwise int8 decode")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SEGMENTED_SWIGLU_FORWARD, CCV_NNC_BACKEND_MPS));

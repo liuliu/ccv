@@ -46,7 +46,10 @@ void ccv_nnc_mfa_encode_segmented_int8_swiglu(
     params.expert_count > 0 && params.bincount > 0);
   CCV_NNC_MFA_PRECONDITION(params.K % 256 == 0 && params.N % 256 == 0);
   CCV_NNC_MFA_PRECONDITION(
-    params.format == CCV_NNC_QX_8I_ROWWISE_IQ2_XXS);
+    params.format == CCV_NNC_QX_8I_ROWWISE_IQ2_XXS ||
+    params.format == CCV_NNC_QX_8I_ROWWISE_IQ2_XS ||
+    params.format == CCV_NNC_QX_8I_ROWWISE_IQ3_XXS ||
+    params.format == CCV_NNC_QX_8I_ROWWISE_Q2_K);
 
   SegmentedInt8SwiGLUDescriptor descriptor;
   descriptor.matrixDimensions = simd::uint2 { params.N, params.K };

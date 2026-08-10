@@ -28,8 +28,18 @@ std::size_t std::hash<SegmentedInt8SwiGLUDescriptor>::operator()(
 
 uint32_t SegmentedInt8SwiGLUDescriptor::groupSize() const noexcept
 {
-  CCV_NNC_MFA_PRECONDITION(format == CCV_NNC_QX_8I_ROWWISE_IQ2_XXS);
-  return 32;
+  switch (format) {
+    case CCV_NNC_QX_8I_ROWWISE_Q2_K:
+      return 16;
+    case CCV_NNC_QX_8I_ROWWISE_IQ2_XXS:
+      return 32;
+    case CCV_NNC_QX_8I_ROWWISE_IQ2_XS:
+    case CCV_NNC_QX_8I_ROWWISE_IQ3_XXS:
+      return 8;
+    default:
+      CCV_NNC_MFA_PRECONDITION(false);
+      return 0;
+  }
 }
 
 uint32_t SegmentedInt8SwiGLUDescriptor::groupsPerRow() const noexcept
@@ -39,14 +49,63 @@ uint32_t SegmentedInt8SwiGLUDescriptor::groupsPerRow() const noexcept
 
 uint64_t SegmentedInt8SwiGLUDescriptor::inputScaleOffset() const noexcept
 {
-  const uint64_t payloadBytes =
-    (uint64_t)expertCount * matrixDimensions[0] * groupsPerRow() * 8;
-  return (payloadBytes + 127) & ~UINT64_C(127);
+  switch (format) {
+    case CCV_NNC_QX_8I_ROWWISE_IQ2_XXS: {
+      const uint64_t payloadBytes =
+        (uint64_t)expertCount * matrixDimensions[0] * groupsPerRow() * 8;
+      return (payloadBytes + 127) & ~UINT64_C(127);
+    }
+    case CCV_NNC_QX_8I_ROWWISE_IQ2_XS: {
+      const uint64_t payloadBits =
+        (uint64_t)expertCount * matrixDimensions[0] * groupsPerRow() * 21;
+      const uint64_t payloadBytes = (payloadBits + 7) / 8;
+      return (payloadBytes + 127) & ~UINT64_C(127);
+    }
+    case CCV_NNC_QX_8I_ROWWISE_IQ3_XXS: {
+      const uint64_t payloadBits =
+        (uint64_t)expertCount * matrixDimensions[0] * groupsPerRow() * 28;
+      const uint64_t payloadBytes = (payloadBits + 7) / 8;
+      return (payloadBytes + 127) & ~UINT64_C(127);
+    }
+    case CCV_NNC_QX_8I_ROWWISE_Q2_K: {
+      const uint64_t payloadBits =
+        (uint64_t)expertCount * matrixDimensions[0] * groupsPerRow() * 42;
+      const uint64_t payloadBytes = (payloadBits + 7) / 8;
+      return (payloadBytes + 127) & ~UINT64_C(127);
+    }
+    default:
+      CCV_NNC_MFA_PRECONDITION(false);
+      return 0;
+  }
 }
 
 uint64_t SegmentedInt8SwiGLUDescriptor::weightExpertStride() const noexcept
 {
-  return (uint64_t)matrixDimensions[0] * groupsPerRow() * 8;
+  switch (format) {
+    case CCV_NNC_QX_8I_ROWWISE_IQ2_XXS:
+      return (uint64_t)matrixDimensions[0] * groupsPerRow() * 8;
+    case CCV_NNC_QX_8I_ROWWISE_IQ2_XS: {
+      const uint64_t expertBits =
+        (uint64_t)matrixDimensions[0] * groupsPerRow() * 21;
+      CCV_NNC_MFA_PRECONDITION((expertBits % 8) == 0);
+      return expertBits / 8;
+    }
+    case CCV_NNC_QX_8I_ROWWISE_IQ3_XXS: {
+      const uint64_t expertBits =
+        (uint64_t)matrixDimensions[0] * groupsPerRow() * 28;
+      CCV_NNC_MFA_PRECONDITION((expertBits % 8) == 0);
+      return expertBits / 8;
+    }
+    case CCV_NNC_QX_8I_ROWWISE_Q2_K: {
+      const uint64_t expertBits =
+        (uint64_t)matrixDimensions[0] * groupsPerRow() * 42;
+      CCV_NNC_MFA_PRECONDITION((expertBits % 8) == 0);
+      return expertBits / 8;
+    }
+    default:
+      CCV_NNC_MFA_PRECONDITION(false);
+      return 0;
+  }
 }
 
 std::pair<
