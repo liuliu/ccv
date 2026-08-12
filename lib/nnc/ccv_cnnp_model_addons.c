@@ -633,8 +633,9 @@ static void _ccv_cnnp_reshape_build(ccv_cnnp_model_t* const super, ccv_nnc_symbo
 	} else {
 		// Otherwise, we need to check if it is permute. For permute, we cannot do alias directly.
 		// We need to first materialize the permute and then run reshape on top of it, otherwise it will be wrong.
+		int old_ofs[CCV_NNC_MAX_DIM_ALLOC];
 		int old_stride[CCV_NNC_MAX_DIM_ALLOC];
-		ccv_nnc_tensor_symbol_alias_params(graph, inputs[0], 0, old_stride);
+		ccv_nnc_tensor_symbol_alias_params(graph, inputs[0], old_ofs, old_stride);
 		// We identify permute by checking if the stride is not in descending order.
 		// This also covered "permute" through reshape, rather than using ccv_cnnp_permute directly.
 		const int nd = ccv_nnc_tensor_nd(params.dim);
@@ -661,7 +662,21 @@ static void _ccv_cnnp_reshape_build(ccv_cnnp_model_t* const super, ccv_nnc_symbo
 				stride = self->stride;
 			if (self->format > 0)
 				params.format = self->format;
-			outputs[0] = ccv_nnc_tensor_symbol_alias_new(graph, inputs[0], self->ofs, stride, params, 0);
+			// tensor_symbol_alias_new flattens an alias to its root tensor. Preserve the
+			// parent view's starting position when this reshape keeps the same axes and
+			// strides; otherwise a chained reshape silently resets the offset to zero.
+			const int* ofs = self->ofs;
+			int new_ofs[CCV_NNC_MAX_DIM_ALLOC];
+			if (new_nd == nd && memcmp(stride, old_stride, sizeof(old_stride)) == 0)
+			{
+				for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC; i++)
+					new_ofs[i] = old_ofs[i] + self->ofs[i];
+				ofs = new_ofs;
+			} else {
+				for (i = 0; i < nd; i++)
+					{ assert(old_ofs[i] == 0); }
+			}
+			outputs[0] = ccv_nnc_tensor_symbol_alias_new(graph, inputs[0], ofs, stride, params, 0);
 		} else {
 			// Otherwise, we first do format transform to plain tensor and then do reshape.
 			ccv_nnc_tensor_symbol_t permuted = ccv_nnc_tensor_symbol_new(graph, params, 0);

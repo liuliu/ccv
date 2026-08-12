@@ -1293,6 +1293,42 @@ TEST_CASE("a compiled model updates move destination aliases across absorbed sha
 	ccv_cnnp_model_free(model);
 }
 
+TEST_CASE("cnnp chained same-stride reshape preserves the parent alias offset")
+{
+	const ccv_cnnp_model_io_t input = ccv_cnnp_input();
+	const ccv_cnnp_model_io_t tail = ccv_cnnp_model_apply(
+		ccv_cnnp_reshape(
+			CCV_TENSOR_FORMAT_NHWC, DIM_ALLOC(3, 2), DIM_ALLOC(2, 0),
+			DIM_ALLOC(2, 1), "tail"),
+		MODEL_IO_LIST(input));
+	const ccv_cnnp_model_io_t same = ccv_cnnp_model_apply(
+		ccv_cnnp_reshape(
+			CCV_TENSOR_FORMAT_NHWC, DIM_ALLOC(3, 2), DIM_ALLOC(0, 0),
+			DIM_ALLOC(2, 1), "same"),
+		MODEL_IO_LIST(tail));
+	const ccv_cnnp_model_io_t output = ccv_cnnp_model_apply(
+		ccv_cnnp_contiguous(0), MODEL_IO_LIST(same));
+	ccv_cnnp_model_t* const model = ccv_cnnp_model_new(
+		MODEL_IO_LIST(input), MODEL_IO_LIST(output), 0, 0);
+	ccv_cnnp_model_compile(
+		model, TENSOR_PARAM_LIST(CPU_TENSOR_NHWC(32F, 6, 2)), CMD_NOOP(), CMD_NOOP());
+
+	ccv_nnc_tensor_t* const x = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 6, 2), 0);
+	ccv_nnc_tensor_t* const y = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 3, 2), 0);
+	int i;
+	for (i = 0; i < 12; i++)
+		x->data.f32[i] = i;
+	ccv_cnnp_model_evaluate(
+		model, (ccv_cnnp_evaluate_param_t){}, TENSOR_LIST(x), TENSOR_LIST(y), 0, 0);
+	REQUIRE_ARRAY_EQ(
+		float, y->data.f32, ((float[]){4, 5, 6, 7, 8, 9}), 6,
+		"the second reshape should retain the first reshape's row offset");
+
+	ccv_nnc_tensor_free(y);
+	ccv_nnc_tensor_free(x);
+	ccv_cnnp_model_free(model);
+}
+
 TEST_CASE("cnnp reshape propagates an empty input through a new alias")
 {
 	const ccv_cnnp_model_io_t input = ccv_cnnp_input();
