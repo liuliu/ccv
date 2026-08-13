@@ -125,6 +125,11 @@ void ccv_nnc_mfa_encode_scaled_dot_product_arg_partition(ccv_nnc_mfa_context_t* 
     auto topKTilePipeline = pipelineValue->third;
     auto topKMergePipeline = pipelineValue->fourth;
 
+    const struct {
+      uint32_t C;
+      int32_t query_offset;
+    } runtimeParams = { params.C, params.query_offset };
+
     const uint32_t topKTileC = 2048;
     const uint32_t topKMergeLists = 4;
     const uint32_t topKTiles = (params.C + topKTileC - 1) / topKTileC;
@@ -153,7 +158,7 @@ void ccv_nnc_mfa_encode_scaled_dot_product_arg_partition(ccv_nnc_mfa_context_t* 
       scoreEncoder->setBuffer(tensors[2], tensor_offsets[2], 2);
       scoreEncoder->setBuffer(scratch, 0, 3);
       if (loadC) {
-        scoreEncoder->setBytes(&params.C, sizeof(params.C), 4);
+        scoreEncoder->setBytes(&runtimeParams, sizeof(runtimeParams), 4);
       }
       const uint32_t xBlocks = (params.C + descriptor.scoreBlockN - 1) / descriptor.scoreBlockN;
       const uint32_t yBlocks = (params.T + descriptor.scoreBlockM - 1) / descriptor.scoreBlockM;
@@ -169,7 +174,7 @@ void ccv_nnc_mfa_encode_scaled_dot_product_arg_partition(ccv_nnc_mfa_context_t* 
       topKTileEncoder->setBuffer(scratch, candidateScoreOffset, 1);
       topKTileEncoder->setBuffer(scratch, candidateIndexOffset, 2);
       if (loadC) {
-        topKTileEncoder->setBytes(&params.C, sizeof(params.C), 3);
+        topKTileEncoder->setBytes(&runtimeParams, sizeof(runtimeParams), 3);
       }
       topKTileEncoder->dispatchThreadgroups(MTL::Size(topKTiles, params.T, 1), kernel->topKTileThreadgroupSize);
       command_batch->finishCommand(topKTileEncoder);
@@ -212,7 +217,7 @@ void ccv_nnc_mfa_encode_scaled_dot_product_arg_partition(ccv_nnc_mfa_context_t* 
       topKEncoder->setBuffer(scratch, 0, 0);
       topKEncoder->setBuffer(tensors[3], tensor_offsets[3], 1);
       if (loadC) {
-        topKEncoder->setBytes(&params.C, sizeof(params.C), 2);
+        topKEncoder->setBytes(&runtimeParams, sizeof(runtimeParams), 2);
       }
       topKEncoder->dispatchThreadgroups(MTL::Size(params.T, 1, 1), kernel->topKThreadgroupSize);
       command_batch->finishCommand(topKEncoder);

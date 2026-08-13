@@ -34,15 +34,16 @@ std::string NAScaledDotProductArgPartitionKernel::createSource() const noexcept 
   source.SetValue("topk_values_per_thread", "4");
   source.SetValue("topk_sort_values", "2048");
   source.SetValue("C_FUNCTION_CONSTANT", loadC ? "" : "constant uint C [[function_constant(1)]];\n");
-  source.SetValue("LOAD_C_PARAMETER", loadC ? ", uniform<uint> C" : "");
-  source.SetValue("VISIBLE_COUNT_FOR_TOKEN", loadC ? "visible_count_for_token(t, C)" : "visible_count_for_token(t)");
-  source.SetValue("INDEX_SCORE_C_ARGUMENT", loadC ? "  constant uint& C_buf [[buffer(4)]],\n" : "");
-  source.SetValue("TOPK_SERIAL_C_ARGUMENT", loadC ? "  constant uint& C_buf [[buffer(2)]],\n" : "");
-  source.SetValue("TOPK_C_ARGUMENT", loadC ? "  constant uint& C_buf [[buffer(3)]],\n" : "");
-  source.SetValue("LOAD_C_VALUE", loadC ? "  const uniform<uint> C = make_uniform(C_buf);\n" : "");
+  source.SetValue("QUERY_OFFSET_FUNCTION_CONSTANT", loadC ? "" : "constant int query_offset [[function_constant(7)]];\n");
+  source.SetValue("LOAD_C_PARAMETER", loadC ? ", uniform<uint> C, uniform<int> query_offset" : "");
+  source.SetValue("VISIBLE_COUNT_FOR_TOKEN", loadC ? "visible_count_for_token(t, C, query_offset)" : "visible_count_for_token(t)");
+  source.SetValue("INDEX_SCORE_C_ARGUMENT", loadC ? "  constant SDPAPRuntimeParams& runtime_params [[buffer(4)]],\n" : "");
+  source.SetValue("TOPK_SERIAL_C_ARGUMENT", loadC ? "  constant SDPAPRuntimeParams& runtime_params [[buffer(2)]],\n" : "");
+  source.SetValue("TOPK_C_ARGUMENT", loadC ? "  constant SDPAPRuntimeParams& runtime_params [[buffer(3)]],\n" : "");
+  source.SetValue("LOAD_C_VALUE", loadC ? "  const uniform<uint> C = make_uniform(runtime_params.C);\n  const uniform<int> query_offset = make_uniform(runtime_params.query_offset);\n" : "");
   std::string scoreTileCulling;
   if (isCausal) {
-    const std::string visibleCount = loadC ? "visible_count_for_token(last_t - 1, C)" : "visible_count_for_token(last_t - 1)";
+    const std::string visibleCount = loadC ? "visible_count_for_token(last_t - 1, C, query_offset)" : "visible_count_for_token(last_t - 1)";
     scoreTileCulling =
       "  if (t_start >= T) {\n"
       "    return;\n"
@@ -78,7 +79,12 @@ constant uint D [[function_constant(3)]];
 constant uint compression_ratio [[function_constant(4)]];
 constant bool is_causal [[function_constant(5)]];
 constant float scale [[function_constant(6)]];
-constant int query_offset [[function_constant(7)]];
+{{QUERY_OFFSET_FUNCTION_CONSTANT}}
+
+struct SDPAPRuntimeParams {
+  uint C;
+  int query_offset;
+};
 
 inline uint visible_count_for_token(uint t{{LOAD_C_PARAMETER}}) {
   if (!is_causal) {
