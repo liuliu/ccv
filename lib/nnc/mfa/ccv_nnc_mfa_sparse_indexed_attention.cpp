@@ -72,7 +72,9 @@ void ccv_nnc_mfa_encode_sparse_indexed_attention(ccv_nnc_mfa_context_t* context,
     auto pipeline = pipelineValue->pipeline;
     auto encoder = command_batch->startCommand();
     encoder->setComputePipelineState(pipeline.get());
-    encoder->setThreadgroupMemoryLength(kernel->threadgroupMemoryAllocation(), 0);
+    const NS::UInteger threadgroupMemoryAllocation = kernel->threadgroupMemoryAllocation();
+    CCV_NNC_MFA_PRECONDITION(threadgroupMemoryAllocation + pipeline->staticThreadgroupMemoryLength() <= context->device->maxThreadgroupMemoryLength());
+    encoder->setThreadgroupMemoryLength(threadgroupMemoryAllocation, 0);
     encoder->useResource(tensors[0], MTL::ResourceUsageRead);
     encoder->useResource(tensors[1], MTL::ResourceUsageRead);
     encoder->useResource(tensors[3], MTL::ResourceUsageRead);

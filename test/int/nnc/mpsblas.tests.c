@@ -10188,6 +10188,8 @@ TEST_CASE("sparse indexed attention shape-selected paths with MFA FP16")
 	const int sparse_status = _mps_sparse_indexed_attention_compare(CCV_16F, 5, 64, 512, 4, 8, 4, 1, 0, 1e-2, &max_abs, &max_relative, &max_idx, &expected, &actual);
 	GUARD_ELSE_RETURN(sparse_status != -2);
 	REQUIRE_EQ(sparse_status, 0, "MFA FP16 sparse indexed attention should match CPU reference");
+	const int multi_block_status = _mps_sparse_indexed_attention_compare(CCV_16F, 5, 64, 512, 37, 97, 65, 1, 0, 1e-2, &max_abs, &max_relative, &max_idx, &expected, &actual);
+	REQUIRE(multi_block_status == 0, "MFA FP16 sparse indexed attention should match CPU reference across multiple row blocks (status=%d max abs %g relative %g at %d: CPU %g GPU %g)", multi_block_status, max_abs, max_relative, max_idx, expected, actual);
 	const int dense_status = _mps_sparse_indexed_attention_compare(CCV_16F, 5, 64, 512, 37, 1, 0, 1, 0, 1e-2, &max_abs, &max_relative, &max_idx, &expected, &actual);
 	REQUIRE_EQ(dense_status, 0, "MFA FP16 dense-only sparse indexed attention should match CPU reference");
 	const int empty_sparse_status = _mps_sparse_indexed_attention_compare(CCV_16F, 5, 64, 512, 37, 0, 0, 1, 0, 1e-2, &max_abs, &max_relative, &max_idx, &expected, &actual);

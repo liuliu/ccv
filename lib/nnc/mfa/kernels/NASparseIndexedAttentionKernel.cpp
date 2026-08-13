@@ -30,7 +30,7 @@ uint32_t NASparseIndexedAttentionKernel::threadgroupMemoryAllocation() const noe
   if (variant == NASparseIndexedAttentionVariant::Threadgroup64D128) {
     return (threadgroupHeadDimensionD128 * threadgroupRowBlockD128 + sparseHeadGroup() * sparseExecutionSIMDGroups() * threadgroupRowBlockD128) * memoryPrecision.size() + threadgroupRowBlockD128 * sizeof(uint32_t);
   }
-  return (headDimension * threadgroupRowBlock + sparseHeadGroup() * sparseExecutionSIMDGroups() * threadgroupRowBlock) * memoryPrecision.size() + threadgroupRowBlock * sizeof(uint32_t);
+  return headDimension * threadgroupRowBlock * memoryPrecision.size();
 }
 
 MTL::Size NASparseIndexedAttentionKernel::threadgroupSize() const noexcept {
@@ -66,18 +66,6 @@ NASparseIndexedAttentionKernel::NASparseIndexedAttentionKernel(NASparseIndexedAt
 
 void NASparseIndexedAttentionKernel::createThreadgroupAttendBlock(CodeWriter& source) const noexcept {
   source += R"(
-  #pragma clang loop unroll(full)
-  for (ushort i = 0; i < cS.get_capacity(); ++i) {
-    if (cS.is_valid_element(i)) {
-      cS[i] = 0;
-    }
-  }
-  threadgroup_barrier(mem_flags::mem_threadgroup);
-  for (uint load_idx = uint(tid); load_idx < {{HEAD_DIMENSION}}u * {{THREADGROUP_ROW_BLOCK}}u; load_idx += {{SPARSE_THREADS}}u) {
-    const uint d = load_idx % {{HEAD_DIMENSION}}u;
-    const uint row = load_idx / {{HEAD_DIMENSION}}u;
-    KV_buf[load_idx] = (row < block_rows) ? kv_source[row_ids[row] * {{HEAD_DIMENSION}}u + d] : (real)0;
-  }
   threadgroup_barrier(mem_flags::mem_threadgroup);
   #pragma clang loop unroll(full)
   for (ushort k = 0; k < K_edge; k += {{DIM_BLOCK}}u) {
@@ -133,29 +121,28 @@ void NASparseIndexedAttentionKernel::createThreadgroupAttendBlock(CodeWriter& so
       cO3[i] *= *dst_it;
     }
   }
+  simdgroup_barrier(mem_flags::mem_none);
   #pragma clang loop unroll(full)
   for (ushort i = 0; i < cS.get_capacity(); ++i) {
     if (cS.is_valid_element(i)) {
-      auto idx = cS.get_multidimensional_index(i);
-      P_buf[idx[0] + idx[1] * {{THREADGROUP_ROW_BLOCK}}] = (real)cS[i];
+      cP[i] = (real)cS[i];
     }
   }
-  simdgroup_barrier(mem_flags::mem_threadgroup);
   {
     auto mV0 = KV.slice<{{DIM_BLOCK}}, {{THREADGROUP_ROW_BLOCK}}>(0, 0);
-    pv_op.run(P, mV0, cO0);
+    pv_op.run(cP, mV0, cO0);
   }
   {
     auto mV1 = KV.slice<{{DIM_BLOCK}}, {{THREADGROUP_ROW_BLOCK}}>({{DIM_BLOCK}}, 0);
-    pv_op.run(P, mV1, cO1);
+    pv_op.run(cP, mV1, cO1);
   }
   {
     auto mV2 = KV.slice<{{DIM_BLOCK}}, {{THREADGROUP_ROW_BLOCK}}>({{DIM_BLOCK_2}}, 0);
-    pv_op.run(P, mV2, cO2);
+    pv_op.run(cP, mV2, cO2);
   }
   {
     auto mV3 = KV.slice<{{DIM_BLOCK}}, {{THREADGROUP_ROW_BLOCK}}>({{DIM_BLOCK_3}}, 0);
-    pv_op.run(P, mV3, cO3);
+    pv_op.run(cP, mV3, cO3);
   }
 )";
 }
@@ -587,11 +574,8 @@ kernel void sparse_indexed_attention(
     return;
   }
   threadgroup real* KV_buf = (threadgroup real*)threadgroup_block;
-  threadgroup uint* row_ids = (threadgroup uint*)(threadgroup_block + {{HEAD_DIMENSION}}u * {{THREADGROUP_ROW_BLOCK}}u * sizeof(real));
-  threadgroup real* P_buf = (threadgroup real*)(threadgroup_block + {{HEAD_DIMENSION}}u * {{THREADGROUP_ROW_BLOCK}}u * sizeof(real) + {{THREADGROUP_ROW_BLOCK}}u * sizeof(uint)) + {{THREADGROUP_ROW_BLOCK}}u * {{SPARSE_HEAD_GROUP}}u * uint(sgid);
   auto Q = tensor<device real, dextents<int32_t, 2>, tensor_inline>(q, dextents<int32_t, 2>({{HEAD_DIMENSION}}, int(T * H)));
   auto KV = tensor<threadgroup real, dextents<int32_t, 2>, tensor_inline>(KV_buf, extents<int32_t, {{HEAD_DIMENSION}}, {{THREADGROUP_ROW_BLOCK}}>());
-  auto P = tensor<threadgroup real, dextents<int32_t, 2>, tensor_inline>(P_buf, extents<int32_t, {{THREADGROUP_ROW_BLOCK}}, {{SPARSE_HEAD_GROUP}}>());
   constexpr auto qk_desc = matmul2d_descriptor({{SPARSE_HEAD_GROUP}}, {{THREADGROUP_ROW_BLOCK}}, {{DIM_BLOCK}}, false, true, true, matmul2d_descriptor::mode::multiply_accumulate);
   matmul2d<qk_desc, execution_simdgroups<1>> qk_op;
   constexpr auto pv_desc = matmul2d_descriptor({{SPARSE_HEAD_GROUP}}, {{DIM_BLOCK}}, {{THREADGROUP_ROW_BLOCK}}, false, false, true, matmul2d_descriptor::mode::multiply_accumulate);
@@ -603,10 +587,11 @@ kernel void sparse_indexed_attention(
   auto cL = qk_op.get_row_reduction_destination_cooperative_tensor<decltype(mQ), decltype(mK), float>();
   auto correction = qk_op.get_row_reduction_destination_cooperative_tensor<decltype(mQ), decltype(mK), float>();
   auto mV = KV.slice<{{DIM_BLOCK}}, {{THREADGROUP_ROW_BLOCK}}>(0, 0);
-  auto cO0 = pv_op.get_destination_cooperative_tensor<decltype(P), decltype(mV), float>();
-  auto cO1 = pv_op.get_destination_cooperative_tensor<decltype(P), decltype(mV), float>();
-  auto cO2 = pv_op.get_destination_cooperative_tensor<decltype(P), decltype(mV), float>();
-  auto cO3 = pv_op.get_destination_cooperative_tensor<decltype(P), decltype(mV), float>();
+  auto cP = pv_op.get_left_input_cooperative_tensor<real, real, float>();
+  auto cO0 = pv_op.get_destination_cooperative_tensor<decltype(cP), decltype(mV), float>();
+  auto cO1 = pv_op.get_destination_cooperative_tensor<decltype(cP), decltype(mV), float>();
+  auto cO2 = pv_op.get_destination_cooperative_tensor<decltype(cP), decltype(mV), float>();
+  auto cO3 = pv_op.get_destination_cooperative_tensor<decltype(cP), decltype(mV), float>();
   #pragma clang loop unroll(full)
   for (ushort i = 0; i < cM.get_capacity(); ++i) {
     if (cM.is_valid_element(i)) {
@@ -635,10 +620,22 @@ kernel void sparse_indexed_attention(
   }
   for (uint dense_base = dense_start; dense_base < dense_end; dense_base += {{THREADGROUP_ROW_BLOCK}}u) {
     uint block_rows = min({{THREADGROUP_ROW_BLOCK}}u, dense_end - dense_base);
-    for (uint j = uint(tid); j < block_rows; j += {{SPARSE_THREADS}}u) {
-      row_ids[j] = dense_base + j;
+    #pragma clang loop unroll(full)
+    for (ushort i = 0; i < cS.get_capacity(); ++i) {
+      if (cS.is_valid_element(i)) {
+        cS[i] = 0;
+      }
     }
-    device real* kv_source = dense_k;
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+    for (uint load_idx = uint(tid); load_idx < {{HEAD_DIMENSION}}u * {{THREADGROUP_ROW_BLOCK}}u; load_idx += {{SPARSE_THREADS}}u) {
+      const uint d = load_idx % {{HEAD_DIMENSION}}u;
+      const uint row = load_idx / {{HEAD_DIMENSION}}u;
+      if (row < block_rows) {
+        KV_buf[load_idx] = dense_k[(dense_base + row) * {{HEAD_DIMENSION}}u + d];
+      } else {
+        KV_buf[load_idx] = (real)0;
+      }
+    }
 )";
   createThreadgroupAttendBlock(source);
   source += R"(
@@ -667,10 +664,22 @@ kernel void sparse_indexed_attention(
     if (block_rows == 0) {
       continue;
     }
-    for (uint j = uint(tid); j < block_rows; j += {{SPARSE_THREADS}}u) {
-      row_ids[j] = uint(row_indices[sparse_base + j]);
+    #pragma clang loop unroll(full)
+    for (ushort i = 0; i < cS.get_capacity(); ++i) {
+      if (cS.is_valid_element(i)) {
+        cS[i] = 0;
+      }
     }
-    device real* kv_source = sparse_k;
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+    for (uint load_idx = uint(tid); load_idx < {{HEAD_DIMENSION}}u * {{THREADGROUP_ROW_BLOCK}}u; load_idx += {{SPARSE_THREADS}}u) {
+      const uint d = load_idx % {{HEAD_DIMENSION}}u;
+      const uint row = load_idx / {{HEAD_DIMENSION}}u;
+      if (row < block_rows) {
+        KV_buf[load_idx] = sparse_k[uint(row_indices[sparse_base + row]) * {{HEAD_DIMENSION}}u + d];
+      } else {
+        KV_buf[load_idx] = (real)0;
+      }
+    }
 )";
   createThreadgroupAttendBlock(source);
   source += R"(
