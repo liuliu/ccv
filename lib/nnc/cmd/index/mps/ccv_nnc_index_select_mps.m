@@ -17,6 +17,8 @@ static uint32_t _ccv_nnc_mps_index_select_mtl_data_type(const int datatype)
 {
 	switch (datatype)
 	{
+		case CCV_32S:
+			return 29;
 		case CCV_16F:
 			return 16;
 		case CCV_16BF:
@@ -31,6 +33,7 @@ static uint32_t _ccv_nnc_mps_index_select_mtl_data_type(const int datatype)
 static int _ccv_nnc_index_select_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
 {
 	assert(input_size == 2);
+	assert(output_size == 1);
 	const ccv_nnc_tensor_view_t* const a = (const ccv_nnc_tensor_view_t*)inputs[0];
 	const int a_nd = ccv_nnc_tensor_nd(a->info.dim);
 	assert(a_nd <= 2);
@@ -102,6 +105,44 @@ static int _ccv_nnc_index_select_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hin
 	} else {
 		assert(indices->info.datatype == CCV_32F);
 		assert(a->info.datatype == CCV_32F || a->info.datatype == CCV_16F || a->info.datatype == CCV_16BF);
+	}
+	const int a_rows = a->info.dim[0];
+	const int a_cols = a_nd < 2 ? 1 : a->info.dim[1];
+	const int b_rows = b->info.dim[0];
+	const int b_cols = b_nd < 2 ? 1 : b->info.dim[1];
+	assert(b_rows == indices->info.dim[0]);
+	assert(a_cols == b_cols);
+	if (indices->info.datatype == CCV_32S &&
+		(a->info.datatype == CCV_32S || a->info.datatype == CCV_16F || a->info.datatype == CCV_16BF) &&
+		a_rows > 0 && a_cols > 0 && b_rows > 0 &&
+		CCV_IS_TENSOR_CONTIGUOUS(a) && CCV_IS_TENSOR_CONTIGUOUS(indices) && CCV_IS_TENSOR_CONTIGUOUS(b))
+	{
+		ccv_nnc_mfa_context_t* const context = ccv_nnc_default_mfa_context();
+		if (ccv_nnc_mfa_context_supported(context) && !(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA))
+		{
+			const ccv_nnc_mfa_index_select_params_t params = {
+				.data_type = _ccv_nnc_mps_index_select_mtl_data_type(a->info.datatype),
+				.output_rows = (uint32_t)b_rows,
+				.row_length = (uint32_t)a_cols,
+				.loadM = !!(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M),
+			};
+			ccv_nnc_mfa_prepare_index_select(context, params);
+			mtl_command_batch_t* const command_batch = ccv_nnc_stream_context_start_command_batch(stream_context);
+			mtl_buffer_t* tensors[4] = {
+				(mtl_buffer_t*)mpgetbuffer((ccv_nnc_tensor_t*)a),
+				(mtl_buffer_t*)mpgetbuffer((ccv_nnc_tensor_t*)indices),
+				(mtl_buffer_t*)mpgetbuffer((ccv_nnc_tensor_t*)b),
+				NULL,
+			};
+			size_t tensor_offsets[3] = {
+				(size_t)mpgetoffset((ccv_nnc_tensor_t*)a),
+				(size_t)mpgetoffset((ccv_nnc_tensor_t*)indices),
+				(size_t)mpgetoffset((ccv_nnc_tensor_t*)b),
+			};
+			ccv_nnc_mfa_encode_index_select(context, params, command_batch, tensors, tensor_offsets);
+			ccv_nnc_stream_context_finish_command_batch(stream_context, command_batch);
+			return CCV_NNC_EXEC_SUCCESS;
+		}
 	}
 	@autoreleasepool {
 		MPSCommandBuffer* command_buffer = ccv_nnc_stream_context_start_mps_command_buffer(stream_context);

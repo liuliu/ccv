@@ -288,6 +288,186 @@ TEST_CASE("index select forward with half precision")
 	ccv_nnc_tensor_free(bt32);
 }
 
+TEST_CASE("mps mfa index select forward with int, half and bfloat precision")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_INDEX_SELECT_FORWARD, CCV_NNC_BACKEND_MPS));
+	const int datatypes[] = { CCV_32S, CCV_16F, CCV_16BF };
+	const int widths[] = { 1, 2, 3, 4, 6, 10, 127, 128, 129, 512 };
+	const int rows = 97;
+	const int selected = 31;
+	const uint64_t old_flags = ccv_nnc_flags();
+	ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA);
+	int datatype_index;
+	for (datatype_index = 0; datatype_index < sizeof(datatypes) / sizeof(datatypes[0]); datatype_index++)
+	{
+		int width_index;
+		for (width_index = 0; width_index < sizeof(widths) / sizeof(widths[0]); width_index++)
+		{
+			const int datatype = datatypes[datatype_index];
+			const size_t element_size = datatype == CCV_32S ? sizeof(int32_t) : sizeof(uint16_t);
+			const int cols = widths[width_index];
+			ccv_nnc_tensor_param_t host_params = {
+				.type = CCV_TENSOR_CPU_MEMORY,
+				.format = CCV_TENSOR_FORMAT_NHWC,
+				.datatype = datatype,
+				.dim = { rows, cols, 0 },
+			};
+			ccv_nnc_tensor_param_t host_output_params = host_params;
+			host_output_params.dim[0] = selected;
+			ccv_nnc_tensor_param_t gpu_params = host_params;
+			gpu_params.type = CCV_TENSOR_GPU_MEMORY | 000;
+			ccv_nnc_tensor_param_t gpu_output_params = host_output_params;
+			gpu_output_params.type = CCV_TENSOR_GPU_MEMORY | 000;
+			ccv_nnc_tensor_t* const source = ccv_nnc_tensor_new(0, host_params, 0);
+			ccv_nnc_tensor_t* const indices = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, selected), 0);
+			ccv_nnc_tensor_t* const expected = ccv_nnc_tensor_new(0, host_output_params, 0);
+			ccv_nnc_tensor_t* const gpu_source = ccv_nnc_tensor_new(0, gpu_params, 0);
+			ccv_nnc_tensor_t* const gpu_indices = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32S, selected), 0);
+			ccv_nnc_tensor_t* const gpu_output = ccv_nnc_tensor_new(0, gpu_output_params, 0);
+			ccv_nnc_tensor_t* const actual = ccv_nnc_tensor_new(0, host_output_params, 0);
+			int i;
+			if (datatype == CCV_32S)
+			{
+				for (i = 0; i < rows * cols; i++)
+					((uint32_t*)source->data.i32)[i] = (uint32_t)i * 1000003U + (uint32_t)cols * 193U + 4144967295U;
+			} else {
+				for (i = 0; i < rows * cols; i++)
+					((uint16_t*)source->data.f16)[i] = (uint16_t)((i * 73 + cols * 19 + datatype_index * 997) & 0xffff);
+			}
+			for (i = 0; i < selected; i++)
+			{
+				const int source_row = (i * 29 + 7) % rows;
+				indices->data.i32[i] = source_row;
+				memcpy(expected->data.u8 + (size_t)i * cols * element_size, source->data.u8 + (size_t)source_row * cols * element_size, (size_t)cols * element_size);
+			}
+			ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(source, indices), TENSOR_LIST(gpu_source, gpu_indices), 0);
+			ccv_nnc_cmd_exec(CMD_INDEX_SELECT_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(gpu_source, gpu_indices), TENSOR_LIST(gpu_output), 0);
+			ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(gpu_output), TENSOR_LIST(actual), 0);
+			REQUIRE_ARRAY_EQ(uint8_t, expected->data.u8, actual->data.u8, selected * cols * element_size, "MFA index select should copy datatype=%d rows with width=%d exactly", datatype, cols);
+			ccv_nnc_tensor_free(actual);
+			ccv_nnc_tensor_free(gpu_output);
+			ccv_nnc_tensor_free(gpu_indices);
+			ccv_nnc_tensor_free(gpu_source);
+			ccv_nnc_tensor_free(expected);
+			ccv_nnc_tensor_free(indices);
+			ccv_nnc_tensor_free(source);
+		}
+	}
+	if (old_flags & CCV_NNC_DISABLE_MFA)
+		ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA);
+}
+
+TEST_CASE("mps mfa index select forward on a 1d half tensor")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_INDEX_SELECT_FORWARD, CCV_NNC_BACKEND_MPS));
+	const int rows = 101;
+	const int selected = 37;
+	ccv_nnc_tensor_t* const source = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, rows), 0);
+	ccv_nnc_tensor_t* const indices = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, selected), 0);
+	ccv_nnc_tensor_t* const expected = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, selected), 0);
+	ccv_nnc_tensor_t* const gpu_source = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, rows), 0);
+	ccv_nnc_tensor_t* const gpu_indices = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32S, selected), 0);
+	ccv_nnc_tensor_t* const gpu_output = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, selected), 0);
+	ccv_nnc_tensor_t* const actual = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, selected), 0);
+	uint16_t* const source_data = (uint16_t*)source->data.f16;
+	int i;
+	for (i = 0; i < rows; i++)
+		source_data[i] = (uint16_t)(i * 193 + 17);
+	for (i = 0; i < selected; i++)
+	{
+		indices->data.i32[i] = (i * 41 + 13) % rows;
+		((uint16_t*)expected->data.f16)[i] = source_data[indices->data.i32[i]];
+	}
+	const uint64_t old_flags = ccv_nnc_flags();
+	ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(source, indices), TENSOR_LIST(gpu_source, gpu_indices), 0);
+	ccv_nnc_cmd_exec(CMD_INDEX_SELECT_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(gpu_source, gpu_indices), TENSOR_LIST(gpu_output), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(gpu_output), TENSOR_LIST(actual), 0);
+	if (old_flags & CCV_NNC_DISABLE_MFA)
+		ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA);
+	REQUIRE_ARRAY_EQ(uint16_t, expected->data.f16, actual->data.f16, selected, "MFA index select should copy 1d half values exactly");
+	ccv_nnc_tensor_free(actual);
+	ccv_nnc_tensor_free(gpu_output);
+	ccv_nnc_tensor_free(gpu_indices);
+	ccv_nnc_tensor_free(gpu_source);
+	ccv_nnc_tensor_free(expected);
+	ccv_nnc_tensor_free(indices);
+	ccv_nnc_tensor_free(source);
+}
+
+TEST_CASE("mps mfa index select forward with dynamic M including decode")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_INDEX_SELECT_FORWARD, CCV_NNC_BACKEND_MPS));
+	const int datatypes[] = { CCV_32S, CCV_16F, CCV_16BF };
+	const int selected_rows[] = { 1, 33 };
+	const int rows = 127;
+	const int cols = 512;
+	const uint64_t old_flags = ccv_nnc_flags();
+	ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA);
+	ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M);
+	int datatype_index;
+	for (datatype_index = 0; datatype_index < sizeof(datatypes) / sizeof(datatypes[0]); datatype_index++)
+	{
+		const int datatype = datatypes[datatype_index];
+		const size_t element_size = datatype == CCV_32S ? sizeof(int32_t) : sizeof(uint16_t);
+		ccv_nnc_tensor_param_t host_source_params = {
+			.type = CCV_TENSOR_CPU_MEMORY,
+			.format = CCV_TENSOR_FORMAT_NHWC,
+			.datatype = datatype,
+			.dim = { rows, cols, 0 },
+		};
+		ccv_nnc_tensor_param_t gpu_source_params = host_source_params;
+		gpu_source_params.type = CCV_TENSOR_GPU_MEMORY | 000;
+		ccv_nnc_tensor_t* const source = ccv_nnc_tensor_new(0, host_source_params, 0);
+		ccv_nnc_tensor_t* const gpu_source = ccv_nnc_tensor_new(0, gpu_source_params, 0);
+		int i;
+		if (datatype == CCV_32S)
+		{
+			for (i = 0; i < rows * cols; i++)
+				((uint32_t*)source->data.i32)[i] = (uint32_t)i * 1000033U + (uint32_t)datatype_index * 1237U + 4124967293U;
+		} else {
+			for (i = 0; i < rows * cols; i++)
+				((uint16_t*)source->data.f16)[i] = (uint16_t)((i * 89 + datatype_index * 1237 + 31) & 0xffff);
+		}
+		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(source), TENSOR_LIST(gpu_source), 0);
+		int selected_index;
+		for (selected_index = 0; selected_index < sizeof(selected_rows) / sizeof(selected_rows[0]); selected_index++)
+		{
+			const int selected = selected_rows[selected_index];
+			ccv_nnc_tensor_param_t host_output_params = host_source_params;
+			host_output_params.dim[0] = selected;
+			ccv_nnc_tensor_param_t gpu_output_params = host_output_params;
+			gpu_output_params.type = CCV_TENSOR_GPU_MEMORY | 000;
+			ccv_nnc_tensor_t* const indices = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, selected), 0);
+			ccv_nnc_tensor_t* const expected = ccv_nnc_tensor_new(0, host_output_params, 0);
+			ccv_nnc_tensor_t* const gpu_indices = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32S, selected), 0);
+			ccv_nnc_tensor_t* const gpu_output = ccv_nnc_tensor_new(0, gpu_output_params, 0);
+			ccv_nnc_tensor_t* const actual = ccv_nnc_tensor_new(0, host_output_params, 0);
+			for (i = 0; i < selected; i++)
+			{
+				const int source_row = (i * 43 + 17) % rows;
+				indices->data.i32[i] = source_row;
+				memcpy(expected->data.u8 + (size_t)i * cols * element_size, source->data.u8 + (size_t)source_row * cols * element_size, (size_t)cols * element_size);
+			}
+			ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(indices), TENSOR_LIST(gpu_indices), 0);
+			ccv_nnc_cmd_exec(CMD_INDEX_SELECT_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(gpu_source, gpu_indices), TENSOR_LIST(gpu_output), 0);
+			ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(gpu_output), TENSOR_LIST(actual), 0);
+			REQUIRE_ARRAY_EQ(uint8_t, expected->data.u8, actual->data.u8, selected * cols * element_size, "dynamic-M MFA index select should copy datatype=%d rows with M=%d exactly", datatype, selected);
+			ccv_nnc_tensor_free(actual);
+			ccv_nnc_tensor_free(gpu_output);
+			ccv_nnc_tensor_free(gpu_indices);
+			ccv_nnc_tensor_free(expected);
+			ccv_nnc_tensor_free(indices);
+		}
+		ccv_nnc_tensor_free(gpu_source);
+		ccv_nnc_tensor_free(source);
+	}
+	if (!(old_flags & CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M))
+		ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M);
+	if (old_flags & CCV_NNC_DISABLE_MFA)
+		ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA);
+}
+
 TEST_CASE("gpu index select forward with 32s tensor")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_INDEX_SELECT_FORWARD, CCV_NNC_BACKEND_GPU_REF) || ccv_nnc_cmd_ok(CCV_NNC_INDEX_SELECT_FORWARD, CCV_NNC_BACKEND_MPS));
