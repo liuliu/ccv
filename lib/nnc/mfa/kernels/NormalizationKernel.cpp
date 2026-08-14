@@ -71,6 +71,7 @@ kernel void normalization(
   
   uint3 tgid [[threadgroup_position_in_grid]],
   ushort sidx [[simdgroup_index_in_threadgroup]],
+  ushort simd_lane [[thread_index_in_simdgroup]],
   uint lid [[thread_index_in_threadgroup]]
 ) {
   uint threadgroup_index = tgid.z * sequence_count + tgid.x;
@@ -115,24 +116,28 @@ kernel void normalization(
   if (padding_size > 0 && lid < padding_size) {
     variance += cache_padding * cache_padding;
   }
-  partials[sidx] = simd_sum(variance);
-  
-  threadgroup_barrier(mem_flags::mem_threadgroup);
-  if (lid < (threadgroup_size / 32)) {
-    float variance = quad_sum(partials[lid]);
-    if (threadgroup_size >= 256) {
-      variance += simd_shuffle_xor(variance, 4);
-    }
-    variance = variance / float(sample_count) + epsilon;
-    
-    float standard_deviation_reciprocal = rsqrt(variance);
-    partials[lid] = standard_deviation_reciprocal;
-    
-    saved_standard_deviation_reciprocal[threadgroup_index] = real(standard_deviation_reciprocal);
+  const float simd_variance = simd_sum(variance);
+  if (simd_lane == 0) {
+    partials[sidx] = simd_variance;
   }
   
   threadgroup_barrier(mem_flags::mem_threadgroup);
-  float standard_deviation_reciprocal = partials[sidx];
+  if (sidx == 0) {
+    variance = simd_lane < (threadgroup_size / 32) ? partials[simd_lane] : 0;
+    variance = quad_sum(variance);
+    if (threadgroup_size >= 256) {
+      variance += simd_shuffle_xor(variance, 4);
+    }
+    if (simd_lane == 0) {
+      variance = variance / float(sample_count) + epsilon;
+      const float standard_deviation_reciprocal = rsqrt(variance);
+      partials[0] = standard_deviation_reciprocal;
+      saved_standard_deviation_reciprocal[threadgroup_index] = real(standard_deviation_reciprocal);
+    }
+  }
+  
+  threadgroup_barrier(mem_flags::mem_threadgroup);
+  float standard_deviation_reciprocal = partials[0];
 #endif
 
 #pragma clang loop unroll(full)
@@ -184,6 +189,7 @@ kernel void normalization(
   
   uint3 tgid [[threadgroup_position_in_grid]],
   ushort sidx [[simdgroup_index_in_threadgroup]],
+  ushort simd_lane [[thread_index_in_simdgroup]],
   uint lid [[thread_index_in_threadgroup]]
 ) {
   uint threadgroup_index = tgid.z * sequence_count + tgid.x;
@@ -224,19 +230,25 @@ kernel void normalization(
   float mean = accumulator(saved_mean[threadgroup_index]);
   float standard_deviation_reciprocal = accumulator(saved_standard_deviation_reciprocal[threadgroup_index]);
 #else
-  partials[sidx] = simd_sum(sum);
-  
-  threadgroup_barrier(mem_flags::mem_threadgroup);
-  if (lid < (threadgroup_size / 32)) {
-    float sum = quad_sum(partials[lid]);
-    if (threadgroup_size >= 256) {
-      sum += simd_shuffle_xor(sum, 4);
-    }
-    partials[lid] = sum / float(sample_count);
+  const float simd_sum_value = simd_sum(sum);
+  if (simd_lane == 0) {
+    partials[sidx] = simd_sum_value;
   }
   
   threadgroup_barrier(mem_flags::mem_threadgroup);
-  float mean = partials[sidx];
+  if (sidx == 0) {
+    sum = simd_lane < (threadgroup_size / 32) ? partials[simd_lane] : 0;
+    sum = quad_sum(sum);
+    if (threadgroup_size >= 256) {
+      sum += simd_shuffle_xor(sum, 4);
+    }
+    if (simd_lane == 0) {
+      partials[0] = sum / float(sample_count);
+    }
+  }
+  
+  threadgroup_barrier(mem_flags::mem_threadgroup);
+  float mean = partials[0];
   float variance = 0;
 #pragma clang loop unroll(full)
   for (ushort slot = 0; slot < cache_bulk_size; ++slot) {
@@ -248,25 +260,29 @@ kernel void normalization(
     cache_padding -= mean;
     variance += cache_padding * cache_padding;
   }
-  partials[sidx] = simd_sum(variance);
-  
-  threadgroup_barrier(mem_flags::mem_threadgroup);
-  if (lid < (threadgroup_size / 32)) {
-    float variance = quad_sum(partials[lid]);
-    if (threadgroup_size >= 256) {
-      variance += simd_shuffle_xor(variance, 4);
-    }
-    variance = variance / float(sample_count) + epsilon;
-    
-    float standard_deviation_reciprocal = rsqrt(variance);
-    partials[lid] = standard_deviation_reciprocal;
-    
-    saved_mean[threadgroup_index] = real(mean);
-    saved_standard_deviation_reciprocal[threadgroup_index] = real(standard_deviation_reciprocal);
+  const float simd_variance = simd_sum(variance);
+  if (simd_lane == 0) {
+    partials[sidx] = simd_variance;
   }
   
   threadgroup_barrier(mem_flags::mem_threadgroup);
-  float standard_deviation_reciprocal = partials[sidx];
+  if (sidx == 0) {
+    variance = simd_lane < (threadgroup_size / 32) ? partials[simd_lane] : 0;
+    variance = quad_sum(variance);
+    if (threadgroup_size >= 256) {
+      variance += simd_shuffle_xor(variance, 4);
+    }
+    if (simd_lane == 0) {
+      variance = variance / float(sample_count) + epsilon;
+      const float standard_deviation_reciprocal = rsqrt(variance);
+      partials[0] = standard_deviation_reciprocal;
+      saved_mean[threadgroup_index] = real(mean);
+      saved_standard_deviation_reciprocal[threadgroup_index] = real(standard_deviation_reciprocal);
+    }
+  }
+  
+  threadgroup_barrier(mem_flags::mem_threadgroup);
+  float standard_deviation_reciprocal = partials[0];
 #endif
 
 #pragma clang loop unroll(full)

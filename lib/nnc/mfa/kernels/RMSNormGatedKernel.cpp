@@ -60,6 +60,7 @@ kernel void rmsnorm_gated(
 
   uint3 tgid [[threadgroup_position_in_grid]],
   ushort sidx [[simdgroup_index_in_threadgroup]],
+  ushort simd_lane [[thread_index_in_simdgroup]],
   uint lid [[thread_index_in_threadgroup]]
 ) {
   source += tgid.x * column_count;
@@ -72,19 +73,25 @@ kernel void rmsnorm_gated(
     variance += x * x;
   }
   threadgroup float partials[threadgroup_size / 32];
-  partials[sidx] = simd_sum(variance);
-
-  threadgroup_barrier(mem_flags::mem_threadgroup);
-  if (lid < (threadgroup_size / 32)) {
-    float variance = quad_sum(partials[lid]);
-    if (threadgroup_size >= 256) {
-      variance += simd_shuffle_xor(variance, 4);
-    }
-    partials[lid] = rsqrt(variance / float(column_count) + epsilon);
+  const float simd_variance = simd_sum(variance);
+  if (simd_lane == 0) {
+    partials[sidx] = simd_variance;
   }
 
   threadgroup_barrier(mem_flags::mem_threadgroup);
-  const float inv_std = partials[sidx];
+  if (sidx == 0) {
+    variance = simd_lane < (threadgroup_size / 32) ? partials[simd_lane] : 0;
+    variance = quad_sum(variance);
+    if (threadgroup_size >= 256) {
+      variance += simd_shuffle_xor(variance, 4);
+    }
+    if (simd_lane == 0) {
+      partials[0] = rsqrt(variance / float(column_count) + epsilon);
+    }
+  }
+
+  threadgroup_barrier(mem_flags::mem_threadgroup);
+  const float inv_std = partials[0];
 
   for (uint i = lid; i < column_count; i += threadgroup_size) {
     const float x = float(source[i]);

@@ -3852,6 +3852,13 @@ TEST_CASE("compare rmsnorm cmul with affine weight at rank-4 production shape th
 	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(b), TENSOR_LIST(hy16), 0);
 	ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(hy16), TENSOR_LIST(hy), 0);
 	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, hy->data.f32, expected->data.f32, element_count, 1e-2, "mixed-precision affine rmsnorm cmul result from mfa should match fp32 reference rounded to half");
+	memcpy(expected16->data.f16, hy16->data.f16, sizeof(uint16_t) * element_count);
+	for (i = 0; i < 32; i++)
+	{
+		REQUIRE_EQ(CCV_NNC_EXEC_SUCCESS, ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(a, rotation, scale), TENSOR_LIST(b), 0), "repeated rmsnorm cmul mfa should execute through four-row reuse");
+		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(b), TENSOR_LIST(hy16), 0);
+		REQUIRE_ARRAY_EQ(uint16_t, expected16->data.f16, hy16->data.f16, element_count, "repeated rmsnorm cmul mfa output should be byte identical");
+	}
 	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha16), TENSOR_LIST(a), 0);
 	REQUIRE_EQ(CCV_NNC_EXEC_SUCCESS, ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(a, rotation, scale), TENSOR_LIST(a), 0), "mixed-precision affine rmsnorm cmul mfa should run in-place on first input");
 	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(a), TENSOR_LIST(hy16), 0);

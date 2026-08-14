@@ -46,14 +46,15 @@ inline float threadgroup_inv_rms(float square_sum, threadgroup float* partials, 
 	if (simd_lane == 0)
 		partials[simd_group] = square_sum;
 	threadgroup_barrier(mem_flags::mem_threadgroup);
-	if (tid < 8) {
-		square_sum = quad_sum(partials[tid]);
+	if (simd_group == 0) {
+		square_sum = tid < 8 ? partials[tid] : 0;
+		square_sum = quad_sum(square_sum);
 		square_sum += simd_shuffle_xor(square_sum, 4);
 		if (tid == 0)
-			partials[0] = rsqrt(square_sum / float(column_count) + epsilon);
+			partials[8] = rsqrt(square_sum / float(column_count) + epsilon);
 	}
 	threadgroup_barrier(mem_flags::mem_threadgroup);
-	return partials[0];
+	return partials[8];
 }
 
 kernel void rmsnorm_cmul(
@@ -72,7 +73,7 @@ kernel void rmsnorm_cmul(
 	float2 rotate = 0;
 	if (tid < complex_count)
 		rotate = float2(rotation[rotation_offset + tid]);
-	threadgroup float partials[8];
+	threadgroup float partials[9];
 #pragma clang loop unroll(full)
 	for (uint head_delta = 0; head_delta < rows_per_threadgroup; head_delta++) {
 		const uint head = first_head + head_delta;
