@@ -330,6 +330,171 @@ TEST_CASE("argmax with bfloat over large axis")
 	ccv_nnc_tensor_free(bt);
 }
 
+TEST_CASE("mps argmax over multiple MFA partitions")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_ARGMAX_FORWARD, CCV_NNC_BACKEND_MPS));
+	const int rows = 5;
+	const int columns = 8193;
+	const int winners[] = { 0, 4095, 4096, 8191, 8192 };
+	ccv_nnc_tensor_t* const ha = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, columns), 0);
+	ccv_nnc_tensor_t* const hb = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, rows, 1), 0);
+	int i, j;
+	for (i = 0; i < rows; i++)
+	{
+		for (j = 0; j < columns; j++)
+			ha->data.f32[i * columns + j] = -2;
+		ha->data.f32[i * columns + winners[i]] = 10;
+	}
+	ccv_nnc_cmd_exec(CMD_ARGMAX_FORWARD(1), ccv_nnc_no_hint, 0, TENSOR_LIST(ha), TENSOR_LIST(hb), 0);
+	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, rows, columns), 0);
+	ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32S, rows, 1), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha), TENSOR_LIST(a), 0);
+	ccv_nnc_cmd_t cmd = CMD_ARGMAX_FORWARD(1);
+	cmd.backend = CCV_NNC_BACKEND_MPS;
+	assert(cmd.backend >= 0);
+	ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(a), TENSOR_LIST(b), 0);
+	ccv_nnc_tensor_t* const bt = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, rows, 1), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(b), TENSOR_LIST(bt), 0);
+	REQUIRE_TENSOR_EQ(hb, bt, "partitioned MFA argmax should match CPU");
+	ccv_nnc_tensor_free(ha);
+	ccv_nnc_tensor_free(hb);
+	ccv_nnc_tensor_free(a);
+	ccv_nnc_tensor_free(b);
+	ccv_nnc_tensor_free(bt);
+}
+
+TEST_CASE("mps gumbel argmax one-pass MFA is reproducible")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GUMBEL_ARGMAX_FORWARD, CCV_NNC_BACKEND_MPS));
+	const int rows = 64;
+	const int columns = 257;
+	ccv_nnc_tensor_t* const ha = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, columns), 0);
+	int i;
+	for (i = 0; i < rows * columns; i++)
+		ha->data.f32[i] = 0;
+	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, rows, columns), 0);
+	ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32S, rows, 1), 0);
+	ccv_nnc_tensor_t* const c = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32S, rows, 1), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha), TENSOR_LIST(a), 0);
+	ccv_nnc_tensor_t* const ha_strided = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, columns + 1), 0);
+	ccv_nnc_tensor_t* const a_strided = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, rows, columns + 1), 0);
+	ccv_nnc_tensor_view_t* const av = ccv_nnc_tensor_view_new(a_strided, GPU_TENSOR_NHWC(000, 32F, rows, columns), ccv_nnc_no_ofs, DIM_ALLOC(columns + 1, 1));
+	ccv_nnc_tensor_t* const d = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32S, rows, 1), 0);
+	ccv_nnc_tensor_t* const e = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32S, rows, 1), 0);
+	for (i = 0; i < rows * (columns + 1); i++)
+		ha_strided->data.f32[i] = 0;
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha_strided), TENSOR_LIST(a_strided), 0);
+	ccv_nnc_stream_context_t* const stream_context = ccv_nnc_stream_context_new(CCV_STREAM_CONTEXT_GPU);
+	ccv_nnc_cmd_t cmd = CMD_GUMBEL_ARGMAX(1);
+	cmd.backend = CCV_NNC_BACKEND_MPS;
+	assert(cmd.backend >= 0);
+	ccv_nnc_stream_context_set_seed(stream_context, 177);
+	ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(a), TENSOR_LIST(b), stream_context);
+	ccv_nnc_stream_context_set_seed(stream_context, 177);
+	ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(a), TENSOR_LIST(c), stream_context);
+	ccv_nnc_stream_context_set_seed(stream_context, 177);
+	ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST((ccv_nnc_tensor_t*)av), TENSOR_LIST(d), stream_context);
+	ccv_nnc_stream_context_set_seed(stream_context, 177);
+	ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST((ccv_nnc_tensor_t*)av), TENSOR_LIST(e), stream_context);
+	ccv_nnc_stream_context_wait(stream_context);
+	ccv_nnc_tensor_t* const hb = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, rows, 1), 0);
+	ccv_nnc_tensor_t* const hc = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, rows, 1), 0);
+	ccv_nnc_tensor_t* const hd = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, rows, 1), 0);
+	ccv_nnc_tensor_t* const he = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, rows, 1), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(b, c, d, e), TENSOR_LIST(hb, hc, hd, he), 0);
+	REQUIRE_TENSOR_EQ(hb, hc, "the same stream seed should reproduce MFA gumbel argmax");
+	REQUIRE_TENSOR_EQ(hd, he, "the same stream seed should reproduce MPSGraph gumbel argmax");
+	int different = 0;
+	for (i = 0; i < rows; i++)
+	{
+		REQUIRE(hb->data.i32[i] >= 0 && hb->data.i32[i] < columns, "MFA gumbel argmax should return a valid index");
+		different |= hb->data.i32[i] != hb->data.i32[0];
+	}
+	REQUIRE(different, "equal logits should sample more than one category");
+	ccv_nnc_stream_context_free(stream_context);
+	ccv_nnc_tensor_free(ha);
+	ccv_nnc_tensor_free(a);
+	ccv_nnc_tensor_free(b);
+	ccv_nnc_tensor_free(c);
+	ccv_nnc_tensor_free(ha_strided);
+	ccv_nnc_tensor_view_free(av);
+	ccv_nnc_tensor_free(a_strided);
+	ccv_nnc_tensor_free(d);
+	ccv_nnc_tensor_free(e);
+	ccv_nnc_tensor_free(hb);
+	ccv_nnc_tensor_free(hc);
+	ccv_nnc_tensor_free(hd);
+	ccv_nnc_tensor_free(he);
+}
+
+TEST_CASE("mps gumbel argmax over multiple MFA partitions")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GUMBEL_ARGMAX_FORWARD, CCV_NNC_BACKEND_MPS));
+	const int rows = 4;
+	const int columns = 8193;
+	const int winners[] = { 17, 4095, 4096, 8192 };
+	ccv_nnc_tensor_t* const ha = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, columns), 0);
+	int i, j;
+	for (i = 0; i < rows; i++)
+	{
+		for (j = 0; j < columns; j++)
+			ha->data.f32[i * columns + j] = -100;
+		ha->data.f32[i * columns + winners[i]] = 100;
+	}
+	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, rows, columns), 0);
+	ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32S, rows, 1), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha), TENSOR_LIST(a), 0);
+	ccv_nnc_stream_context_t* const stream_context = ccv_nnc_stream_context_new(CCV_STREAM_CONTEXT_GPU);
+	ccv_nnc_stream_context_set_seed(stream_context, 31);
+	ccv_nnc_cmd_t cmd = CMD_GUMBEL_ARGMAX(1);
+	cmd.backend = CCV_NNC_BACKEND_MPS;
+	assert(cmd.backend >= 0);
+	ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(a), TENSOR_LIST(b), stream_context);
+	ccv_nnc_stream_context_wait(stream_context);
+	ccv_nnc_tensor_t* const hb = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, rows, 1), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(b), TENSOR_LIST(hb), 0);
+	for (i = 0; i < rows; i++)
+		REQUIRE_EQ(winners[i], hb->data.i32[i], "partitioned MFA gumbel argmax should find the dominant logit");
+	ccv_nnc_stream_context_free(stream_context);
+	ccv_nnc_tensor_free(ha);
+	ccv_nnc_tensor_free(a);
+	ccv_nnc_tensor_free(b);
+	ccv_nnc_tensor_free(hb);
+}
+
+TEST_CASE("mps gumbel argmax falls back for a non-final axis")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GUMBEL_ARGMAX_FORWARD, CCV_NNC_BACKEND_MPS));
+	const int batches = 2;
+	const int categories = 3;
+	const int width = 5;
+	ccv_nnc_tensor_t* const ha = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, batches, categories, width), 0);
+	int i, j, k;
+	for (i = 0; i < batches; i++)
+		for (j = 0; j < categories; j++)
+			for (k = 0; k < width; k++)
+				ha->data.f32[(i * categories + j) * width + k] = j == 1 ? 100 : -100;
+	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, batches, categories, width), 0);
+	ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32S, batches, 1, width), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha), TENSOR_LIST(a), 0);
+	ccv_nnc_stream_context_t* const stream_context = ccv_nnc_stream_context_new(CCV_STREAM_CONTEXT_GPU);
+	ccv_nnc_stream_context_set_seed(stream_context, 47);
+	ccv_nnc_cmd_t cmd = CMD_GUMBEL_ARGMAX(1);
+	cmd.backend = CCV_NNC_BACKEND_MPS;
+	assert(cmd.backend >= 0);
+	ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(a), TENSOR_LIST(b), stream_context);
+	ccv_nnc_stream_context_wait(stream_context);
+	ccv_nnc_tensor_t* const hb = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, batches, 1, width), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(b), TENSOR_LIST(hb), 0);
+	for (i = 0; i < batches * width; i++)
+		REQUIRE_EQ(1, hb->data.i32[i], "MPSGraph gumbel argmax should find the dominant logit");
+	ccv_nnc_stream_context_free(stream_context);
+	ccv_nnc_tensor_free(ha);
+	ccv_nnc_tensor_free(a);
+	ccv_nnc_tensor_free(b);
+	ccv_nnc_tensor_free(hb);
+}
+
 TEST_CASE("reduce norm2 forward")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_REDUCE_NORM2_FORWARD, CCV_NNC_BACKEND_GPU_CUDNN) || ccv_nnc_cmd_ok(CCV_NNC_REDUCE_NORM2_FORWARD, CCV_NNC_BACKEND_MPS));

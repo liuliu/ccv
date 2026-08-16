@@ -215,6 +215,26 @@ REGISTER_COMMAND(CCV_NNC_ARGMAX_BACKWARD)(ccv_nnc_cmd_registry_t* const registry
 //@REGISTER_EASY_COMMAND_MACRO(CCV_NNC_ARGMAX_BACKWARD)
 #define CMD_ARGMAX_BACKWARD(...) ccv_nnc_cmd(CCV_NNC_ARGMAX_BACKWARD, 0, CMD_REDUCE(__VA_ARGS__), 0)
 
+REGISTER_COMMAND(CCV_NNC_GUMBEL_ARGMAX_FORWARD)(ccv_nnc_cmd_registry_t* const registry)
+	FIND_BACKEND(ccv_nnc_gumbel_argmax_cpu_ref.c, mps/ccv_nnc_argmax_mps.m)
+{
+	registry->bitmask = _ccv_nnc_argmax_forw_bitmask;
+	registry->tensor_auto = _ccv_nnc_argmax_tensor_auto_forw;
+}
+
+REGISTER_COMMAND(CCV_NNC_GUMBEL_ARGMAX_BACKWARD)(ccv_nnc_cmd_registry_t* const registry)
+	FIND_BACKEND(ccv_nnc_gumbel_argmax_cpu_ref.c, mps/ccv_nnc_argmax_mps.m)
+{
+	registry->bitmask = _ccv_nnc_argmax_back_bitmask;
+	registry->tensor_auto = _ccv_nnc_argmax_tensor_auto_back;
+}
+
+//@REGISTER_EASY_COMMAND_MACRO(CCV_NNC_GUMBEL_ARGMAX_FORWARD)
+#define CMD_GUMBEL_ARGMAX_FORWARD(...) ccv_nnc_cmd(CCV_NNC_GUMBEL_ARGMAX_FORWARD, 0, CMD_REDUCE(__VA_ARGS__), 0)
+#define CMD_GUMBEL_ARGMAX(...) CMD_GUMBEL_ARGMAX_FORWARD(__VA_ARGS__)
+//@REGISTER_EASY_COMMAND_MACRO(CCV_NNC_GUMBEL_ARGMAX_BACKWARD)
+#define CMD_GUMBEL_ARGMAX_BACKWARD(...) ccv_nnc_cmd(CCV_NNC_GUMBEL_ARGMAX_BACKWARD, 0, CMD_REDUCE(__VA_ARGS__), 0)
+
 static int _ccv_nnc_argmin_forw_bitmask(const ccv_nnc_cmd_param_t cmd, const int input_size, const int output_size, const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size)
 {
 	if (input_bitmasks[0] == 1u && output_bitmasks[0] == 1u)

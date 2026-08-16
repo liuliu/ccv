@@ -468,6 +468,35 @@ TEST_CASE("argmax for [[1, 2, 7], [5, 6, 4]] on axis 1")
 	ccv_nnc_tensor_free(b);
 }
 
+TEST_CASE("gumbel argmax is reproducible with a seeded CPU stream")
+{
+	const int rows = 64;
+	const int columns = 16;
+	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, columns), 0);
+	ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, rows, 1), 0);
+	ccv_nnc_tensor_t* const c = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, rows, 1), 0);
+	ccv_nnc_stream_context_t* const stream_context = ccv_nnc_stream_context_new(CCV_STREAM_CONTEXT_CPU);
+	int i;
+	for (i = 0; i < rows * columns; i++)
+		a->data.f32[i] = 0;
+	ccv_nnc_stream_context_set_seed(stream_context, 177);
+	ccv_nnc_cmd_exec(CMD_GUMBEL_ARGMAX(1), ccv_nnc_no_hint, 0, TENSOR_LIST(a), TENSOR_LIST(b), stream_context);
+	ccv_nnc_stream_context_set_seed(stream_context, 177);
+	ccv_nnc_cmd_exec(CMD_GUMBEL_ARGMAX(1), ccv_nnc_no_hint, 0, TENSOR_LIST(a), TENSOR_LIST(c), stream_context);
+	REQUIRE_TENSOR_EQ(b, c, "the same stream seed should reproduce gumbel argmax");
+	int different = 0;
+	for (i = 0; i < rows; i++)
+	{
+		REQUIRE(b->data.i32[i] >= 0 && b->data.i32[i] < columns, "gumbel argmax should return a valid index");
+		different |= b->data.i32[i] != b->data.i32[0];
+	}
+	REQUIRE(different, "equal logits should sample more than one category");
+	ccv_nnc_stream_context_free(stream_context);
+	ccv_nnc_tensor_free(a);
+	ccv_nnc_tensor_free(b);
+	ccv_nnc_tensor_free(c);
+}
+
 TEST_CASE("reduce norm2 for [[1, 2, 3], [4, 5, 6]] on axis 1")
 {
 	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 3), 0);

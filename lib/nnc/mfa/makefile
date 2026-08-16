@@ -14,6 +14,8 @@ SRCS += ccv_nnc_mfa_rmsnorm_cmul.cpp kernels/RMSNormCmulDescriptor.cpp kernels/R
 
 SRCS += ccv_nnc_mfa_scatter_add.cpp kernels/ScatterAddDescriptor.cpp kernels/ScatterAddKernel.cpp
 
+SRCS += ccv_nnc_mfa_argmax.cpp kernels/ArgmaxDescriptor.cpp kernels/ArgmaxKernel.cpp
+
 SRC_OBJS := $(patsubst %.c,%.o,$(patsubst %.cpp,%.o,$(patsubst %.mm,%.o,$(SRCS))))
 
 .PHONY: release all lib clean
