@@ -161,6 +161,73 @@ TEST_CASE("reduce mean backward")
 	ccv_nnc_tensor_free(at);
 }
 
+TEST_CASE("reduce logsumexp forward and backward on MPS")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_REDUCE_LOGSUMEXP_FORWARD, CCV_NNC_BACKEND_MPS) && ccv_nnc_cmd_ok(CCV_NNC_REDUCE_LOGSUMEXP_BACKWARD, CCV_NNC_BACKEND_MPS));
+	const int rows = 37;
+	const int columns = 257;
+	dsfmt_t dsfmt;
+	dsfmt_init_gen_rand(&dsfmt, 0);
+	ccv_nnc_tensor_t* const ha = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, columns), 0);
+	ccv_nnc_tensor_t* const hb = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, 1), 0);
+	ccv_nnc_tensor_t* const hg = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, 1), 0);
+	ccv_nnc_tensor_t* const hh = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, columns), 0);
+	int i;
+	for (i = 0; i < rows * columns; i++)
+		ha->data.f32[i] = 40 * dsfmt_genrand_open_close(&dsfmt) - 20;
+	for (i = 0; i < rows; i++)
+		hg->data.f32[i] = 2 * dsfmt_genrand_open_close(&dsfmt) - 1;
+	ccv_nnc_cmd_exec(CMD_REDUCE_LOGSUMEXP_FORWARD(1), ccv_nnc_no_hint, 0, TENSOR_LIST(ha), TENSOR_LIST(hb), 0);
+	ccv_nnc_cmd_exec(CMD_REDUCE_LOGSUMEXP_BACKWARD(1), ccv_nnc_no_hint, 0, TENSOR_LIST(hg, ha, hb), TENSOR_LIST(hh), 0);
+	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, rows, columns), 0);
+	ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, rows, 1), 0);
+	ccv_nnc_tensor_t* const g = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, rows, 1), 0);
+	ccv_nnc_tensor_t* const h = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, rows, columns), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha, hg), TENSOR_LIST(a, g), 0);
+	ccv_nnc_cmd_exec(CMD_REDUCE_LOGSUMEXP_FORWARD(1), ccv_nnc_no_hint, 0, TENSOR_LIST(a), TENSOR_LIST(b), 0);
+	ccv_nnc_cmd_exec(CMD_REDUCE_LOGSUMEXP_BACKWARD(1), ccv_nnc_no_hint, 0, TENSOR_LIST(g, a, b), TENSOR_LIST(h), 0);
+	ccv_nnc_tensor_t* const bt = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, 1), 0);
+	ccv_nnc_tensor_t* const ht = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, columns), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(b, h), TENSOR_LIST(bt, ht), 0);
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, hb->data.f32, bt->data.f32, rows, 1e-5, "MPS logsumexp should match CPU");
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, hh->data.f32, ht->data.f32, rows * columns, 1e-5, "MPS logsumexp backward should match CPU");
+	ccv_nnc_tensor_free(ha);
+	ccv_nnc_tensor_free(hb);
+	ccv_nnc_tensor_free(hg);
+	ccv_nnc_tensor_free(hh);
+	ccv_nnc_tensor_free(a);
+	ccv_nnc_tensor_free(b);
+	ccv_nnc_tensor_free(g);
+	ccv_nnc_tensor_free(h);
+	ccv_nnc_tensor_free(bt);
+	ccv_nnc_tensor_free(ht);
+}
+
+TEST_CASE("reduce logsumexp over multiple axes in NCHW on MPS")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_REDUCE_LOGSUMEXP_FORWARD, CCV_NNC_BACKEND_MPS));
+	ccv_nnc_tensor_t* const ha = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 3, 17, 19), 0);
+	ccv_nnc_tensor_t* const hb = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 3, 1, 1), 0);
+	dsfmt_t dsfmt;
+	dsfmt_init_gen_rand(&dsfmt, 1);
+	int i;
+	for (i = 0; i < 3 * 17 * 19; i++)
+		ha->data.f32[i] = 40 * dsfmt_genrand_open_close(&dsfmt) - 20;
+	ccv_nnc_cmd_exec(CMD_REDUCE_LOGSUMEXP_FORWARD(1, 2), ccv_nnc_no_hint, 0, TENSOR_LIST(ha), TENSOR_LIST(hb), 0);
+	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, GPU_TENSOR_NCHW(000, 32F, 3, 17, 19), 0);
+	ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, GPU_TENSOR_NCHW(000, 32F, 3, 1, 1), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha), TENSOR_LIST(a), 0);
+	ccv_nnc_cmd_exec(CMD_REDUCE_LOGSUMEXP_FORWARD(1, 2), ccv_nnc_no_hint, 0, TENSOR_LIST(a), TENSOR_LIST(b), 0);
+	ccv_nnc_tensor_t* const bt = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 3, 1, 1), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(b), TENSOR_LIST(bt), 0);
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, hb->data.f32, bt->data.f32, 3, 1e-5, "multi-axis MPS logsumexp should match CPU");
+	ccv_nnc_tensor_free(ha);
+	ccv_nnc_tensor_free(hb);
+	ccv_nnc_tensor_free(a);
+	ccv_nnc_tensor_free(b);
+	ccv_nnc_tensor_free(bt);
+}
+
 TEST_CASE("reduce max forward")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_REDUCE_MAX_FORWARD, CCV_NNC_BACKEND_MPS));

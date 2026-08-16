@@ -65,6 +65,33 @@ REGISTER_COMMAND(CCV_NNC_REDUCE_MEAN_BACKWARD)(ccv_nnc_cmd_registry_t* const reg
 //@REGISTER_EASY_COMMAND_MACRO(CCV_NNC_REDUCE_MEAN_BACKWARD)
 #define CMD_REDUCE_MEAN_BACKWARD(...) ccv_nnc_cmd(CCV_NNC_REDUCE_MEAN_BACKWARD, 0, CMD_REDUCE(__VA_ARGS__), 0)
 
+static int _ccv_nnc_reduce_logsumexp_back_bitmask(const ccv_nnc_cmd_param_t cmd, const int input_size, const int output_size, const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size)
+{
+	// Output the propagated error.
+	if ((input_bitmasks[0] & 7u) == 7u && output_bitmasks[0] == 1u)
+		return 1;
+	return 0;
+}
+
+REGISTER_COMMAND(CCV_NNC_REDUCE_LOGSUMEXP_FORWARD)(ccv_nnc_cmd_registry_t* const registry)
+	FIND_BACKEND(ccv_nnc_reduce_logsumexp_cpu_ref.c, mps/ccv_nnc_reduce_logsumexp_mps.m)
+{
+	registry->bitmask = _ccv_nnc_reduce_sum_or_mean_forw_bitmask;
+	registry->tensor_auto = _ccv_nnc_reduce_tensor_auto_forw;
+}
+
+REGISTER_COMMAND(CCV_NNC_REDUCE_LOGSUMEXP_BACKWARD)(ccv_nnc_cmd_registry_t* const registry)
+	FIND_BACKEND(ccv_nnc_reduce_logsumexp_cpu_ref.c, mps/ccv_nnc_reduce_logsumexp_mps.m)
+{
+	registry->bitmask = _ccv_nnc_reduce_logsumexp_back_bitmask;
+	registry->tensor_auto = ccv_nnc_hint_tensor_auto_backward_from_gradient;
+}
+
+//@REGISTER_EASY_COMMAND_MACRO(CCV_NNC_REDUCE_LOGSUMEXP_FORWARD)
+#define CMD_REDUCE_LOGSUMEXP_FORWARD(...) ccv_nnc_cmd(CCV_NNC_REDUCE_LOGSUMEXP_FORWARD, 0, CMD_REDUCE(__VA_ARGS__), 0)
+//@REGISTER_EASY_COMMAND_MACRO(CCV_NNC_REDUCE_LOGSUMEXP_BACKWARD)
+#define CMD_REDUCE_LOGSUMEXP_BACKWARD(...) ccv_nnc_cmd(CCV_NNC_REDUCE_LOGSUMEXP_BACKWARD, 0, CMD_REDUCE(__VA_ARGS__), 0)
+
 static int _ccv_nnc_reduce_max_forw_bitmask(const ccv_nnc_cmd_param_t cmd, const int input_size, const int output_size, const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size)
 {
 	if (input_bitmasks[0] == 1u && output_bitmasks[0] == 1u)

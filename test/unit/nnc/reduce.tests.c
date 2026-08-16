@@ -93,6 +93,52 @@ TEST_CASE("reduce mean for [[1, 2, 3], [4, 5, 6]] on axis 0")
 	ccv_nnc_tensor_free(b);
 }
 
+TEST_CASE("reduce logsumexp remains stable for large values")
+{
+	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 3), 0);
+	ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 1), 0);
+	float ap[] = {
+		1000, 1001, 1002,
+		-1000, -1001, -1002,
+	};
+	memcpy(a->data.f32, ap, sizeof(ap));
+	ccv_nnc_cmd_exec(CMD_REDUCE_LOGSUMEXP_FORWARD(1), ccv_nnc_no_hint, 0, TENSOR_LIST(a), TENSOR_LIST(b), 0);
+	const float adjustment = logf(1 + expf(-1) + expf(-2));
+	float bt[] = {
+		1002 + adjustment,
+		-1000 + adjustment,
+	};
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, b->data.f32, bt, 2, 1e-5, "logsumexp should use a numerically stable formulation");
+	ccv_nnc_tensor_free(a);
+	ccv_nnc_tensor_free(b);
+}
+
+TEST_CASE("reduce logsumexp backward")
+{
+	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 3), 0);
+	ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 1), 0);
+	ccv_nnc_tensor_t* const g = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 1), 0);
+	ccv_nnc_tensor_t* const h = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 3), 0);
+	float ap[] = {
+		1, 2, 3,
+		-3, -2, -1,
+	};
+	memcpy(a->data.f32, ap, sizeof(ap));
+	g->data.f32[0] = 2;
+	g->data.f32[1] = -3;
+	ccv_nnc_cmd_exec(CMD_REDUCE_LOGSUMEXP_FORWARD(1), ccv_nnc_no_hint, 0, TENSOR_LIST(a), TENSOR_LIST(b), 0);
+	ccv_nnc_cmd_exec(CMD_REDUCE_LOGSUMEXP_BACKWARD(1), ccv_nnc_no_hint, 0, TENSOR_LIST(g, a, b), TENSOR_LIST(h), 0);
+	float ht[6];
+	int i;
+	for (i = 0; i < 6; i++)
+		ht[i] = g->data.f32[i / 3] * expf(a->data.f32[i] - b->data.f32[i / 3]);
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, h->data.f32, ht, 6, 1e-6, "logsumexp backward should be the scaled softmax");
+	ccv_nnc_tensor_free(a);
+	ccv_nnc_tensor_free(b);
+	ccv_nnc_tensor_free(g);
+	ccv_nnc_tensor_free(h);
+}
+
 TEST_CASE("use reduce for softmax")
 {
 	ccv_nnc_symbolic_graph_t* const symbolic_graph = ccv_nnc_symbolic_graph_new();
