@@ -15,6 +15,7 @@ bool ArgmaxDescriptor::operator==(const ArgmaxDescriptor& rhs) const
     columnCount == rhs.columnCount &&
     partitionSize == rhs.partitionSize &&
     partitionCount == rhs.partitionCount &&
+    (!gumbel || scale == rhs.scale) &&
     gumbel == rhs.gumbel &&
     partitioned == rhs.partitioned;
 }
@@ -37,6 +38,8 @@ std::size_t std::hash<ArgmaxDescriptor>::operator()(const ArgmaxDescriptor& valu
     value.partitionCount,
   }));
   combine_32(seed, (value.gumbel ? 1u : 0u) | (value.partitioned ? 2u : 0u));
+  if (value.gumbel)
+    combine_32(seed, *reinterpret_cast<const uint32_t*>(&value.scale));
   return seed;
 }
 
@@ -67,6 +70,7 @@ std::pair<ArgmaxKernelDescriptor, PipelineValue<ArgmaxKernel>*> ArgmaxDescriptor
     constants->setConstantValue(&columnCount, MTL::DataTypeUInt, NS::UInteger(0));
     constants->setConstantValue(&partitionSize, MTL::DataTypeUInt, NS::UInteger(1));
     constants->setConstantValue(&partitionCount, MTL::DataTypeUInt, NS::UInteger(2));
+    constants->setConstantValue(&scale, MTL::DataTypeFloat, NS::UInteger(3));
     NS::Error* error = nil;
     auto function = NS::TransferPtr(kernel->library->newFunction(functionName, constants.get(), &error));
     CCV_NNC_MFA_CHECK_ERROR(error);

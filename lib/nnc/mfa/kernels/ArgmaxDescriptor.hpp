@@ -28,6 +28,7 @@ struct ArgmaxDescriptor {
   uint32_t columnCount = 0;
   uint32_t partitionSize = 0;
   uint32_t partitionCount = 0;
+  float scale = 0;
   bool gumbel = false;
   bool partitioned = false;
 

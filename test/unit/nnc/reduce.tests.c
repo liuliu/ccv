@@ -102,7 +102,7 @@ TEST_CASE("reduce logsumexp remains stable for large values")
 		-1000, -1001, -1002,
 	};
 	memcpy(a->data.f32, ap, sizeof(ap));
-	ccv_nnc_cmd_exec(CMD_REDUCE_LOGSUMEXP_FORWARD(1), ccv_nnc_no_hint, 0, TENSOR_LIST(a), TENSOR_LIST(b), 0);
+	ccv_nnc_cmd_exec(CMD_REDUCE_LOGSUMEXP_FORWARD(1, 1), ccv_nnc_no_hint, 0, TENSOR_LIST(a), TENSOR_LIST(b), 0);
 	const float adjustment = logf(1 + expf(-1) + expf(-2));
 	float bt[] = {
 		1002 + adjustment,
@@ -115,6 +115,7 @@ TEST_CASE("reduce logsumexp remains stable for large values")
 
 TEST_CASE("reduce logsumexp backward")
 {
+	const float scale = 0.5f;
 	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 3), 0);
 	ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 1), 0);
 	ccv_nnc_tensor_t* const g = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 1), 0);
@@ -126,13 +127,18 @@ TEST_CASE("reduce logsumexp backward")
 	memcpy(a->data.f32, ap, sizeof(ap));
 	g->data.f32[0] = 2;
 	g->data.f32[1] = -3;
-	ccv_nnc_cmd_exec(CMD_REDUCE_LOGSUMEXP_FORWARD(1), ccv_nnc_no_hint, 0, TENSOR_LIST(a), TENSOR_LIST(b), 0);
-	ccv_nnc_cmd_exec(CMD_REDUCE_LOGSUMEXP_BACKWARD(1), ccv_nnc_no_hint, 0, TENSOR_LIST(g, a, b), TENSOR_LIST(h), 0);
+	ccv_nnc_cmd_exec(CMD_REDUCE_LOGSUMEXP_FORWARD(scale, 1), ccv_nnc_no_hint, 0, TENSOR_LIST(a), TENSOR_LIST(b), 0);
+	float bt[] = {
+		logf(expf(0.5f) + expf(1) + expf(1.5f)),
+		logf(expf(-1.5f) + expf(-1) + expf(-0.5f)),
+	};
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, b->data.f32, bt, 2, 1e-6, "logsumexp should apply scale before exponentiation");
+	ccv_nnc_cmd_exec(CMD_REDUCE_LOGSUMEXP_BACKWARD(scale, 1), ccv_nnc_no_hint, 0, TENSOR_LIST(g, a, b), TENSOR_LIST(h), 0);
 	float ht[6];
 	int i;
 	for (i = 0; i < 6; i++)
-		ht[i] = g->data.f32[i / 3] * expf(a->data.f32[i] - b->data.f32[i / 3]);
-	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, h->data.f32, ht, 6, 1e-6, "logsumexp backward should be the scaled softmax");
+		ht[i] = g->data.f32[i / 3] * scale * expf(scale * a->data.f32[i] - b->data.f32[i / 3]);
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, h->data.f32, ht, 6, 1e-6, "logsumexp backward should include the logit scale");
 	ccv_nnc_tensor_free(a);
 	ccv_nnc_tensor_free(b);
 	ccv_nnc_tensor_free(g);
@@ -526,9 +532,9 @@ TEST_CASE("gumbel argmax is reproducible with a seeded CPU stream")
 	for (i = 0; i < rows * columns; i++)
 		a->data.f32[i] = 0;
 	ccv_nnc_stream_context_set_seed(stream_context, 177);
-	ccv_nnc_cmd_exec(CMD_GUMBEL_ARGMAX(1), ccv_nnc_no_hint, 0, TENSOR_LIST(a), TENSOR_LIST(b), stream_context);
+	ccv_nnc_cmd_exec(CMD_GUMBEL_ARGMAX(1, 1), ccv_nnc_no_hint, 0, TENSOR_LIST(a), TENSOR_LIST(b), stream_context);
 	ccv_nnc_stream_context_set_seed(stream_context, 177);
-	ccv_nnc_cmd_exec(CMD_GUMBEL_ARGMAX(1), ccv_nnc_no_hint, 0, TENSOR_LIST(a), TENSOR_LIST(c), stream_context);
+	ccv_nnc_cmd_exec(CMD_GUMBEL_ARGMAX(1, 1), ccv_nnc_no_hint, 0, TENSOR_LIST(a), TENSOR_LIST(c), stream_context);
 	REQUIRE_TENSOR_EQ(b, c, "the same stream seed should reproduce gumbel argmax");
 	int different = 0;
 	for (i = 0; i < rows; i++)
@@ -541,6 +547,34 @@ TEST_CASE("gumbel argmax is reproducible with a seeded CPU stream")
 	ccv_nnc_tensor_free(a);
 	ccv_nnc_tensor_free(b);
 	ccv_nnc_tensor_free(c);
+}
+
+TEST_CASE("gumbel argmax scales gumbel noise on CPU")
+{
+	const int rows = 64;
+	const int columns = 16;
+	const float scale = 0.5f;
+	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, columns), 0);
+	ccv_nnc_tensor_t* const a_scaled = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, columns), 0);
+	ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, rows, 1), 0);
+	ccv_nnc_tensor_t* const b_scaled = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, rows, 1), 0);
+	ccv_nnc_stream_context_t* const stream_context = ccv_nnc_stream_context_new(CCV_STREAM_CONTEXT_CPU);
+	int i;
+	for (i = 0; i < rows * columns; i++)
+	{
+		a->data.f32[i] = (float)((i * 13) % columns) * 0.05f;
+		a_scaled->data.f32[i] = a->data.f32[i] / scale;
+	}
+	ccv_nnc_stream_context_set_seed(stream_context, 211);
+	ccv_nnc_cmd_exec(CMD_GUMBEL_ARGMAX(scale, 1), ccv_nnc_no_hint, 0, TENSOR_LIST(a), TENSOR_LIST(b), stream_context);
+	ccv_nnc_stream_context_set_seed(stream_context, 211);
+	ccv_nnc_cmd_exec(CMD_GUMBEL_ARGMAX(1, 1), ccv_nnc_no_hint, 0, TENSOR_LIST(a_scaled), TENSOR_LIST(b_scaled), stream_context);
+	REQUIRE_TENSOR_EQ(b, b_scaled, "scaling Gumbel noise should be equivalent to inversely scaling logits");
+	ccv_nnc_stream_context_free(stream_context);
+	ccv_nnc_tensor_free(a);
+	ccv_nnc_tensor_free(a_scaled);
+	ccv_nnc_tensor_free(b);
+	ccv_nnc_tensor_free(b_scaled);
 }
 
 TEST_CASE("reduce norm2 for [[1, 2, 3], [4, 5, 6]] on axis 1")

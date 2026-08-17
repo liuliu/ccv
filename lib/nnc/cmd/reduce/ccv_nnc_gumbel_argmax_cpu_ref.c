@@ -28,6 +28,7 @@ static int _ccv_nnc_gumbel_argmax_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hi
 		dim_after_axis *= a->info.dim[i];
 	const int dim_before_axis = tensor_count / axis_dim / dim_after_axis;
 	assert(ccv_nnc_tensor_count(b->info) == tensor_count / axis_dim);
+	const float scale = cmd.info.reduce.scale;
 
 	dsfmt_t dsfmt;
 	dsfmt_init_gen_rand(&dsfmt, ccv_nnc_stream_context_genrand_uint32(stream_context));
@@ -39,12 +40,12 @@ static int _ccv_nnc_gumbel_argmax_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hi
 		for (j = 0; j < dim_after_axis; j++)
 		{
 			const double uniform = dsfmt_genrand_open_open(&dsfmt);
-			float max_value = ap0[j] - (float)log(-log(uniform));
+			float max_value = ap0[j] - scale * (float)log(-log(uniform));
 			int max_index = 0;
 			for (k = 1; k < axis_dim; k++)
 			{
 				const double next_uniform = dsfmt_genrand_open_open(&dsfmt);
-				const float value = ap0[j + k * dim_after_axis] - (float)log(-log(next_uniform));
+				const float value = ap0[j + k * dim_after_axis] - scale * (float)log(-log(next_uniform));
 				if (value > max_value)
 					max_value = value, max_index = k;
 			}

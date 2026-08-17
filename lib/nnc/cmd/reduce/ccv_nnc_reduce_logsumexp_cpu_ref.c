@@ -25,6 +25,7 @@ static int _ccv_nnc_reduce_logsumexp_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc
 	assert(CCV_NNC_MAX_DIM == 2); // Need to change this logic for CCV_NNC_MAX_DIM == other number.
 	ccv_nnc_tensor_view_get_stride(a, astride);
 	ccv_nnc_tensor_view_get_stride(b, bstride);
+	const float scale = cmd.info.reduce.scale;
 	const size_t b_count = ccv_nnc_tensor_count(b->info);
 	float* const maxp = (float*)ccmalloc(sizeof(float) * b_count);
 	size_t j;
@@ -48,8 +49,9 @@ static int _ccv_nnc_reduce_logsumexp_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc
 				{
 					const size_t bi3 = bdim[3] == 1 ? 0 : x;
 					const size_t b_idx = ((bi0 * bdim[1] + bi1) * bdim[2] + bi2) * bdim[3] + bi3;
-					if (ap1[x] > maxp[b_idx] || isnan(ap1[x]))
-						maxp[b_idx] = ap1[x];
+					const float value = scale * ap1[x];
+					if (value > maxp[b_idx] || isnan(value))
+						maxp[b_idx] = value;
 				}
 				ap1 += astride[2];
 			}
@@ -76,7 +78,7 @@ static int _ccv_nnc_reduce_logsumexp_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc
 					const int bx = bdim[3] == 1 ? 0 : x;
 					const size_t b_idx = ((bi0 * bdim[1] + bi1) * bdim[2] + bi2) * bdim[3] + bx;
 					if (isfinite(maxp[b_idx]))
-						bp2[bx] += expf(ap1[x] - maxp[b_idx]);
+						bp2[bx] += expf(scale * ap1[x] - maxp[b_idx]);
 				}
 				ap1 += astride[2];
 			}
@@ -140,6 +142,7 @@ static int _ccv_nnc_reduce_logsumexp_back(const ccv_nnc_cmd_t cmd, const ccv_nnc
 	const float* const bp = b->data.f32;
 	const float* const gp = g ? g->data.f32 : 0;
 	float* const hp = h->data.f32;
+	const float scale = cmd.info.reduce.scale;
 	int i[CCV_NNC_MAX_DIM + 2];
 	int x;
 	for (i[0] = 0; i[0] < hdim[0]; i[0]++)
@@ -160,8 +163,8 @@ static int _ccv_nnc_reduce_logsumexp_back(const ccv_nnc_cmd_t cmd, const ccv_nnc
 				const float* const gp2 = !g || gdim[2] == 1 ? gp1 : gp1 + i[2] * gstride[2];
 				for (x = 0; x < hdim[3]; x++)
 				{
-					const float scale = g ? gp2[gdim[3] == 1 ? 0 : x] : 1;
-					hp1[x] = scale * expf(ap1[x] - bp2[bdim[3] == 1 ? 0 : x]);
+					const float gradient = g ? gp2[gdim[3] == 1 ? 0 : x] : 1;
+					hp1[x] = gradient * scale * expf(scale * ap1[x] - bp2[bdim[3] == 1 ? 0 : x]);
 				}
 				ap1 += astride[2];
 				hp1 += hstride[2];

@@ -134,6 +134,7 @@ static int _ccv_nnc_gumbel_argmax_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hi
 	assert(cmd.info.reduce.count == 1);
 	const int a_nd = ccv_nnc_tensor_nd(atv.info.dim);
 	const int axis = cmd.info.reduce.axis[0];
+	const float scale = cmd.info.reduce.scale;
 	const uint32_t seed = ccv_nnc_stream_context_genrand_uint32(stream_context);
 	uint32_t states[7];
 	_ccv_nnc_gumbel_argmax_random_state(seed, states);
@@ -154,6 +155,7 @@ static int _ccv_nnc_gumbel_argmax_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hi
 					.data_type = atv.info.datatype == CCV_16F ? 16 : (atv.info.datatype == CCV_16BF ? 121 : 3),
 					.row_count = (uint32_t)row_count,
 					.column_count = (uint32_t)column_count,
+					.scale = scale,
 					.gumbel = 1,
 				};
 				memcpy(params.state, states, sizeof(params.state));
@@ -198,6 +200,7 @@ static int _ccv_nnc_gumbel_argmax_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hi
 			MPSGraphTensor* mps_neg_log_uniform = [graph negativeWithTensor:mps_log_uniform name:nil];
 			MPSGraphTensor* mps_log_neg_log_uniform = [graph logarithmWithTensor:mps_neg_log_uniform name:nil];
 			MPSGraphTensor* mps_gumbel = [graph negativeWithTensor:mps_log_neg_log_uniform name:nil];
+			mps_gumbel = [graph multiplicationWithPrimaryTensor:mps_gumbel secondaryTensor:[graph constantWithScalar:scale dataType:MPSDataTypeFloat32] name:nil];
 			mps_a = [graph additionWithPrimaryTensor:mps_a secondaryTensor:mps_gumbel name:nil];
 			MPSGraphTensor* mps_b = [graph reductionArgMaximumWithTensor:mps_a axis:axis name:nil];
 			[resultTensors addObject:mps_b];

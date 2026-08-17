@@ -66,6 +66,7 @@ void ccv_nnc_mfa_encode_argmax(ccv_nnc_mfa_context_t* context, ccv_nnc_mfa_argma
     .columnCount = params.column_count,
     .partitionSize = kArgmaxPartitionSize,
     .partitionCount = partitionCount,
+    .scale = params.scale,
     .gumbel = params.gumbel != 0,
     .partitioned = partitionCount > 1,
   };

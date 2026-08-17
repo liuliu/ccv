@@ -24,7 +24,7 @@ static int _ccv_nnc_reduce_logsumexp_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc
 		noop = btv.info.dim[i] != atv.info.dim[i];
 	@autoreleasepool {
 		MPSCommandBuffer* command_buffer = ccv_nnc_stream_context_start_mps_command_buffer(stream_context);
-		if (noop)
+		if (noop && cmd.info.reduce.scale == 1)
 		{
 			MPSGraph* graph = [MPSGraph new];
 			graph.options = MPSGraphOptionsSynchronizeResults;
@@ -51,6 +51,7 @@ static int _ccv_nnc_reduce_logsumexp_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc
 					if (btv.info.dim[i] != atv.info.dim[i])
 						[axes addObject:@(i)];
 				MPSGraphTensor* mps_a_f32 = atv.info.datatype == CCV_32F ? mps_a : [graph castTensor:mps_a toType:MPSDataTypeFloat32 name:nil];
+				mps_a_f32 = [graph multiplicationWithPrimaryTensor:mps_a_f32 secondaryTensor:[graph constantWithScalar:cmd.info.reduce.scale dataType:MPSDataTypeFloat32] name:nil];
 				MPSGraphTensor* mps_max = [graph reductionMaximumWithTensor:mps_a_f32 axes:axes name:nil];
 				MPSGraphTensor* mps_shifted = [graph subtractionWithPrimaryTensor:mps_a_f32 secondaryTensor:mps_max name:nil];
 				MPSGraphTensor* mps_exp = [graph exponentWithTensor:mps_shifted name:nil];
@@ -104,7 +105,9 @@ static int _ccv_nnc_reduce_logsumexp_back(const ccv_nnc_cmd_t cmd, const ccv_nnc
 				MPSGraphTensor* mps_a_f32 = atv.info.datatype == CCV_32F ? mps_a : [graph castTensor:mps_a toType:MPSDataTypeFloat32 name:nil];
 				MPSGraphTensor* mps_b_f32 = btv.info.datatype == CCV_32F ? mps_b : [graph castTensor:mps_b toType:MPSDataTypeFloat32 name:nil];
 				MPSGraphTensor* mps_g_f32 = gtv.info.datatype == CCV_32F ? mps_g : [graph castTensor:mps_g toType:MPSDataTypeFloat32 name:nil];
+				mps_a_f32 = [graph multiplicationWithPrimaryTensor:mps_a_f32 secondaryTensor:[graph constantWithScalar:cmd.info.reduce.scale dataType:MPSDataTypeFloat32] name:nil];
 				MPSGraphTensor* mps_h = [graph exponentWithTensor:[graph subtractionWithPrimaryTensor:mps_a_f32 secondaryTensor:mps_b_f32 name:nil] name:nil];
+				mps_h = [graph multiplicationWithPrimaryTensor:[graph constantWithScalar:cmd.info.reduce.scale dataType:MPSDataTypeFloat32] secondaryTensor:mps_h name:nil];
 				mps_h = [graph multiplicationWithPrimaryTensor:mps_g_f32 secondaryTensor:mps_h name:nil];
 				if (htv.info.datatype != CCV_32F)
 					mps_h = [graph castTensor:mps_h toType:ccv_nnc_mps_datatype(htv.info.datatype) name:nil];
@@ -128,7 +131,9 @@ static int _ccv_nnc_reduce_logsumexp_back(const ccv_nnc_cmd_t cmd, const ccv_nnc
 				[inputShapedTypes addObject:ccv_nnc_mps_graph_tensor_input_shape(&btv, btv.info.dim, btv.stride)];
 				MPSGraphTensor* mps_a_f32 = atv.info.datatype == CCV_32F ? mps_a : [graph castTensor:mps_a toType:MPSDataTypeFloat32 name:nil];
 				MPSGraphTensor* mps_b_f32 = btv.info.datatype == CCV_32F ? mps_b : [graph castTensor:mps_b toType:MPSDataTypeFloat32 name:nil];
+				mps_a_f32 = [graph multiplicationWithPrimaryTensor:mps_a_f32 secondaryTensor:[graph constantWithScalar:cmd.info.reduce.scale dataType:MPSDataTypeFloat32] name:nil];
 				MPSGraphTensor* mps_h = [graph exponentWithTensor:[graph subtractionWithPrimaryTensor:mps_a_f32 secondaryTensor:mps_b_f32 name:nil] name:nil];
+				mps_h = [graph multiplicationWithPrimaryTensor:[graph constantWithScalar:cmd.info.reduce.scale dataType:MPSDataTypeFloat32] secondaryTensor:mps_h name:nil];
 				if (htv.info.datatype != CCV_32F)
 					mps_h = [graph castTensor:mps_h toType:ccv_nnc_mps_datatype(htv.info.datatype) name:nil];
 				[resultTensors addObject:mps_h];

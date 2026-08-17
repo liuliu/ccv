@@ -29,6 +29,7 @@ constant uint invalid_index = 0xffffffffu;
 constant uint column_count [[function_constant(0)]];
 constant uint partition_size [[function_constant(1)]];
 constant uint partition_count [[function_constant(2)]];
+constant float gumbel_scale [[function_constant(3)]];
 
 struct ArgmaxPair {
   float value;
@@ -185,7 +186,7 @@ inline ArgmaxPair gumbel_score(
 {
   return ArgmaxPair{
     float(input[ulong(row) * column_count + column]) +
-      gumbel_from_bits(random_bits),
+      gumbel_scale * gumbel_from_bits(random_bits),
     column,
   };
 }

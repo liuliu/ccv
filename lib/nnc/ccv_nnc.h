@@ -260,6 +260,7 @@ typedef struct {
 		struct {
 			int axis[CCV_NNC_MAX_DIM_ALLOC]; /**< [reduce.axis[]] The axis selected to reduce. */
 			int count; /**< [reduce.count] The number of axis selected. */
+			float scale; /**< [reduce.scale] The scale applied to logits for logsumexp, or to Gumbel noise for Gumbel argmax. */
 		} reduce;
 		struct {
 			int axis[2]; /**< [transpose.axis[2]] The axis we'd like to transpose for input. */

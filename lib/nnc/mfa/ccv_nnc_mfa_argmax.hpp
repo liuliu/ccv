@@ -6,6 +6,7 @@ typedef struct {
   uint32_t row_count;
   uint32_t column_count;
   uint32_t state[7];
+  float scale;
   uint8_t gumbel;
 } ccv_nnc_mfa_argmax_params_t;
 

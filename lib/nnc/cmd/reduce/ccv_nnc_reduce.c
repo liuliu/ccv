@@ -88,9 +88,9 @@ REGISTER_COMMAND(CCV_NNC_REDUCE_LOGSUMEXP_BACKWARD)(ccv_nnc_cmd_registry_t* cons
 }
 
 //@REGISTER_EASY_COMMAND_MACRO(CCV_NNC_REDUCE_LOGSUMEXP_FORWARD)
-#define CMD_REDUCE_LOGSUMEXP_FORWARD(...) ccv_nnc_cmd(CCV_NNC_REDUCE_LOGSUMEXP_FORWARD, 0, CMD_REDUCE(__VA_ARGS__), 0)
+#define CMD_REDUCE_LOGSUMEXP_FORWARD(_scale, ...) ccv_nnc_cmd(CCV_NNC_REDUCE_LOGSUMEXP_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.reduce={.count=LIST_COUNT(__VA_ARGS__),.axis={__VA_ARGS__},.scale=(_scale)}}), 0)
 //@REGISTER_EASY_COMMAND_MACRO(CCV_NNC_REDUCE_LOGSUMEXP_BACKWARD)
-#define CMD_REDUCE_LOGSUMEXP_BACKWARD(...) ccv_nnc_cmd(CCV_NNC_REDUCE_LOGSUMEXP_BACKWARD, 0, CMD_REDUCE(__VA_ARGS__), 0)
+#define CMD_REDUCE_LOGSUMEXP_BACKWARD(_scale, ...) ccv_nnc_cmd(CCV_NNC_REDUCE_LOGSUMEXP_BACKWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.reduce={.count=LIST_COUNT(__VA_ARGS__),.axis={__VA_ARGS__},.scale=(_scale)}}), 0)
 
 static int _ccv_nnc_reduce_max_forw_bitmask(const ccv_nnc_cmd_param_t cmd, const int input_size, const int output_size, const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size)
 {
@@ -257,10 +257,10 @@ REGISTER_COMMAND(CCV_NNC_GUMBEL_ARGMAX_BACKWARD)(ccv_nnc_cmd_registry_t* const r
 }
 
 //@REGISTER_EASY_COMMAND_MACRO(CCV_NNC_GUMBEL_ARGMAX_FORWARD)
-#define CMD_GUMBEL_ARGMAX_FORWARD(...) ccv_nnc_cmd(CCV_NNC_GUMBEL_ARGMAX_FORWARD, 0, CMD_REDUCE(__VA_ARGS__), 0)
+#define CMD_GUMBEL_ARGMAX_FORWARD(_scale, ...) ccv_nnc_cmd(CCV_NNC_GUMBEL_ARGMAX_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.reduce={.count=LIST_COUNT(__VA_ARGS__),.axis={__VA_ARGS__},.scale=(_scale)}}), 0)
 #define CMD_GUMBEL_ARGMAX(...) CMD_GUMBEL_ARGMAX_FORWARD(__VA_ARGS__)
 //@REGISTER_EASY_COMMAND_MACRO(CCV_NNC_GUMBEL_ARGMAX_BACKWARD)
-#define CMD_GUMBEL_ARGMAX_BACKWARD(...) ccv_nnc_cmd(CCV_NNC_GUMBEL_ARGMAX_BACKWARD, 0, CMD_REDUCE(__VA_ARGS__), 0)
+#define CMD_GUMBEL_ARGMAX_BACKWARD(_scale, ...) ccv_nnc_cmd(CCV_NNC_GUMBEL_ARGMAX_BACKWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.reduce={.count=LIST_COUNT(__VA_ARGS__),.axis={__VA_ARGS__},.scale=(_scale)}}), 0)
 
 static int _ccv_nnc_argmin_forw_bitmask(const ccv_nnc_cmd_param_t cmd, const int input_size, const int output_size, const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size)
 {
