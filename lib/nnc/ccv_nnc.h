@@ -287,6 +287,9 @@ typedef struct {
 			float max; /**< [clamp.max] The maximum, NaN is no max. */
 		} clamp;
 		struct {
+			float value; /**< [fill_if_less_than.value] The value used when selector < threshold. */
+		} fill_if_less_than;
+		struct {
 			float iou_threshold; /**< [nms.iou_threshold] Threshold between 0 to 1 for IoU threshold. */
 		} nms;
 		struct {

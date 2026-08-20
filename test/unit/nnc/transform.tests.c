@@ -270,6 +270,76 @@ TEST_CASE("masked fill backward a 3d tensor")
 	ccv_nnc_tensor_free(d);
 }
 
+TEST_CASE("fill if less than forward with dynamic broadcast threshold")
+{
+	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 3, 4), 0);
+	ccv_nnc_tensor_t* const selector = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 3, 1), 0);
+	ccv_nnc_tensor_t* const threshold = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, 4), 0);
+	ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 3, 4), 0);
+	ccv_nnc_tensor_t* const c = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 3, 4), 0);
+	int i, j, k;
+	for (i = 0; i < 2 * 3 * 4; i++)
+		a->data.f32[i] = i + 1;
+	selector->data.f32[0] = 0;
+	selector->data.f32[1] = 1;
+	selector->data.f32[2] = 2;
+	threshold->data.f32[0] = 0;
+	threshold->data.f32[1] = 1;
+	threshold->data.f32[2] = 1;
+	threshold->data.f32[3] = 3;
+	ccv_nnc_cmd_exec(CMD_FILL_IF_LESS_THAN_FORWARD(-INFINITY), ccv_nnc_no_hint, 0, TENSOR_LIST(a, selector, threshold), TENSOR_LIST(b), 0);
+	for (i = 0; i < 2; i++)
+		for (j = 0; j < 3; j++)
+			for (k = 0; k < 4; k++)
+			{
+				const int x = (i * 3 + j) * 4 + k;
+				c->data.f32[x] = selector->data.f32[j] < threshold->data.f32[k] ? -INFINITY : a->data.f32[x];
+			}
+	REQUIRE_TENSOR_EQ(c, b, "selector and dynamic threshold should both broadcast and equality should not fill");
+	REQUIRE(ccv_nnc_cmd_allow_inplace(CMD_FILL_IF_LESS_THAN_FORWARD(-INFINITY), 0, 3, 0, 1), "fill if less than should allow its first input to replace its first output");
+	REQUIRE(!ccv_nnc_cmd_allow_inplace(CMD_FILL_IF_LESS_THAN_FORWARD(-INFINITY), 1, 3, 0, 1), "fill if less than should not replace its output with the selector");
+	ccv_nnc_cmd_exec(CMD_FILL_IF_LESS_THAN_FORWARD(-INFINITY), ccv_nnc_no_hint, 0, TENSOR_LIST(a, selector, threshold), TENSOR_LIST(a), 0);
+	REQUIRE_TENSOR_EQ(c, a, "fill if less than should support in-place execution on its first input");
+	ccv_nnc_tensor_free(a);
+	ccv_nnc_tensor_free(selector);
+	ccv_nnc_tensor_free(threshold);
+	ccv_nnc_tensor_free(b);
+	ccv_nnc_tensor_free(c);
+}
+
+TEST_CASE("fill if less than backward with dynamic broadcast threshold")
+{
+	ccv_nnc_tensor_t* const g = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 3, 4), 0);
+	ccv_nnc_tensor_t* const selector = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 3, 1), 0);
+	ccv_nnc_tensor_t* const threshold = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, 4), 0);
+	ccv_nnc_tensor_t* const h = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 3, 4), 0);
+	ccv_nnc_tensor_t* const h_expected = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 3, 4), 0);
+	int i, j, k;
+	for (i = 0; i < 2 * 3 * 4; i++)
+		g->data.f32[i] = i + 1;
+	selector->data.f32[0] = 0;
+	selector->data.f32[1] = 1;
+	selector->data.f32[2] = 2;
+	threshold->data.f32[0] = 0;
+	threshold->data.f32[1] = 1;
+	threshold->data.f32[2] = 1;
+	threshold->data.f32[3] = 3;
+	ccv_nnc_cmd_exec(CMD_FILL_IF_LESS_THAN_BACKWARD(-INFINITY), ccv_nnc_no_hint, 0, TENSOR_LIST(g, 0, selector, threshold), TENSOR_LIST(h), 0);
+	for (i = 0; i < 2; i++)
+		for (j = 0; j < 3; j++)
+			for (k = 0; k < 4; k++)
+			{
+				const int x = (i * 3 + j) * 4 + k;
+				h_expected->data.f32[x] = selector->data.f32[j] < threshold->data.f32[k] ? 0 : g->data.f32[x];
+			}
+	REQUIRE_TENSOR_EQ(h_expected, h, "input gradient should be zero exactly where forward fills");
+	ccv_nnc_tensor_free(g);
+	ccv_nnc_tensor_free(selector);
+	ccv_nnc_tensor_free(threshold);
+	ccv_nnc_tensor_free(h);
+	ccv_nnc_tensor_free(h_expected);
+}
+
 TEST_CASE("compare permute with transpose")
 {
 	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 6, 5, 4, 3), 0);

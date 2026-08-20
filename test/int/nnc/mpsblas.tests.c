@@ -5143,6 +5143,85 @@ TEST_CASE("clamp forward with only min")
 	ccv_nnc_tensor_free(bt);
 }
 
+TEST_CASE("fill if less than forward with dynamic broadcast threshold on mps")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_FILL_IF_LESS_THAN_FORWARD, CCV_NNC_BACKEND_MPS));
+	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 5, 17, 19), 0);
+	ccv_nnc_tensor_t* const selector = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 17, 1), 0);
+	ccv_nnc_tensor_t* const threshold = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 1, 19), 0);
+	ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 5, 17, 19), 0);
+	ccv_nnc_tensor_t* const ha = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 5, 17, 19), 0);
+	ccv_nnc_tensor_t* const hselector = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 17, 1), 0);
+	ccv_nnc_tensor_t* const hthreshold = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, 19), 0);
+	ccv_nnc_tensor_t* const hb = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 5, 17, 19), 0);
+	ccv_nnc_tensor_t* const bt = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 5, 17, 19), 0);
+	dsfmt_t dsfmt;
+	dsfmt_init_gen_rand(&dsfmt, 0);
+	int i;
+	for (i = 0; i < 5 * 17 * 19; i++)
+		ha->data.f32[i] = dsfmt_genrand_open_close(&dsfmt) * 10 - 5;
+	for (i = 0; i < 17; i++)
+		hselector->data.f32[i] = dsfmt_genrand_open_close(&dsfmt) * 4 - 2;
+	for (i = 0; i < 19; i++)
+		hthreshold->data.f32[i] = dsfmt_genrand_open_close(&dsfmt) * 4 - 2;
+	hselector->data.f32[0] = hthreshold->data.f32[0] = 0.5;
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha, hselector, hthreshold), TENSOR_LIST(a, selector, threshold), 0);
+	ccv_nnc_cmd_exec(CMD_FILL_IF_LESS_THAN_FORWARD(-INFINITY), ccv_nnc_no_hint, 0, TENSOR_LIST(a, selector, threshold), TENSOR_LIST(b), 0);
+	ccv_nnc_cmd_exec(CMD_FILL_IF_LESS_THAN_FORWARD(-INFINITY), ccv_nnc_no_hint, 0, TENSOR_LIST(ha, hselector, hthreshold), TENSOR_LIST(bt), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(b), TENSOR_LIST(hb), 0);
+	REQUIRE_TENSOR_EQ(bt, hb, "MPS should match CPU with independently broadcast selector and threshold");
+	ccv_nnc_cmd_exec(CMD_FILL_IF_LESS_THAN_FORWARD(-INFINITY), ccv_nnc_no_hint, 0, TENSOR_LIST(a, selector, threshold), TENSOR_LIST(a), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(a), TENSOR_LIST(hb), 0);
+	REQUIRE_TENSOR_EQ(bt, hb, "MPS should support in-place execution on the first input");
+	ccv_nnc_tensor_free(a);
+	ccv_nnc_tensor_free(selector);
+	ccv_nnc_tensor_free(threshold);
+	ccv_nnc_tensor_free(b);
+	ccv_nnc_tensor_free(ha);
+	ccv_nnc_tensor_free(hselector);
+	ccv_nnc_tensor_free(hthreshold);
+	ccv_nnc_tensor_free(hb);
+	ccv_nnc_tensor_free(bt);
+}
+
+TEST_CASE("fill if less than backward with dynamic broadcast threshold on mps")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_FILL_IF_LESS_THAN_BACKWARD, CCV_NNC_BACKEND_MPS));
+	ccv_nnc_tensor_t* const g = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 5, 17, 19), 0);
+	ccv_nnc_tensor_t* const selector = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 17, 1), 0);
+	ccv_nnc_tensor_t* const threshold = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 1, 19), 0);
+	ccv_nnc_tensor_t* const h = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 5, 17, 19), 0);
+	ccv_nnc_tensor_t* const hg = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 5, 17, 19), 0);
+	ccv_nnc_tensor_t* const hselector = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 17, 1), 0);
+	ccv_nnc_tensor_t* const hthreshold = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, 19), 0);
+	ccv_nnc_tensor_t* const hh = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 5, 17, 19), 0);
+	ccv_nnc_tensor_t* const ht = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 5, 17, 19), 0);
+	dsfmt_t dsfmt;
+	dsfmt_init_gen_rand(&dsfmt, 1);
+	int i;
+	for (i = 0; i < 5 * 17 * 19; i++)
+		hg->data.f32[i] = dsfmt_genrand_open_close(&dsfmt) * 10 - 5;
+	for (i = 0; i < 17; i++)
+		hselector->data.f32[i] = dsfmt_genrand_open_close(&dsfmt) * 4 - 2;
+	for (i = 0; i < 19; i++)
+		hthreshold->data.f32[i] = dsfmt_genrand_open_close(&dsfmt) * 4 - 2;
+	hselector->data.f32[0] = hthreshold->data.f32[0] = 0.5;
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(hg, hselector, hthreshold), TENSOR_LIST(g, selector, threshold), 0);
+	ccv_nnc_cmd_exec(CMD_FILL_IF_LESS_THAN_BACKWARD(-INFINITY), ccv_nnc_no_hint, 0, TENSOR_LIST(g, 0, selector, threshold), TENSOR_LIST(h), 0);
+	ccv_nnc_cmd_exec(CMD_FILL_IF_LESS_THAN_BACKWARD(-INFINITY), ccv_nnc_no_hint, 0, TENSOR_LIST(hg, 0, hselector, hthreshold), TENSOR_LIST(ht), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(h), TENSOR_LIST(hh), 0);
+	REQUIRE_TENSOR_EQ(ht, hh, "MPS input gradient should match CPU with dynamic broadcast threshold");
+	ccv_nnc_tensor_free(g);
+	ccv_nnc_tensor_free(selector);
+	ccv_nnc_tensor_free(threshold);
+	ccv_nnc_tensor_free(h);
+	ccv_nnc_tensor_free(hg);
+	ccv_nnc_tensor_free(hselector);
+	ccv_nnc_tensor_free(hthreshold);
+	ccv_nnc_tensor_free(hh);
+	ccv_nnc_tensor_free(ht);
+}
+
 TEST_CASE("compare set with mps")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SET_FORWARD, CCV_NNC_BACKEND_MPS));
