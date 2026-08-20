@@ -256,6 +256,127 @@ TEST_CASE("reduce max forward")
 	ccv_nnc_tensor_free(bt);
 }
 
+TEST_CASE("mps reduce max MFA matches MPSGraph over one and multiple partitions")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_REDUCE_MAX_FORWARD, CCV_NNC_BACKEND_MPS));
+	const int rows = 7;
+	const int datatypes[] = { CCV_32F, CCV_16F };
+	const int columns_list[] = { 1023, 8193 };
+	const uint64_t old_flags = ccv_nnc_flags();
+	int d, s;
+	for (d = 0; d < 2; d++)
+		for (s = 0; s < 2; s++)
+		{
+			const int datatype = datatypes[d];
+			const int columns = columns_list[s];
+			ccv_nnc_tensor_param_t host_input_params = CPU_TENSOR_NHWC(32F, rows, columns);
+			host_input_params.datatype = datatype;
+			ccv_nnc_tensor_param_t host_output_params = CPU_TENSOR_NHWC(32F, rows, 1);
+			host_output_params.datatype = datatype;
+			ccv_nnc_tensor_param_t input_params = host_input_params;
+			input_params.type = CCV_TENSOR_GPU_MEMORY | 000;
+			ccv_nnc_tensor_param_t output_params = host_output_params;
+			output_params.type = CCV_TENSOR_GPU_MEMORY | 000;
+			ccv_nnc_tensor_t* const ha = ccv_nnc_tensor_new(0, host_input_params, 0);
+			float* const values = (float*)ccmalloc(sizeof(float) * rows * columns);
+			float expected[7];
+			int i, j;
+			for (i = 0; i < rows; i++)
+			{
+				for (j = 0; j < columns; j++)
+					values[i * columns + j] = (float)((j * 7919 + i * 104729) % 8191) / 1024 - 4;
+				expected[i] = 32 + i;
+				values[i * columns + (i * 1543 + 17) % columns] = expected[i];
+			}
+			if (datatype == CCV_32F)
+				memcpy(ha->data.f32, values, sizeof(float) * rows * columns);
+			else
+				ccv_float_to_half_precision(values, (uint16_t*)ha->data.f16, rows * columns);
+			ccfree(values);
+			ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, input_params, 0);
+			ccv_nnc_tensor_t* const graph_b = ccv_nnc_tensor_new(0, output_params, 0);
+			ccv_nnc_tensor_t* const mfa_b = ccv_nnc_tensor_new(0, output_params, 0);
+			ccv_nnc_tensor_t* const hgraph_b = ccv_nnc_tensor_new(0, host_output_params, 0);
+			ccv_nnc_tensor_t* const hmfa_b = ccv_nnc_tensor_new(0, host_output_params, 0);
+			ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha), TENSOR_LIST(a), 0);
+			ccv_nnc_cmd_t cmd = CMD_REDUCE_MAX_FORWARD(1);
+			cmd.backend = CCV_NNC_BACKEND_MPS;
+			assert(cmd.backend >= 0);
+			ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA);
+			ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(a), TENSOR_LIST(graph_b), 0);
+			ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA);
+			ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(a), TENSOR_LIST(mfa_b), 0);
+			if (old_flags & CCV_NNC_DISABLE_MFA)
+				ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA);
+			else
+				ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA);
+			ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(graph_b, mfa_b), TENSOR_LIST(hgraph_b, hmfa_b), 0);
+			if (datatype == CCV_32F)
+			{
+				REQUIRE_ARRAY_EQ(float, hgraph_b->data.f32, hmfa_b->data.f32, rows, "MFA reduce max should match MPSGraph exactly for %d columns", columns);
+				REQUIRE_ARRAY_EQ(float, expected, hmfa_b->data.f32, rows, "MFA reduce max should select the known maxima for %d columns", columns);
+			} else {
+				uint16_t expected_half[7];
+				ccv_float_to_half_precision(expected, expected_half, rows);
+				REQUIRE_ARRAY_EQ(uint16_t, (uint16_t*)hgraph_b->data.f16, (uint16_t*)hmfa_b->data.f16, rows, "half-precision MFA reduce max should match MPSGraph exactly for %d columns", columns);
+				REQUIRE_ARRAY_EQ(uint16_t, expected_half, (uint16_t*)hmfa_b->data.f16, rows, "half-precision MFA reduce max should select the known maxima for %d columns", columns);
+			}
+			ccv_nnc_tensor_free(ha);
+			ccv_nnc_tensor_free(a);
+			ccv_nnc_tensor_free(graph_b);
+			ccv_nnc_tensor_free(mfa_b);
+			ccv_nnc_tensor_free(hgraph_b);
+			ccv_nnc_tensor_free(hmfa_b);
+		}
+}
+
+TEST_CASE("mps reduce max MFA matches MPSGraph NaN behavior")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_REDUCE_MAX_FORWARD, CCV_NNC_BACKEND_MPS));
+	const int rows = 4;
+	const int columns = 257;
+	ccv_nnc_tensor_t* const ha = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, columns), 0);
+	int i;
+	for (i = 0; i < rows * columns; i++)
+		ha->data.f32[i] = -INFINITY;
+	for (i = 0; i < columns; i++)
+		ha->data.f32[i] = NAN;
+	ha->data.f32[columns] = NAN;
+	ha->data.f32[columns + 19] = 7;
+	ha->data.f32[2 * columns + 113] = NAN;
+	ha->data.f32[2 * columns + 256] = 11;
+	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, rows, columns), 0);
+	ccv_nnc_tensor_t* const graph_b = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, rows, 1), 0);
+	ccv_nnc_tensor_t* const mfa_b = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, rows, 1), 0);
+	ccv_nnc_tensor_t* const hgraph_b = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, 1), 0);
+	ccv_nnc_tensor_t* const hmfa_b = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, 1), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha), TENSOR_LIST(a), 0);
+	ccv_nnc_cmd_t cmd = CMD_REDUCE_MAX_FORWARD(1);
+	cmd.backend = CCV_NNC_BACKEND_MPS;
+	assert(cmd.backend >= 0);
+	const uint64_t old_flags = ccv_nnc_flags();
+	ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA);
+	ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(a), TENSOR_LIST(graph_b), 0);
+	ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA);
+	ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(a), TENSOR_LIST(mfa_b), 0);
+	if (old_flags & CCV_NNC_DISABLE_MFA)
+		ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA);
+	else
+		ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(graph_b, mfa_b), TENSOR_LIST(hgraph_b, hmfa_b), 0);
+	REQUIRE_ARRAY_EQ(uint32_t, (uint32_t*)hgraph_b->data.f32, (uint32_t*)hmfa_b->data.f32, rows, "MFA reduce max should match MPSGraph NaN behavior exactly");
+	REQUIRE(isinf(hmfa_b->data.f32[0]) && hmfa_b->data.f32[0] < 0, "an all-NaN row should reduce to negative infinity");
+	REQUIRE_EQ(7, hmfa_b->data.f32[1], "NaNs should be ignored when a finite maximum exists");
+	REQUIRE_EQ(11, hmfa_b->data.f32[2], "a later NaN should be ignored when a finite maximum exists");
+	REQUIRE(isinf(hmfa_b->data.f32[3]) && hmfa_b->data.f32[3] < 0, "an all-negative-infinity row should remain negative infinity");
+	ccv_nnc_tensor_free(ha);
+	ccv_nnc_tensor_free(a);
+	ccv_nnc_tensor_free(graph_b);
+	ccv_nnc_tensor_free(mfa_b);
+	ccv_nnc_tensor_free(hgraph_b);
+	ccv_nnc_tensor_free(hmfa_b);
+}
+
 TEST_CASE("reduce min forward")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_REDUCE_MIN_FORWARD, CCV_NNC_BACKEND_MPS));

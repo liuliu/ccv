@@ -21,6 +21,39 @@ static int _ccv_nnc_reduce_max_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 	for (i = 0; noop && i < a_nd; i++)
 		noop = btv.info.dim[i] != atv.info.dim[i];
 	@autoreleasepool {
+		ccv_nnc_mfa_context_t* const context = ccv_nnc_default_mfa_context();
+		const int axis = cmd.info.reduce.axis[0];
+		if (cmd.info.reduce.count == 1 && a_nd >= 1 && axis == a_nd - 1 &&
+			(atv.info.datatype == CCV_32F || atv.info.datatype == CCV_16F) &&
+			btv.info.datatype == atv.info.datatype &&
+			CCV_IS_TENSOR_CONTIGUOUS(inputs[0]) && CCV_IS_TENSOR_CONTIGUOUS(outputs[0]) &&
+			ccv_nnc_mfa_context_supported(context) && !(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA))
+		{
+			const size_t column_count = atv.info.dim[axis];
+			const size_t a_count = ccv_nnc_tensor_count(atv.info);
+			const size_t row_count = column_count > 0 ? a_count / column_count : 0;
+			if (column_count >= 128 && a_count % column_count == 0 && row_count > 0 &&
+				row_count <= UINT32_MAX && column_count <= UINT32_MAX &&
+				ccv_nnc_tensor_count(btv.info) == row_count)
+			{
+				const ccv_nnc_mfa_reduce_max_params_t params = {
+					.data_type = atv.info.datatype == CCV_16F ? 16 : 3,
+					.row_count = (uint32_t)row_count,
+					.column_count = (uint32_t)column_count,
+				};
+				ccv_nnc_mfa_prepare_reduce_max(context, params);
+				mtl_command_batch_t* const command_batch = ccv_nnc_stream_context_start_command_batch(stream_context);
+				mtl_buffer_t* tensors[3] = {
+					mpgetbuffer(inputs[0]), mpgetbuffer(outputs[0]), NULL,
+				};
+				size_t tensor_offsets[2] = {
+					(size_t)mpgetoffset(inputs[0]), (size_t)mpgetoffset(outputs[0]),
+				};
+				ccv_nnc_mfa_encode_reduce_max(context, params, command_batch, tensors, tensor_offsets);
+				ccv_nnc_stream_context_finish_command_batch(stream_context, command_batch);
+				return CCV_NNC_EXEC_SUCCESS;
+			}
+		}
 		MPSCommandBuffer* command_buffer = ccv_nnc_stream_context_start_mps_command_buffer(stream_context);
 		if (noop)
 		{

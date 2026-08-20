@@ -134,6 +134,10 @@
 #define CMD_CLAMP_FORWARD(_min, _max) ccv_nnc_cmd(CCV_NNC_CLAMP_FORWARD, 0, (ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.clamp={.min=_min,.max=_max}}, 0)
 // CCV_NNC_CLAMP_BACKWARD
 #define CMD_CLAMP_BACKWARD(_min, _max) ccv_nnc_cmd(CCV_NNC_CLAMP_BACKWARD, 0, (ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.clamp={.min=_min,.max=_max}}, 0)
+// CCV_NNC_FILL_IF_LESS_THAN_FORWARD
+#define CMD_FILL_IF_LESS_THAN_FORWARD(_fill) ccv_nnc_cmd(CCV_NNC_FILL_IF_LESS_THAN_FORWARD, 0, (ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.fill_if_less_than={.value=_fill}}, 0)
+// CCV_NNC_FILL_IF_LESS_THAN_BACKWARD
+#define CMD_FILL_IF_LESS_THAN_BACKWARD(_fill) ccv_nnc_cmd(CCV_NNC_FILL_IF_LESS_THAN_BACKWARD, 0, (ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.fill_if_less_than={.value=_fill}}, 0)
 // CCV_NNC_GATED_DELTA_FORWARD
 #define CMD_GATED_DELTA_FORWARD_X_F(...) ("This should not be used, you should have 2 parameters for CMD_GATED_DELTA_FORWARD")
 #define CMD_GATED_DELTA_FORWARD_X_2(_log_decay, _state_checkpoint_count) ccv_nnc_cmd(CCV_NNC_GATED_DELTA_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.gated_delta={.log_decay=(_log_decay),.state_checkpoint_count=(_state_checkpoint_count)}}), 0)

@@ -16,6 +16,8 @@ SRCS += ccv_nnc_mfa_scatter_add.cpp kernels/ScatterAddDescriptor.cpp kernels/Sca
 
 SRCS += ccv_nnc_mfa_argmax.cpp kernels/ArgmaxDescriptor.cpp kernels/ArgmaxKernel.cpp
 
+SRCS += ccv_nnc_mfa_reduce_max.cpp kernels/ReduceMaxDescriptor.cpp kernels/ReduceMaxKernel.cpp
+
 SRCS += ccv_nnc_mfa_fill_if_less_than.cpp kernels/FillIfLessThanDescriptor.cpp kernels/FillIfLessThanKernel.cpp
 
 SRC_OBJS := $(patsubst %.c,%.o,$(patsubst %.cpp,%.o,$(patsubst %.mm,%.o,$(SRCS))))
