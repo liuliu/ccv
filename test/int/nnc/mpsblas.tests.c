@@ -5143,9 +5143,126 @@ TEST_CASE("clamp forward with only min")
 	ccv_nnc_tensor_free(bt);
 }
 
+TEST_CASE("fill if less than MFA supports float, half, and bfloat forward, backward, and in-place")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_FILL_IF_LESS_THAN_FORWARD, CCV_NNC_BACKEND_MPS));
+	GUARD_ELSE_RETURN(ccv_nnc_mfa_context_supported(ccv_nnc_default_mfa_context()));
+	const uint64_t old_flags = ccv_nnc_flags();
+	ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M);
+	const int datatypes[] = { CCV_32F, CCV_16F, CCV_16BF };
+	const int lengths[] = { 1024, 1020, 1019 };
+	float input_values[1024];
+	float selector_values[1024];
+	dsfmt_t dsfmt;
+	dsfmt_init_gen_rand(&dsfmt, 2);
+	int i;
+	for (i = 0; i < 1024; i++)
+	{
+		input_values[i] = dsfmt_genrand_open_close(&dsfmt) * 10 - 5;
+		selector_values[i] = dsfmt_genrand_open_close(&dsfmt) * 4 - 2;
+	}
+	const float threshold_value = 0.375;
+	selector_values[0] = threshold_value;
+	int d, l;
+	for (d = 0; d < 3; d++)
+		for (l = 0; l < 3; l++)
+		{
+			const int datatype = datatypes[d];
+			const int length = lengths[l];
+			ccv_nnc_tensor_param_t cpu_params = CPU_TENSOR_NHWC(32F, length);
+			cpu_params.datatype = datatype;
+			ccv_nnc_tensor_param_t gpu_params = GPU_TENSOR_NHWC(000, 32F, length);
+			gpu_params.datatype = datatype;
+			ccv_nnc_tensor_param_t cpu_threshold_params = CPU_TENSOR_NHWC(32F, 1);
+			cpu_threshold_params.datatype = datatype;
+			ccv_nnc_tensor_param_t gpu_threshold_params = GPU_TENSOR_NHWC(000, 32F, 1);
+			gpu_threshold_params.datatype = datatype;
+			ccv_nnc_tensor_t* const hinput = ccv_nnc_tensor_new(0, cpu_params, 0);
+			ccv_nnc_tensor_t* const hselector = ccv_nnc_tensor_new(0, cpu_params, 0);
+			ccv_nnc_tensor_t* const hthreshold = ccv_nnc_tensor_new(0, cpu_threshold_params, 0);
+			ccv_nnc_tensor_t* const hexpected_forw = ccv_nnc_tensor_new(0, cpu_params, 0);
+			ccv_nnc_tensor_t* const hexpected_back = ccv_nnc_tensor_new(0, cpu_params, 0);
+			ccv_nnc_tensor_t* const hactual_forw = ccv_nnc_tensor_new(0, cpu_params, 0);
+			ccv_nnc_tensor_t* const hactual_inplace = ccv_nnc_tensor_new(0, cpu_params, 0);
+			ccv_nnc_tensor_t* const hactual_back = ccv_nnc_tensor_new(0, cpu_params, 0);
+			ccv_nnc_tensor_t* const input = ccv_nnc_tensor_new(0, gpu_params, 0);
+			ccv_nnc_tensor_t* const inplace = ccv_nnc_tensor_new(0, gpu_params, 0);
+			ccv_nnc_tensor_t* const selector = ccv_nnc_tensor_new(0, gpu_params, 0);
+			ccv_nnc_tensor_t* const threshold = ccv_nnc_tensor_new(0, gpu_threshold_params, 0);
+			ccv_nnc_tensor_t* const output = ccv_nnc_tensor_new(0, gpu_params, 0);
+			ccv_nnc_tensor_t* const back = ccv_nnc_tensor_new(0, gpu_params, 0);
+			if (datatype == CCV_32F)
+			{
+				memcpy(hinput->data.f32, input_values, sizeof(float) * length);
+				memcpy(hselector->data.f32, selector_values, sizeof(float) * length);
+				hthreshold->data.f32[0] = threshold_value;
+			} else if (datatype == CCV_16F) {
+				ccv_float_to_half_precision(input_values, (uint16_t*)hinput->data.f16, length);
+				ccv_float_to_half_precision(selector_values, (uint16_t*)hselector->data.f16, length);
+				ccv_float_to_half_precision(&threshold_value, (uint16_t*)hthreshold->data.f16, 1);
+			} else {
+				ccv_float_to_bfloat(input_values, (uint16_t*)hinput->data.f16, length);
+				ccv_float_to_bfloat(selector_values, (uint16_t*)hselector->data.f16, length);
+				ccv_float_to_bfloat(&threshold_value, (uint16_t*)hthreshold->data.f16, 1);
+			}
+			REQUIRE_EQ(CCV_NNC_EXEC_SUCCESS, ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(hinput, hinput, hselector, hthreshold), TENSOR_LIST(input, inplace, selector, threshold), 0), "datatype %d inputs should transfer to Metal", datatype);
+			ccv_nnc_cmd_t forw = CMD_FILL_IF_LESS_THAN_FORWARD(-INFINITY);
+			forw.backend = CCV_NNC_BACKEND_MPS;
+			ccv_nnc_cmd_t back_cmd = CMD_FILL_IF_LESS_THAN_BACKWARD(-INFINITY);
+			back_cmd.backend = CCV_NNC_BACKEND_MPS;
+			ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA);
+			REQUIRE_EQ(CCV_NNC_EXEC_SUCCESS, ccv_nnc_cmd_exec(forw, ccv_nnc_no_hint, 0, TENSOR_LIST(input, selector, threshold), TENSOR_LIST(output), 0), "MPSGraph forward should execute for datatype %d length %d", datatype, length);
+			REQUIRE_EQ(CCV_NNC_EXEC_SUCCESS, ccv_nnc_cmd_exec(back_cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(input, 0, selector, threshold), TENSOR_LIST(back), 0), "MPSGraph backward should execute for datatype %d length %d", datatype, length);
+			REQUIRE_EQ(CCV_NNC_EXEC_SUCCESS, ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(output, back), TENSOR_LIST(hexpected_forw, hexpected_back), 0), "MPSGraph results should transfer to CPU");
+			ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA);
+			if (l == 2)
+				ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M);
+			else
+				ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M);
+			REQUIRE_EQ(CCV_NNC_EXEC_SUCCESS, ccv_nnc_cmd_exec(forw, ccv_nnc_no_hint, 0, TENSOR_LIST(input, selector, threshold), TENSOR_LIST(output), 0), "MFA forward should execute for datatype %d length %d", datatype, length);
+			REQUIRE_EQ(CCV_NNC_EXEC_SUCCESS, ccv_nnc_cmd_exec(forw, ccv_nnc_no_hint, 0, TENSOR_LIST(inplace, selector, threshold), TENSOR_LIST(inplace), 0), "MFA in-place forward should execute for datatype %d length %d", datatype, length);
+			REQUIRE_EQ(CCV_NNC_EXEC_SUCCESS, ccv_nnc_cmd_exec(back_cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(input, 0, selector, threshold), TENSOR_LIST(back), 0), "MFA backward should execute for datatype %d length %d", datatype, length);
+			REQUIRE_EQ(CCV_NNC_EXEC_SUCCESS, ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(output, inplace, back), TENSOR_LIST(hactual_forw, hactual_inplace, hactual_back), 0), "MFA results should transfer to CPU");
+			if (datatype == CCV_32F)
+			{
+				REQUIRE_ARRAY_EQ(float, hexpected_forw->data.f32, hactual_forw->data.f32, length, "MFA float forward should match MPSGraph");
+				REQUIRE_ARRAY_EQ(float, hexpected_forw->data.f32, hactual_inplace->data.f32, length, "in-place MFA float forward should match MPSGraph");
+				REQUIRE_ARRAY_EQ(float, hexpected_back->data.f32, hactual_back->data.f32, length, "MFA float backward should match MPSGraph");
+			} else {
+				REQUIRE_ARRAY_EQ(uint16_t, (uint16_t*)hexpected_forw->data.f16, (uint16_t*)hactual_forw->data.f16, length, "MFA 16-bit forward should match MPSGraph for datatype %d", datatype);
+				REQUIRE_ARRAY_EQ(uint16_t, (uint16_t*)hexpected_forw->data.f16, (uint16_t*)hactual_inplace->data.f16, length, "in-place MFA 16-bit forward should match MPSGraph for datatype %d", datatype);
+				REQUIRE_ARRAY_EQ(uint16_t, (uint16_t*)hexpected_back->data.f16, (uint16_t*)hactual_back->data.f16, length, "MFA 16-bit backward should match MPSGraph for datatype %d", datatype);
+			}
+			ccv_nnc_tensor_free(back);
+			ccv_nnc_tensor_free(output);
+			ccv_nnc_tensor_free(threshold);
+			ccv_nnc_tensor_free(selector);
+			ccv_nnc_tensor_free(inplace);
+			ccv_nnc_tensor_free(input);
+			ccv_nnc_tensor_free(hactual_back);
+			ccv_nnc_tensor_free(hactual_inplace);
+			ccv_nnc_tensor_free(hactual_forw);
+			ccv_nnc_tensor_free(hexpected_back);
+			ccv_nnc_tensor_free(hexpected_forw);
+			ccv_nnc_tensor_free(hthreshold);
+			ccv_nnc_tensor_free(hselector);
+			ccv_nnc_tensor_free(hinput);
+		}
+	if (old_flags & CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M)
+		ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M);
+	else
+		ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M);
+	if (old_flags & CCV_NNC_DISABLE_MFA)
+		ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA);
+	else
+		ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA);
+}
+
 TEST_CASE("fill if less than forward with dynamic broadcast threshold on mps")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_FILL_IF_LESS_THAN_FORWARD, CCV_NNC_BACKEND_MPS));
+	const uint64_t old_flags = ccv_nnc_flags();
+	ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA);
 	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 5, 17, 19), 0);
 	ccv_nnc_tensor_t* const selector = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 17, 1), 0);
 	ccv_nnc_tensor_t* const threshold = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 1, 19), 0);
@@ -5182,11 +5299,17 @@ TEST_CASE("fill if less than forward with dynamic broadcast threshold on mps")
 	ccv_nnc_tensor_free(hthreshold);
 	ccv_nnc_tensor_free(hb);
 	ccv_nnc_tensor_free(bt);
+	if (old_flags & CCV_NNC_DISABLE_MFA)
+		ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA);
+	else
+		ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA);
 }
 
 TEST_CASE("fill if less than backward with dynamic broadcast threshold on mps")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_FILL_IF_LESS_THAN_BACKWARD, CCV_NNC_BACKEND_MPS));
+	const uint64_t old_flags = ccv_nnc_flags();
+	ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA);
 	ccv_nnc_tensor_t* const g = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 5, 17, 19), 0);
 	ccv_nnc_tensor_t* const selector = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 17, 1), 0);
 	ccv_nnc_tensor_t* const threshold = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 1, 19), 0);
@@ -5220,6 +5343,10 @@ TEST_CASE("fill if less than backward with dynamic broadcast threshold on mps")
 	ccv_nnc_tensor_free(hthreshold);
 	ccv_nnc_tensor_free(hh);
 	ccv_nnc_tensor_free(ht);
+	if (old_flags & CCV_NNC_DISABLE_MFA)
+		ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA);
+	else
+		ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA);
 }
 
 TEST_CASE("compare set with mps")
