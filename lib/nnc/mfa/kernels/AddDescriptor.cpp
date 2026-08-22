@@ -11,6 +11,7 @@ bool AddDescriptor::operator==(const AddDescriptor& rhs) const {
   loadM == rhs.loadM &&
   negative_mask == rhs.negative_mask &&
   broadcast == rhs.broadcast &&
+  scaled_mask == rhs.scaled_mask &&
   (loadM || length == rhs.length);
 }
 
@@ -20,6 +21,7 @@ std::size_t std::hash<AddDescriptor>::operator()(const AddDescriptor& hash) cons
   combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.memoryPrecision.value, (unsigned int)hash.value }));
   combine_64(seed, pack_64(simd::uint2 { hash.loadM ? 0 : (unsigned int)hash.length, (unsigned int)hash.args }));
   combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.negative_mask, (unsigned int)hash.broadcast }));
+  combine_32(seed, (unsigned int)hash.scaled_mask);
   combine_32(seed, hash.loadM ? 1 : 0);
   return seed;
 }
@@ -46,6 +48,7 @@ std::pair<AddKernelDescriptor, PipelineValue<AddKernel> *> AddDescriptor::findKe
   kernelDesc.loadM = loadM;
   kernelDesc.negative_mask = negative_mask;
   kernelDesc.broadcast = broadcast;
+  kernelDesc.scaled_mask = scaled_mask;
   kernelDesc.memoryPrecision = memoryPrecision;
 
   // WARNING: The owner must explicitly retain the compute pipeline.

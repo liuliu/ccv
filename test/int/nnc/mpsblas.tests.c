@@ -5143,6 +5143,74 @@ TEST_CASE("clamp forward with only min")
 	ccv_nnc_tensor_free(bt);
 }
 
+TEST_CASE("MFA scalar multiply matches MPSGraph across data types and dispatch variants")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SCALAR_MUL_FORWARD, CCV_NNC_BACKEND_MPS));
+	GUARD_ELSE_RETURN(ccv_nnc_mfa_context_supported(ccv_nnc_default_mfa_context()));
+	const int datatypes[] = { CCV_32F, CCV_16F, CCV_16BF };
+	const int lengths[] = { 1024, 1020, 1019 };
+	const float scales[] = { 1, -1, 1.f / 0.7f };
+	float values[1024];
+	int i;
+	for (i = 0; i < 1024; i++)
+		values[i] = (float)((i * 37 + 11) % 4093) / 128 - 16;
+	const uint64_t old_flags = ccv_nnc_flags();
+	int d, l;
+	for (d = 0; d < 3; d++)
+		for (l = 0; l < 3; l++)
+		{
+			const int datatype = datatypes[d];
+			const int length = lengths[l];
+			ccv_nnc_cmd_t cmd = CMD_SCALAR_MUL_FORWARD(scales[l]);
+			cmd.backend = CCV_NNC_BACKEND_MPS;
+			ccv_nnc_tensor_param_t cpu_params = CPU_TENSOR_NHWC(32F, length);
+			cpu_params.datatype = datatype;
+			ccv_nnc_tensor_param_t gpu_params = GPU_TENSOR_NHWC(000, 32F, length);
+			gpu_params.datatype = datatype;
+			ccv_nnc_tensor_t* const hinput = ccv_nnc_tensor_new(0, cpu_params, 0);
+			ccv_nnc_tensor_t* const hgraph = ccv_nnc_tensor_new(0, cpu_params, 0);
+			ccv_nnc_tensor_t* const hmfa = ccv_nnc_tensor_new(0, cpu_params, 0);
+			ccv_nnc_tensor_t* const input = ccv_nnc_tensor_new(0, gpu_params, 0);
+			ccv_nnc_tensor_t* const graph = ccv_nnc_tensor_new(0, gpu_params, 0);
+			ccv_nnc_tensor_t* const mfa = ccv_nnc_tensor_new(0, gpu_params, 0);
+			if (datatype == CCV_32F)
+				memcpy(hinput->data.f32, values, sizeof(float) * length);
+			else if (datatype == CCV_16F)
+				ccv_float_to_half_precision(values, (uint16_t*)hinput->data.f16, length);
+			else
+				ccv_float_to_bfloat(values, (uint16_t*)hinput->data.f16, length);
+			REQUIRE_EQ(CCV_NNC_EXEC_SUCCESS, ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(hinput), TENSOR_LIST(input), 0), "datatype %d input should transfer to Metal", datatype);
+			ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA);
+			REQUIRE_EQ(CCV_NNC_EXEC_SUCCESS, ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(input), TENSOR_LIST(graph), 0), "MPSGraph scalar multiply should execute for datatype %d length %d", datatype, length);
+			ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA);
+			if (l == 2)
+				ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M);
+			else
+				ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M);
+			REQUIRE_EQ(CCV_NNC_EXEC_SUCCESS, ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(input), TENSOR_LIST(mfa), 0), "MFA scalar multiply should execute for datatype %d length %d", datatype, length);
+			REQUIRE_EQ(CCV_NNC_EXEC_SUCCESS, ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(graph, mfa), TENSOR_LIST(hgraph, hmfa), 0), "scalar multiply results should transfer to CPU");
+			if (datatype == CCV_32F) {
+				REQUIRE_ARRAY_EQ(float, hgraph->data.f32, hmfa->data.f32, length, "MFA float scalar multiply should exactly match MPSGraph");
+			} else {
+				REQUIRE_ARRAY_EQ(uint16_t, (uint16_t*)hgraph->data.f16, (uint16_t*)hmfa->data.f16, length, "MFA 16-bit scalar multiply should exactly match MPSGraph for datatype %d", datatype);
+			}
+			ccv_nnc_tensor_free(mfa);
+			ccv_nnc_tensor_free(graph);
+			ccv_nnc_tensor_free(input);
+			ccv_nnc_tensor_free(hmfa);
+			ccv_nnc_tensor_free(hgraph);
+			ccv_nnc_tensor_free(hinput);
+		}
+	if (old_flags & CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M)
+		ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M);
+	else
+		ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M);
+	if (old_flags & CCV_NNC_DISABLE_MFA)
+		ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA);
+	else
+		ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA);
+}
+
 TEST_CASE("MFA subtraction and scalar broadcast match MPSGraph across data types and dispatch variants")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_ADD_FORWARD, CCV_NNC_BACKEND_MPS));
@@ -5248,6 +5316,88 @@ TEST_CASE("MFA subtraction and scalar broadcast match MPSGraph across data types
 		ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA);
 	else
 		ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA);
+}
+
+TEST_CASE("Qwen vocabulary half precision MFA arithmetic matches MPSGraph")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_ADD_FORWARD, CCV_NNC_BACKEND_MPS));
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SCALAR_MUL_FORWARD, CCV_NNC_BACKEND_MPS));
+	GUARD_ELSE_RETURN(ccv_nnc_mfa_context_supported(ccv_nnc_default_mfa_context()));
+	const int length = 248320;
+	ccv_nnc_tensor_t* const ha = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, 1, length), 0);
+	ccv_nnc_tensor_t* const hb = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, 1, length), 0);
+	ccv_nnc_tensor_t* const hs = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, 1, 1), 0);
+	float* const values = (float*)ccmalloc(sizeof(float) * length);
+	float* const other_values = (float*)ccmalloc(sizeof(float) * length);
+	int i;
+	for (i = 0; i < length; i++)
+	{
+		values[i] = (float)((i * 37) % 4093) / 128 - 16;
+		other_values[i] = (float)((i * 73 + 19) % 2039) / 256 - 4;
+	}
+	ccv_float_to_half_precision(values, (uint16_t*)ha->data.f16, length);
+	ccv_float_to_half_precision(other_values, (uint16_t*)hb->data.f16, length);
+	const float scalar = 2.25f;
+	ccv_float_to_half_precision(&scalar, (uint16_t*)hs->data.f16, 1);
+	ccfree(values);
+	ccfree(other_values);
+	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, 1, length), 0);
+	ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, 1, length), 0);
+	ccv_nnc_tensor_t* const s = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, 1, 1), 0);
+	ccv_nnc_tensor_t* const graph_scale = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, 1, length), 0);
+	ccv_nnc_tensor_t* const mfa_scale = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, 1, length), 0);
+	ccv_nnc_tensor_t* const graph_broadcast = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, 1, length), 0);
+	ccv_nnc_tensor_t* const mfa_broadcast = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, 1, length), 0);
+	ccv_nnc_tensor_t* const graph_subtract = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, 1, length), 0);
+	ccv_nnc_tensor_t* const mfa_subtract = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, 1, length), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha, hb, hs), TENSOR_LIST(a, b, s), 0);
+	ccv_nnc_cmd_t scale_cmd = CMD_SCALAR_MUL_FORWARD(1.f / 0.7f);
+	scale_cmd.backend = CCV_NNC_BACKEND_MPS;
+	ccv_nnc_cmd_t subtract_cmd = CMD_ADD_FORWARD(1, -1);
+	subtract_cmd.backend = CCV_NNC_BACKEND_MPS;
+	const uint64_t old_flags = ccv_nnc_flags();
+	ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA);
+	REQUIRE_EQ(CCV_NNC_EXEC_SUCCESS, ccv_nnc_cmd_exec(scale_cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(a), TENSOR_LIST(graph_scale), 0), "MPSGraph scalar multiply should execute");
+	REQUIRE_EQ(CCV_NNC_EXEC_SUCCESS, ccv_nnc_cmd_exec(subtract_cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(a, s), TENSOR_LIST(graph_broadcast), 0), "MPSGraph broadcast subtraction should execute");
+	REQUIRE_EQ(CCV_NNC_EXEC_SUCCESS, ccv_nnc_cmd_exec(subtract_cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(a, b), TENSOR_LIST(graph_subtract), 0), "MPSGraph subtraction should execute");
+	ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA);
+	REQUIRE_EQ(CCV_NNC_EXEC_SUCCESS, ccv_nnc_cmd_exec(scale_cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(a), TENSOR_LIST(mfa_scale), 0), "MFA scalar multiply should execute");
+	REQUIRE_EQ(CCV_NNC_EXEC_SUCCESS, ccv_nnc_cmd_exec(subtract_cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(a, s), TENSOR_LIST(mfa_broadcast), 0), "MFA broadcast subtraction should execute");
+	REQUIRE_EQ(CCV_NNC_EXEC_SUCCESS, ccv_nnc_cmd_exec(subtract_cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(a, b), TENSOR_LIST(mfa_subtract), 0), "MFA subtraction should execute");
+	if (old_flags & CCV_NNC_DISABLE_MFA)
+		ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA);
+	else
+		ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA);
+	ccv_nnc_tensor_t* const hgraph_scale = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, 1, length), 0);
+	ccv_nnc_tensor_t* const hmfa_scale = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, 1, length), 0);
+	ccv_nnc_tensor_t* const hgraph_broadcast = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, 1, length), 0);
+	ccv_nnc_tensor_t* const hmfa_broadcast = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, 1, length), 0);
+	ccv_nnc_tensor_t* const hgraph_subtract = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, 1, length), 0);
+	ccv_nnc_tensor_t* const hmfa_subtract = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, 1, length), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0,
+		TENSOR_LIST(graph_scale, mfa_scale, graph_broadcast, mfa_broadcast, graph_subtract, mfa_subtract),
+		TENSOR_LIST(hgraph_scale, hmfa_scale, hgraph_broadcast, hmfa_broadcast, hgraph_subtract, hmfa_subtract), 0);
+	REQUIRE_ARRAY_EQ(uint16_t, (uint16_t*)hgraph_scale->data.f16, (uint16_t*)hmfa_scale->data.f16, length, "MFA scalar multiply should exactly match MPSGraph");
+	REQUIRE_ARRAY_EQ(uint16_t, (uint16_t*)hgraph_broadcast->data.f16, (uint16_t*)hmfa_broadcast->data.f16, length, "MFA scalar broadcast subtraction should exactly match MPSGraph");
+	REQUIRE_ARRAY_EQ(uint16_t, (uint16_t*)hgraph_subtract->data.f16, (uint16_t*)hmfa_subtract->data.f16, length, "MFA subtraction should exactly match MPSGraph");
+	ccv_nnc_tensor_free(ha);
+	ccv_nnc_tensor_free(hb);
+	ccv_nnc_tensor_free(hs);
+	ccv_nnc_tensor_free(a);
+	ccv_nnc_tensor_free(b);
+	ccv_nnc_tensor_free(s);
+	ccv_nnc_tensor_free(graph_scale);
+	ccv_nnc_tensor_free(mfa_scale);
+	ccv_nnc_tensor_free(graph_broadcast);
+	ccv_nnc_tensor_free(mfa_broadcast);
+	ccv_nnc_tensor_free(graph_subtract);
+	ccv_nnc_tensor_free(mfa_subtract);
+	ccv_nnc_tensor_free(hgraph_scale);
+	ccv_nnc_tensor_free(hmfa_scale);
+	ccv_nnc_tensor_free(hgraph_broadcast);
+	ccv_nnc_tensor_free(hmfa_broadcast);
+	ccv_nnc_tensor_free(hgraph_subtract);
+	ccv_nnc_tensor_free(hmfa_subtract);
 }
 
 TEST_CASE("MFA half precision log and clamp match MPSGraph across dispatch variants")

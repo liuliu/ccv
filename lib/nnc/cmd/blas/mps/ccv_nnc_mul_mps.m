@@ -309,6 +309,31 @@ static int _ccv_nnc_scalar_mul_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 	const ccv_nnc_tensor_view_t* const a = (const ccv_nnc_tensor_view_t*)inputs[0];
 	ccv_nnc_tensor_view_t* const c = (ccv_nnc_tensor_view_t*)outputs[0];
 	@autoreleasepool {
+		ccv_nnc_mfa_context_t* const context = ccv_nnc_default_mfa_context();
+		const size_t count = ccv_nnc_tensor_count(a->info);
+		const uint32_t mtl_data_type = a->info.datatype == CCV_32F ? 3 : (a->info.datatype == CCV_16F ? 16 : (a->info.datatype == CCV_16BF ? 121 : UINT32_MAX));
+		if (a->info.datatype == c->info.datatype && ccv_nnc_tensor_count(c->info) == count &&
+			mtl_data_type != UINT32_MAX && count > 0 && count <= UINT32_MAX &&
+			CCV_IS_TENSOR_CONTIGUOUS(a) && CCV_IS_TENSOR_CONTIGUOUS(c) && ccv_nnc_mfa_context_supported(context) &&
+			!(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA))
+		{
+			const ccv_nnc_mfa_add_params_t params = {
+				.data_type = mtl_data_type,
+				.args = 1,
+				.length = (uint32_t)count,
+				.loadM = !!(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M),
+				.negative_mask = 0,
+				.scaled_mask = 1,
+				.scales = { p },
+			};
+			ccv_nnc_mfa_prepare_add(context, params);
+			mtl_command_batch_t* const command_batch = ccv_nnc_stream_context_start_command_batch(stream_context);
+			mtl_buffer_t* tensors[3] = { mpgetbuffer(inputs[0]), mpgetbuffer(outputs[0]), NULL };
+			size_t tensor_offsets[2] = { a->dataof, c->dataof };
+			ccv_nnc_mfa_encode_add(context, params, command_batch, tensors, tensor_offsets);
+			ccv_nnc_stream_context_finish_command_batch(stream_context, command_batch);
+			return CCV_NNC_EXEC_SUCCESS;
+		}
 		MPSCommandBuffer* command_buffer = ccv_nnc_stream_context_start_mps_command_buffer(stream_context);
 		if (p == 1)
 		{

@@ -25,6 +25,8 @@ struct AddKernel {
 
   uint8_t broadcast;
 
+  uint8_t scaled_mask;
+
   GEMMOperandPrecision memoryPrecision;
 
   AddKernel(AddKernelDescriptor descriptor, MTL::Device *const device);

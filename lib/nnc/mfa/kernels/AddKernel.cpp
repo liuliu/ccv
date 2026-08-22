@@ -16,6 +16,8 @@ AddKernel::AddKernel(AddKernelDescriptor descriptor, MTL::Device *const device) 
 
   broadcast = descriptor.broadcast;
 
+  scaled_mask = descriptor.scaled_mask;
+
   memoryPrecision = descriptor.memoryPrecision;
 
   source = createSource();
@@ -54,12 +56,15 @@ std::string AddKernel::createSource() const noexcept {
     const bool scalar = i < 8 && (broadcast & (1u << i));
     const bool subtract = i < 8 && (negative_mask & (1u << i));
     std::string item = "src" + std::to_string(i) + (scalar ? "[0]" : "[idx]");
+    if (i < 8 && (scaled_mask & (1u << i)))
+      item = "(" + (vectorized ? std::string("real4") : std::string("real")) + "(scales[" + std::to_string(i) + "]) * " + item + ")";
     if (i == 0)
       items += subtract ? "-" + item : item;
     else
       items += subtract ? " - " + item : " + " + item;
   }
   source.SetValue("SOURCE_ITEMS", items);
+  source.SetValue("SCALES", scaled_mask ? "  constant real *scales [[buffer(" + std::to_string(args + 1) + ")]],\n" : "");
   if (value == 0) {
     source += R"(
 #include <metal_stdlib>
@@ -68,6 +73,8 @@ using namespace metal;
 kernel void add(
   {{SOURCE_BUFFERS}}
   device real4 *destination [[buffer({{DESTINATION_INDEX}})]],
+
+{{SCALES}}
 
   uint3 tpig [[thread_position_in_grid]]
 ) {
@@ -83,6 +90,8 @@ using namespace metal;
 kernel void add(
   {{SOURCE_BUFFERS}}
   device real4 *destination [[buffer({{DESTINATION_INDEX}})]],
+
+{{SCALES}}
 
   uint3 tpig [[thread_position_in_grid]]
 ) {
@@ -101,6 +110,8 @@ kernel void add(
   {{SOURCE_BUFFERS}}
   device real *destination [[buffer({{DESTINATION_INDEX}})]],
 
+{{SCALES}}
+
   uint3 tpig [[thread_position_in_grid]]
 ) {
   const uint idx = tpig.x;
@@ -114,7 +125,7 @@ kernel void add(
   if (loadM) {
     const std::string::size_type argumentPosition = shader.find("  uint3 tpig [[thread_position_in_grid]]");
     CCV_NNC_MFA_PRECONDITION(argumentPosition != std::string::npos);
-    shader.insert(argumentPosition, "  const device uint *loadM [[buffer(" + std::to_string(args + 1) + ")]],\n");
+    shader.insert(argumentPosition, "  const device uint *loadM [[buffer(" + std::to_string(args + 1 + (scaled_mask ? 1 : 0)) + ")]],\n");
     const std::string::size_type countPosition = shader.find("  const uint idx = tpig.x;");
     CCV_NNC_MFA_PRECONDITION(countPosition != std::string::npos);
     shader.insert(countPosition, "  const uniform<uint> count = make_uniform(loadM[0]);\n");

@@ -8,6 +8,8 @@ typedef struct {
   uint8_t loadM;
   uint8_t negative_mask;
   uint8_t broadcast;
+  uint8_t scaled_mask;
+  float scales[8];
 } ccv_nnc_mfa_add_params_t;
 
 #ifdef __cplusplus
