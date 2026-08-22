@@ -40,6 +40,8 @@ extern "C" {
 #include "ccv_nnc_mfa_swish.hpp"
 #include "ccv_nnc_mfa_swish_mul.hpp"
 #include "ccv_nnc_mfa_exp.hpp"
+#include "ccv_nnc_mfa_log.hpp"
+#include "ccv_nnc_mfa_clamp.hpp"
 #include "ccv_nnc_mfa_fill_if_less_than.hpp"
 #include "ccv_nnc_mfa_reduce_max.hpp"
 #include "ccv_nnc_mfa_reduce_logsumexp.hpp"

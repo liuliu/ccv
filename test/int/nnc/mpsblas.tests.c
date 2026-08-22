@@ -5143,6 +5143,160 @@ TEST_CASE("clamp forward with only min")
 	ccv_nnc_tensor_free(bt);
 }
 
+TEST_CASE("MFA half precision log and clamp match MPSGraph across dispatch variants")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_EWLOG_FORWARD, CCV_NNC_BACKEND_MPS));
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_CLAMP_FORWARD, CCV_NNC_BACKEND_MPS));
+	GUARD_ELSE_RETURN(ccv_nnc_mfa_context_supported(ccv_nnc_default_mfa_context()));
+	const int lengths[] = { 1024, 1020, 1019 };
+	float values[1024];
+	int i;
+	for (i = 0; i < 1024; i++)
+		values[i] = (float)((i * 43 + 7) % 2000 + 1) / 200;
+	values[0] = 0;
+	values[1] = INFINITY;
+	values[2] = NAN;
+	ccv_nnc_cmd_t log_cmd = CMD_EWLOG_FORWARD();
+	log_cmd.backend = CCV_NNC_BACKEND_MPS;
+	ccv_nnc_cmd_t clamp_cmd = CMD_CLAMP_FORWARD(0.137f, 4.731f);
+	clamp_cmd.backend = CCV_NNC_BACKEND_MPS;
+	const uint64_t old_flags = ccv_nnc_flags();
+	int l;
+	for (l = 0; l < 3; l++)
+	{
+		const int length = lengths[l];
+		ccv_nnc_tensor_t* const hinput = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, length), 0);
+		ccv_nnc_tensor_t* const hgraph_log = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, length), 0);
+		ccv_nnc_tensor_t* const hmfa_log = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, length), 0);
+		ccv_nnc_tensor_t* const hgraph_clamp = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, length), 0);
+		ccv_nnc_tensor_t* const hmfa_clamp = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, length), 0);
+		ccv_nnc_tensor_t* const input = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, length), 0);
+		ccv_nnc_tensor_t* const graph_log = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, length), 0);
+		ccv_nnc_tensor_t* const mfa_log = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, length), 0);
+		ccv_nnc_tensor_t* const graph_clamp = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, length), 0);
+		ccv_nnc_tensor_t* const mfa_clamp = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, length), 0);
+		ccv_float_to_half_precision(values, (uint16_t*)hinput->data.f16, length);
+		REQUIRE_EQ(CCV_NNC_EXEC_SUCCESS, ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(hinput), TENSOR_LIST(input), 0), "half input should transfer to Metal");
+		ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA);
+		REQUIRE_EQ(CCV_NNC_EXEC_SUCCESS, ccv_nnc_cmd_exec(log_cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(input), TENSOR_LIST(graph_log), 0), "MPSGraph log should execute for length %d", length);
+		REQUIRE_EQ(CCV_NNC_EXEC_SUCCESS, ccv_nnc_cmd_exec(clamp_cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(input), TENSOR_LIST(graph_clamp), 0), "MPSGraph clamp should execute for length %d", length);
+		ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA);
+		if (l == 2)
+			ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M);
+		else
+			ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M);
+		REQUIRE_EQ(CCV_NNC_EXEC_SUCCESS, ccv_nnc_cmd_exec(log_cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(input), TENSOR_LIST(mfa_log), 0), "MFA log should execute for length %d", length);
+		REQUIRE_EQ(CCV_NNC_EXEC_SUCCESS, ccv_nnc_cmd_exec(clamp_cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(input), TENSOR_LIST(mfa_clamp), 0), "MFA clamp should execute for length %d", length);
+		REQUIRE_EQ(CCV_NNC_EXEC_SUCCESS, ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(graph_log, mfa_log, graph_clamp, mfa_clamp), TENSOR_LIST(hgraph_log, hmfa_log, hgraph_clamp, hmfa_clamp), 0), "unary results should transfer to CPU");
+		REQUIRE_ARRAY_EQ(uint16_t, (uint16_t*)hgraph_log->data.f16, (uint16_t*)hmfa_log->data.f16, length, "MFA half log should exactly match MPSGraph");
+		REQUIRE_ARRAY_EQ(uint16_t, (uint16_t*)hgraph_clamp->data.f16, (uint16_t*)hmfa_clamp->data.f16, length, "MFA half clamp should exactly match MPSGraph");
+		ccv_nnc_tensor_free(mfa_clamp);
+		ccv_nnc_tensor_free(graph_clamp);
+		ccv_nnc_tensor_free(mfa_log);
+		ccv_nnc_tensor_free(graph_log);
+		ccv_nnc_tensor_free(input);
+		ccv_nnc_tensor_free(hmfa_clamp);
+		ccv_nnc_tensor_free(hgraph_clamp);
+		ccv_nnc_tensor_free(hmfa_log);
+		ccv_nnc_tensor_free(hgraph_log);
+		ccv_nnc_tensor_free(hinput);
+	}
+	if (old_flags & CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M)
+		ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M);
+	else
+		ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M);
+	if (old_flags & CCV_NNC_DISABLE_MFA)
+		ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA);
+	else
+		ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA);
+}
+
+TEST_CASE("Qwen vocabulary half precision MFA unary operations match MPSGraph")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_EWEXP_FORWARD, CCV_NNC_BACKEND_MPS));
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_EWLOG_FORWARD, CCV_NNC_BACKEND_MPS));
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_CLAMP_FORWARD, CCV_NNC_BACKEND_MPS));
+	GUARD_ELSE_RETURN(ccv_nnc_mfa_context_supported(ccv_nnc_default_mfa_context()));
+	const int length = 248320;
+	ccv_nnc_tensor_t* const hinput = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, 1, length), 0);
+	ccv_nnc_tensor_t* const hpositive = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, 1, length), 0);
+	float* const values = (float*)ccmalloc(sizeof(float) * length);
+	float* const positive_values = (float*)ccmalloc(sizeof(float) * length);
+	int i;
+	for (i = 0; i < length; i++)
+	{
+		values[i] = (float)((i * 29) % 2001) / 200 - 5;
+		positive_values[i] = (float)((i * 43) % 2000 + 1) / 200;
+	}
+	values[0] = -INFINITY;
+	values[1] = INFINITY;
+	values[2] = -0.f;
+	values[3] = NAN;
+	positive_values[0] = 0;
+	positive_values[1] = INFINITY;
+	positive_values[2] = NAN;
+	ccv_float_to_half_precision(values, (uint16_t*)hinput->data.f16, length);
+	ccv_float_to_half_precision(positive_values, (uint16_t*)hpositive->data.f16, length);
+	ccfree(values);
+	ccfree(positive_values);
+	ccv_nnc_tensor_t* const input = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, 1, length), 0);
+	ccv_nnc_tensor_t* const positive = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, 1, length), 0);
+	ccv_nnc_tensor_t* const inplace_clamp = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, 1, length), 0);
+	ccv_nnc_tensor_t* const graph_exp = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, 1, length), 0);
+	ccv_nnc_tensor_t* const mfa_exp = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, 1, length), 0);
+	ccv_nnc_tensor_t* const graph_log = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, 1, length), 0);
+	ccv_nnc_tensor_t* const mfa_log = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, 1, length), 0);
+	ccv_nnc_tensor_t* const graph_clamp = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, 1, length), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(hinput, hpositive, hinput), TENSOR_LIST(input, positive, inplace_clamp), 0);
+	ccv_nnc_cmd_t exp_cmd = CMD_EWEXP_FORWARD();
+	exp_cmd.backend = CCV_NNC_BACKEND_MPS;
+	ccv_nnc_cmd_t log_cmd = CMD_EWLOG_FORWARD();
+	log_cmd.backend = CCV_NNC_BACKEND_MPS;
+	ccv_nnc_cmd_t clamp_cmd = CMD_CLAMP_FORWARD(0, NAN);
+	clamp_cmd.backend = CCV_NNC_BACKEND_MPS;
+	const uint64_t old_flags = ccv_nnc_flags();
+	ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA);
+	ccv_nnc_cmd_exec(exp_cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(input), TENSOR_LIST(graph_exp), 0);
+	ccv_nnc_cmd_exec(log_cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(positive), TENSOR_LIST(graph_log), 0);
+	ccv_nnc_cmd_exec(clamp_cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(input), TENSOR_LIST(graph_clamp), 0);
+	ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA);
+	ccv_nnc_cmd_exec(exp_cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(input), TENSOR_LIST(mfa_exp), 0);
+	ccv_nnc_cmd_exec(log_cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(positive), TENSOR_LIST(mfa_log), 0);
+	ccv_nnc_cmd_exec(clamp_cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(inplace_clamp), TENSOR_LIST(inplace_clamp), 0);
+	if (old_flags & CCV_NNC_DISABLE_MFA)
+		ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA);
+	else
+		ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA);
+	ccv_nnc_tensor_t* const hgraph_exp = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, 1, length), 0);
+	ccv_nnc_tensor_t* const hmfa_exp = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, 1, length), 0);
+	ccv_nnc_tensor_t* const hgraph_log = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, 1, length), 0);
+	ccv_nnc_tensor_t* const hmfa_log = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, 1, length), 0);
+	ccv_nnc_tensor_t* const hgraph_clamp = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, 1, length), 0);
+	ccv_nnc_tensor_t* const hmfa_clamp = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, 1, length), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0,
+		TENSOR_LIST(graph_exp, mfa_exp, graph_log, mfa_log, graph_clamp, inplace_clamp),
+		TENSOR_LIST(hgraph_exp, hmfa_exp, hgraph_log, hmfa_log, hgraph_clamp, hmfa_clamp), 0);
+	REQUIRE_ARRAY_EQ(uint16_t, (uint16_t*)hgraph_exp->data.f16, (uint16_t*)hmfa_exp->data.f16, length, "MFA exp should exactly match MPSGraph");
+	REQUIRE_ARRAY_EQ(uint16_t, (uint16_t*)hgraph_log->data.f16, (uint16_t*)hmfa_log->data.f16, length, "MFA log should exactly match MPSGraph");
+	REQUIRE_ARRAY_EQ(uint16_t, (uint16_t*)hgraph_clamp->data.f16, (uint16_t*)hmfa_clamp->data.f16, length, "in-place MFA clamp should exactly match MPSGraph");
+	ccv_nnc_tensor_free(hinput);
+	ccv_nnc_tensor_free(hpositive);
+	ccv_nnc_tensor_free(input);
+	ccv_nnc_tensor_free(positive);
+	ccv_nnc_tensor_free(inplace_clamp);
+	ccv_nnc_tensor_free(graph_exp);
+	ccv_nnc_tensor_free(mfa_exp);
+	ccv_nnc_tensor_free(graph_log);
+	ccv_nnc_tensor_free(mfa_log);
+	ccv_nnc_tensor_free(graph_clamp);
+	ccv_nnc_tensor_free(hgraph_exp);
+	ccv_nnc_tensor_free(hmfa_exp);
+	ccv_nnc_tensor_free(hgraph_log);
+	ccv_nnc_tensor_free(hmfa_log);
+	ccv_nnc_tensor_free(hgraph_clamp);
+	ccv_nnc_tensor_free(hmfa_clamp);
+}
+
 TEST_CASE("fill if less than MFA supports a rank-two threshold forward, backward, and in-place")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_FILL_IF_LESS_THAN_FORWARD, CCV_NNC_BACKEND_MPS));

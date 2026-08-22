@@ -539,6 +539,27 @@ static int _ccv_nnc_ewlog_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hin
 	for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC && a->info.dim[i] > 0; i++)
 		{ assert(a->info.dim[i] == c->info.dim[i]); }
 	@autoreleasepool {
+		ccv_nnc_mfa_context_t* const context = ccv_nnc_default_mfa_context();
+		const size_t count = ccv_nnc_tensor_count(a->info);
+		const uint32_t mtl_data_type = a->info.datatype == CCV_32F ? 3 : (a->info.datatype == CCV_16F ? 16 : UINT32_MAX);
+		if (a->info.datatype == c->info.datatype && ccv_nnc_tensor_count(c->info) == count &&
+			mtl_data_type != UINT32_MAX && count > 0 && count <= UINT32_MAX &&
+			CCV_IS_TENSOR_CONTIGUOUS(a) && CCV_IS_TENSOR_CONTIGUOUS(c) && ccv_nnc_mfa_context_supported(context) &&
+			!(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA))
+		{
+			const ccv_nnc_mfa_log_params_t params = {
+				.data_type = mtl_data_type,
+				.length = (uint32_t)count,
+				.loadM = !!(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M),
+			};
+			ccv_nnc_mfa_prepare_log(context, params);
+			mtl_command_batch_t* const command_batch = ccv_nnc_stream_context_start_command_batch(stream_context);
+			mtl_buffer_t* tensors[3] = { mpgetbuffer(inputs[0]), mpgetbuffer(outputs[0]), NULL };
+			size_t tensor_offsets[2] = { a->dataof, c->dataof };
+			ccv_nnc_mfa_encode_log(context, params, command_batch, tensors, tensor_offsets);
+			ccv_nnc_stream_context_finish_command_batch(stream_context, command_batch);
+			return CCV_NNC_EXEC_SUCCESS;
+		}
 		MPSCommandBuffer* command_buffer = ccv_nnc_stream_context_start_mps_command_buffer(stream_context);
 		ccv_nnc_mps_graph_key_t key = ccv_nnc_mps_graph_key_new(cmd, 0, hint, flags, inputs, input_size, outputs, output_size);
 		int indices[1];
@@ -731,6 +752,32 @@ static int _ccv_nnc_clamp_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hin
 	const float minv = cmd.info.clamp.min;
 	const float maxv = cmd.info.clamp.max;
 	assert(!isnan(minv) || !isnan(maxv));
+	@autoreleasepool {
+		ccv_nnc_mfa_context_t* const context = ccv_nnc_default_mfa_context();
+		const size_t count = ccv_nnc_tensor_count(a->info);
+		const uint32_t mtl_data_type = a->info.datatype == CCV_32F ? 3 : (a->info.datatype == CCV_16F ? 16 : UINT32_MAX);
+		if (a->info.datatype == b->info.datatype && ccv_nnc_tensor_count(b->info) == count &&
+			mtl_data_type != UINT32_MAX && count > 0 && count <= UINT32_MAX &&
+			CCV_IS_TENSOR_CONTIGUOUS(a) && CCV_IS_TENSOR_CONTIGUOUS(b) && ccv_nnc_mfa_context_supported(context) &&
+			!(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA))
+		{
+			const ccv_nnc_mfa_clamp_params_t params = {
+				.data_type = mtl_data_type,
+				.length = (uint32_t)count,
+				.min = minv,
+				.max = maxv,
+				.bounds = (!isnan(minv) ? 1 : 0) | (!isnan(maxv) ? 2 : 0),
+				.loadM = !!(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M),
+			};
+			ccv_nnc_mfa_prepare_clamp(context, params);
+			mtl_command_batch_t* const command_batch = ccv_nnc_stream_context_start_command_batch(stream_context);
+			mtl_buffer_t* tensors[3] = { mpgetbuffer(inputs[0]), mpgetbuffer(outputs[0]), NULL };
+			size_t tensor_offsets[2] = { a->dataof, b->dataof };
+			ccv_nnc_mfa_encode_clamp(context, params, command_batch, tensors, tensor_offsets);
+			ccv_nnc_stream_context_finish_command_batch(stream_context, command_batch);
+			return CCV_NNC_EXEC_SUCCESS;
+		}
+	}
 	if (isnan(minv))
 	{
 		@autoreleasepool {

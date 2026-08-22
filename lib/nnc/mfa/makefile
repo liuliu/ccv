@@ -20,6 +20,10 @@ SRCS += ccv_nnc_mfa_reduce_max.cpp kernels/ReduceMaxDescriptor.cpp kernels/Reduc
 
 SRCS += ccv_nnc_mfa_reduce_logsumexp.cpp kernels/ReduceLogSumExpDescriptor.cpp kernels/ReduceLogSumExpKernel.cpp
 
+SRCS += ccv_nnc_mfa_log.cpp kernels/LogDescriptor.cpp kernels/LogKernel.cpp
+
+SRCS += ccv_nnc_mfa_clamp.cpp kernels/ClampDescriptor.cpp kernels/ClampKernel.cpp
+
 SRCS += ccv_nnc_mfa_fill_if_less_than.cpp kernels/FillIfLessThanDescriptor.cpp kernels/FillIfLessThanKernel.cpp
 
 SRC_OBJS := $(patsubst %.c,%.o,$(patsubst %.cpp,%.o,$(patsubst %.mm,%.o,$(SRCS))))
