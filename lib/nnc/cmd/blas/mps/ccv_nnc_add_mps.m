@@ -92,7 +92,7 @@ static int _ccv_nnc_add_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 			fallback_reason = "Disabled.";
 		}
 		if (use_mfa) {
-			if (!(p == 1 && q == 1)) {
+			if (!((p == 1 || p == -1) && (q == 1 || q == -1))) {
 				use_mfa = false;
 				fallback_reason = "Unsupported coefficients.";
 			}
@@ -119,8 +119,15 @@ static int _ccv_nnc_add_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 			}
 		}
 		const size_t length = ccv_nnc_tensor_count(c->info);
+		const size_t a_length = ccv_nnc_tensor_count(a->info);
+		const size_t b_length = ccv_nnc_tensor_count(b->info);
+		if (use_mfa && (length == 0 || length > UINT32_MAX)) {
+			use_mfa = false;
+			fallback_reason = "Unsupported tensor size.";
+		}
 		if (use_mfa) {
-			if (!(ccv_nnc_tensor_count(a->info) == length && ccv_nnc_tensor_count(b->info) == length)) {
+			if (!((a_length == length || a_length == 1) &&
+				(b_length == length || b_length == 1))) {
 				use_mfa = false;
 				fallback_reason = "Broadcast semantics unsupported.";
 			}
@@ -129,6 +136,13 @@ static int _ccv_nnc_add_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 			if (!CCV_IS_TENSOR_CONTIGUOUS(a) || !CCV_IS_TENSOR_CONTIGUOUS(b) || !CCV_IS_TENSOR_CONTIGUOUS(c)) {
 				use_mfa = false;
 				fallback_reason = "Strided.";
+			}
+		}
+		if (use_mfa) {
+			if (length > 1 && ((a_length == 1 && mpgetbuffer(inputs[0]) == mpgetbuffer(outputs[0])) ||
+				(b_length == 1 && mpgetbuffer(inputs[1]) == mpgetbuffer(outputs[0])))) {
+				use_mfa = false;
+				fallback_reason = "In-place scalar broadcast unsupported.";
 			}
 		}
 		uint32_t mtl_data_type = UINT32_MAX;
@@ -160,6 +174,8 @@ static int _ccv_nnc_add_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 				.data_type = mtl_data_type,
 				.length = (uint32_t)length,
 				.loadM = !!(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M),
+				.negative_mask = (p < 0 ? 1 : 0) | (q < 0 ? 2 : 0),
+				.broadcast = (a_length == 1 ? 1 : 0) | (b_length == 1 ? 2 : 0),
 			};
 			ccv_nnc_mfa_prepare_add(context, params);
 

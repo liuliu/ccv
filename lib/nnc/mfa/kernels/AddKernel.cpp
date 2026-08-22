@@ -12,6 +12,10 @@ AddKernel::AddKernel(AddKernelDescriptor descriptor, MTL::Device *const device) 
 
   loadM = descriptor.loadM;
 
+  negative_mask = descriptor.negative_mask;
+
+  broadcast = descriptor.broadcast;
+
   memoryPrecision = descriptor.memoryPrecision;
 
   source = createSource();
@@ -37,36 +41,38 @@ std::string AddKernel::createSource() const noexcept {
   CodeWriter source;
   source += createConstants() + "\n";
   std::string buffers = "";
-  if (value == 0 || value == 1) {
-    for (int i = 1; i < args; i++) {
-      buffers += "device real4 *src" + std::to_string(i) + " [[buffer(" + std::to_string(i) + ")]],\n";
-    }
-  } else {
-    for (int i = 1; i < args; i++) {
-      buffers += "device real *src" + std::to_string(i) + " [[buffer(" + std::to_string(i) + ")]],\n";
-    }
+  const bool vectorized = value == 0 || value == 1;
+  for (int i = 0; i < args; i++) {
+    const bool scalar = i < 8 && (broadcast & (1u << i));
+    buffers += scalar || !vectorized ? "device const real *src" : "device const real4 *src";
+    buffers += std::to_string(i) + " [[buffer(" + std::to_string(i) + ")]],\n";
   }
-  source.SetValue("OTHER_SOURCE_BUFFERS", buffers);
+  source.SetValue("SOURCE_BUFFERS", buffers);
   source.SetValue("DESTINATION_INDEX", std::to_string(args));
-  std::string items = " + src1[idx]";
-  for (int i = 2; i < args; i++) {
-    items += " + src" + std::to_string(i) + "[idx]";
+  std::string items;
+  for (int i = 0; i < args; i++) {
+    const bool scalar = i < 8 && (broadcast & (1u << i));
+    const bool subtract = i < 8 && (negative_mask & (1u << i));
+    std::string item = "src" + std::to_string(i) + (scalar ? "[0]" : "[idx]");
+    if (i == 0)
+      items += subtract ? "-" + item : item;
+    else
+      items += subtract ? " - " + item : " + " + item;
   }
-  source.SetValue("OTHER_SOURCE_ITEMS", items);
+  source.SetValue("SOURCE_ITEMS", items);
   if (value == 0) {
     source += R"(
 #include <metal_stdlib>
 using namespace metal;
 
 kernel void add(
-  device real4 *src0 [[buffer(0)]],
-  {{OTHER_SOURCE_BUFFERS}}
+  {{SOURCE_BUFFERS}}
   device real4 *destination [[buffer({{DESTINATION_INDEX}})]],
 
   uint3 tpig [[thread_position_in_grid]]
 ) {
   const uint idx = tpig.x;
-  destination[idx] = src0[idx]{{OTHER_SOURCE_ITEMS}};
+  destination[idx] = {{SOURCE_ITEMS}};
 }
   )";
   } else if (value == 1) {
@@ -75,8 +81,7 @@ kernel void add(
 using namespace metal;
 
 kernel void add(
-  device real4 *src0 [[buffer(0)]],
-  {{OTHER_SOURCE_BUFFERS}}
+  {{SOURCE_BUFFERS}}
   device real4 *destination [[buffer({{DESTINATION_INDEX}})]],
 
   uint3 tpig [[thread_position_in_grid]]
@@ -84,7 +89,7 @@ kernel void add(
   const uint idx = tpig.x;
   if (idx >= count)
     return;
-  destination[idx] = src0[idx]{{OTHER_SOURCE_ITEMS}};
+  destination[idx] = {{SOURCE_ITEMS}};
 }
   )";
   } else {
@@ -93,8 +98,7 @@ kernel void add(
 using namespace metal;
 
 kernel void add(
-  device real *src0 [[buffer(0)]],
-  {{OTHER_SOURCE_BUFFERS}}
+  {{SOURCE_BUFFERS}}
   device real *destination [[buffer({{DESTINATION_INDEX}})]],
 
   uint3 tpig [[thread_position_in_grid]]
@@ -102,7 +106,7 @@ kernel void add(
   const uint idx = tpig.x;
   if (idx >= count)
     return;
-  destination[idx] = src0[idx]{{OTHER_SOURCE_ITEMS}};
+  destination[idx] = {{SOURCE_ITEMS}};
 }
   )";
   }
@@ -123,12 +127,18 @@ std::string AddKernel::createConstants() const noexcept {
   std::string defines = "";
   if (value == 0 || value == 1) {
     if (memoryPrecision == GEMMOperandPrecision::FP32) {
+      defines += std::string("typedef float real;");
+      defines += "\n";
       defines += std::string("typedef float4 real4;");
       defines += "\n";
     } else if (memoryPrecision == GEMMOperandPrecision::BF16) {
+      defines += std::string("typedef bfloat real;");
+      defines += "\n";
       defines += std::string("typedef bfloat4 real4;");
       defines += "\n";
     } else {
+      defines += std::string("typedef half real;");
+      defines += "\n";
       defines += std::string("typedef half4 real4;");
       defines += "\n";
     }

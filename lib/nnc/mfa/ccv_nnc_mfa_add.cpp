@@ -16,6 +16,7 @@ void ccv_nnc_mfa_prepare_add(mfa::context* context, ccv_nnc_mfa_add_params_t par
 
 void ccv_nnc_mfa_encode_add(ccv_nnc_mfa_context_t* context, ccv_nnc_mfa_add_params_t params, mtl_command_batch_t* command_batch, mtl_buffer_t** tensors, size_t* tensor_offsets)
 {
+  CCV_NNC_MFA_PRECONDITION(!(params.negative_mask | params.broadcast) || params.args <= 8);
   auto encoder = command_batch->startCommand();
   
   int num_tensors = 0;
@@ -36,6 +37,8 @@ void ccv_nnc_mfa_encode_add(ccv_nnc_mfa_context_t* context, ccv_nnc_mfa_add_para
   }
   descriptor.length = params.length;
   descriptor.loadM = params.loadM;
+  descriptor.negative_mask = params.negative_mask;
+  descriptor.broadcast = params.broadcast;
 
   if (!params.loadM && params.length % (4 * 256) == 0) {
     descriptor.value = 0;

@@ -11,14 +11,16 @@ struct AddKernelDescriptor {
   uint8_t args;
   uint8_t value;
   bool loadM;
+  uint8_t negative_mask;
+  uint8_t broadcast;
   GEMMOperandPrecision memoryPrecision;
-  constexpr bool operator==(const AddKernelDescriptor &rhs) const { return args == rhs.args && value == rhs.value && loadM == rhs.loadM && memoryPrecision == rhs.memoryPrecision; }
+  constexpr bool operator==(const AddKernelDescriptor &rhs) const { return args == rhs.args && value == rhs.value && loadM == rhs.loadM && negative_mask == rhs.negative_mask && broadcast == rhs.broadcast && memoryPrecision == rhs.memoryPrecision; }
 };
 
 template<>
 struct std::hash<AddKernelDescriptor>
 {
-  std::size_t operator()(const AddKernelDescriptor& hash) const noexcept { return (size_t)hash.value | ((size_t)hash.loadM << 8); }
+  std::size_t operator()(const AddKernelDescriptor& hash) const noexcept { return (size_t)hash.value | ((size_t)hash.loadM << 8) | ((size_t)hash.args << 9) | ((size_t)hash.negative_mask << 17) | ((size_t)hash.broadcast << 25) | ((size_t)hash.memoryPrecision.value << 33); }
 };
 
 struct AddKernel;
@@ -33,6 +35,10 @@ struct AddDescriptor {
   uint32_t length;
 
   bool loadM;
+
+  uint8_t negative_mask;
+
+  uint8_t broadcast;
 
   bool operator==(const AddDescriptor& rhs) const;
 

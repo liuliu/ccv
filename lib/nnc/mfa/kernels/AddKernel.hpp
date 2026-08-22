@@ -21,6 +21,10 @@ struct AddKernel {
 
   bool loadM;
 
+  uint8_t negative_mask;
+
+  uint8_t broadcast;
+
   GEMMOperandPrecision memoryPrecision;
 
   AddKernel(AddKernelDescriptor descriptor, MTL::Device *const device);
