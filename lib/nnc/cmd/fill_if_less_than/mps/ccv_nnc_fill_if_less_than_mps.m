@@ -47,7 +47,7 @@ static int _ccv_nnc_fill_if_less_than_forw(const ccv_nnc_cmd_t cmd, const ccv_nn
 			!(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA) &&
 			mtl_data_type != UINT32_MAX && count > 0 && count <= UINT32_MAX &&
 			ccv_nnc_tensor_view_check_dim(selector, adim) &&
-			ccv_nnc_tensor_nd(threshold->info.dim) == 1 && threshold->info.dim[0] == 1 &&
+			ccv_nnc_tensor_count(threshold->info) == 1 &&
 			CCV_IS_TENSOR_CONTIGUOUS(a) && CCV_IS_TENSOR_CONTIGUOUS(selector) &&
 			CCV_IS_TENSOR_CONTIGUOUS(threshold) && CCV_IS_TENSOR_CONTIGUOUS(b);
 		if (use_mfa)
@@ -152,7 +152,7 @@ static int _ccv_nnc_fill_if_less_than_back(const ccv_nnc_cmd_t cmd, const ccv_nn
 			!(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA) &&
 			mtl_data_type != UINT32_MAX && count > 0 && count <= UINT32_MAX &&
 			ccv_nnc_tensor_view_check_dim(selector, gdim) &&
-			ccv_nnc_tensor_nd(threshold->info.dim) == 1 && threshold->info.dim[0] == 1 &&
+			ccv_nnc_tensor_count(threshold->info) == 1 &&
 			CCV_IS_TENSOR_CONTIGUOUS(g) && CCV_IS_TENSOR_CONTIGUOUS(selector) &&
 			CCV_IS_TENSOR_CONTIGUOUS(threshold) && CCV_IS_TENSOR_CONTIGUOUS(h);
 		if (use_mfa)

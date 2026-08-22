@@ -5143,7 +5143,7 @@ TEST_CASE("clamp forward with only min")
 	ccv_nnc_tensor_free(bt);
 }
 
-TEST_CASE("fill if less than MFA supports float, half, and bfloat forward, backward, and in-place")
+TEST_CASE("fill if less than MFA supports a rank-two threshold forward, backward, and in-place")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_FILL_IF_LESS_THAN_FORWARD, CCV_NNC_BACKEND_MPS));
 	GUARD_ELSE_RETURN(ccv_nnc_mfa_context_supported(ccv_nnc_default_mfa_context()));
@@ -5173,9 +5173,9 @@ TEST_CASE("fill if less than MFA supports float, half, and bfloat forward, backw
 			cpu_params.datatype = datatype;
 			ccv_nnc_tensor_param_t gpu_params = GPU_TENSOR_NHWC(000, 32F, length);
 			gpu_params.datatype = datatype;
-			ccv_nnc_tensor_param_t cpu_threshold_params = CPU_TENSOR_NHWC(32F, 1);
+			ccv_nnc_tensor_param_t cpu_threshold_params = CPU_TENSOR_NHWC(32F, 1, 1);
 			cpu_threshold_params.datatype = datatype;
-			ccv_nnc_tensor_param_t gpu_threshold_params = GPU_TENSOR_NHWC(000, 32F, 1);
+			ccv_nnc_tensor_param_t gpu_threshold_params = GPU_TENSOR_NHWC(000, 32F, 1, 1);
 			gpu_threshold_params.datatype = datatype;
 			ccv_nnc_tensor_t* const hinput = ccv_nnc_tensor_new(0, cpu_params, 0);
 			ccv_nnc_tensor_t* const hselector = ccv_nnc_tensor_new(0, cpu_params, 0);
