@@ -105,6 +105,115 @@ TEST_CASE("mps transpose skips empty tensors")
 	ccv_nnc_tensor_free(b);
 }
 
+TEST_CASE("mps transpose final two axes of batched strided half-precision matrices")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_TRANSPOSE_FORWARD, CCV_NNC_BACKEND_MPS));
+	dsfmt_t dsfmt;
+	dsfmt_init_gen_rand(&dsfmt, 0);
+	ccv_nnc_tensor_t* const ha = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 8, 4, 256), 0);
+	int i;
+	for (i = 0; i < 8 * 4 * 256; i++)
+		ha->data.f32[i] = dsfmt_genrand_open_close(&dsfmt);
+	ccv_nnc_tensor_view_t ha_view = ccv_nnc_tensor_view(ha, CPU_TENSOR_NHWC(32F, 7, 4, 128), DIM_ALLOC(1, 0, 128), DIM_ALLOC(4 * 256, 256, 1));
+	ccv_nnc_tensor_t* const hb = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 7, 128, 4), 0);
+	ccv_nnc_cmd_t transpose = CMD_TRANSPOSE_FORWARD(1, 2);
+	transpose.backend = CCV_NNC_BACKEND_CPU_REF;
+	ccv_nnc_cmd_exec(transpose, ccv_nnc_no_hint, 0, TENSOR_LIST((ccv_nnc_tensor_t*)&ha_view), TENSOR_LIST(hb), 0);
+	ccv_nnc_tensor_t* const ha16 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, 8, 4, 256), 0);
+	ccv_nnc_tensor_t* const hb16 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, 7, 128, 4), 0);
+	ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha, hb), TENSOR_LIST(ha16, hb16), 0);
+	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, 8, 4, 256), 0);
+	ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, 7, 128, 4), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha16), TENSOR_LIST(a), 0);
+	ccv_nnc_tensor_view_t a_view = ccv_nnc_tensor_view(a, GPU_TENSOR_NHWC(000, 16F, 7, 4, 128), DIM_ALLOC(1, 0, 128), DIM_ALLOC(4 * 256, 256, 1));
+	transpose.backend = CCV_NNC_BACKEND_MPS;
+	const uint64_t old_flags = ccv_nnc_flags();
+	ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA);
+	ccv_nnc_cmd_exec(transpose, ccv_nnc_no_hint, 0, TENSOR_LIST((ccv_nnc_tensor_t*)&a_view), TENSOR_LIST(b), 0);
+	ccv_nnc_tensor_t* const bt_mfa = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, 7, 128, 4), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(b), TENSOR_LIST(bt_mfa), 0);
+	ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA);
+	ccv_nnc_cmd_exec(transpose, ccv_nnc_no_hint, 0, TENSOR_LIST((ccv_nnc_tensor_t*)&a_view), TENSOR_LIST(b), 0);
+	ccv_nnc_tensor_t* const bt_mps_graph = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, 7, 128, 4), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(b), TENSOR_LIST(bt_mps_graph), 0);
+	if (old_flags & CCV_NNC_DISABLE_MFA)
+		ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA);
+	else
+		ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA);
+	REQUIRE_ARRAY_EQ(uint16_t, (uint16_t*)hb16->data.f16, (uint16_t*)bt_mfa->data.f16, 7 * 128 * 4, "MFA batched strided transpose should match the CPU reference");
+	REQUIRE_ARRAY_EQ(uint16_t, (uint16_t*)hb16->data.f16, (uint16_t*)bt_mps_graph->data.f16, 7 * 128 * 4, "MPSGraph batched strided transpose should match the CPU reference");
+	ccv_nnc_tensor_free(ha);
+	ccv_nnc_tensor_free(hb);
+	ccv_nnc_tensor_free(ha16);
+	ccv_nnc_tensor_free(hb16);
+	ccv_nnc_tensor_free(a);
+	ccv_nnc_tensor_free(b);
+	ccv_nnc_tensor_free(bt_mfa);
+	ccv_nnc_tensor_free(bt_mps_graph);
+}
+
+TEST_CASE("mps MFA transpose supports partial tiles in bfloat and single precision")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_TRANSPOSE_FORWARD, CCV_NNC_BACKEND_MPS));
+	const int batch_size = 3;
+	const int rows = 37;
+	const int cols = 53;
+	const int source_rows = 39;
+	const int source_cols = 64;
+	ccv_nnc_tensor_t* const ha = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 4, source_rows, source_cols), 0);
+	int i;
+	for (i = 0; i < 4 * source_rows * source_cols; i++)
+		ha->data.f32[i] = (float)((i * 37) % 4093 - 2046) / 127;
+	ccv_nnc_tensor_view_t ha_view = ccv_nnc_tensor_view(ha, CPU_TENSOR_NHWC(32F, batch_size, rows, cols), DIM_ALLOC(1, 1, 5), DIM_ALLOC(source_rows * source_cols, source_cols, 1));
+	ccv_nnc_tensor_t* const expected = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, batch_size, cols, rows), 0);
+	ccv_nnc_cmd_t transpose = CMD_TRANSPOSE_FORWARD(1, 2);
+	transpose.backend = CCV_NNC_BACKEND_CPU_REF;
+	ccv_nnc_cmd_exec(transpose, ccv_nnc_no_hint, 0, TENSOR_LIST((ccv_nnc_tensor_t*)&ha_view), TENSOR_LIST(expected), 0);
+	const int datatypes[] = { CCV_16BF, CCV_32F };
+	const uint64_t old_flags = ccv_nnc_flags();
+	ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA);
+	for (i = 0; i < 2; i++)
+	{
+		ccv_nnc_tensor_param_t host_source_params = CPU_TENSOR_NHWC(32F, 4, source_rows, source_cols);
+		host_source_params.datatype = datatypes[i];
+		ccv_nnc_tensor_param_t host_output_params = CPU_TENSOR_NHWC(32F, batch_size, cols, rows);
+		host_output_params.datatype = datatypes[i];
+		ccv_nnc_tensor_param_t gpu_source_params = GPU_TENSOR_NHWC(000, 32F, 4, source_rows, source_cols);
+		gpu_source_params.datatype = datatypes[i];
+		ccv_nnc_tensor_param_t gpu_view_params = GPU_TENSOR_NHWC(000, 32F, batch_size, rows, cols);
+		gpu_view_params.datatype = datatypes[i];
+		ccv_nnc_tensor_param_t gpu_output_params = GPU_TENSOR_NHWC(000, 32F, batch_size, cols, rows);
+		gpu_output_params.datatype = datatypes[i];
+		ccv_nnc_tensor_t* const host_source = ccv_nnc_tensor_new(0, host_source_params, 0);
+		ccv_nnc_tensor_t* const host_expected = ccv_nnc_tensor_new(0, host_output_params, 0);
+		ccv_nnc_tensor_t* const host_actual = ccv_nnc_tensor_new(0, host_output_params, 0);
+		ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha, expected), TENSOR_LIST(host_source, host_expected), 0);
+		ccv_nnc_tensor_t* const source = ccv_nnc_tensor_new(0, gpu_source_params, 0);
+		ccv_nnc_tensor_t* const output = ccv_nnc_tensor_new(0, gpu_output_params, 0);
+		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(host_source), TENSOR_LIST(source), 0);
+		ccv_nnc_tensor_view_t source_view = ccv_nnc_tensor_view(source, gpu_view_params, DIM_ALLOC(1, 1, 5), DIM_ALLOC(source_rows * source_cols, source_cols, 1));
+		transpose.backend = CCV_NNC_BACKEND_MPS;
+		REQUIRE_EQ(CCV_NNC_EXEC_SUCCESS, ccv_nnc_cmd_exec(transpose, ccv_nnc_no_hint, 0, TENSOR_LIST((ccv_nnc_tensor_t*)&source_view), TENSOR_LIST(output), 0), "MFA transpose should execute");
+		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(output), TENSOR_LIST(host_actual), 0);
+		if (datatypes[i] == CCV_16BF) {
+			REQUIRE_ARRAY_EQ(uint16_t, (uint16_t*)host_expected->data.f16, (uint16_t*)host_actual->data.f16, batch_size * rows * cols, "bfloat MFA transpose should be bit exact");
+		} else {
+			REQUIRE_ARRAY_EQ(uint32_t, (uint32_t*)host_expected->data.f32, (uint32_t*)host_actual->data.f32, batch_size * rows * cols, "single-precision MFA transpose should be bit exact");
+		}
+		ccv_nnc_tensor_free(host_source);
+		ccv_nnc_tensor_free(host_expected);
+		ccv_nnc_tensor_free(host_actual);
+		ccv_nnc_tensor_free(source);
+		ccv_nnc_tensor_free(output);
+	}
+	if (old_flags & CCV_NNC_DISABLE_MFA)
+		ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA);
+	else
+		ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA);
+	ccv_nnc_tensor_free(ha);
+	ccv_nnc_tensor_free(expected);
+}
+
 TEST_CASE("MPS DeepSeek 4 compressor operations skip empty tensors")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_MPS) &&

@@ -26,6 +26,8 @@ SRCS += ccv_nnc_mfa_clamp.cpp kernels/ClampDescriptor.cpp kernels/ClampKernel.cp
 
 SRCS += ccv_nnc_mfa_fill_if_less_than.cpp kernels/FillIfLessThanDescriptor.cpp kernels/FillIfLessThanKernel.cpp
 
+SRCS += ccv_nnc_mfa_transpose.cpp kernels/TransposeDescriptor.cpp kernels/TransposeKernel.cpp
+
 SRC_OBJS := $(patsubst %.c,%.o,$(patsubst %.cpp,%.o,$(patsubst %.mm,%.o,$(SRCS))))
 
 .PHONY: release all lib clean

@@ -36,6 +36,7 @@ extern "C" {
 #include "ccv_nnc_mfa_gemv.hpp"
 #include "ccv_nnc_mfa_cast.hpp"
 #include "ccv_nnc_mfa_strided_copy.hpp"
+#include "ccv_nnc_mfa_transpose.hpp"
 #include "ccv_nnc_mfa_sigmoid.hpp"
 #include "ccv_nnc_mfa_swish.hpp"
 #include "ccv_nnc_mfa_swish_mul.hpp"

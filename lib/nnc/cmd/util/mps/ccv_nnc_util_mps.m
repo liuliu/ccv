@@ -118,6 +118,8 @@ static int _ccv_nnc_transpose(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	assert(output_size <= input_size);
 	int i;
 	@autoreleasepool {
+		ccv_nnc_mfa_context_t* const mfa_context = ccv_nnc_default_mfa_context();
+		const int use_mfa = ccv_nnc_mfa_context_supported(mfa_context) && !(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA);
 		MPSCommandBuffer* command_buffer = nil;
 		for (i = 0; i < output_size; i++)
 		{
@@ -125,6 +127,58 @@ static int _ccv_nnc_transpose(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 			ccv_nnc_tensor_view_t* const b = (ccv_nnc_tensor_view_t*)outputs[i];
 			if (ccv_nnc_tensor_count(a->info) == 0 || ccv_nnc_tensor_count(b->info) == 0)
 				continue;
+			const int nd = ccv_nnc_tensor_nd(a->info.dim);
+			const int axis_a = cmd.info.transpose.axis[0] < 0 ? cmd.info.transpose.axis[0] + nd : cmd.info.transpose.axis[0];
+			const int axis_b = cmd.info.transpose.axis[1] < 0 ? cmd.info.transpose.axis[1] + nd : cmd.info.transpose.axis[1];
+			if (use_mfa && nd >= 2 && nd <= 3 && nd == ccv_nnc_tensor_nd(b->info.dim) &&
+				((axis_a == nd - 2 && axis_b == nd - 1) || (axis_a == nd - 1 && axis_b == nd - 2)) &&
+				a->info.datatype == b->info.datatype && (a->info.datatype == CCV_16F || a->info.datatype == CCV_16BF || a->info.datatype == CCV_32F) &&
+				a->info.dim[nd - 2] == b->info.dim[nd - 1] && a->info.dim[nd - 1] == b->info.dim[nd - 2] &&
+				(nd != 3 || a->info.dim[0] == b->info.dim[0]))
+			{
+				const static int no_transpose[2] = {};
+				int a_batch_size, a_rows, a_cols, a_batch_inc, a_rows_inc, a_cols_inc;
+				int b_batch_size, b_rows, b_cols, b_batch_inc, b_rows_inc, b_cols_inc;
+				ccv_nnc_tensor_get_matrix_params(a->info, CCV_IS_TENSOR_VIEW(a) ? a->stride : 0, a->info.dim, no_transpose, &a_batch_size, &a_rows, &a_cols, &a_batch_inc, &a_rows_inc, &a_cols_inc);
+				ccv_nnc_tensor_get_matrix_params(b->info, CCV_IS_TENSOR_VIEW(b) ? b->stride : 0, b->info.dim, no_transpose, &b_batch_size, &b_rows, &b_cols, &b_batch_inc, &b_rows_inc, &b_cols_inc);
+				const int a_matrix_stride = nd == 3 ? a_batch_inc : a_rows_inc * a_rows;
+				const int b_matrix_stride = nd == 3 ? b_batch_inc : b_rows_inc * b_rows;
+				id<MTLBuffer> a_buffer = mpgetbuffer((ccv_nnc_tensor_t*)a);
+				id<MTLBuffer> b_buffer = mpgetbuffer((ccv_nnc_tensor_t*)b);
+				if (a_buffer != b_buffer && a_batch_size == b_batch_size && a_rows == b_cols && a_cols == b_rows &&
+					a_cols_inc == 1 && b_cols_inc == 1 && a_rows_inc >= a_cols && b_rows_inc >= b_cols &&
+					a_matrix_stride >= a_rows_inc * a_rows && b_matrix_stride >= b_rows_inc * b_rows)
+				{
+					const ccv_nnc_mfa_transpose_params_t transpose_params = {
+						.data_type = a->info.datatype == CCV_16F ? 16 : (a->info.datatype == CCV_16BF ? 121 : 3),
+						.batch_size = a_batch_size,
+						.rows = a_rows,
+						.cols = a_cols,
+						.source_batch_stride = a_matrix_stride,
+						.source_row_stride = a_rows_inc,
+						.destination_batch_stride = b_matrix_stride,
+						.destination_row_stride = b_rows_inc,
+					};
+					if (command_buffer)
+					{
+						ccv_nnc_stream_context_finish_mps_command_buffer(stream_context, command_buffer);
+						command_buffer = nil;
+					}
+					mtl_command_batch_t* const command_batch = ccv_nnc_stream_context_start_command_batch(stream_context);
+					mtl_buffer_t* tensors[] = {
+						a_buffer,
+						b_buffer,
+						0,
+					};
+					size_t tensor_offsets[] = {
+						mpgetoffset((ccv_nnc_tensor_t*)a),
+						mpgetoffset((ccv_nnc_tensor_t*)b),
+					};
+					ccv_nnc_mfa_encode_transpose(mfa_context, transpose_params, command_batch, tensors, tensor_offsets);
+					ccv_nnc_stream_context_finish_command_batch(stream_context, command_batch);
+					continue;
+				}
+			}
 			if (!command_buffer)
 				command_buffer = ccv_nnc_stream_context_start_mps_command_buffer(stream_context);
 			ccv_nnc_mps_graph_key_t key = ccv_nnc_mps_graph_key_new(cmd, 0, hint, flags, inputs + i, 1, outputs + i, 1);
