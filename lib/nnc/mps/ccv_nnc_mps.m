@@ -247,9 +247,9 @@ void mpunregmp(const int slot)
 {
 	pthread_mutex_lock(&g_mp_mutex);
 	assert(slot < g_mp_h->rnum);
+	*(mpmp_t*)ccv_array_get(g_mp_h, slot) = (mpmp_t){};
 	if (g_mp_slot < 0 || slot < g_mp_slot)
 		g_mp_slot = slot;
-	*(mpmp_t*)ccv_array_get(g_mp_h, g_mp_slot) = (mpmp_t){};
 	pthread_mutex_unlock(&g_mp_mutex);
 }
 

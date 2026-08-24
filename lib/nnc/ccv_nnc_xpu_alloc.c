@@ -185,6 +185,13 @@ void ccv_nnc_xpu_free(ccv_nnc_xpu_alloc_t* const xpu_alloc, void* const ptr)
 
 void ccv_nnc_xpu_alloc_destroy(ccv_nnc_xpu_alloc_t* const xpu_alloc)
 {
+#ifdef HAVE_CUDA
+	if (xpu_alloc->mp_hdr >= 0)
+		cuunregmp(xpu_alloc->mp_hdr);
+#elif defined(HAVE_MPS)
+	if (xpu_alloc->mp_hdr >= 0)
+		mpunregmp(xpu_alloc->mp_hdr);
+#endif
 	khash_t(dy_alloc)* const allocd = xpu_alloc->allocd;
 	khiter_t k;
 	for (k = kh_begin(allocd); k != kh_end(allocd); ++k)
@@ -210,13 +217,6 @@ void ccv_nnc_xpu_alloc_destroy(ccv_nnc_xpu_alloc_t* const xpu_alloc)
 		kh_destroy(dy_dev, dev);
 	}
 	kh_destroy(dy_str, freed);
-#ifdef HAVE_CUDA
-	if (xpu_alloc->mp_hdr >= 0)
-		cuunregmp(xpu_alloc->mp_hdr);
-#elif defined(HAVE_MPS)
-	if (xpu_alloc->mp_hdr >= 0)
-		mpunregmp(xpu_alloc->mp_hdr);
-#endif
 }
 
 void ccv_nnc_xpu_gc(const int device, ccv_nnc_xpu_alloc_t* const xpu_alloc)

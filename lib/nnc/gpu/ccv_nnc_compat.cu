@@ -161,9 +161,9 @@ void cuunregmp(const int slot)
 {
 	pthread_mutex_lock(&g_mp_mutex);
 	assert(slot < g_mp_h->rnum);
+	*(cump_t*)ccv_array_get(g_mp_h, slot) = (cump_t){};
 	if (g_mp_slot < 0 || slot < g_mp_slot)
 		g_mp_slot = slot;
-	*(cump_t*)ccv_array_get(g_mp_h, g_mp_slot) = (cump_t){};
 	pthread_mutex_unlock(&g_mp_mutex);
 }
 
