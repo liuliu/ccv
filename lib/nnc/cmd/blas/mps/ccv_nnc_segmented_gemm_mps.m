@@ -210,22 +210,32 @@ static int _ccv_nnc_segmented_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_h
 	if (w_batch_size == 1 && b_batch_size > 1)
 		w_batch_inc = 0;
 	@autoreleasepool {
-		// Fake the astride at a_nd - 3. For this one, we have flexibility to change fo kernel GEMM kernels.
-		const int a_batch_stride = astride[a_nd - 3];
-		// Only fake it if it is larger than the expected compact stride.
-		if (a_batch_stride > astride[a_nd - 2] * adim[a_nd - 2])
-			astride[a_nd - 3] = astride[a_nd - 2] * adim[a_nd - 2];
-		const int b_batch_stride = bstride[b_nd - 3];
-		// Only fake it if it is larger than the expected compact stride.
-		if (b_batch_stride > bstride[b_nd - 2] * b->info.dim[b_nd - 2])
-			bstride[b_nd - 3] = bstride[b_nd - 2] * b->info.dim[b_nd - 2];
+		int a_batch_stride = 0;
+		if (a_nd >= 3)
+		{
+			// Temporarily compact the batch stride for custom GEMM kernels.
+			a_batch_stride = astride[a_nd - 3];
+			// Only fake it if it is larger than the expected compact stride.
+			if (a_batch_stride > astride[a_nd - 2] * adim[a_nd - 2])
+				astride[a_nd - 3] = astride[a_nd - 2] * adim[a_nd - 2];
+		}
+		int b_batch_stride = 0;
+		if (b_nd >= 3)
+		{
+			b_batch_stride = bstride[b_nd - 3];
+			// Only fake it if it is larger than the expected compact stride.
+			if (b_batch_stride > bstride[b_nd - 2] * b->info.dim[b_nd - 2])
+				bstride[b_nd - 3] = bstride[b_nd - 2] * b->info.dim[b_nd - 2];
+		}
 		const int is_contiguous =
 			(!CCV_IS_TENSOR_VIEW(a) || ccv_nnc_tensor_view_is_contiguous(adim, astride)) &&
 			(!CCV_IS_TENSOR_VIEW(w) || ccv_nnc_tensor_view_is_contiguous(w->info.dim, w->stride)) &&
 			(!CCV_IS_TENSOR_VIEW(b) || ccv_nnc_tensor_view_is_contiguous(b->info.dim, bstride)) &&
 			(bias ? (!CCV_IS_TENSOR_VIEW(bias) || ccv_nnc_tensor_view_is_contiguous(bias->info.dim, bias->stride)) : 1);
-		astride[a_nd - 3] = a_batch_stride;
-		bstride[b_nd - 3] = b_batch_stride;
+		if (a_nd >= 3)
+			astride[a_nd - 3] = a_batch_stride;
+		if (b_nd >= 3)
+			bstride[b_nd - 3] = b_batch_stride;
 
 		const int a_qx_subtype = a->info.datatype & 0xf00;
 		const int w_qx_subtype = w->info.datatype & 0xf00;
