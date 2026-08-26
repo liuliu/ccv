@@ -390,7 +390,7 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 		const int is_downcast = ((cmd.info.blas.flags & CCV_NNC_GEMM_16F) && (a_datatype == CCV_16F || a_datatype == CCV_16BF));
 		const int use_ane_rowwise_gemm =
 			w_qx_8i_rowwise &&
-			(a_datatype == CCV_16F || a_datatype == CCV_16BF) &&
+			(a_datatype == CCV_16F || a_datatype == CCV_16BF || a_datatype == CCV_32F) &&
 			(!bias || bias_batch_size == 1) &&
 			(CCV_GET_DATA_TYPE(a->info.datatype) != CCV_QX) &&
 			(!is_transpose_a) &&

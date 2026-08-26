@@ -418,12 +418,7 @@ static PipelineValue<ANERowwiseTransformKernel>* find_transform_pipeline(
     const uint32_t activation_scale_row_offset = 0)
 {
   ANERowwiseTransformDescriptor descriptor;
-  if (params.data_type == MTL::DataTypeHalf) {
-    descriptor.memoryPrecision = GEMMOperandPrecision::FP16;
-  } else {
-    CCV_NNC_MFA_PRECONDITION(params.data_type == MTL::DataTypeBFloat);
-    descriptor.memoryPrecision = GEMMOperandPrecision::BF16;
-  }
+  descriptor.memoryPrecision = io_precision(params.data_type);
   descriptor.M = params.M;
   descriptor.paddedM = rowwise_padded_total_rows(params);
   descriptor.batchDimension = rowwise_batch_dimension(params);

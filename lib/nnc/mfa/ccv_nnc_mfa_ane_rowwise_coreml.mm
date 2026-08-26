@@ -983,7 +983,8 @@ int ccv_nnc_mfa_ane_rowwise_coreml_cache_ensure_scratch(
   const size_t activation_surface_bytes = (size_t)K * padded_M * sizeof(int8_t);
   const size_t weight_surface_bytes = (size_t)N * K * sizeof(int8_t);
   const size_t output_surface_bytes = (size_t)N * padded_M * sizeof(uint16_t);
-  const size_t activation_scale_bytes = (size_t)padded_M * sizeof(uint16_t);
+  // Reserve the widest scale type so FP16, BF16, and FP32 transforms can share the shape cache.
+  const size_t activation_scale_bytes = (size_t)padded_M * sizeof(float);
   SharedScratch& scratch = cache->scratch;
   const bool scratch_shape_matches = (scratch.M == padded_M && scratch.N == N && scratch.K == K);
   if (scratch_shape_matches &&
