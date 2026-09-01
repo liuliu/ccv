@@ -2085,7 +2085,6 @@ TEST_CASE("mps forward gemm with row-wise 8i weight and bias NA aligned M")
 TEST_CASE("mps forward gemm with fp32 row-wise 8i weight ANE")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_MPS));
-	GUARD_ELSE_RETURN(ccv_nnc_mfa_supports_int8_ane(ccv_nnc_default_mfa_context()));
 	const uint64_t old_flags = ccv_nnc_flags();
 	ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA_ANE);
 	ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA_GEMM);
@@ -5173,7 +5172,6 @@ TEST_CASE("clamp forward with only min")
 TEST_CASE("MFA scalar multiply matches MPSGraph across data types and dispatch variants")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SCALAR_MUL_FORWARD, CCV_NNC_BACKEND_MPS));
-	GUARD_ELSE_RETURN(ccv_nnc_mfa_context_supported(ccv_nnc_default_mfa_context()));
 	const int datatypes[] = { CCV_32F, CCV_16F, CCV_16BF };
 	const int lengths[] = { 1024, 1020, 1019 };
 	const float scales[] = { 1, -1, 1.f / 0.7f };
@@ -5241,7 +5239,6 @@ TEST_CASE("MFA scalar multiply matches MPSGraph across data types and dispatch v
 TEST_CASE("MFA subtraction and scalar broadcast match MPSGraph across data types and dispatch variants")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_ADD_FORWARD, CCV_NNC_BACKEND_MPS));
-	GUARD_ELSE_RETURN(ccv_nnc_mfa_context_supported(ccv_nnc_default_mfa_context()));
 	const int datatypes[] = { CCV_32F, CCV_16F, CCV_16BF };
 	const int lengths[] = { 1024, 1020, 1019 };
 	float values[1024];
@@ -5349,7 +5346,6 @@ TEST_CASE("Qwen vocabulary half precision MFA arithmetic matches MPSGraph")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_ADD_FORWARD, CCV_NNC_BACKEND_MPS));
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SCALAR_MUL_FORWARD, CCV_NNC_BACKEND_MPS));
-	GUARD_ELSE_RETURN(ccv_nnc_mfa_context_supported(ccv_nnc_default_mfa_context()));
 	const int length = 248320;
 	ccv_nnc_tensor_t* const ha = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, 1, length), 0);
 	ccv_nnc_tensor_t* const hb = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, 1, length), 0);
@@ -5431,7 +5427,6 @@ TEST_CASE("MFA half precision log and clamp match MPSGraph across dispatch varia
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_EWLOG_FORWARD, CCV_NNC_BACKEND_MPS));
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_CLAMP_FORWARD, CCV_NNC_BACKEND_MPS));
-	GUARD_ELSE_RETURN(ccv_nnc_mfa_context_supported(ccv_nnc_default_mfa_context()));
 	const int lengths[] = { 1024, 1020, 1019 };
 	float values[1024];
 	int i;
@@ -5500,7 +5495,6 @@ TEST_CASE("Qwen vocabulary half precision MFA unary operations match MPSGraph")
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_EWEXP_FORWARD, CCV_NNC_BACKEND_MPS));
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_EWLOG_FORWARD, CCV_NNC_BACKEND_MPS));
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_CLAMP_FORWARD, CCV_NNC_BACKEND_MPS));
-	GUARD_ELSE_RETURN(ccv_nnc_mfa_context_supported(ccv_nnc_default_mfa_context()));
 	const int length = 248320;
 	ccv_nnc_tensor_t* const hinput = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, 1, length), 0);
 	ccv_nnc_tensor_t* const hpositive = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, 1, length), 0);
@@ -5584,7 +5578,6 @@ TEST_CASE("Qwen vocabulary half precision MFA unary operations match MPSGraph")
 TEST_CASE("fill if less than MFA supports a rank-two threshold forward, backward, and in-place")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_FILL_IF_LESS_THAN_FORWARD, CCV_NNC_BACKEND_MPS));
-	GUARD_ELSE_RETURN(ccv_nnc_mfa_context_supported(ccv_nnc_default_mfa_context()));
 	const uint64_t old_flags = ccv_nnc_flags();
 	ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M);
 	const int datatypes[] = { CCV_32F, CCV_16F, CCV_16BF };
