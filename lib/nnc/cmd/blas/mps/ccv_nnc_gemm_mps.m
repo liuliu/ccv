@@ -489,58 +489,49 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 			return CCV_NNC_EXEC_SUCCESS;
 		}
 
-		if (use_ane_rowwise_gemm && use_scaled_gemm)
+		if (use_ane_rowwise_gemm)
 		{
-			ccv_nnc_mfa_ane_na_rowwise_gemm_params_t params = {
-				.data_type = mtl_data_type,
+			ccv_nnc_mfa_ane_rowwise_gemm_params_t params = {
 				.M = (uint32_t)b_rows,
 				.N = (uint32_t)b_cols,
 				.K = (uint32_t)w_rows,
-				.fused_bias = (bias ? 1 : 0),
-				.batch_dimension = b_batch_size,
-				.batch_stride_a = a_batch_size > 1 ? ccv_max(a_batch_stride, b_rows * w_rows) : 0,
-				.batch_stride_b = w_batch_size > 1 ? b_cols * w_rows : 0,
-				.batch_stride_c = b_batch_size > 1 ? ccv_max(b_batch_stride, b_rows * b_cols) : 0,
-				.batch_stride_d = bias_batch_size > 1 ? b_cols : 0,
+				.data_type = mtl_data_type,
+				.fused_bias = bias ? 1 : 0,
+				.batch_dimension = (uint32_t)C_batch_size,
+				.batch_stride_a = a_batch_size > 1 ? (uint32_t)ccv_max(a_batch_stride, b_rows * w_rows) : 0,
+				.batch_stride_c = b_batch_size > 1 ? (uint32_t)ccv_max(b_batch_stride, b_rows * b_cols) : 0,
 			};
-			const uint32_t ane_m = ccv_nnc_mfa_choose_ane_na_rowwise_split_rows_per_batch(context, params);
-			if (ane_m > 0 && ane_m < params.M)
+			const size_t scratch_offset = ccv_nnc_mfa_ane_rowwise_gemm_reserved_scratch_size(params);
+			mtl_buffer_t* w_data = mpgetbuffer((ccv_nnc_tensor_t*)w);
+			size_t w_dataof = w->dataof;
+			if (w_8i_rowwise_x_format)
 			{
-				const size_t scratch_offset = ccv_nnc_mfa_ane_na_rowwise_split_gemm_reserved_scratch_size(params);
-				mtl_buffer_t* w_data = mpgetbuffer((ccv_nnc_tensor_t*)w);
-				size_t w_dataof = w->dataof;
-				if (w_8i_rowwise_x_format)
-				{
-					mtl_buffer_t* const scratch = ccv_nnc_mfa_request_scratch(context, scratch_offset + w_8i_rowwise_data_size);
-					ccv_nnc_mfa_dequantize_8i_rowwise_x_params_t w_decode_params = _ccv_nnc_8i_rowwise_x_decode_params(mtl_data_type, w_8i_rowwise_x_format, w_8i_rowwise_rows, w_8i_rowwise_cols);
-					ccv_nnc_mfa_prepare_dequantize_8i_rowwise_x(context, w_decode_params);
-					mtl_command_batch_t* command_batch = ccv_nnc_stream_context_start_command_batch(stream_context);
-					_ccv_nnc_mfa_encode_8i_rowwise_x_decode(context, w_decode_params, command_batch, mpgetbuffer((ccv_nnc_tensor_t*)w), w->dataof, scratch, scratch_offset);
-					ccv_nnc_stream_context_finish_command_batch(stream_context, command_batch);
-					w_data = scratch;
-					w_dataof = scratch_offset;
-				}
-				mtl_buffer_t* tensors[4] = {
-					mpgetbuffer((ccv_nnc_tensor_t*)a),
-					w_data,
-					mpgetbuffer((ccv_nnc_tensor_t*)b),
-					bias ? mpgetbuffer((ccv_nnc_tensor_t*)bias) : nil,
-				};
-				size_t tensor_offsets[4] = {
-					a->dataof,
-					w_dataof,
-					b->dataof,
-					bias ? bias->dataof : 0,
-				};
-				const int status = ccv_nnc_mfa_run_ane_na_rowwise_split_gemm(context, params, tensors, tensor_offsets, stream_context);
-				if (status > 0)
-				{
-					if (METAL_LOG_LEVEL(context) >= 1)
-						ccv_nnc_mfa_log_message("Using hybrid ANE + NA rowwise GEMM.");
-					return CCV_NNC_EXEC_SUCCESS;
-				}
-				if (status < 0)
-					return CCV_NNC_EXEC_INVALID;
+				mtl_buffer_t* const scratch = ccv_nnc_mfa_request_scratch(context, scratch_offset + w_8i_rowwise_data_size);
+				ccv_nnc_mfa_dequantize_8i_rowwise_x_params_t w_decode_params = _ccv_nnc_8i_rowwise_x_decode_params(mtl_data_type, w_8i_rowwise_x_format, w_8i_rowwise_rows, w_8i_rowwise_cols);
+				ccv_nnc_mfa_prepare_dequantize_8i_rowwise_x(context, w_decode_params);
+				mtl_command_batch_t* command_batch = ccv_nnc_stream_context_start_command_batch(stream_context);
+				_ccv_nnc_mfa_encode_8i_rowwise_x_decode(context, w_decode_params, command_batch, mpgetbuffer((ccv_nnc_tensor_t*)w), w->dataof, scratch, scratch_offset);
+				ccv_nnc_stream_context_finish_command_batch(stream_context, command_batch);
+				w_data = scratch;
+				w_dataof = scratch_offset;
+			}
+			mtl_buffer_t* tensors[4] = {
+				mpgetbuffer((ccv_nnc_tensor_t*)a),
+				w_data,
+				mpgetbuffer((ccv_nnc_tensor_t*)b),
+				bias ? mpgetbuffer((ccv_nnc_tensor_t*)bias) : nil,
+			};
+			size_t tensor_offsets[4] = {
+				a->dataof,
+				w_dataof,
+				b->dataof,
+				bias ? bias->dataof : 0,
+			};
+			if (ccv_nnc_mfa_run_ane_rowwise_gemm(context, params, tensors, tensor_offsets, stream_context))
+			{
+				if (METAL_LOG_LEVEL(context) >= 1)
+					ccv_nnc_mfa_log_message("Using ANE rowwise GEMM.");
+				return CCV_NNC_EXEC_SUCCESS;
 			}
 		}
 
@@ -598,52 +589,6 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 			ccv_nnc_mfa_encode_scaled_gemm(context, params, command_batch, tensors, tensor_offsets);
 			ccv_nnc_stream_context_finish_command_batch(stream_context, command_batch);
 			return CCV_NNC_EXEC_SUCCESS;
-		}
-
-		if (use_ane_rowwise_gemm)
-		{
-			ccv_nnc_mfa_ane_rowwise_gemm_params_t params = {
-				.M = (uint32_t)b_rows,
-				.N = (uint32_t)b_cols,
-				.K = (uint32_t)w_rows,
-				.data_type = mtl_data_type,
-				.fused_bias = bias ? 1 : 0,
-				.batch_dimension = (uint32_t)C_batch_size,
-				.batch_stride_a = a_batch_size > 1 ? (uint32_t)ccv_max(a_batch_stride, b_rows * w_rows) : 0,
-				.batch_stride_c = b_batch_size > 1 ? (uint32_t)ccv_max(b_batch_stride, b_rows * b_cols) : 0,
-			};
-			const size_t scratch_offset = ccv_nnc_mfa_ane_rowwise_gemm_reserved_scratch_size(params);
-			mtl_buffer_t* w_data = mpgetbuffer((ccv_nnc_tensor_t*)w);
-			size_t w_dataof = w->dataof;
-			if (w_8i_rowwise_x_format)
-			{
-				mtl_buffer_t* const scratch = ccv_nnc_mfa_request_scratch(context, scratch_offset + w_8i_rowwise_data_size);
-				ccv_nnc_mfa_dequantize_8i_rowwise_x_params_t w_decode_params = _ccv_nnc_8i_rowwise_x_decode_params(mtl_data_type, w_8i_rowwise_x_format, w_8i_rowwise_rows, w_8i_rowwise_cols);
-				ccv_nnc_mfa_prepare_dequantize_8i_rowwise_x(context, w_decode_params);
-				mtl_command_batch_t* command_batch = ccv_nnc_stream_context_start_command_batch(stream_context);
-				_ccv_nnc_mfa_encode_8i_rowwise_x_decode(context, w_decode_params, command_batch, mpgetbuffer((ccv_nnc_tensor_t*)w), w->dataof, scratch, scratch_offset);
-				ccv_nnc_stream_context_finish_command_batch(stream_context, command_batch);
-				w_data = scratch;
-				w_dataof = scratch_offset;
-			}
-			mtl_buffer_t* tensors[4] = {
-				mpgetbuffer((ccv_nnc_tensor_t*)a),
-				w_data,
-				mpgetbuffer((ccv_nnc_tensor_t*)b),
-				bias ? mpgetbuffer((ccv_nnc_tensor_t*)bias) : nil,
-			};
-			size_t tensor_offsets[4] = {
-				a->dataof,
-				w_dataof,
-				b->dataof,
-				bias ? bias->dataof : 0,
-			};
-			if (ccv_nnc_mfa_run_ane_rowwise_gemm(context, params, tensors, tensor_offsets, stream_context))
-			{
-				if (METAL_LOG_LEVEL(context) >= 1)
-					ccv_nnc_mfa_log_message("Using ANE rowwise GEMM.");
-				return CCV_NNC_EXEC_SUCCESS;
-			}
 		}
 
 		if (METAL_LOG_LEVEL(context) >= 3)
