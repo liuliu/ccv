@@ -8,6 +8,8 @@ SRCS += ccv_nnc_mfa_segmented_int8_gemv.cpp kernels/SegmentedInt8GemvDescriptor.
 
 SRCS += ccv_nnc_mfa_segmented_int8_swiglu.cpp kernels/SegmentedInt8SwiGLUDescriptor.cpp kernels/SegmentedInt8SwiGLUKernel.cpp
 
+SRCS += ccv_nnc_mfa_segmented_scaled_swiglu.cpp
+
 SRCS += ccv_nnc_mfa_moe_routing.cpp kernels/MoERoutingDescriptor.cpp kernels/MoERoutingKernel.cpp
 
 SRCS += ccv_nnc_mfa_rmsnorm_cmul.cpp kernels/RMSNormCmulDescriptor.cpp kernels/RMSNormCmulKernel.cpp

@@ -190,7 +190,7 @@ static int _segmented_swiglu_benchmark(
 	ccv_nnc_tensor_t* const gate_w, ccv_nnc_tensor_t* const up_w, ccv_nnc_tensor_t* const route_weight,
 	ccv_nnc_tensor_t* const gate, ccv_nnc_tensor_t* const up, ccv_nnc_tensor_t* const* const outputs,
 	ccv_nnc_stream_context_t* const stream, const int warmup, const int iterations, const int batch_size,
-	segmented_swiglu_benchmark_t results[SEGMENTED_SWIGLU_PATH_COUNT])
+	const int path_count, segmented_swiglu_benchmark_t results[SEGMENTED_SWIGLU_PATH_COUNT])
 {
 	int path;
 	for (path = 0; path < SEGMENTED_SWIGLU_PATH_COUNT; path++)
@@ -205,9 +205,9 @@ static int _segmented_swiglu_benchmark(
 	for (iteration = 0; iteration < warmup && status == CCV_NNC_EXEC_SUCCESS; iteration++)
 	{
 		int order;
-		for (order = 0; order < SEGMENTED_SWIGLU_PATH_COUNT && status == CCV_NNC_EXEC_SUCCESS; order++)
+		for (order = 0; order < path_count && status == CCV_NNC_EXEC_SUCCESS; order++)
 		{
-			const segmented_swiglu_path_t scheduled_path = (iteration + order) % SEGMENTED_SWIGLU_PATH_COUNT;
+			const segmented_swiglu_path_t scheduled_path = (iteration + order) % path_count;
 			int batch;
 			for (batch = 0; batch < batch_size && status == CCV_NNC_EXEC_SUCCESS; batch++)
 				status = _segmented_swiglu_run(scheduled_path, segmented, weighted_swish, fused,
@@ -215,15 +215,15 @@ static int _segmented_swiglu_benchmark(
 			ccv_nnc_stream_context_wait(stream);
 		}
 	}
-	double* const samples = (double*)malloc(sizeof(double) * iterations * SEGMENTED_SWIGLU_PATH_COUNT);
+	double* const samples = (double*)malloc(sizeof(double) * iterations * path_count);
 	if (!samples)
 		return CCV_NNC_EXEC_OOM;
 	for (iteration = 0; iteration < iterations && status == CCV_NNC_EXEC_SUCCESS; iteration++)
 	{
 		int order;
-		for (order = 0; order < SEGMENTED_SWIGLU_PATH_COUNT && status == CCV_NNC_EXEC_SUCCESS; order++)
+		for (order = 0; order < path_count && status == CCV_NNC_EXEC_SUCCESS; order++)
 		{
-			const segmented_swiglu_path_t scheduled_path = (iteration + order) % SEGMENTED_SWIGLU_PATH_COUNT;
+			const segmented_swiglu_path_t scheduled_path = (iteration + order) % path_count;
 			const double start = _segmented_swiglu_current_time();
 			int batch;
 			for (batch = 0; batch < batch_size && status == CCV_NNC_EXEC_SUCCESS; batch++)
@@ -236,7 +236,7 @@ static int _segmented_swiglu_benchmark(
 			results[scheduled_path].min_us = ccv_min(results[scheduled_path].min_us, sample_us);
 		}
 	}
-	for (path = 0; path < SEGMENTED_SWIGLU_PATH_COUNT; path++)
+	for (path = 0; path < path_count; path++)
 	{
 		results[path].status = status;
 		if (status == CCV_NNC_EXEC_SUCCESS)
@@ -295,15 +295,15 @@ int main(int argc, char** argv)
 	const int iterations = argc > 3 ? atoi(argv[3]) : 30;
 	const int batch_size = argc > 4 ? atoi(argv[4]) : 8;
 	const int experts = argc > 5 ? atoi(argv[5]) : 6;
-	if (warmup < 0 || iterations <= 0 || batch_size <= 0 || experts <= 0)
+	const int rows = argc > 6 ? atoi(argv[6]) : 6;
+	const int segments = argc > 7 ? atoi(argv[7]) : 6;
+	if (warmup < 0 || iterations <= 0 || batch_size <= 0 || experts <= 0 || rows <= 0 || segments <= 0 || rows < segments)
 	{
-		fprintf(stderr, "usage: %s [rowwise|iq2_xxs|iq2_xs|iq3_xxs|q2_k] [warmup>=0] [iterations>0] [batch_size>0] [experts>0]\n", argv[0]);
+		fprintf(stderr, "usage: %s [rowwise|iq2_xxs|iq2_xs|iq3_xxs|q2_k] [warmup>=0] [iterations>0] [batch_size>0] [experts>0] [rows>=segments] [segments>0]\n", argv[0]);
 		return 1;
 	}
 	ccv_nnc_init();
 	enum {
-		rows = 6,
-		segments = 6,
 		n = 2048,
 		k = 4096,
 	};
@@ -329,7 +329,7 @@ int main(int argc, char** argv)
 	for (i = 0; i < segments; i++)
 	{
 		hindices->data.i32[i] = (i * 5 + 3) % experts;
-		hcounts->data.i32[i] = 1;
+		hcounts->data.i32[i] = rows / segments + (i < rows % segments);
 	}
 	float route_float[rows];
 	for (i = 0; i < rows; i++)
@@ -385,7 +385,8 @@ int main(int argc, char** argv)
 		gate_w, up_w, route, gate, up, composed_output, stream);
 	if (status == CCV_NNC_EXEC_SUCCESS)
 		status = _segmented_swiglu_fused(fused, a_grouped, indices, counts, gate_w, up_w, route, fused_grouped_output, stream);
-	if (status == CCV_NNC_EXEC_SUCCESS)
+	const int path_count = rows == segments ? SEGMENTED_SWIGLU_PATH_COUNT : 2;
+	if (status == CCV_NNC_EXEC_SUCCESS && path_count == SEGMENTED_SWIGLU_PATH_COUNT)
 		status = _segmented_swiglu_fused(fused, a_broadcast, indices, counts, gate_w, up_w, route, fused_broadcast_output, stream);
 	if (status == CCV_NNC_EXEC_SUCCESS)
 		status = ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0,
@@ -394,7 +395,8 @@ int main(int argc, char** argv)
 	ccv_nnc_stream_context_wait(stream);
 	if (status != CCV_NNC_EXEC_SUCCESS ||
 		!_segmented_swiglu_compare("fused_grouped", hcomposed_output, hfused_grouped_output) ||
-		!_segmented_swiglu_compare("fused_broadcast", hcomposed_output, hfused_broadcast_output))
+		(path_count == SEGMENTED_SWIGLU_PATH_COUNT &&
+			!_segmented_swiglu_compare("fused_broadcast", hcomposed_output, hfused_broadcast_output)))
 	{
 		fprintf(stderr, "fused-vs-composed validation failed (status %d)\n", status);
 		return 1;
@@ -409,7 +411,7 @@ int main(int argc, char** argv)
 	segmented_swiglu_benchmark_t results[SEGMENTED_SWIGLU_PATH_COUNT];
 	status = _segmented_swiglu_benchmark(segmented, weighted_swish, fused,
 		activations, indices, counts, gate_w, up_w, route, gate, up, outputs, stream,
-		warmup, iterations, batch_size, results);
+		warmup, iterations, batch_size, path_count, results);
 	printf("format,M,S,E,N,K,clamp,path,median_us,mean_us,min_us,speedup_vs_composed,speedup_vs_fused_grouped\n");
 	printf("%s,%d,%d,%d,%d,%d,%.1f,composed_grouped,%.3f,%.3f,%.3f,1.000,%.3f\n",
 		_segmented_swiglu_format_name(format), rows, segments, experts, n, k, clamp,
@@ -425,15 +427,16 @@ int main(int argc, char** argv)
 		results[SEGMENTED_SWIGLU_FUSED_GROUPED].min_us,
 		results[SEGMENTED_SWIGLU_COMPOSED_GROUPED].median_us /
 			results[SEGMENTED_SWIGLU_FUSED_GROUPED].median_us);
-	printf("%s,%d,%d,%d,%d,%d,%.1f,fused_broadcast,%.3f,%.3f,%.3f,%.3f,%.3f\n",
-		_segmented_swiglu_format_name(format), rows, segments, experts, n, k, clamp,
-		results[SEGMENTED_SWIGLU_FUSED_BROADCAST].median_us,
-		results[SEGMENTED_SWIGLU_FUSED_BROADCAST].mean_us,
-		results[SEGMENTED_SWIGLU_FUSED_BROADCAST].min_us,
-		results[SEGMENTED_SWIGLU_COMPOSED_GROUPED].median_us /
+	if (path_count == SEGMENTED_SWIGLU_PATH_COUNT)
+		printf("%s,%d,%d,%d,%d,%d,%.1f,fused_broadcast,%.3f,%.3f,%.3f,%.3f,%.3f\n",
+			_segmented_swiglu_format_name(format), rows, segments, experts, n, k, clamp,
 			results[SEGMENTED_SWIGLU_FUSED_BROADCAST].median_us,
-		results[SEGMENTED_SWIGLU_FUSED_GROUPED].median_us /
-			results[SEGMENTED_SWIGLU_FUSED_BROADCAST].median_us);
+			results[SEGMENTED_SWIGLU_FUSED_BROADCAST].mean_us,
+			results[SEGMENTED_SWIGLU_FUSED_BROADCAST].min_us,
+			results[SEGMENTED_SWIGLU_COMPOSED_GROUPED].median_us /
+				results[SEGMENTED_SWIGLU_FUSED_BROADCAST].median_us,
+			results[SEGMENTED_SWIGLU_FUSED_GROUPED].median_us /
+				results[SEGMENTED_SWIGLU_FUSED_BROADCAST].median_us);
 	if (status != CCV_NNC_EXEC_SUCCESS)
 		fprintf(stderr, "benchmark failed with status %d\n", status);
 
