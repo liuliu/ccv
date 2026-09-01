@@ -84,7 +84,9 @@ std::pair<ANERowwiseTransformKernelDescriptor, PipelineValue<ANERowwiseTransform
     return pipeline;
   };
 
-  auto kernelDesc = ANERowwiseTransformKernelDescriptor(memoryPrecision);
+  auto kernelDesc = ANERowwiseTransformKernelDescriptor(
+      memoryPrecision,
+      device->supportsFamily(MTL::GPUFamily(1010)));
   auto kernel = createKernel(kernelDesc);
   auto computeActivationScales = NS::TransferPtr(createPipeline(kernel, "compute_activation_scales"));
   auto quantizeActivation = NS::TransferPtr(createPipeline(kernel, "quantize_transpose_activation"));

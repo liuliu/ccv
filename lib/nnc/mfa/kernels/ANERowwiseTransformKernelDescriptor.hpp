@@ -5,9 +5,12 @@
 
 struct ANERowwiseTransformKernelDescriptor {
   GEMMOperandPrecision memoryPrecision;
+  bool supportsApple10;
 
   ANERowwiseTransformKernelDescriptor() = delete;
-  explicit ANERowwiseTransformKernelDescriptor(GEMMOperandPrecision memoryPrecision) noexcept;
+  ANERowwiseTransformKernelDescriptor(
+      GEMMOperandPrecision memoryPrecision,
+      bool supportsApple10) noexcept;
 
   bool operator==(const ANERowwiseTransformKernelDescriptor& rhs) const;
 };

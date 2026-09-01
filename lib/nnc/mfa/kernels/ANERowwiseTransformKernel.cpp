@@ -8,9 +8,9 @@ ANERowwiseTransformKernel::ANERowwiseTransformKernel(
 {
   memoryPrecision = descriptor.memoryPrecision;
   activationScaleThreads = 256;
-  quantTileDimension = 32;
-  quantBlockRows = 8;
-  quantTilePad = 33;
+  quantTileDimension = descriptor.supportsApple10 ? 64 : 32;
+  quantBlockRows = descriptor.supportsApple10 ? 4 : 8;
+  quantTilePad = descriptor.supportsApple10 ? 65 : 33;
   outputTileDimensions = simd::ushort2 { 16, 16 };
 
   source = createSource();
