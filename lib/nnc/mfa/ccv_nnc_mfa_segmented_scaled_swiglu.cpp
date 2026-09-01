@@ -8,6 +8,8 @@ using namespace ccv::nnc;
 #include "kernels/SegmentedScaledGEMMKernel.hpp"
 #include "kernels/SegmentedScaledGEMMKernelDescriptor.hpp"
 #include "kernels/SegmentedScaledGEMMDescriptor.hpp"
+#include "kernels/Int8MatMulDescriptor.hpp"
+#include "kernels/Int8MatMulKernel.hpp"
 
 namespace {
 
@@ -262,6 +264,110 @@ void ccv_nnc_mfa_encode_segmented_scaled_swiglu(
     params.expert_count > 0 && params.bincount > 0);
   CCV_NNC_MFA_PRECONDITION(
     params.format == 0 || ((params.N % 256) == 0 && (params.K % 256) == 0));
+
+  if (!params.use_neural_accelerators) {
+    CCV_NNC_MFA_PRECONDITION(
+      params.data_type == MTL::DataTypeFloat && params.format == 0 &&
+      (params.N % 8) == 0 && (params.K % 8) == 0);
+    CCV_NNC_MFA_PRECONDITION(
+      (uint64_t)params.expert_count * params.N * params.K <= UINT32_MAX);
+    const Int8MatMulDescriptor descriptor = {
+      .M = params.M,
+      .N = params.N,
+      .K = params.K,
+      .expertCount = params.expert_count,
+      .binCount = params.bincount,
+      .operation = Int8MatMulQuantizeActivation,
+    };
+    auto int8_matmul_pipeline = [&](const Int8MatMulOperation operation) {
+      Int8MatMulDescriptor operation_descriptor = descriptor;
+      operation_descriptor.operation = operation;
+      auto pool = NS::AutoreleasePool::alloc()->init();
+      auto pipeline = context->kernel_cache.findKernel<
+        Int8MatMulKernel, Int8MatMulDescriptor, Int8MatMulKernelDescriptor>(
+          operation_descriptor, context->device.get(), DeviceProperties());
+      pool->drain();
+      return pipeline;
+    };
+    auto quantize_pipeline = int8_matmul_pipeline(Int8MatMulQuantizeActivation);
+    auto segmented_pipeline = int8_matmul_pipeline(Int8MatMulSegmented);
+    auto dequantize_pipeline = int8_matmul_pipeline(Int8MatMulDequantizeSegmentedOutput);
+    const size_t activation_offset = 0;
+    const size_t activation_bytes = (size_t)params.M * params.K * sizeof(uint16_t);
+    const size_t scale_offset = align_up(activation_offset + activation_bytes, 128);
+    const size_t scale_bytes = (size_t)params.M * sizeof(float);
+    const size_t intermediate_offset = align_up(scale_offset + scale_bytes, 128);
+    const size_t intermediate_bytes = (size_t)params.M * params.N * sizeof(float);
+    MTL::Buffer* const scratch = context->request_scratch(
+      intermediate_offset + intermediate_bytes);
+    const size_t weight_scale_offset = rowwise_8i_scale_offset(
+      (size_t)params.expert_count * params.N, params.K);
+    {
+      auto encoder = command_batch->startCommand();
+      encoder->setComputePipelineState(quantize_pipeline->pipeline.get());
+      encoder->useResource(tensors[2], MTL::ResourceUsageRead);
+      encoder->useResource(scratch, MTL::ResourceUsageWrite);
+      encoder->setBuffer(tensors[2], tensor_offsets[2], 0);
+      encoder->setBuffer(scratch, activation_offset, 1);
+      encoder->setBuffer(scratch, scale_offset, 2);
+      encoder->dispatchThreadgroups(
+        MTL::Size(params.M, 1, 1), quantize_pipeline->kernel->threadgroupSize);
+      command_batch->finishCommand(encoder);
+    }
+    for (int projection = 0; projection < 2; ++projection) {
+      MTL::Buffer* const destination = projection == 0 ? scratch : tensors[6];
+      const size_t destination_offset = projection == 0 ?
+        intermediate_offset : tensor_offsets[6];
+      {
+        auto encoder = command_batch->startCommand();
+        encoder->setComputePipelineState(segmented_pipeline->pipeline.get());
+        encoder->useResource(scratch, destination == scratch ?
+          MTL::ResourceUsageRead | MTL::ResourceUsageWrite : MTL::ResourceUsageRead);
+        encoder->useResource(tensors[3], MTL::ResourceUsageRead);
+        encoder->useResource(tensors[4], MTL::ResourceUsageRead);
+        encoder->useResource(tensors[projection], MTL::ResourceUsageRead);
+        if (destination != scratch)
+          encoder->useResource(destination, MTL::ResourceUsageWrite);
+        encoder->setBuffer(scratch, activation_offset, 0);
+        encoder->setBuffer(tensors[3], tensor_offsets[3], 1);
+        encoder->setBuffer(tensors[4], tensor_offsets[4], 2);
+        encoder->setBuffer(tensors[projection], tensor_offsets[projection], 3);
+        encoder->setBuffer(destination, destination_offset, 4);
+        encoder->dispatchThreadgroups(
+          MTL::Size((params.N + 7) / 8, params.bincount, 1), MTL::Size(32, 1, 1));
+        command_batch->finishCommand(encoder);
+      }
+      {
+        auto encoder = command_batch->startCommand();
+        encoder->setComputePipelineState(dequantize_pipeline->pipeline.get());
+        encoder->useResource(destination, MTL::ResourceUsageRead | MTL::ResourceUsageWrite);
+        if (destination != scratch)
+          encoder->useResource(scratch, MTL::ResourceUsageRead);
+        encoder->useResource(tensors[projection], MTL::ResourceUsageRead);
+        encoder->useResource(tensors[3], MTL::ResourceUsageRead);
+        encoder->useResource(tensors[4], MTL::ResourceUsageRead);
+        encoder->setBuffer(destination, destination_offset, 0);
+        encoder->setBuffer(scratch, scale_offset, 1);
+        encoder->setBuffer(
+          tensors[projection], tensor_offsets[projection] + weight_scale_offset, 2);
+        encoder->setBuffer(tensors[3], tensor_offsets[3], 3);
+        encoder->setBuffer(tensors[4], tensor_offsets[4], 4);
+        encoder->dispatchThreadgroups(
+          MTL::Size((params.N + 255) / 256, params.bincount, 1),
+          dequantize_pipeline->kernel->threadgroupSize);
+        command_batch->finishCommand(encoder);
+      }
+    }
+    MTL::Buffer* swish_tensors[5] = {
+      tensors[6], scratch, tensors[5], tensors[6], nullptr,
+    };
+    size_t swish_tensor_offsets[4] = {
+      tensor_offsets[6], intermediate_offset, tensor_offsets[5], tensor_offsets[6],
+    };
+    ccv_nnc_mfa_encode_swish_mul(
+      context, swish_params(params), command_batch, swish_tensors, swish_tensor_offsets);
+    return;
+  }
 
   const ccv_nnc_mfa_segmented_scaled_swiglu_execution_t execution_state =
     execution(context, params);

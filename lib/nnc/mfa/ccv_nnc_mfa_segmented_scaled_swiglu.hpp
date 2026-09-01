@@ -10,6 +10,7 @@ typedef struct {
   uint8_t loadM;
   uint32_t expert_count;
   uint32_t bincount;
+  uint8_t use_neural_accelerators;
   float clamp;
 } ccv_nnc_mfa_segmented_scaled_swiglu_params_t;
 

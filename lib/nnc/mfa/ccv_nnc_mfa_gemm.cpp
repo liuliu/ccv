@@ -23,37 +23,42 @@ static constexpr uint32_t kNAMatMulSmallMPack = 8;
 
 static bool _ccv_nnc_mfa_gemm_memory_precisions(const ccv_nnc_mfa_gemm_params_t params, GEMMOperandPrecisions* const precisions) noexcept
 {
+  GEMMOperandPrecision input_precision;
+  GEMMOperandPrecision output_precision;
   switch (params.data_type) {
-    case MTL::DataTypeHalf: {
-      *precisions = {
-        .A = GEMMOperandPrecision::FP16,
-        .B = GEMMOperandPrecision::FP16,
-        .C = GEMMOperandPrecision::FP16,
-        .bias = GEMMOperandPrecision::FP16,
-      };
-      return true;
-    }
-    case MTL::DataTypeBFloat: {
-      *precisions = {
-        .A = GEMMOperandPrecision::BF16,
-        .B = GEMMOperandPrecision::BF16,
-        .C = GEMMOperandPrecision::BF16,
-        .bias = GEMMOperandPrecision::BF16,
-      };
-      return true;
-    }
-    case MTL::DataTypeFloat: {
-      *precisions = {
-        .A = GEMMOperandPrecision::FP32,
-        .B = GEMMOperandPrecision::FP32,
-        .C = GEMMOperandPrecision::FP32,
-        .bias = GEMMOperandPrecision::FP32,
-      };
-      return true;
-    }
+    case MTL::DataTypeHalf:
+      input_precision = GEMMOperandPrecision::FP16;
+      break;
+    case MTL::DataTypeBFloat:
+      input_precision = GEMMOperandPrecision::BF16;
+      break;
+    case MTL::DataTypeFloat:
+      input_precision = GEMMOperandPrecision::FP32;
+      break;
     default:
       return false;
   }
+  const uint64_t output_data_type = params.output_data_type ? params.output_data_type : params.data_type;
+  switch (output_data_type) {
+    case MTL::DataTypeHalf:
+      output_precision = GEMMOperandPrecision::FP16;
+      break;
+    case MTL::DataTypeBFloat:
+      output_precision = GEMMOperandPrecision::BF16;
+      break;
+    case MTL::DataTypeFloat:
+      output_precision = GEMMOperandPrecision::FP32;
+      break;
+    default:
+      return false;
+  }
+  *precisions = {
+    .A = input_precision,
+    .B = input_precision,
+    .C = output_precision,
+    .bias = output_precision,
+  };
+  return true;
 }
 
 static bool _ccv_nnc_mfa_use_na_matmul_small_m(const ccv_nnc_mfa_gemm_params_t params) noexcept
@@ -399,38 +404,7 @@ void ccv_nnc_mfa_encode_gemm(mfa::context* context, ccv_nnc_mfa_gemm_params_t pa
       params.N,
       params.K,
     };
-    switch (params.data_type) {
-      case MTL::DataTypeHalf: {
-        gemmDesc.memoryPrecisions = {
-          .A = GEMMOperandPrecision::FP16,
-          .B = GEMMOperandPrecision::FP16,
-          .C = GEMMOperandPrecision::FP16,
-          .bias = GEMMOperandPrecision::FP16,
-        };
-        break;
-      }
-      case MTL::DataTypeBFloat: {
-        gemmDesc.memoryPrecisions = {
-          .A = GEMMOperandPrecision::BF16,
-          .B = GEMMOperandPrecision::BF16,
-          .C = GEMMOperandPrecision::BF16,
-          .bias = GEMMOperandPrecision::BF16,
-        };
-        break;
-      }
-      case MTL::DataTypeFloat: {
-        gemmDesc.memoryPrecisions = {
-          .A = GEMMOperandPrecision::FP32,
-          .B = GEMMOperandPrecision::FP32,
-          .C = GEMMOperandPrecision::FP32,
-          .bias = GEMMOperandPrecision::FP32,
-        };
-        break;
-      }
-      default:
-        CCV_NNC_MFA_PRECONDITION(false);
-        break;
-    }
+    CCV_NNC_MFA_PRECONDITION(_ccv_nnc_mfa_gemm_memory_precisions(params, &gemmDesc.memoryPrecisions));
     gemmDesc.transposeState = simd::uchar3 { params.A_trans, params.B_trans, params.D_trans };
     gemmDesc.registerPrecisionC = (params.register_float) ? std::optional(GEMMOperandPrecision::FP32) : std::nullopt;
     if (params.leading_dimension_a || params.leading_dimension_c) {

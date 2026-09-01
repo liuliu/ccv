@@ -403,6 +403,20 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 			ccv_nnc_mfa_supports_int8_ane(context) &&
 			!(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA) &&
 			!(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_ANE);
+		const int use_neural_accelerators =
+			!(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS) &&
+			ccv_nnc_mfa_has_neural_accelerators(context) &&
+			(mtl_data_type != 121 || ccv_nnc_mfa_neural_accelerators_support_bfloat(context));
+		const int use_scaled_gemm_without_neural_accelerators =
+			!use_neural_accelerators &&
+			w_qx_subtype == CCV_NNC_QX_8I_ROWWISE &&
+			a_datatype == CCV_32F &&
+			!bias &&
+			a_rows > 3 &&
+			!is_batched &&
+			ccv_nnc_tensor_count(a->info) <= UINT32_MAX &&
+			ccv_nnc_tensor_count(w->info) <= UINT32_MAX &&
+			ccv_nnc_tensor_count(b->info) <= UINT32_MAX;
 		const int use_scaled_gemm =
 			w_qx_8i_rowwise &&
 			(CCV_GET_DATA_TYPE(a->info.datatype) != CCV_QX) &&
@@ -418,9 +432,7 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 			ccv_nnc_mfa_context_supported(context) &&
 			!(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA) &&
 			!(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_GEMM) &&
-			!(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS) &&
-			ccv_nnc_mfa_has_neural_accelerators(context) &&
-			(mtl_data_type != 121 || ccv_nnc_mfa_neural_accelerators_support_bfloat(context));
+			(use_neural_accelerators || use_scaled_gemm_without_neural_accelerators);
 		const int use_scaled_gemv =
 			w_qx_8i_rowwise &&
 			(CCV_GET_DATA_TYPE(a->info.datatype) != CCV_QX) &&
@@ -543,7 +555,7 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 				.N = (uint32_t)b_cols,
 				.K = (uint32_t)w_rows,
 				.fused_bias = (bias ? 1 : 0),
-				.use_neural_accelerators = 1,
+				.use_neural_accelerators = use_neural_accelerators,
 				.batch_dimension = is_interleaved_batched_scaled_gemm ? (uint32_t)adim[1] : b_batch_size,
 				.batch_stride_a = is_interleaved_batched_scaled_gemm ? (uint32_t)w_rows : (a_batch_size > 1 ? ccv_max(a_batch_stride, b_rows * w_rows) : 0),
 				.batch_stride_b = is_interleaved_batched_scaled_gemm ? (uint32_t)interleaved_w_batch_stride : (w_batch_size > 1 ? b_cols * w_rows : 0),

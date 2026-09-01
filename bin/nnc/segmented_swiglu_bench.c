@@ -288,8 +288,93 @@ static int _segmented_swiglu_compare(const char* const path, const ccv_nnc_tenso
 	return relative_l2 < 0.02 && cosine > 0.999;
 }
 
+static int _segmented_swiglu_fp32_prefill_benchmark(const int warmup, const int iterations, const int token_count)
+{
+	const int experts = 256;
+	const int n = 2048;
+	const int k = 4096;
+	const int rows = token_count * 6;
+	const int segments = ccv_min(rows, experts);
+	ccv_nnc_init();
+	ccv_nnc_tensor_t* const ha = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, k), 0);
+	ccv_nnc_tensor_t* const hindices = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, segments), 0);
+	ccv_nnc_tensor_t* const hcounts = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, segments), 0);
+	ccv_nnc_tensor_t* const hroute = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows), 0);
+	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, rows, k), 0);
+	ccv_nnc_tensor_t* const indices = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32S, segments), 0);
+	ccv_nnc_tensor_t* const counts = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32S, segments), 0);
+	ccv_nnc_tensor_t* const route = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, rows), 0);
+	const ccv_nnc_tensor_param_t dense_weight_params = GPU_TENSOR_NHWC(000, 32F, experts, n, k);
+	const ccv_nnc_tensor_param_t quantized_weight_params = ccv_nnc_tensor_8i_rowwise(dense_weight_params);
+	ccv_nnc_tensor_t* const gate_w = ccv_nnc_tensor_new(0, quantized_weight_params, 0);
+	ccv_nnc_tensor_t* const up_w = ccv_nnc_tensor_new(0, quantized_weight_params, 0);
+	ccv_nnc_tensor_t* const output = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, rows, n), 0);
+	if (!ha || !hindices || !hcounts || !hroute || !a || !indices || !counts || !route || !gate_w || !up_w || !output)
+	{
+		fprintf(stderr, "fp32 prefill allocation failed\n");
+		return 1;
+	}
+	const int activation_count = ccv_nnc_tensor_count(ha->info);
+	int i;
+	for (i = 0; i < activation_count; i++)
+		ha->data.f32[i] = (float)((i % 127) - 63) / 64;
+	for (i = 0; i < segments; i++)
+	{
+		hindices->data.i32[i] = i;
+		hcounts->data.i32[i] = rows / segments + (i < rows % segments);
+	}
+	for (i = 0; i < rows; i++)
+		hroute->data.f32[i] = 1;
+	ccv_nnc_stream_context_t* const stream = ccv_nnc_stream_context_new(CCV_STREAM_CONTEXT_GPU);
+	int status = ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0,
+		TENSOR_LIST(ha, hindices, hcounts, hroute), TENSOR_LIST(a, indices, counts, route), stream);
+	ccv_nnc_stream_context_wait(stream);
+	ccv_nnc_cmd_t command = CMD_SEGMENTED_SWIGLU_FORWARD(10);
+	command.backend = CCV_NNC_BACKEND_MPS;
+	for (i = 0; i < warmup && status == CCV_NNC_EXEC_SUCCESS; i++)
+	{
+		status = ccv_nnc_cmd_exec(command, ccv_nnc_no_hint, 0,
+			TENSOR_LIST(a, indices, counts, gate_w, up_w, route), TENSOR_LIST(output), stream);
+		ccv_nnc_stream_context_wait(stream);
+	}
+	double* const samples = (double*)malloc(sizeof(double) * iterations);
+	for (i = 0; i < iterations && status == CCV_NNC_EXEC_SUCCESS; i++)
+	{
+		const double start = _segmented_swiglu_current_time();
+		status = ccv_nnc_cmd_exec(command, ccv_nnc_no_hint, 0,
+			TENSOR_LIST(a, indices, counts, gate_w, up_w, route), TENSOR_LIST(output), stream);
+		ccv_nnc_stream_context_wait(stream);
+		samples[i] = (_segmented_swiglu_current_time() - start) * 1000;
+	}
+	if (status == CCV_NNC_EXEC_SUCCESS)
+	{
+		qsort(samples, iterations, sizeof(double), _segmented_swiglu_double_compare);
+		printf("fp32,rowwise,prefill,T=%d,M=%d,S=%d,E=%d,N=%d,K=%d,median_ms=%.4f,min_ms=%.4f\n",
+			token_count, rows, segments, experts, n, k, samples[iterations / 2], samples[0]);
+	}
+	free(samples);
+	ccv_nnc_stream_context_free(stream);
+	ccv_nnc_tensor_free(output);
+	ccv_nnc_tensor_free(up_w);
+	ccv_nnc_tensor_free(gate_w);
+	ccv_nnc_tensor_free(route);
+	ccv_nnc_tensor_free(counts);
+	ccv_nnc_tensor_free(indices);
+	ccv_nnc_tensor_free(a);
+	ccv_nnc_tensor_free(hroute);
+	ccv_nnc_tensor_free(hcounts);
+	ccv_nnc_tensor_free(hindices);
+	ccv_nnc_tensor_free(ha);
+	return status != CCV_NNC_EXEC_SUCCESS;
+}
+
 int main(int argc, char** argv)
 {
+	if (argc > 1 && strcmp(argv[1], "prefill_fp32") == 0)
+		return _segmented_swiglu_fp32_prefill_benchmark(
+			argc > 2 ? atoi(argv[2]) : 2,
+			argc > 3 ? atoi(argv[3]) : 7,
+			argc > 4 ? atoi(argv[4]) : 2048);
 	const segmented_swiglu_weight_format_t format = _segmented_swiglu_parse_format(argc > 1 ? argv[1] : "iq2_xxs");
 	const int warmup = argc > 2 ? atoi(argv[2]) : 5;
 	const int iterations = argc > 3 ? atoi(argv[3]) : 30;

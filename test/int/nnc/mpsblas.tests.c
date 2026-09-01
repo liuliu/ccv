@@ -1908,7 +1908,9 @@ static int _mps_segmented_scaled_gemm_validate_format_shape_experts_dims(const i
 	ccv_nnc_tensor_t* const hw_ref = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, expert_count, n_dim, k_dim), 0);
 	ccv_nnc_tensor_t* const hbias_ref = use_bias ? ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, expert_count, n_dim), 0) : 0;
 	ccv_nnc_tensor_t* const bt = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, total_m, n_dim), 0);
-	if (force_fallback)
+	if (force_fallback && datatype == CCV_32F && !use_bias && !format)
+		_mps_forward_scaled_gemm_quantized_reference(datatype, ha->data.u8, total_m, k_dim, a_ref);
+	else if (force_fallback)
 		_mps_forward_scaled_gemm_to_float(datatype, ha->data.u8, total_m * k_dim, a_ref);
 	else
 		_mps_forward_scaled_gemm_quantized_reference(datatype, ha->data.u8, total_m, k_dim, a_ref);
@@ -2342,6 +2344,87 @@ TEST_CASE("mps segmented gemm with row-wise 8i weight and bias fallback dequanti
 	max_rel = 0;
 	REQUIRE_EQ(_mps_segmented_scaled_gemm_validate(CCV_16BF, 1, 1, &max_abs, &max_rel), 0, "segmented fallback row-wise 8i validation should run");
 	REQUIRE(max_rel < 6e-3, "segmented fallback row-wise 8i bf16 should match dense-A reference, max_abs=%g max_rel=%g", max_abs, max_rel);
+}
+
+TEST_CASE("mps segmented gemm emulates int8 with normalized half values and float scales")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SEGMENTED_GEMM_FORWARD, CCV_NNC_BACKEND_MPS));
+	double max_abs = 0;
+	double max_rel = 0;
+	REQUIRE_EQ(_mps_segmented_scaled_gemm_validate(CCV_32F, 0, 1, &max_abs, &max_rel), 0,
+		"segmented Int8MatMul validation should run");
+	REQUIRE(max_rel < 3e-3,
+		"segmented Int8MatMul should match the quantized activation reference, max_abs=%g max_rel=%g",
+		max_abs, max_rel);
+}
+
+TEST_CASE("mps fp32 row-wise 8i fallback quantizes values outside the fp16 range")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_MPS));
+	const int m_dim = 5;
+	const int n_dim = 32;
+	const int k_dim = 128;
+	ccv_nnc_tensor_t* const ha = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, m_dim, k_dim), 0);
+	ccv_nnc_tensor_t* const hwd = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, n_dim, k_dim), 0);
+	ccv_nnc_tensor_t* const hwq = ccv_nnc_tensor_new(0, ccv_nnc_tensor_8i_rowwise(hwd->info), 0);
+	ccv_nnc_tensor_t* const hb = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, m_dim, n_dim), 0);
+	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, m_dim, k_dim), 0);
+	ccv_nnc_tensor_param_t wq_params = hwq->info;
+	wq_params.type = CCV_TENSOR_GPU_MEMORY | 000;
+	ccv_nnc_tensor_t* const wq = ccv_nnc_tensor_new(0, wq_params, 0);
+	ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, m_dim, n_dim), 0);
+	_mps_forward_scaled_gemm_fill_matrix(CCV_32F, ha->data.u8, m_dim, k_dim, 1);
+	_mps_forward_scaled_gemm_fill_matrix(CCV_32F, hwd->data.u8, n_dim, k_dim, 0);
+	int i;
+	for (i = 0; i < m_dim; i++)
+		ha->data.f32[i * k_dim] = (i & 1) ? -1e8f : 1e8f;
+	const size_t qsize = ccv_nnc_quantize_8i_rowwise(
+		hwd->data.u8, CCV_32F, CCV_TENSOR_CPU_MEMORY, (size_t)n_dim * k_dim, k_dim, 0, 0,
+		hwq->data.u8, ccv_nnc_tensor_data_size_without_padding(hwq->info));
+	REQUIRE_EQ(qsize, ccv_nnc_tensor_data_size_without_padding(hwq->info),
+		"float weights should quantize to the declared rowwise size");
+	float* const a_ref = (float*)ccmalloc(sizeof(float) * m_dim * k_dim);
+	float* const w_ref = (float*)ccmalloc(sizeof(float) * n_dim * k_dim);
+	float* const expected = (float*)ccmalloc(sizeof(float) * m_dim * n_dim);
+	_mps_forward_scaled_gemm_quantized_reference(CCV_32F, ha->data.u8, m_dim, k_dim, a_ref);
+	ccv_nnc_dequantize_8i_rowwise(
+		hwq->data.u8, CCV_32F, CCV_TENSOR_CPU_MEMORY, qsize, k_dim,
+		w_ref, (size_t)n_dim * k_dim);
+	_mps_forward_scaled_gemm_reference(a_ref, w_ref, 0, m_dim, n_dim, k_dim, expected);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0,
+		TENSOR_LIST(ha, hwq), TENSOR_LIST(a, wq), 0);
+	const uint64_t old_flags = ccv_nnc_flags();
+	ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS);
+	ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA_ANE);
+	const int exec_status = ccv_nnc_cmd_exec(
+		CMD_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(0, 1)), ccv_nnc_no_hint, 0,
+		TENSOR_LIST(a, wq), TENSOR_LIST(b), 0);
+	if (!(old_flags & CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS))
+		ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS);
+	if (!(old_flags & CCV_NNC_DISABLE_MFA_ANE))
+		ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA_ANE);
+	REQUIRE_EQ(exec_status, CCV_NNC_EXEC_SUCCESS, "Int8MatMul should execute");
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0,
+		TENSOR_LIST(b), TENSOR_LIST(hb), 0);
+	double max_rel = 0;
+	for (i = 0; i < m_dim * n_dim; i++)
+	{
+		REQUIRE(isfinite(hb->data.f32[i]), "quantized activation output should remain finite");
+		const double diff = fabs((double)hb->data.f32[i] - expected[i]);
+		const double denom = ccv_max(1.0, ccv_max(fabs((double)hb->data.f32[i]), fabs((double)expected[i])));
+		max_rel = ccv_max(max_rel, diff / denom);
+	}
+	REQUIRE(max_rel < 5e-4, "Int8MatMul should match the quantized FP32 reference, max_rel=%g", max_rel);
+	ccfree(expected);
+	ccfree(w_ref);
+	ccfree(a_ref);
+	ccv_nnc_tensor_free(b);
+	ccv_nnc_tensor_free(wq);
+	ccv_nnc_tensor_free(a);
+	ccv_nnc_tensor_free(hb);
+	ccv_nnc_tensor_free(hwq);
+	ccv_nnc_tensor_free(hwd);
+	ccv_nnc_tensor_free(ha);
 }
 
 TEST_CASE("mps forward gemm with row-wise 8i weight fallback dequantize")

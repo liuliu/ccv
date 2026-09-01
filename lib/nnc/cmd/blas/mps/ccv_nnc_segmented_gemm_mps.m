@@ -275,6 +275,20 @@ static int _ccv_nnc_segmented_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_h
 		// MFA uses the convention C = A * B.
 		ccv_nnc_mfa_context_t* context = ccv_nnc_default_mfa_context();
 		const int is_downcast = ((cmd.info.blas.flags & CCV_NNC_GEMM_16F) && a_datatype == CCV_16F);
+		const int use_neural_accelerators =
+			!(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS) &&
+			ccv_nnc_mfa_has_neural_accelerators(context) &&
+			(mtl_data_type != 121 || ccv_nnc_mfa_neural_accelerators_support_bfloat(context));
+		const int use_segmented_scaled_gemm_without_neural_accelerators =
+			!use_neural_accelerators &&
+			w_qx_subtype == CCV_NNC_QX_8I_ROWWISE &&
+			mtl_data_type == 3 &&
+			!bias &&
+			(w_rows % 8) == 0 &&
+			(b_cols % 8) == 0 &&
+			ccv_nnc_tensor_count(a->info) <= UINT32_MAX &&
+			ccv_nnc_tensor_count(w->info) <= UINT32_MAX &&
+			ccv_nnc_tensor_count(b->info) <= UINT32_MAX;
 		const int use_segmented_scaled_gemm =
 			w_qx_8i_rowwise &&
 			(CCV_GET_DATA_TYPE(a->info.datatype) != CCV_QX) &&
@@ -287,9 +301,7 @@ static int _ccv_nnc_segmented_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_h
 			is_supported_dtype &&
 			ccv_nnc_mfa_context_supported(context) &&
 			!(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA) &&
-			!(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS) &&
-			ccv_nnc_mfa_has_neural_accelerators(context) &&
-			(mtl_data_type != 121 || ccv_nnc_mfa_neural_accelerators_support_bfloat(context));
+			(use_neural_accelerators || use_segmented_scaled_gemm_without_neural_accelerators);
 		const int use_segmented_int8_gemv =
 			(b_rows == bincount) &&
 			(b_rows > 0) &&
@@ -396,7 +408,7 @@ static int _ccv_nnc_segmented_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_h
 				.K = (uint32_t)w_rows,
 				.originalM = (uint32_t)b_rows,
 				.fused_bias = (bias ? 1 : 0),
-				.use_neural_accelerators = 1,
+				.use_neural_accelerators = use_neural_accelerators,
 				.loadM = !!(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M),
 				.expert_count = w_batch_size,
 				.bincount = bincount,

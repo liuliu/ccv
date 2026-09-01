@@ -451,6 +451,138 @@ TEST_CASE("MPS segmented SwiGLU executes grouped rowwise int8 prefill")
 	_segmented_swiglu_mps_rowwise_case(0, 0, 1, 10, "Q8_0 grouped prefill", __case_result__);
 }
 
+TEST_CASE("MPS segmented SwiGLU emulates int8 with normalized half values and float scales")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SEGMENTED_SWIGLU_FORWARD, CCV_NNC_BACKEND_MPS));
+	const int rows = 17;
+	const int segments = 6;
+	const int experts = 8;
+	const int n = 64;
+	const int k = 128;
+	const float clamp = 10;
+	const size_t weight_count = (size_t)experts * n * k;
+	ccv_nnc_tensor_t* const ha = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, k), 0);
+	ccv_nnc_tensor_t* const hgate = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, experts, n, k), 0);
+	ccv_nnc_tensor_t* const hup = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, experts, n, k), 0);
+	ccv_nnc_tensor_t* const hroute = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows), 0);
+	ccv_nnc_tensor_t* const hindices = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, segments), 0);
+	ccv_nnc_tensor_t* const hcounts = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, segments), 0);
+	_segmented_swiglu_fill(ha->data.f32, (size_t)rows * k, 17, 101, 1.0f / 64);
+	// These values cannot be represented by FP16 directly. The fallback must first
+	// quantize them to bounded q / 128 FP16 values and keep the row scale in FP32.
+	ha->data.f32[0] = 1e8f;
+	ha->data.f32[k] = -1e8f;
+	_segmented_swiglu_fill(hgate->data.f32, weight_count, 29, 113, 1.0f / 1024);
+	_segmented_swiglu_fill(hup->data.f32, weight_count, 37, 127, 1.0f / 1024);
+	const int selected[] = { 7, 1, 5, 2, 6, 3 };
+	const int rows_per_segment[] = { 0, 2, 4, 3, 5, 3 };
+	memcpy(hindices->data.i32, selected, sizeof(selected));
+	memcpy(hcounts->data.i32, rows_per_segment, sizeof(rows_per_segment));
+	int i;
+	for (i = 0; i < rows; i++)
+		hroute->data.f32[i] = (float)(i + 1) / (rows + 1);
+	const ccv_nnc_tensor_param_t q_params = ccv_nnc_tensor_8i_rowwise(hgate->info);
+	ccv_nnc_tensor_t* const hgate_q = ccv_nnc_tensor_new(0, q_params, 0);
+	ccv_nnc_tensor_t* const hup_q = ccv_nnc_tensor_new(0, q_params, 0);
+	const size_t gate_qsize = ccv_nnc_quantize_8i_rowwise(
+		hgate->data.u8, CCV_32F, CCV_TENSOR_CPU_MEMORY, weight_count, k, 0, 0,
+		hgate_q->data.u8, ccv_nnc_tensor_data_size_without_padding(hgate_q->info));
+	const size_t up_qsize = ccv_nnc_quantize_8i_rowwise(
+		hup->data.u8, CCV_32F, CCV_TENSOR_CPU_MEMORY, weight_count, k, 0, 0,
+		hup_q->data.u8, ccv_nnc_tensor_data_size_without_padding(hup_q->info));
+	REQUIRE_EQ(gate_qsize, ccv_nnc_tensor_data_size_without_padding(hgate_q->info),
+		"float gate weights should quantize to the declared rowwise size");
+	REQUIRE_EQ(up_qsize, ccv_nnc_tensor_data_size_without_padding(hup_q->info),
+		"float up weights should quantize to the declared rowwise size");
+	ccv_nnc_tensor_t* const hgate_dequant = ccv_nnc_tensor_new(0, hgate->info, 0);
+	ccv_nnc_tensor_t* const hup_dequant = ccv_nnc_tensor_new(0, hup->info, 0);
+	ccv_nnc_dequantize_8i_rowwise(
+		hgate_q->data.u8, CCV_32F, CCV_TENSOR_CPU_MEMORY, gate_qsize, k,
+		hgate_dequant->data.u8, weight_count);
+	ccv_nnc_dequantize_8i_rowwise(
+		hup_q->data.u8, CCV_32F, CCV_TENSOR_CPU_MEMORY, up_qsize, k,
+		hup_dequant->data.u8, weight_count);
+	const ccv_nnc_tensor_param_t a_q_params = ccv_nnc_tensor_8i_rowwise(ha->info);
+	ccv_nnc_tensor_t* const ha_q = ccv_nnc_tensor_new(0, a_q_params, 0);
+	ccv_nnc_tensor_t* const ha_dequant = ccv_nnc_tensor_new(0, ha->info, 0);
+	const size_t a_qsize = ccv_nnc_quantize_8i_rowwise(
+		ha->data.u8, CCV_32F, CCV_TENSOR_CPU_MEMORY, (size_t)rows * k, k, 0, 0,
+		ha_q->data.u8, ccv_nnc_tensor_data_size_without_padding(ha_q->info));
+	REQUIRE_EQ(a_qsize, ccv_nnc_tensor_data_size_without_padding(ha_q->info),
+		"float activations should quantize to the declared rowwise size");
+	ccv_nnc_dequantize_8i_rowwise(
+		ha_q->data.u8, CCV_32F, CCV_TENSOR_CPU_MEMORY, a_qsize, k,
+		ha_dequant->data.u8, (size_t)rows * k);
+	ccv_nnc_tensor_t* const expected = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, n), 0);
+	_segmented_swiglu_reference(
+		ha_dequant->data.f32, hindices->data.i32, hcounts->data.i32,
+		hgate_dequant->data.f32, hup_dequant->data.f32, hroute->data.f32,
+		rows, segments, n, k, clamp, expected->data.f32);
+	ccv_nnc_tensor_param_t gpu_q_params = q_params;
+	gpu_q_params.type = CCV_TENSOR_GPU_MEMORY | 000;
+	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, rows, k), 0);
+	ccv_nnc_tensor_t* const gate_q = ccv_nnc_tensor_new(0, gpu_q_params, 0);
+	ccv_nnc_tensor_t* const up_q = ccv_nnc_tensor_new(0, gpu_q_params, 0);
+	ccv_nnc_tensor_t* const route = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, rows), 0);
+	ccv_nnc_tensor_t* const indices = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32S, segments), 0);
+	ccv_nnc_tensor_t* const counts = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32S, segments), 0);
+	ccv_nnc_tensor_t* const output = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, rows, n), 0);
+	ccv_nnc_tensor_t* const actual = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, n), 0);
+	ccv_nnc_stream_context_t* const stream = ccv_nnc_stream_context_new(CCV_STREAM_CONTEXT_GPU);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0,
+		TENSOR_LIST(ha, hindices, hcounts, hgate_q, hup_q, hroute),
+		TENSOR_LIST(a, indices, counts, gate_q, up_q, route), stream);
+	ccv_nnc_cmd_t command = CMD_SEGMENTED_SWIGLU_FORWARD(clamp);
+	command.backend = CCV_NNC_BACKEND_MPS;
+	const uint64_t old_flags = ccv_nnc_flags();
+	ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS);
+	const int exec_status = ccv_nnc_cmd_exec(command, ccv_nnc_no_hint, 0,
+		TENSOR_LIST(a, indices, counts, gate_q, up_q, route), TENSOR_LIST(output), stream);
+	if (exec_status == CCV_NNC_EXEC_SUCCESS)
+		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0,
+			TENSOR_LIST(output), TENSOR_LIST(actual), stream);
+	ccv_nnc_stream_context_wait(stream);
+	if (!(old_flags & CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS))
+		ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS);
+	REQUIRE_EQ(exec_status, CCV_NNC_EXEC_SUCCESS, "float rowwise segmented SwiGLU fallback should execute");
+	double difference_norm = 0;
+	double expected_norm = 0;
+	double max_abs = 0;
+	for (i = 0; i < rows * n; i++)
+	{
+		const double difference = (double)actual->data.f32[i] - expected->data.f32[i];
+		difference_norm += difference * difference;
+		expected_norm += (double)expected->data.f32[i] * expected->data.f32[i];
+		max_abs = ccv_max(max_abs, fabs(difference));
+	}
+	const double relative_l2 = sqrt(difference_norm / ccv_max(expected_norm, 1e-20));
+	REQUIRE(relative_l2 < 5e-3,
+		"float rowwise segmented SwiGLU with Int8MatMul should match the quantized float reference (relative L2 %.8g, max abs %.8g)",
+		relative_l2, max_abs);
+	ccv_nnc_stream_context_free(stream);
+	ccv_nnc_tensor_free(actual);
+	ccv_nnc_tensor_free(output);
+	ccv_nnc_tensor_free(counts);
+	ccv_nnc_tensor_free(indices);
+	ccv_nnc_tensor_free(route);
+	ccv_nnc_tensor_free(up_q);
+	ccv_nnc_tensor_free(gate_q);
+	ccv_nnc_tensor_free(a);
+	ccv_nnc_tensor_free(expected);
+	ccv_nnc_tensor_free(ha_dequant);
+	ccv_nnc_tensor_free(ha_q);
+	ccv_nnc_tensor_free(hup_dequant);
+	ccv_nnc_tensor_free(hgate_dequant);
+	ccv_nnc_tensor_free(hup_q);
+	ccv_nnc_tensor_free(hgate_q);
+	ccv_nnc_tensor_free(hcounts);
+	ccv_nnc_tensor_free(hindices);
+	ccv_nnc_tensor_free(hroute);
+	ccv_nnc_tensor_free(hup);
+	ccv_nnc_tensor_free(hgate);
+	ccv_nnc_tensor_free(ha);
+}
+
 TEST_CASE("MPS segmented SwiGLU executes grouped IQ2_XXS prefill")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SEGMENTED_SWIGLU_FORWARD, CCV_NNC_BACKEND_MPS));

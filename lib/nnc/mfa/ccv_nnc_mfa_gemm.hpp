@@ -23,6 +23,8 @@ typedef struct {
   uint32_t leading_dimension_a;
   uint32_t leading_dimension_c;
   uint8_t loadM;
+  // Optional. When zero, use data_type for the output and bias as before.
+  uint64_t output_data_type;
 } ccv_nnc_mfa_gemm_params_t;
 
 #ifdef __cplusplus
