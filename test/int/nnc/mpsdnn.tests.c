@@ -3182,6 +3182,67 @@ TEST_CASE("compare layer norm with mps without scale / bias")
 	ccv_nnc_graph_free(cpu_graph);
 }
 
+TEST_CASE("mps mfa layer norm is deterministic for wide rows")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_LAYER_NORM_FORWARD, CCV_NNC_BACKEND_MPS));
+	const int rows = 512;
+	const int channels = 2048;
+	const int element_count = rows * channels;
+	ccv_nnc_tensor_t* const input = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, rows, channels), 0);
+	ccv_nnc_tensor_t* const expected = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, rows, channels), 0);
+	ccv_nnc_tensor_t* const expected_mean = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, rows, 1), 0);
+	ccv_nnc_tensor_t* const expected_inv_std = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, rows, 1), 0);
+	ccv_nnc_tensor_t* const gpu_input = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 1, rows, channels), 0);
+	ccv_nnc_tensor_t* const gpu_output = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 1, rows, channels), 0);
+	ccv_nnc_tensor_t* const gpu_mean = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 1, rows, 1), 0);
+	ccv_nnc_tensor_t* const gpu_inv_std = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 1, rows, 1), 0);
+	ccv_nnc_tensor_t* const actual = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, rows, channels), 0);
+	dsfmt_t dsfmt;
+	dsfmt_init_gen_rand(&dsfmt, 1);
+	int i;
+	for (i = 0; i < element_count; i++)
+		input->data.f32[i] = (float)(dsfmt_genrand_open_close(&dsfmt) * 2 - 1);
+	ccv_nnc_cmd_t cmd = CMD_LAYER_NORM_FORWARD(1e-5, 0, 2);
+	cmd.backend = CCV_NNC_BACKEND_CPU_REF;
+	REQUIRE_EQ(CCV_NNC_EXEC_SUCCESS, ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(input), TENSOR_LIST(expected, expected_mean, expected_inv_std), 0), "CPU reference layer norm should run");
+	REQUIRE_EQ(CCV_NNC_EXEC_SUCCESS, ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(input), TENSOR_LIST(gpu_input), 0), "input should transfer to Metal");
+	cmd.backend = CCV_NNC_BACKEND_MPS;
+	const uint64_t old_flags = ccv_nnc_flags();
+	ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA);
+	int dynamic_m;
+	for (dynamic_m = 0; dynamic_m < 2; dynamic_m++)
+	{
+		if (dynamic_m)
+			ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M);
+		else
+			ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M);
+		int iteration;
+		for (iteration = 0; iteration < 6; iteration++)
+		{
+			REQUIRE_EQ(CCV_NNC_EXEC_SUCCESS, ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(gpu_input), TENSOR_LIST(gpu_output, gpu_mean, gpu_inv_std), 0), "%s-M MFA layer norm should run", dynamic_m ? "dynamic" : "specialized");
+			REQUIRE_EQ(CCV_NNC_EXEC_SUCCESS, ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(gpu_output), TENSOR_LIST(actual), 0), "MFA layer norm output should transfer to CPU");
+			REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, actual->data.f32, expected->data.f32, element_count, 1e-5, "%s-M MFA layer norm should match the CPU reference on iteration %d", dynamic_m ? "dynamic" : "specialized", iteration);
+		}
+	}
+	if (old_flags & CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M)
+		ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M);
+	else
+		ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M);
+	if (old_flags & CCV_NNC_DISABLE_MFA)
+		ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA);
+	else
+		ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA);
+	ccv_nnc_tensor_free(actual);
+	ccv_nnc_tensor_free(gpu_inv_std);
+	ccv_nnc_tensor_free(gpu_mean);
+	ccv_nnc_tensor_free(gpu_output);
+	ccv_nnc_tensor_free(gpu_input);
+	ccv_nnc_tensor_free(expected_inv_std);
+	ccv_nnc_tensor_free(expected_mean);
+	ccv_nnc_tensor_free(expected);
+	ccv_nnc_tensor_free(input);
+}
+
 TEST_CASE("compare group norm with mps")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GROUP_NORM_FORWARD, CCV_NNC_BACKEND_MPS) &&

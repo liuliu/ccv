@@ -215,6 +215,7 @@ kernel void normalization(
   accumulator cache_bulk[cache_bulk_size > 0 ? cache_bulk_size : 1];
   accumulator cache_padding;
   threadgroup float partials[threadgroup_size / 32];
+  threadgroup float shared_mean;
   
   float sum = 0;
 #pragma clang loop unroll(full)
@@ -243,12 +244,12 @@ kernel void normalization(
       sum += simd_shuffle_xor(sum, 4);
     }
     if (simd_lane == 0) {
-      partials[0] = sum / float(sample_count);
+      shared_mean = sum / float(sample_count);
     }
   }
   
   threadgroup_barrier(mem_flags::mem_threadgroup);
-  float mean = partials[0];
+  float mean = shared_mean;
   float variance = 0;
 #pragma clang loop unroll(full)
   for (ushort slot = 0; slot < cache_bulk_size; ++slot) {
