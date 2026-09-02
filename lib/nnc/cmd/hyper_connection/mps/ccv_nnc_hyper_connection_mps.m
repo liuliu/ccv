@@ -20,7 +20,7 @@ static int _ccv_nnc_hyper_connection_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc
 		const ccv_nnc_tensor_view_t* const post = (const ccv_nnc_tensor_view_t*)inputs[2];
 		const ccv_nnc_tensor_view_t* const comb = (const ccv_nnc_tensor_view_t*)inputs[3];
 		ccv_nnc_tensor_view_t* const expanded = (ccv_nnc_tensor_view_t*)outputs[0];
-		if (block->info.datatype != CCV_32F || residual->info.datatype != CCV_32F || post->info.datatype != CCV_32F || comb->info.datatype != CCV_32F || expanded->info.datatype != CCV_32F)
+		if ((block->info.datatype != CCV_16F && block->info.datatype != CCV_32F) || residual->info.datatype != CCV_32F || post->info.datatype != CCV_32F || comb->info.datatype != CCV_32F || expanded->info.datatype != CCV_32F)
 			return CCV_NNC_EXEC_INVALID;
 		if (!CCV_IS_TENSOR_CONTIGUOUS(block) || !CCV_IS_TENSOR_CONTIGUOUS(residual) || !CCV_IS_TENSOR_CONTIGUOUS(post) || !CCV_IS_TENSOR_CONTIGUOUS(comb) || !CCV_IS_TENSOR_CONTIGUOUS(expanded))
 			return CCV_NNC_EXEC_INVALID;
@@ -42,6 +42,7 @@ static int _ccv_nnc_hyper_connection_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc
 				.count = (uint32_t)hc,
 				.hidden = hidden,
 				.operation = 2,
+				.block_fp16 = block->info.datatype == CCV_16F,
 				.loadM = !!(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M),
 			};
 			ccv_nnc_mfa_prepare_hyper_connection(context, params);
@@ -135,7 +136,7 @@ static int _ccv_nnc_hyper_connection_back(const ccv_nnc_cmd_t cmd, const ccv_nnc
 REGISTER_COMMAND_BACKEND(CCV_NNC_HYPER_CONNECTION_FORWARD, CCV_NNC_BACKEND_MPS)(ccv_nnc_cmd_backend_registry_t* const registry)
 {
 	registry->tensor_formats = CCV_TENSOR_FORMAT_NHWC | CCV_TENSOR_FORMAT_NCHW | CCV_TENSOR_FORMAT_CHWN;
-	registry->tensor_datatypes = CCV_32F;
+	registry->tensor_datatypes = CCV_32F | CCV_16F;
 	registry->tensor_memory = CCV_TENSOR_GPU_MEMORY;
 	registry->algorithms = 1;
 	registry->exec = _ccv_nnc_hyper_connection_forw;

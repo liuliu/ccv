@@ -8,14 +8,15 @@
 
 struct HyperConnectionKernelDescriptor {
 	uint8_t value;
+	uint8_t blockFP16;
 	uint8_t loadM;
-	constexpr bool operator==(const HyperConnectionKernelDescriptor& rhs) const { return value == rhs.value && loadM == rhs.loadM; }
+	constexpr bool operator==(const HyperConnectionKernelDescriptor& rhs) const { return value == rhs.value && blockFP16 == rhs.blockFP16 && loadM == rhs.loadM; }
 };
 
 template<>
 struct std::hash<HyperConnectionKernelDescriptor>
 {
-	std::size_t operator()(const HyperConnectionKernelDescriptor& hash) const noexcept { return (size_t)hash.value | ((size_t)hash.loadM << 8); }
+	std::size_t operator()(const HyperConnectionKernelDescriptor& hash) const noexcept { return (size_t)hash.value | ((size_t)hash.blockFP16 << 8) | ((size_t)hash.loadM << 9); }
 };
 
 struct HyperConnectionKernel;
@@ -27,6 +28,7 @@ struct HyperConnectionDescriptor {
 	uint32_t sinkhornIterations;
 	float epsilon;
 	uint32_t operation;
+	bool blockFP16;
 	bool loadM;
 
 	bool operator==(const HyperConnectionDescriptor& rhs) const;

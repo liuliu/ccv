@@ -19,7 +19,7 @@ void ccv_nnc_mfa_encode_hyper_connection(ccv_nnc_mfa_context_t* context, ccv_nnc
 	CCV_NNC_MFA_PRECONDITION(num_tensors == 8);
 	HyperConnectionDescriptor descriptor {
 		params.row_count, params.count, params.hidden, params.sinkhorn_iterations,
-		params.epsilon, params.operation, params.loadM != 0
+		params.epsilon, params.operation, params.block_fp16 != 0, params.loadM != 0
 	};
 	auto pool = NS::AutoreleasePool::alloc()->init();
 	auto pipelineValue = context->kernel_cache.findKernel<HyperConnectionKernel, HyperConnectionDescriptor, HyperConnectionKernelDescriptor>(descriptor, context->device.get(), DeviceProperties());

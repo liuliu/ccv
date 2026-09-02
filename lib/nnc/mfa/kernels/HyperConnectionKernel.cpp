@@ -6,6 +6,8 @@ HyperConnectionKernel::HyperConnectionKernel(HyperConnectionKernelDescriptor des
 #include <metal_stdlib>
 using namespace metal;
 
+typedef )" + std::string(descriptor.blockFP16 ? "half" : "float") + R"( input0_t;
+
 constant uint row_count [[function_constant(0)]];
 constant uint hc [[function_constant(1)]];
 constant uint hidden [[function_constant(2)]];
@@ -14,7 +16,7 @@ constant float epsilon [[function_constant(4)]];
 constant uint operation [[function_constant(5)]];
 
 kernel void hyper_connection(
-	device const float* input0 [[buffer(0)]],
+	device const input0_t* input0 [[buffer(0)]],
 	device const float* input1 [[buffer(1)]],
 	device const float* input2 [[buffer(2)]],
 	device const float* input3 [[buffer(3)]],
@@ -41,7 +43,7 @@ kernel void hyper_connection(
 		}
 		return;
 	}
-	device const float* mix = input0;
+	device const input0_t* mix = input0;
 	device const float* scale = input1;
 	device const float* base = input2;
 	device const float* residual = input3;
@@ -51,7 +53,7 @@ kernel void hyper_connection(
 	device float* weighted = output3;
 	const bool has_residual = operation == 1;
 	const uint mix_dim = 2 * hc + hc * hc;
-	device const float* row_mix = mix + row * mix_dim;
+	device const input0_t* row_mix = mix + row * mix_dim;
 	threadgroup float pre[16];
 	if (tid == 0)
 	{

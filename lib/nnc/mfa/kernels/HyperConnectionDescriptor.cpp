@@ -5,7 +5,7 @@
 #include <cstring>
 
 bool HyperConnectionDescriptor::operator==(const HyperConnectionDescriptor& rhs) const {
-	return loadM == rhs.loadM && (loadM || rowCount == rhs.rowCount) && count == rhs.count && hidden == rhs.hidden && sinkhornIterations == rhs.sinkhornIterations && epsilon == rhs.epsilon && operation == rhs.operation;
+	return loadM == rhs.loadM && (loadM || rowCount == rhs.rowCount) && count == rhs.count && hidden == rhs.hidden && sinkhornIterations == rhs.sinkhornIterations && epsilon == rhs.epsilon && operation == rhs.operation && blockFP16 == rhs.blockFP16;
 }
 
 std::size_t std::hash<HyperConnectionDescriptor>::operator()(const HyperConnectionDescriptor& hash) const noexcept {
@@ -17,12 +17,13 @@ std::size_t std::hash<HyperConnectionDescriptor>::operator()(const HyperConnecti
 	seed = combine_64(seed, pack_64(simd::uint2 { hash.loadM ? 0 : hash.rowCount, hash.count }));
 	seed = combine_64(seed, pack_64(simd::uint2 { hash.hidden, hash.sinkhornIterations }));
 	seed = combine_64(seed, pack_64(simd::uint2 { epsilon_bits, hash.operation }));
+	seed = combine_64(seed, hash.blockFP16 ? 1 : 0);
 	seed = combine_64(seed, hash.loadM ? 1 : 0);
 	return seed;
 }
 
 std::pair<HyperConnectionKernelDescriptor, PipelineValue<HyperConnectionKernel>*> HyperConnectionDescriptor::findKernel(MTL::Device* const device, const DeviceProperties&, NS::Array* const, MTL::BinaryArchive* const, const std::string&, std::unordered_map<HyperConnectionKernelDescriptor, std::unique_ptr<HyperConnectionKernel>>* const libraryCache) const noexcept {
-	HyperConnectionKernelDescriptor kernelDesc { 0, (uint8_t)loadM };
+	HyperConnectionKernelDescriptor kernelDesc { 0, (uint8_t)blockFP16, (uint8_t)loadM };
 	auto iterator = libraryCache->find(kernelDesc);
 	if (iterator == libraryCache->end())
 		iterator = libraryCache->try_emplace(kernelDesc, std::make_unique<HyperConnectionKernel>(kernelDesc, device)).first;

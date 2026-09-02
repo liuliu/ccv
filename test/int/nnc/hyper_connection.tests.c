@@ -240,6 +240,68 @@ TEST_CASE("hyper connection Metal row-one implementation matches CPU reference")
 	ccv_nnc_tensor_free(hmix);
 }
 
+TEST_CASE("hyper connection Metal expansion accepts mixed FP16 block and FP32 state")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_HYPER_CONNECTION_FORWARD, CCV_NNC_BACKEND_MPS));
+	const int rows = 1;
+	const int hc = 4;
+	const int hidden = 4097;
+	const ccv_nnc_cmd_t cmd = CMD_HYPER_CONNECTION_FORWARD(hc, 20, 1e-6);
+	ccv_nnc_tensor_param_t input_params[] = {
+		GPU_TENSOR_NHWC(000, 16F, rows, hidden),
+		GPU_TENSOR_NHWC(000, 32F, rows, hc, hidden),
+		GPU_TENSOR_NHWC(000, 32F, rows, hc),
+		GPU_TENSOR_NHWC(000, 32F, rows, hc, hc),
+	};
+	ccv_nnc_tensor_param_t output_param;
+	ccv_nnc_hint_tensor_auto(cmd, input_params, 4, ccv_nnc_no_hint, &output_param, 1);
+	REQUIRE_EQ(output_param.datatype, CCV_32F, "mixed expansion should inherit the residual datatype");
+	REQUIRE_EQ(output_param.format, input_params[1].format, "mixed expansion should inherit the residual format");
+	REQUIRE_EQ(output_param.type, input_params[1].type, "mixed expansion should inherit the residual memory type");
+	REQUIRE_EQ(ccv_nnc_tensor_count(output_param), rows * hc * hidden, "mixed expansion should inherit the residual shape");
+
+	ccv_nnc_tensor_t* const hblock_source = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, hidden), 0);
+	ccv_nnc_tensor_t* const hblock = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, rows, hidden), 0);
+	ccv_nnc_tensor_t* const hblock_rounded = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, hidden), 0);
+	ccv_nnc_tensor_t* const hresidual = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, hc, hidden), 0);
+	ccv_nnc_tensor_t* const hpost = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, hc), 0);
+	ccv_nnc_tensor_t* const hcombination = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, hc, hc), 0);
+	ccv_nnc_tensor_t* const expected = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, hc, hidden), 0);
+	_hyper_connection_fill(hblock_source->data.f32, rows * hidden, 14);
+	_hyper_connection_fill(hresidual->data.f32, rows * hc * hidden, 15);
+	_hyper_connection_fill(hpost->data.f32, rows * hc, 16);
+	_hyper_connection_fill(hcombination->data.f32, rows * hc * hc, 17);
+	ccv_float_to_half_precision(hblock_source->data.f32, (uint16_t*)hblock->data.f16, rows * hidden);
+	ccv_half_precision_to_float((uint16_t*)hblock->data.f16, hblock_rounded->data.f32, rows * hidden);
+	REQUIRE_EQ(ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(hblock_rounded, hresidual, hpost, hcombination), TENSOR_LIST(expected), 0), CCV_NNC_EXEC_SUCCESS, "CPU expansion should produce the mixed-precision reference");
+
+	ccv_nnc_tensor_t* const block = ccv_nnc_tensor_new(0, input_params[0], 0);
+	ccv_nnc_tensor_t* const residual = ccv_nnc_tensor_new(0, input_params[1], 0);
+	ccv_nnc_tensor_t* const post = ccv_nnc_tensor_new(0, input_params[2], 0);
+	ccv_nnc_tensor_t* const combination = ccv_nnc_tensor_new(0, input_params[3], 0);
+	ccv_nnc_tensor_t* const expanded = ccv_nnc_tensor_new(0, output_param, 0);
+	ccv_nnc_tensor_t* const actual = ccv_nnc_tensor_new(0, expected->info, 0);
+	REQUIRE_EQ(ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(hblock, hresidual, hpost, hcombination), TENSOR_LIST(block, residual, post, combination), 0), CCV_NNC_EXEC_SUCCESS, "mixed inputs should transfer to Metal");
+	ccv_nnc_cmd_t mps_cmd = cmd;
+	mps_cmd.backend = CCV_NNC_BACKEND_MPS;
+	REQUIRE_EQ(ccv_nnc_cmd_exec(mps_cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(block, residual, post, combination), TENSOR_LIST(expanded), 0), CCV_NNC_EXEC_SUCCESS, "Metal mixed-precision expansion should execute");
+	REQUIRE_EQ(ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(expanded), TENSOR_LIST(actual), 0), CCV_NNC_EXEC_SUCCESS, "mixed expansion should transfer from Metal");
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, expected->data.f32, actual->data.f32, rows * hc * hidden, 2e-5, "Metal mixed-precision expansion should match the CPU reference");
+	ccv_nnc_tensor_free(actual);
+	ccv_nnc_tensor_free(expanded);
+	ccv_nnc_tensor_free(combination);
+	ccv_nnc_tensor_free(post);
+	ccv_nnc_tensor_free(residual);
+	ccv_nnc_tensor_free(block);
+	ccv_nnc_tensor_free(expected);
+	ccv_nnc_tensor_free(hcombination);
+	ccv_nnc_tensor_free(hpost);
+	ccv_nnc_tensor_free(hresidual);
+	ccv_nnc_tensor_free(hblock_rounded);
+	ccv_nnc_tensor_free(hblock);
+	ccv_nnc_tensor_free(hblock_source);
+}
+
 TEST_CASE("hyper connection Metal scalar-count fallback matches CPU reference")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_HYPER_CONNECTION_FORWARD, CCV_NNC_BACKEND_MPS));
