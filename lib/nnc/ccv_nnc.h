@@ -315,6 +315,9 @@ typedef struct {
 			float clamp; /**< [segmented_swiglu.clamp] If positive, clamp the up projection symmetrically and the gate projection from above. */
 		} segmented_swiglu;
 		struct {
+			float clamp; /**< [swiglu.clamp] If positive, clamp the up projection symmetrically and the gate projection from above. */
+		} swiglu;
+		struct {
 			float exponent; /**< [pow.exponent] The exponent in y = x ^ exponent. */
 		} pow;
 		struct {
@@ -5227,6 +5230,15 @@ CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_scatter_add(const int bincount, cons
  * @return A segmented dense layer model.
  */
 CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_segmented_dense(const int segments, const int count, const int no_bias, const int flags, const int is_trainable, const char* const name);
+/**
+ * A gate/up projection followed by optionally clamped SwiGLU.
+ * @param count The intermediate output width.
+ * @param clamp If positive, clamp the up projection symmetrically and gate projection from above.
+ * @param is_trainable Whether the parameters of this model can be trained.
+ * @param name The unique name of the model.
+ * @return A SwiGLU layer model owning gate and up weights.
+ */
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_swiglu(const int count, const float clamp, const int is_trainable, const char* const name);
 /**
  * A segmented expert gate/up projection followed by row-weighted, optionally clamped SwiGLU.
  * The model takes grouped activation rows, active expert IDs, row counts, and route weights.

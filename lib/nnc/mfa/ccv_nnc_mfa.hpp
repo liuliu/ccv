@@ -31,6 +31,7 @@ extern "C" {
 #include "ccv_nnc_mfa_ane_rowwise_gemm.hpp"
 #include "ccv_nnc_mfa_segmented_scaled_gemm.hpp"
 #include "ccv_nnc_mfa_segmented_scaled_swiglu.hpp"
+#include "ccv_nnc_mfa_swiglu.hpp"
 #include "ccv_nnc_mfa_segmented_int8_gemv.hpp"
 #include "ccv_nnc_mfa_segmented_int8_swiglu.hpp"
 #include "ccv_nnc_mfa_conv3d.hpp"

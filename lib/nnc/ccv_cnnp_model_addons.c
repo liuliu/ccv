@@ -5518,6 +5518,99 @@ static ccv_cnnp_model_t* _ccv_cnnp_segmented_dense_copy(const ccv_cnnp_model_t* 
 	return ccv_cnnp_segmented_dense(self->segments, self->count, self->no_bias, self->flags, self->super.is_trainable, self->super.name);
 }
 
+// MARK - SwiGLU Layer
+
+typedef struct {
+	ccv_cnnp_model_t super;
+	ccv_nnc_tensor_symbol_t output;
+	ccv_nnc_tensor_symbol_t gate_weights;
+	ccv_nnc_tensor_symbol_t up_weights;
+	int count;
+	float clamp;
+} ccv_cnnp_model_swiglu_t;
+
+static void _ccv_cnnp_swiglu_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
+{
+	ccv_cnnp_model_swiglu_t* const self = (ccv_cnnp_model_swiglu_t*)super;
+	PRINT(CCV_CLI_VERBOSE, "[cnnp_swiglu_build] -\n");
+	assert(input_size == 1);
+	assert(output_size == 1);
+	const ccv_nnc_tensor_param_t params = ccv_nnc_tensor_symbol_params(graph, inputs[0]);
+	const int params_nd = ccv_nnc_tensor_nd(params.dim);
+	assert(params_nd >= 1);
+	ccv_nnc_tensor_param_t weights_params = params;
+	memset(weights_params.dim, 0, sizeof(weights_params.dim));
+	weights_params.dim[0] = self->count;
+	weights_params.dim[1] = params.dim[params_nd - 1];
+	if (!self->gate_weights.graph)
+		self->gate_weights = ccv_nnc_tensor_symbol_new(graph, weights_params, "gate.weight");
+	if (!self->up_weights.graph)
+		self->up_weights = ccv_nnc_tensor_symbol_new(graph, weights_params, "up.weight");
+	assert(self->gate_weights.graph == graph);
+	assert(self->up_weights.graph == graph);
+	const ccv_nnc_tensor_symbol_t gate_weights = ccv_cnnp_model_get_symbol(super, self->gate_weights);
+	const ccv_nnc_tensor_symbol_t up_weights = ccv_cnnp_model_get_symbol(super, self->up_weights);
+	const ccv_nnc_cmd_t cmd = CMD_SWIGLU_FORWARD(self->clamp);
+	const ccv_nnc_tensor_symbol_t command_inputs[] = {
+		inputs[0], gate_weights, up_weights,
+	};
+	ccv_nnc_tensor_param_t command_input_params[3];
+	int i;
+	for (i = 0; i < 3; i++)
+		command_input_params[i] = ccv_nnc_tensor_symbol_params(graph, command_inputs[i]);
+	ccv_nnc_tensor_param_t output_params;
+	ccv_nnc_hint_tensor_auto(cmd, command_input_params, 3, ccv_nnc_no_hint, &output_params, 1);
+	outputs[0] = ccv_nnc_tensor_symbol_new(graph, output_params, 0);
+	ccv_nnc_graph_exec_symbol_new(graph, cmd, command_inputs, 3, outputs, 1, "swiglu");
+}
+
+static void _ccv_cnnp_swiglu_init_states(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_cnnp_state_initializer_f initializer, void* const context)
+{
+	ccv_cnnp_model_swiglu_t* const self = (ccv_cnnp_model_swiglu_t*)super;
+	const ccv_nnc_tensor_param_t weight_params = ccv_nnc_tensor_symbol_params(graph, self->gate_weights);
+	const float bound = sqrtf(6.f / weight_params.dim[1]);
+	initializer(context, CMD_RANDOM_UNIFORM_FORWARD(-bound, bound), ccv_nnc_no_hint, 0, 0, self->gate_weights);
+	initializer(context, CMD_RANDOM_UNIFORM_FORWARD(-bound, bound), ccv_nnc_no_hint, 0, 0, self->up_weights);
+}
+
+static void _ccv_cnnp_swiglu_add_to_parameter(ccv_cnnp_model_t* const super, const ccv_cnnp_add_to_array_f add_to_array, void* const parameters, const int is_trainable)
+{
+	ccv_cnnp_model_swiglu_t* const self = (ccv_cnnp_model_swiglu_t*)super;
+	add_to_array(parameters, self->gate_weights, is_trainable);
+	add_to_array(parameters, self->up_weights, is_trainable);
+}
+
+static ccv_cnnp_model_t* _ccv_cnnp_swiglu_copy(const ccv_cnnp_model_t* const super, void* const context);
+
+static const ccv_cnnp_model_vtab_t ccv_cnnp_swiglu_isa = {
+	.build = _ccv_cnnp_swiglu_build,
+	.init_states = _ccv_cnnp_swiglu_init_states,
+	.add_to_parameter = _ccv_cnnp_swiglu_add_to_parameter,
+	.copy = _ccv_cnnp_swiglu_copy,
+};
+
+ccv_cnnp_model_t* ccv_cnnp_swiglu(const int count, const float clamp, const int is_trainable, const char* const name)
+{
+	ccv_cnnp_model_swiglu_t* const model = (ccv_cnnp_model_swiglu_t*)cccalloc(1, sizeof(ccv_cnnp_model_swiglu_t));
+	model->super.isa = &ccv_cnnp_swiglu_isa;
+	model->super.input_size = 1;
+	model->super.outputs = &model->output;
+	model->super.output_size = 1;
+	model->super.is_trainable = is_trainable;
+	ccv_cnnp_model_copy_name(&model->super, name);
+	model->gate_weights.d = CCV_NNC_NO_TENSOR_SYMBOL;
+	model->up_weights.d = CCV_NNC_NO_TENSOR_SYMBOL;
+	model->count = count;
+	model->clamp = clamp;
+	return (ccv_cnnp_model_t*)model;
+}
+
+static ccv_cnnp_model_t* _ccv_cnnp_swiglu_copy(const ccv_cnnp_model_t* const super, void* const context)
+{
+	const ccv_cnnp_model_swiglu_t* const self = (const ccv_cnnp_model_swiglu_t*)super;
+	return ccv_cnnp_swiglu(self->count, self->clamp, self->super.is_trainable, self->super.name);
+}
+
 // MARK - Segmented SwiGLU Layer
 
 typedef struct {
