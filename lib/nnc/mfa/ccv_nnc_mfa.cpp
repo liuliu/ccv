@@ -2,7 +2,77 @@
 #include "ccv_nnc_mfa_ane_rowwise_internal.hpp"
 using namespace ccv::nnc;
 
+#include <algorithm>
+#include <deque>
 #include <iostream>
+#include <limits>
+#include <mutex>
+#include <new>
+#include <utility>
+#include <vector>
+
+namespace ccv {
+namespace nnc {
+namespace mfa {
+
+constexpr uint64_t kDurableScratchCacheLimitBytes = 2ULL * 1024 * 1024 * 1024;
+
+struct durable_scratch_pool {
+  std::mutex mutex;
+  std::deque<NS::SharedPtr<MTL::Buffer>> buffers;
+  uint64_t cached_bytes = 0;
+
+  NS::SharedPtr<MTL::Buffer> take(uint64_t size) {
+    std::lock_guard<std::mutex> guard(mutex);
+    auto best = buffers.end();
+    uint64_t best_length = std::numeric_limits<uint64_t>::max();
+    for (auto it = buffers.begin(); it != buffers.end(); ++it) {
+      const uint64_t length = (*it)->length();
+      if (length >= size && length < best_length) {
+        best = it;
+        best_length = length;
+      }
+    }
+    if (best == buffers.end())
+      return {};
+    NS::SharedPtr<MTL::Buffer> buffer = std::move(*best);
+    cached_bytes -= best_length;
+    buffers.erase(best);
+    return buffer;
+  }
+
+  void put(NS::SharedPtr<MTL::Buffer> buffer) noexcept {
+    if (!buffer.get())
+      return;
+    const uint64_t length = buffer->length();
+    if (length > kDurableScratchCacheLimitBytes)
+      return;
+    std::lock_guard<std::mutex> guard(mutex);
+    while (cached_bytes > kDurableScratchCacheLimitBytes - length) {
+      if (buffers.empty())
+        break;
+      cached_bytes -= buffers.front()->length();
+      buffers.pop_front();
+    }
+    buffers.push_back(std::move(buffer));
+    cached_bytes += length;
+  }
+
+  void clear() {
+    std::lock_guard<std::mutex> guard(mutex);
+    buffers.clear();
+    cached_bytes = 0;
+  }
+};
+
+} // namespace mfa
+} // namespace nnc
+} // namespace ccv
+
+struct ccv_nnc_mfa_durable_scratch_s {
+  std::shared_ptr<mfa::durable_scratch_pool> pool;
+  NS::SharedPtr<MTL::Buffer> buffer;
+};
 
 // MARK: - C
 
@@ -13,6 +83,7 @@ mfa::context* ccv_nnc_init_mfa_context(MTL::Device* device) {
 void ccv_nnc_mfa_clear_pipeline_cache(ccv_nnc_mfa_context_t* context) {
   context->kernel_cache.evict();
   ccv_nnc_mfa_ane_rowwise_gemm_cleanup(context);
+  context->clear_durable_scratch_cache();
 }
 
 void ccv_nnc_deinit_mfa_context(mfa::context* context) {
@@ -88,6 +159,53 @@ mtl_buffer_t* ccv_nnc_mfa_request_scratch(ccv_nnc_mfa_context_t* context, const 
   return context->request_scratch(size);
 }
 
+ccv_nnc_mfa_durable_scratch_t* ccv_nnc_mfa_request_durable_scratch(ccv_nnc_mfa_context_t* context, const uint64_t size) {
+  if (!context || !context->device.get() || !context->durable_scratch || size == 0 || size > context->device->maxBufferLength())
+    return nullptr;
+  NS::SharedPtr<MTL::Buffer> buffer = context->durable_scratch->take(size);
+  if (!buffer.get())
+    buffer = NS::TransferPtr(context->device->newBuffer(
+      size,
+      MTL::ResourceStorageModeShared | MTL::ResourceCPUCacheModeDefaultCache |
+        MTL::ResourceHazardTrackingModeTracked));
+  if (!buffer.get())
+    return nullptr;
+  ccv_nnc_mfa_durable_scratch_t* const lease = new (std::nothrow) ccv_nnc_mfa_durable_scratch_t;
+  if (!lease) {
+    context->durable_scratch->put(std::move(buffer));
+    return nullptr;
+  }
+  lease->pool = context->durable_scratch;
+  lease->buffer = std::move(buffer);
+  return lease;
+}
+
+mtl_buffer_t* ccv_nnc_mfa_durable_scratch_buffer(const ccv_nnc_mfa_durable_scratch_t* const lease) {
+  return lease ? lease->buffer.get() : nullptr;
+}
+
+void ccv_nnc_mfa_release_durable_scratch(ccv_nnc_mfa_durable_scratch_t* const lease) {
+  if (!lease)
+    return;
+  const std::shared_ptr<mfa::durable_scratch_pool> pool = lease->pool;
+  NS::SharedPtr<MTL::Buffer> buffer = std::move(lease->buffer);
+  delete lease;
+  pool->put(std::move(buffer));
+}
+
+int ccv_nnc_mfa_retire_durable_scratch(ccv_nnc_mfa_durable_scratch_t* const lease, mtl_command_batch_t* const command_batch) {
+  if (!lease || !command_batch || !command_batch->commandBuffer)
+    return 0;
+  const std::shared_ptr<mfa::durable_scratch_pool> pool = lease->pool;
+  const NS::SharedPtr<MTL::Buffer> buffer = lease->buffer;
+  const MTL::CommandBufferHandler completion_handler = ^(MTL::CommandBuffer*) {
+    pool->put(buffer);
+  };
+  command_batch->commandBuffer->addCompletedHandler(completion_handler);
+  delete lease;
+  return 1;
+}
+
 void ccv_nnc_mfa_set_binary_archives(ccv_nnc_mfa_context_t* const context, const char** const paths_to_read, const int paths_to_read_size, const char* const path_to_write) {
   std::vector<std::string> paths_to_read_vec;
   for (int i = 0; i < paths_to_read_size; i++) {
@@ -135,6 +253,7 @@ mfa::context::context(MTL::Device* device)
   this->device = NS::RetainPtr(device);
 
   this->scratch = NS::TransferPtr(device->newBuffer(65536, 0));
+  this->durable_scratch = std::make_shared<mfa::durable_scratch_pool>();
   this->ane_rowwise_gemm_cache = nullptr;
 
   // Check whether the device architecture is supported.
@@ -164,6 +283,11 @@ MTL::Buffer* mfa::context::request_scratch(uint64_t size) {
     this->scratch = NS::TransferPtr(buffer);
   }
   return scratch.get();
+}
+
+void mfa::context::clear_durable_scratch_cache() {
+  if (durable_scratch)
+    durable_scratch->clear();
 }
 
 MTL::CommandBatch::CommandBatch(MTL::CommandQueue* commandQueue) {

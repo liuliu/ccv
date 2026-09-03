@@ -32,6 +32,8 @@ void ccv_nnc_deinit_tensor(ccv_nnc_tensor_t* const tensor);
 CCV_WARN_UNUSED(void*) ccv_nnc_stream_compat_get_workspace(const ccv_nnc_stream_context_t* const stream_context, const size_t workspace_size, const int mem);
 void ccv_nnc_stream_compat_drain(ccv_nnc_stream_context_t* const stream_context);
 void ccv_nnc_stream_compat_commit(ccv_nnc_stream_context_t* const stream_context);
+CCV_WARN_UNUSED(mtl_command_batch_t*) ccv_nnc_stream_context_start_command_batch(ccv_nnc_stream_context_t* const stream_context);
+void ccv_nnc_stream_context_finish_command_batch(ccv_nnc_stream_context_t* const stream_context, mtl_command_batch_t* command_batch);
 CCV_WARN_UNUSED(ccv_nnc_stream_signal_t*) ccv_nnc_init_stream_signal(ccv_nnc_stream_signal_t* const signal);
 void ccv_nnc_stream_compat_emit_signal(const ccv_nnc_stream_context_t* const stream, const ccv_nnc_stream_signal_t* const signal);
 void ccv_nnc_stream_compat_wait_signal(const ccv_nnc_stream_context_t* const stream, const ccv_nnc_stream_signal_t* const signal);
@@ -89,9 +91,7 @@ id<MTLBuffer> mpgetbuffer(const ccv_nnc_tensor_t* const tensor);
 int ccv_nnc_mps_file_backed_region(const ccv_nnc_tensor_t* tensor, ccv_nnc_mps_file_backed_region_t* region);
 id<MTLDevice> ccv_nnc_default_device(void);
 MPSGraphDevice* ccv_nnc_default_mps_device(void);
-CCV_WARN_UNUSED(MTLCommandBatch*) ccv_nnc_stream_context_start_command_batch(ccv_nnc_stream_context_t* const stream_context);
 CCV_WARN_UNUSED(MPSCommandBuffer*) ccv_nnc_stream_context_start_mps_command_buffer(ccv_nnc_stream_context_t* const stream_context);
-void ccv_nnc_stream_context_finish_command_batch(ccv_nnc_stream_context_t* const stream_context, MTLCommandBatch* command_batch);
 CCV_WARN_UNUSED(MPSCommandBuffer*) ccv_nnc_stream_context_finish_command_batch_encoding_and_return_mps_command_buffer(ccv_nnc_stream_context_t* const stream_context, MTLCommandBatch* command_batch);
 void ccv_nnc_stream_context_finish_mps_command_buffer(ccv_nnc_stream_context_t* const stream_context, MPSCommandBuffer* command_buffer);
 /** Makes the input range system-coherent, then conditionally changes timestamp from expected to value. */

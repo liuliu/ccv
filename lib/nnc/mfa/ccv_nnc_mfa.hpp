@@ -63,6 +63,7 @@ extern "C" {
 #include "ccv_nnc_mfa_argmax.hpp"
 
 #ifdef __cplusplus
+#include <memory>
 #include "nnc/mfa/3rdparty/metal-cpp/Dispatch.hpp"
 #include "nnc/mfa/3rdparty/metal-cpp/Metal.hpp"
 #include "ccv_nnc_mfa_error.hpp"
@@ -73,6 +74,7 @@ namespace nnc {
 namespace mfa {
 
 class context;
+struct durable_scratch_pool;
 
 class context {
 public:
@@ -81,6 +83,7 @@ public:
   
   NS::SharedPtr<MTL::Device> device;
   NS::SharedPtr<MTL::Buffer> scratch;
+  std::shared_ptr<durable_scratch_pool> durable_scratch;
   void* ane_rowwise_gemm_cache;
   
   context(MTL::Device* device);
@@ -88,6 +91,7 @@ public:
   ShaderCache kernel_cache;
   
   MTL::Buffer* request_scratch(uint64_t size);
+  void clear_durable_scratch_cache();
 };
 
 } // namespace mfa
@@ -96,6 +100,8 @@ public:
 
 extern "C" {
 #endif // __cplusplus
+
+typedef struct ccv_nnc_mfa_durable_scratch_s ccv_nnc_mfa_durable_scratch_t;
 
 ccv_nnc_mfa_context_t* ccv_nnc_init_mfa_context(mtl_device_t* context);
 void ccv_nnc_mfa_clear_pipeline_cache(ccv_nnc_mfa_context_t* context);
@@ -111,6 +117,18 @@ mtl_command_batch_t* ccv_nnc_start_command_batch(mtl_command_queue_t* command_qu
 mtl_command_batch_t* ccv_nnc_start_command_batch_from_command_buffer(mtl_command_buffer_t* command_buffer, int commit_on_finish);
 void ccv_nnc_finish_command_batch(mtl_command_batch_t* command_batch);
 mtl_buffer_t* ccv_nnc_mfa_request_scratch(ccv_nnc_mfa_context_t* context, const uint64_t size);
+/** Returns an exclusive, CPU-visible scratch lease, or 0 when allocation fails. */
+CCV_WARN_UNUSED(ccv_nnc_mfa_durable_scratch_t*) ccv_nnc_mfa_request_durable_scratch(ccv_nnc_mfa_context_t* context, uint64_t size);
+/** Returns the borrowed buffer owned by lease. */
+mtl_buffer_t* ccv_nnc_mfa_durable_scratch_buffer(const ccv_nnc_mfa_durable_scratch_t* lease);
+/** Returns an unsubmitted lease immediately. */
+void ccv_nnc_mfa_release_durable_scratch(ccv_nnc_mfa_durable_scratch_t* lease);
+/**
+ * Consumes a submitted lease and delays pool reuse until command_batch completes.
+ * This prevents another CPU writer from refilling the CPU-visible buffer while
+ * the GPU still reads it; Metal hazard tracking does not cover CPU accesses.
+ */
+int ccv_nnc_mfa_retire_durable_scratch(ccv_nnc_mfa_durable_scratch_t* lease, mtl_command_batch_t* command_batch);
 void ccv_nnc_mfa_set_binary_archives(ccv_nnc_mfa_context_t* context, const char** paths_to_read, const int paths_to_read_size, const char* path_to_write);
 
 #ifdef __cplusplus

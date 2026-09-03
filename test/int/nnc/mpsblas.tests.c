@@ -6,6 +6,9 @@
 #include <nnc/ccv_nnc_easy.h>
 #include <nnc/mps/ccv_nnc_mps.h>
 #include <3rdparty/dsfmt/dSFMT.h>
+#ifdef HAVE_MPS
+#include <dispatch/dispatch.h>
+#endif
 #include <float.h>
 #include <math.h>
 #include <stdlib.h>
@@ -10972,5 +10975,65 @@ TEST_CASE("sparse indexed attention with MFA BF16 DS4-native shape")
 	GUARD_ELSE_RETURN(sparse_status != -2);
 	REQUIRE_EQ(sparse_status, 0, "MFA BF16 sparse indexed attention should match CPU reference");
 }
+
+#ifdef HAVE_MPS
+
+TEST_CASE("MFA durable scratch validates allocation and keeps concurrent leases exclusive")
+{
+	ccv_nnc_mfa_context_t* const context = ccv_nnc_default_mfa_context();
+	GUARD_ELSE_RETURN(context && ccv_nnc_mfa_context_supported(context));
+	REQUIRE(!ccv_nnc_mfa_request_durable_scratch(context, 0), "zero-byte durable scratch should be rejected");
+	REQUIRE(!ccv_nnc_mfa_request_durable_scratch(context, UINT64_MAX), "oversized durable scratch should fail without aborting");
+	enum { lease_count = 32 };
+	ccv_nnc_mfa_durable_scratch_t** const leases = cccalloc(lease_count, sizeof(ccv_nnc_mfa_durable_scratch_t*));
+	mtl_buffer_t** const buffers = cccalloc(lease_count, sizeof(mtl_buffer_t*));
+	dispatch_apply(lease_count, dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^(size_t i) {
+		leases[i] = ccv_nnc_mfa_request_durable_scratch(context, 4096);
+		buffers[i] = ccv_nnc_mfa_durable_scratch_buffer(leases[i]);
+	});
+	int i, j;
+	for (i = 0; i < lease_count; i++)
+	{
+		REQUIRE(leases[i] && buffers[i], "concurrent durable scratch allocation %d should succeed", i);
+		for (j = 0; j < i; j++)
+			REQUIRE(buffers[i] != buffers[j], "active durable scratch leases %d and %d should not alias", i, j);
+	}
+	dispatch_apply(lease_count, dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^(size_t i) {
+		ccv_nnc_mfa_release_durable_scratch(leases[i]);
+	});
+	ccfree(buffers);
+	ccfree(leases);
+}
+
+TEST_CASE("MFA durable scratch retirement follows its owning command batch")
+{
+	ccv_nnc_mfa_context_t* const context = ccv_nnc_default_mfa_context();
+	GUARD_ELSE_RETURN(context && ccv_nnc_mfa_context_supported(context));
+	ccv_nnc_mfa_clear_pipeline_cache(context);
+	ccv_nnc_mfa_durable_scratch_t* const first = ccv_nnc_mfa_request_durable_scratch(context, 4096);
+	ccv_nnc_mfa_durable_scratch_t* const second = ccv_nnc_mfa_request_durable_scratch(context, 4096);
+	mtl_buffer_t* const first_buffer = ccv_nnc_mfa_durable_scratch_buffer(first);
+	mtl_buffer_t* const second_buffer = ccv_nnc_mfa_durable_scratch_buffer(second);
+	REQUIRE(first && first_buffer && second && second_buffer, "durable scratch allocations should succeed");
+	mtl_command_batch_t* const first_batch = ccv_nnc_stream_context_start_command_batch(0);
+	mtl_command_batch_t* const second_batch = ccv_nnc_stream_context_start_command_batch(0);
+	REQUIRE(first_batch && second_batch, "command batches should be available");
+	REQUIRE(ccv_nnc_mfa_retire_durable_scratch(first, first_batch), "first durable scratch should attach to its consuming command batch");
+	REQUIRE(ccv_nnc_mfa_retire_durable_scratch(second, second_batch), "second durable scratch should attach to its consuming command batch");
+	ccv_nnc_mfa_durable_scratch_t* const concurrent = ccv_nnc_mfa_request_durable_scratch(context, 4096);
+	mtl_buffer_t* const concurrent_buffer = ccv_nnc_mfa_durable_scratch_buffer(concurrent);
+	REQUIRE(concurrent_buffer != first_buffer && concurrent_buffer != second_buffer, "retired scratch should remain leased before command completion");
+	ccv_nnc_stream_context_finish_command_batch(0, second_batch);
+	ccv_nnc_mfa_durable_scratch_t* const recycled_second = ccv_nnc_mfa_request_durable_scratch(context, 4096);
+	REQUIRE(ccv_nnc_mfa_durable_scratch_buffer(recycled_second) == second_buffer, "only the completed second batch should recycle its scratch");
+	ccv_nnc_stream_context_finish_command_batch(0, first_batch);
+	ccv_nnc_mfa_durable_scratch_t* const recycled_first = ccv_nnc_mfa_request_durable_scratch(context, 4096);
+	REQUIRE(ccv_nnc_mfa_durable_scratch_buffer(recycled_first) == first_buffer, "the first batch should recycle its scratch after its own completion");
+	ccv_nnc_mfa_release_durable_scratch(concurrent);
+	ccv_nnc_mfa_release_durable_scratch(recycled_second);
+	ccv_nnc_mfa_release_durable_scratch(recycled_first);
+}
+
+#endif
 
 #include "case_main.h"
