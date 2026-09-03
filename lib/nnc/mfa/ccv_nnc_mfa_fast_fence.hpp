@@ -14,6 +14,7 @@ extern "C" {
 
 int ccv_nnc_mfa_prepare_fast_fence(ccv_nnc_mfa_context_t* context);
 int ccv_nnc_mfa_encode_fast_fence(ccv_nnc_mfa_context_t* context, ccv_nnc_mfa_fast_fence_params_t params, mtl_command_batch_t* command_batch, mtl_buffer_t** tensors, size_t* tensor_offsets);
+int ccv_nnc_mfa_encode_fast_fence_wait(ccv_nnc_mfa_context_t* context, uint32_t value, mtl_command_batch_t* command_batch, mtl_buffer_t* timestamp, size_t timestamp_offset);
 
 #ifdef __cplusplus
 } // extern "C"

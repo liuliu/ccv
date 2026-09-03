@@ -77,8 +77,16 @@ typedef struct {
 	ccv_nnc_mps_graph_tensor_shape_t* outputs;
 } ccv_nnc_mps_graph_key_t;
 
+typedef struct {
+	NSString* path; /**< Borrowed for the lifetime of the tensor. */
+	off_t offset; /**< File offset corresponding to the tensor's current data offset. */
+	size_t size; /**< Bytes available from offset. */
+} ccv_nnc_mps_file_backed_region_t;
+
 off_t mpgetoffset(const ccv_nnc_tensor_t* const tensor);
 id<MTLBuffer> mpgetbuffer(const ccv_nnc_tensor_t* const tensor);
+/** Returns 1 for an on-demand file-backed tensor and 0 for any other tensor. */
+int ccv_nnc_mps_file_backed_region(const ccv_nnc_tensor_t* tensor, ccv_nnc_mps_file_backed_region_t* region);
 id<MTLDevice> ccv_nnc_default_device(void);
 MPSGraphDevice* ccv_nnc_default_mps_device(void);
 CCV_WARN_UNUSED(MTLCommandBatch*) ccv_nnc_stream_context_start_command_batch(ccv_nnc_stream_context_t* const stream_context);
@@ -86,6 +94,10 @@ CCV_WARN_UNUSED(MPSCommandBuffer*) ccv_nnc_stream_context_start_mps_command_buff
 void ccv_nnc_stream_context_finish_command_batch(ccv_nnc_stream_context_t* const stream_context, MTLCommandBatch* command_batch);
 CCV_WARN_UNUSED(MPSCommandBuffer*) ccv_nnc_stream_context_finish_command_batch_encoding_and_return_mps_command_buffer(ccv_nnc_stream_context_t* const stream_context, MTLCommandBatch* command_batch);
 void ccv_nnc_stream_context_finish_mps_command_buffer(ccv_nnc_stream_context_t* const stream_context, MPSCommandBuffer* command_buffer);
+/** Makes the input range system-coherent, then conditionally changes timestamp from expected to value. */
+int ccv_nnc_mps_encode_fast_fence_signal_in_command_batch(MTLCommandBatch* command_batch, id<MTLBuffer> timestamp, size_t timestamp_offset, uint32_t expected, uint32_t value, id<MTLBuffer> input, off_t input_offset, size_t input_size);
+/** Waits until the system-coherent timestamp is at least value and orders later buffer accesses after it. */
+int ccv_nnc_mps_encode_fast_fence_wait_in_command_batch(MTLCommandBatch* command_batch, id<MTLBuffer> timestamp, size_t timestamp_offset, uint32_t value);
 int ccv_nnc_mps_encode_tensor_fast_fence(MPSCommandBuffer* const command_buffer, ccv_nnc_tensor_t* const tensor, id<MTLBuffer> const buffer, unsigned char* const aligned_ptr, const size_t aligned_size, const off_t offset, const size_t size);
 CCV_WARN_UNUSED(MPSGraphExecutable*) ccv_nnc_mps_graph_executable_cache(const ccv_nnc_mps_graph_key_t key, int* indices, void(NS_NOESCAPE ^block)(MPSGraph* graph, NSMutableArray<MPSGraphTensor*>* inputTensors, NSMutableArray<MPSGraphShapedType*>* inputShapedTypes, NSMutableArray<MPSGraphTensor*>* resultTensors));
 CCV_WARN_UNUSED(ccv_nnc_mps_graph_key_t) ccv_nnc_mps_graph_key_new(const ccv_nnc_cmd_t cmd, const int index, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size);

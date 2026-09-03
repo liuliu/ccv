@@ -12,6 +12,7 @@
 #import <MetalPerformanceShadersGraph/MetalPerformanceShadersGraph.h>
 #import <objc/runtime.h>
 #import <os/lock.h>
+#import <limits.h>
 #import <sys/stat.h>
 #import <sys/utsname.h>
 #import <sys/mman.h>
@@ -129,14 +130,44 @@ void ccv_nnc_mps_tensor_fast_fence_wait(ccv_nnc_tensor_t* const tensor)
 	while (__atomic_load_n(token, __ATOMIC_ACQUIRE) & 1) {}
 }
 
+int ccv_nnc_mps_encode_fast_fence_signal_in_command_batch(MTLCommandBatch* const command_batch, id<MTLBuffer> const timestamp, const size_t timestamp_offset, const uint32_t expected, const uint32_t value, id<MTLBuffer> const input, const off_t input_offset, const size_t input_size)
+{
+	if (!command_batch || !timestamp || !input || value == 0 || input_offset < 0 || input_size == 0 ||
+		(timestamp_offset & (sizeof(uint32_t) - 1)) != 0 || timestamp_offset > timestamp.length || sizeof(uint32_t) > timestamp.length - timestamp_offset)
+		return 0;
+	const uint64_t byte_offset = (uint64_t)input_offset;
+	const uint64_t remainder = byte_offset & (sizeof(uint32_t) - 1);
+	if (byte_offset > input.length || input_size > input.length - byte_offset ||
+		(uint64_t)input_size > UINT64_MAX - remainder - (sizeof(uint32_t) - 1))
+		return 0;
+	const uint64_t word_offset = byte_offset / sizeof(uint32_t);
+	const uint64_t word_count = (remainder + input_size + sizeof(uint32_t) - 1) / sizeof(uint32_t);
+	if (word_offset > UINT32_MAX || word_count > UINT32_MAX || word_count == 0 ||
+		(word_offset + word_count) * sizeof(uint32_t) > input.length)
+		return 0;
+	const ccv_nnc_mfa_fast_fence_params_t params = {
+		.word_offset = (uint32_t)word_offset,
+		.word_count = (uint32_t)word_count,
+		.pending = expected,
+		.complete = value,
+	};
+	mtl_buffer_t* tensors[] = { (__bridge mtl_buffer_t*)input, (__bridge mtl_buffer_t*)timestamp };
+	size_t tensor_offsets[] = { 0, timestamp_offset };
+	return ccv_nnc_mfa_encode_fast_fence(ccv_nnc_default_mfa_context(), params, command_batch, tensors, tensor_offsets);
+}
+
+int ccv_nnc_mps_encode_fast_fence_wait_in_command_batch(MTLCommandBatch* const command_batch, id<MTLBuffer> const timestamp, const size_t timestamp_offset, const uint32_t value)
+{
+	if (!command_batch || !timestamp || value == 0 || (timestamp_offset & (sizeof(uint32_t) - 1)) != 0 ||
+		timestamp_offset > timestamp.length || sizeof(uint32_t) > timestamp.length - timestamp_offset)
+		return 0;
+	return ccv_nnc_mfa_encode_fast_fence_wait(ccv_nnc_default_mfa_context(), value, command_batch, (__bridge mtl_buffer_t*)timestamp, timestamp_offset);
+}
+
 int ccv_nnc_mps_encode_tensor_fast_fence(MPSCommandBuffer* const command_buffer, ccv_nnc_tensor_t* const tensor, id<MTLBuffer> const buffer, unsigned char* const aligned_ptr, const size_t aligned_size, const off_t offset, const size_t size)
 {
 	uint32_t pending;
 	if (!_ccv_nnc_mps_tensor_fast_fence_pending_value(tensor, &pending))
-		return 0;
-	const uint64_t word_offset_64 = (uint64_t)offset / sizeof(uint32_t);
-	const uint64_t word_count_64 = ((uint64_t)(offset & (sizeof(uint32_t) - 1)) + size + sizeof(uint32_t) - 1) / sizeof(uint32_t);
-	if (word_offset_64 > UINT32_MAX || word_count_64 > UINT32_MAX || word_count_64 == 0)
 		return 0;
 	const uintptr_t aligned_start = (uintptr_t)aligned_ptr;
 	const uintptr_t aligned_end = aligned_start + aligned_size;
@@ -156,22 +187,7 @@ int ccv_nnc_mps_encode_tensor_fast_fence(MPSCommandBuffer* const command_buffer,
 		release_token_buffer = 1;
 	}
 	MTLCommandBatch* const command_batch = ccv_nnc_start_command_batch_from_command_buffer((__bridge mtl_command_buffer_t*)command_buffer.commandBuffer, 0);
-	ccv_nnc_mfa_fast_fence_params_t params = {
-		.word_offset = (uint32_t)word_offset_64,
-		.word_count = (uint32_t)word_count_64,
-		.pending = pending,
-		.complete = pending + 1,
-	};
-	mtl_buffer_t* tensors[] = {
-		(__bridge mtl_buffer_t*)buffer,
-		(__bridge mtl_buffer_t*)token_buffer,
-		0
-	};
-	size_t tensor_offsets[] = {
-		0,
-		token_offset
-	};
-	const int encoded = ccv_nnc_mfa_encode_fast_fence(ccv_nnc_default_mfa_context(), params, command_batch, tensors, tensor_offsets);
+	const int encoded = ccv_nnc_mps_encode_fast_fence_signal_in_command_batch(command_batch, token_buffer, token_offset, pending, pending + 1, buffer, offset, size);
 	ccv_nnc_finish_command_batch(command_batch);
 	if (release_token_buffer)
 		[token_buffer release];
@@ -347,6 +363,24 @@ void* mpobjcreate(void* ptr, off_t offset, size_t size)
 
 @implementation MTLFileBackedBuffer
 @end
+
+int ccv_nnc_mps_file_backed_region(const ccv_nnc_tensor_t* const tensor, ccv_nnc_mps_file_backed_region_t* const region)
+{
+	if (!tensor || !region || CCV_TENSOR_GET_MEMORY(tensor->info.type) != CCV_TENSOR_GPU_MEMORY || tensor->dataof < 0)
+		return 0;
+	id const object = (id)tensor->data.u8;
+	if (![object isKindOfClass:[MTLFileBackedBuffer class]])
+		return 0;
+	MTLFileBackedBuffer* const file_backed_buffer = (MTLFileBackedBuffer*)object;
+	const uint64_t dataof = (uint64_t)tensor->dataof;
+	const uint64_t file_offset = file_backed_buffer.offset;
+	if (!file_backed_buffer.path || dataof > file_backed_buffer.size || file_offset > INT64_MAX || dataof > INT64_MAX - file_offset)
+		return 0;
+	region->path = file_backed_buffer.path;
+	region->offset = (off_t)(file_offset + dataof);
+	region->size = file_backed_buffer.size - dataof;
+	return 1;
+}
 
 @implementation MTLWholeFileMapping
 

@@ -40,10 +40,22 @@ kernel void ccv_nnc_mfa_fast_fence_update(
     !atomic_compare_exchange_weak_explicit(timestamp, &expected_value, value, memory_order_relaxed, memory_order_relaxed)) {}
   metal::atomic_thread_fence(metal::mem_flags::mem_device, metal::memory_order_seq_cst, metal::thread_scope_system);
 }
+
+kernel void ccv_nnc_mfa_fast_fence_wait(
+  volatile coherent(system) device uint* timestamp [[buffer(0)]],
+  constant uint& value [[buffer(1)]]
+) {
+  while (true) {
+    metal::atomic_thread_fence(metal::mem_flags::mem_device, metal::memory_order_seq_cst, metal::thread_scope_system);
+    if (timestamp[0] >= value)
+      break;
+  }
+}
+
 )";
 }
 
-static int _ccv_nnc_mfa_ensure_fast_fence_pipeline(mfa::context* const context, NS::SharedPtr<MTL::ComputePipelineState>* const coherent_pipeline_ref, NS::SharedPtr<MTL::ComputePipelineState>* const update_pipeline_ref)
+static int _ccv_nnc_mfa_ensure_fast_fence_pipeline(mfa::context* const context, NS::SharedPtr<MTL::ComputePipelineState>* const coherent_pipeline_ref, NS::SharedPtr<MTL::ComputePipelineState>* const update_pipeline_ref, NS::SharedPtr<MTL::ComputePipelineState>* const wait_pipeline_ref)
 {
 	if (!context || !ccv_nnc_mfa_context_supported(context) || (ccv_nnc_flags() & CCV_NNC_DISABLE_MFA))
 		return 0;
@@ -51,11 +63,13 @@ static int _ccv_nnc_mfa_ensure_fast_fence_pipeline(mfa::context* const context, 
 	static int attempted = 0;
 	static NS::SharedPtr<MTL::ComputePipelineState> coherent_pipeline;
 	static NS::SharedPtr<MTL::ComputePipelineState> update_pipeline;
+	static NS::SharedPtr<MTL::ComputePipelineState> wait_pipeline;
 	std::lock_guard<std::mutex> lock(mutex);
-	if (coherent_pipeline.get() && update_pipeline.get())
+	if (coherent_pipeline.get() && update_pipeline.get() && wait_pipeline.get())
 	{
 		*coherent_pipeline_ref = coherent_pipeline;
 		*update_pipeline_ref = update_pipeline;
+		*wait_pipeline_ref = wait_pipeline;
 		return 1;
 	}
 	if (attempted)
@@ -69,11 +83,15 @@ static int _ccv_nnc_mfa_ensure_fast_fence_pipeline(mfa::context* const context, 
 	auto constants = NS::TransferPtr(MTL::FunctionConstantValues::alloc()->init());
 	auto coherent_name = NS::String::string("ccv_nnc_mfa_fast_fence_input_coherent", NS::UTF8StringEncoding);
 	auto update_name = NS::String::string("ccv_nnc_mfa_fast_fence_update", NS::UTF8StringEncoding);
+	auto wait_name = NS::String::string("ccv_nnc_mfa_fast_fence_wait", NS::UTF8StringEncoding);
 	auto coherent_function = NS::TransferPtr(library->newFunction(coherent_name, constants.get(), &error));
 	if (!coherent_function.get() || error)
 		return 0;
 	auto update_function = NS::TransferPtr(library->newFunction(update_name, constants.get(), &error));
 	if (!update_function.get() || error)
+		return 0;
+	auto wait_function = NS::TransferPtr(library->newFunction(wait_name, constants.get(), &error));
+	if (!wait_function.get() || error)
 		return 0;
 	coherent_pipeline = NS::TransferPtr(context->device->newComputePipelineState(coherent_function.get(), &error));
 	if (!coherent_pipeline.get() || error)
@@ -81,8 +99,12 @@ static int _ccv_nnc_mfa_ensure_fast_fence_pipeline(mfa::context* const context, 
 	update_pipeline = NS::TransferPtr(context->device->newComputePipelineState(update_function.get(), &error));
 	if (!update_pipeline.get() || error)
 		return 0;
+	wait_pipeline = NS::TransferPtr(context->device->newComputePipelineState(wait_function.get(), &error));
+	if (!wait_pipeline.get() || error)
+		return 0;
 	*coherent_pipeline_ref = coherent_pipeline;
 	*update_pipeline_ref = update_pipeline;
+	*wait_pipeline_ref = wait_pipeline;
 	return 1;
 }
 
@@ -90,14 +112,16 @@ int ccv_nnc_mfa_prepare_fast_fence(ccv_nnc_mfa_context_t* const context)
 {
 	NS::SharedPtr<MTL::ComputePipelineState> coherent_pipeline;
 	NS::SharedPtr<MTL::ComputePipelineState> update_pipeline;
-	return _ccv_nnc_mfa_ensure_fast_fence_pipeline(context, &coherent_pipeline, &update_pipeline);
+	NS::SharedPtr<MTL::ComputePipelineState> wait_pipeline;
+	return _ccv_nnc_mfa_ensure_fast_fence_pipeline(context, &coherent_pipeline, &update_pipeline, &wait_pipeline);
 }
 
 int ccv_nnc_mfa_encode_fast_fence(ccv_nnc_mfa_context_t* const context, const ccv_nnc_mfa_fast_fence_params_t params, mtl_command_batch_t* const command_batch, mtl_buffer_t** const tensors, size_t* const tensor_offsets)
 {
 	NS::SharedPtr<MTL::ComputePipelineState> coherent_pipeline;
 	NS::SharedPtr<MTL::ComputePipelineState> update_pipeline;
-	if (!_ccv_nnc_mfa_ensure_fast_fence_pipeline(context, &coherent_pipeline, &update_pipeline))
+	NS::SharedPtr<MTL::ComputePipelineState> wait_pipeline;
+	if (!_ccv_nnc_mfa_ensure_fast_fence_pipeline(context, &coherent_pipeline, &update_pipeline, &wait_pipeline))
 		return 0;
 	if (!command_batch || !tensors || !tensor_offsets || !tensors[0] || !tensors[1] || params.word_count == 0)
 		return 0;
@@ -115,6 +139,24 @@ int ccv_nnc_mfa_encode_fast_fence(ccv_nnc_mfa_context_t* const context, const cc
 	encoder->setBytes(&params.pending, sizeof(params.pending), NS::UInteger(1));
 	encoder->setBytes(&params.complete, sizeof(params.complete), NS::UInteger(2));
 	encoder->dispatchThreadgroups(MTL::Size(1, 1, 1), MTL::Size(1, 1, 1));
+	command_batch->finishCommand(encoder);
+	return 1;
+}
+
+int ccv_nnc_mfa_encode_fast_fence_wait(ccv_nnc_mfa_context_t* const context, const uint32_t value, mtl_command_batch_t* const command_batch, mtl_buffer_t* const timestamp, const size_t timestamp_offset)
+{
+	NS::SharedPtr<MTL::ComputePipelineState> coherent_pipeline;
+	NS::SharedPtr<MTL::ComputePipelineState> update_pipeline;
+	NS::SharedPtr<MTL::ComputePipelineState> wait_pipeline;
+	if (!_ccv_nnc_mfa_ensure_fast_fence_pipeline(context, &coherent_pipeline, &update_pipeline, &wait_pipeline) ||
+		!command_batch || !timestamp || value == 0)
+		return 0;
+	auto encoder = command_batch->startCommand();
+	encoder->setComputePipelineState(wait_pipeline.get());
+	encoder->setBuffer(timestamp, timestamp_offset, NS::UInteger(0));
+	encoder->setBytes(&value, sizeof(value), NS::UInteger(1));
+	encoder->dispatchThreadgroups(MTL::Size(1, 1, 1), MTL::Size(1, 1, 1));
+	encoder->memoryBarrier(MTL::BarrierScopeBuffers);
 	command_batch->finishCommand(encoder);
 	return 1;
 }
