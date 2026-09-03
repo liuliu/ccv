@@ -5220,16 +5220,18 @@ CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_unique_consecutive(const int bincoun
  */
 CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_scatter_add(const int bincount, const int count_per_output, const char* const name);
 /**
- * A segmented dense layer model. Note that the input would be activation, indices and count.
+ * A segmented dense layer model. The stateful form takes activation, indices and counts.
+ * The functional form additionally takes weights and, unless no_bias is set, bias.
  * @param segments / experts How many segments in this layer.
  * @param count The output dimension.
  * @param no_bias Whether has a bias term or not.
  * @param flags The flags to disable / enable certain features.
  * @param is_trainable Whether the parameters of this model can be trained.
+ * @param functional If non-zero, the model owns no parameters and takes weight and optional bias tensors as inputs.
  * @param name The unique name of the model.
  * @return A segmented dense layer model.
  */
-CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_segmented_dense(const int segments, const int count, const int no_bias, const int flags, const int is_trainable, const char* const name);
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_segmented_dense(const int segments, const int count, const int no_bias, const int flags, const int is_trainable, const int functional, const char* const name);
 /**
  * A gate/up projection followed by optionally clamped SwiGLU.
  * @param count The intermediate output width.
@@ -5241,16 +5243,18 @@ CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_segmented_dense(const int segments, 
 CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_swiglu(const int count, const float clamp, const int is_trainable, const char* const name);
 /**
  * A segmented expert gate/up projection followed by row-weighted, optionally clamped SwiGLU.
- * The model takes grouped activation rows, active expert IDs, row counts, and route weights.
+ * The stateful form takes grouped activation rows, active expert IDs, row counts, and route weights.
+ * The functional form takes gate and up weights before the route weights.
  * A single activation row is broadcast across all routed rows.
  * @param segments How many expert segments are in each weight table.
  * @param count The intermediate output width of each expert.
  * @param clamp If positive, clamp the up projection symmetrically and gate projection from above.
  * @param is_trainable Whether the parameters of this model can be trained.
+ * @param functional If non-zero, the model owns no parameters and takes gate and up weight tensors as inputs.
  * @param name The unique name of the model.
- * @return A segmented SwiGLU layer model owning gate and up expert weights.
+ * @return A segmented SwiGLU layer model.
  */
-CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_segmented_swiglu(const int segments, const int count, const float clamp, const int is_trainable, const char* const name);
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_segmented_swiglu(const int segments, const int count, const float clamp, const int is_trainable, const int functional, const char* const name);
 
 /** @} */
 

@@ -1597,7 +1597,7 @@ TEST_CASE("segmented gemm compare batched gemm with model")
 	ccv_nnc_tensor_t* at0 = ccv_nnc_tensor_new(a->data.f32, CPU_TENSOR_NHWC(32F, 20, 128), 0);
 	ccv_nnc_tensor_t* at1 = ccv_nnc_tensor_new(a->data.f32 + 20 * 128, CPU_TENSOR_NHWC(32F, 25, 128), 0);
 	ccv_nnc_tensor_t* at2 = ccv_nnc_tensor_new(a->data.f32 + 45 * 128, CPU_TENSOR_NHWC(32F, 35, 128), 0);
-	ccv_cnnp_model_t* const segmented_dense = ccv_cnnp_segmented_dense(3, 64, 1, 0, 0, "segmented_dense");
+	ccv_cnnp_model_t* const segmented_dense = ccv_cnnp_segmented_dense(3, 64, 1, 0, 0, 0, "segmented_dense");
 	ccv_cnnp_model_compile(segmented_dense, TENSOR_PARAM_LIST(a->info, indices->info, counts->info), CMD_NOOP(), CMD_NOOP());
 	ccv_cnnp_model_set_parameter(segmented_dense, ccv_cnnp_model_parameters(segmented_dense, ALL_PARAMETERS, 0), w);
 	ccv_cnnp_model_evaluate(segmented_dense, (ccv_cnnp_evaluate_param_t){
@@ -1666,7 +1666,7 @@ TEST_CASE("segmented gemm with bias compare batched gemm with model")
 	ccv_nnc_tensor_t* at0 = ccv_nnc_tensor_new(a->data.f32, CPU_TENSOR_NHWC(32F, 20, 128), 0);
 	ccv_nnc_tensor_t* at1 = ccv_nnc_tensor_new(a->data.f32 + 20 * 128, CPU_TENSOR_NHWC(32F, 25, 128), 0);
 	ccv_nnc_tensor_t* at2 = ccv_nnc_tensor_new(a->data.f32 + 45 * 128, CPU_TENSOR_NHWC(32F, 35, 128), 0);
-	ccv_cnnp_model_t* const segmented_dense = ccv_cnnp_segmented_dense(3, 64, 0, 0, 0, "segmented_dense");
+	ccv_cnnp_model_t* const segmented_dense = ccv_cnnp_segmented_dense(3, 64, 0, 0, 0, 0, "segmented_dense");
 	ccv_cnnp_model_compile(segmented_dense, TENSOR_PARAM_LIST(a->info, indices->info, counts->info), CMD_NOOP(), CMD_NOOP());
 	ccv_cnnp_model_set_parameter(segmented_dense, ccv_cnnp_model_parameters(segmented_dense, ALL_PARAMETERS, 0), w);
 	ccv_cnnp_model_set_parameter(segmented_dense, ccv_cnnp_model_parameters(segmented_dense, ALL_PARAMETERS, 1), bias);
@@ -1710,6 +1710,93 @@ TEST_CASE("segmented gemm with bias compare batched gemm with model")
 	ccv_nnc_tensor_free(b1);
 	ccv_nnc_tensor_free(b2);
 	ccv_cnnp_model_free(segmented_dense);
+}
+
+TEST_CASE("functional segmented dense model uses supplied weights")
+{
+	dsfmt_t dsfmt;
+	dsfmt_init_gen_rand(&dsfmt, 0);
+	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 7, 5), 0);
+	ccv_nnc_tensor_t* const indices = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, 3), 0);
+	indices->data.i32[0] = 0;
+	indices->data.i32[1] = 2;
+	indices->data.i32[2] = 1;
+	ccv_nnc_tensor_t* const counts = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, 3), 0);
+	counts->data.i32[0] = 2;
+	counts->data.i32[1] = 3;
+	counts->data.i32[2] = 2;
+	ccv_nnc_tensor_t* const weights = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 3, 4, 5), 0);
+	ccv_nnc_tensor_t* const expected = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 7, 4), 0);
+	ccv_nnc_tensor_t* const actual = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 7, 4), 0);
+	int i;
+	for (i = 0; i < 7 * 5; i++)
+		a->data.f32[i] = dsfmt_genrand_open_close(&dsfmt);
+	for (i = 0; i < 3 * 4 * 5; i++)
+		weights->data.f32[i] = dsfmt_genrand_open_close(&dsfmt) / 20;
+	ccv_nnc_cmd_exec(CMD_SEGMENTED_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(1, 2)), ccv_nnc_no_hint, 0,
+		TENSOR_LIST(a, indices, counts, weights), TENSOR_LIST(expected), 0);
+	ccv_cnnp_model_t* const segmented_dense = ccv_cnnp_segmented_dense(3, 4, 1, 0, 0, 1, "segmented_dense");
+	ccv_cnnp_model_compile(segmented_dense, TENSOR_PARAM_LIST(a->info, indices->info, counts->info, weights->info), CMD_NOOP(), CMD_NOOP());
+	ccv_cnnp_model_evaluate(segmented_dense, (ccv_cnnp_evaluate_param_t){
+		.requires_grad = 0,
+	}, TENSOR_LIST(a, indices, counts, weights), TENSOR_LIST(actual), 0, 0);
+	REQUIRE_TENSOR_EQ(actual, expected, "functional segmented dense should use the supplied weights");
+	ccv_cnnp_model_free(segmented_dense);
+	ccv_nnc_tensor_free(a);
+	ccv_nnc_tensor_free(indices);
+	ccv_nnc_tensor_free(counts);
+	ccv_nnc_tensor_free(weights);
+	ccv_nnc_tensor_free(expected);
+	ccv_nnc_tensor_free(actual);
+}
+
+TEST_CASE("functional segmented swiglu model uses supplied weights")
+{
+	dsfmt_t dsfmt;
+	dsfmt_init_gen_rand(&dsfmt, 0);
+	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 7, 5), 0);
+	ccv_nnc_tensor_t* const indices = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, 3), 0);
+	indices->data.i32[0] = 0;
+	indices->data.i32[1] = 2;
+	indices->data.i32[2] = 1;
+	ccv_nnc_tensor_t* const counts = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, 3), 0);
+	counts->data.i32[0] = 2;
+	counts->data.i32[1] = 3;
+	counts->data.i32[2] = 2;
+	ccv_nnc_tensor_t* const gate_weights = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 3, 4, 5), 0);
+	ccv_nnc_tensor_t* const up_weights = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 3, 4, 5), 0);
+	ccv_nnc_tensor_t* const route_weights = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 7, 1), 0);
+	ccv_nnc_tensor_t* const expected = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 7, 4), 0);
+	ccv_nnc_tensor_t* const actual = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 7, 4), 0);
+	int i;
+	for (i = 0; i < 7 * 5; i++)
+		a->data.f32[i] = dsfmt_genrand_open_close(&dsfmt);
+	for (i = 0; i < 3 * 4 * 5; i++)
+	{
+		gate_weights->data.f32[i] = dsfmt_genrand_open_close(&dsfmt) / 20;
+		up_weights->data.f32[i] = dsfmt_genrand_open_close(&dsfmt) / 20;
+	}
+	for (i = 0; i < 7; i++)
+		route_weights->data.f32[i] = dsfmt_genrand_open_close(&dsfmt);
+	ccv_nnc_cmd_exec(CMD_SEGMENTED_SWIGLU_FORWARD(10), ccv_nnc_no_hint, 0,
+		TENSOR_LIST(a, indices, counts, gate_weights, up_weights, route_weights), TENSOR_LIST(expected), 0);
+	ccv_cnnp_model_t* const segmented_swiglu = ccv_cnnp_segmented_swiglu(3, 4, 10, 0, 1, "segmented_swiglu");
+	ccv_cnnp_model_compile(segmented_swiglu,
+		TENSOR_PARAM_LIST(a->info, indices->info, counts->info, gate_weights->info, up_weights->info, route_weights->info),
+		CMD_NOOP(), CMD_NOOP());
+	ccv_cnnp_model_evaluate(segmented_swiglu, (ccv_cnnp_evaluate_param_t){
+		.requires_grad = 0,
+	}, TENSOR_LIST(a, indices, counts, gate_weights, up_weights, route_weights), TENSOR_LIST(actual), 0, 0);
+	REQUIRE_TENSOR_EQ(actual, expected, "functional segmented SwiGLU should use the supplied weights");
+	ccv_cnnp_model_free(segmented_swiglu);
+	ccv_nnc_tensor_free(a);
+	ccv_nnc_tensor_free(indices);
+	ccv_nnc_tensor_free(counts);
+	ccv_nnc_tensor_free(gate_weights);
+	ccv_nnc_tensor_free(up_weights);
+	ccv_nnc_tensor_free(route_weights);
+	ccv_nnc_tensor_free(expected);
+	ccv_nnc_tensor_free(actual);
 }
 
 #include "case_main.h"

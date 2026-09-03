@@ -5414,30 +5414,53 @@ typedef struct {
 	int count;
 	int no_bias;
 	int flags;
+	int functional;
 } ccv_cnnp_model_segmented_dense_t;
 
 static void _ccv_cnnp_segmented_dense_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
 {
 	ccv_cnnp_model_segmented_dense_t* const self = (ccv_cnnp_model_segmented_dense_t*)super;
 	PRINT(CCV_CLI_VERBOSE, "[cnnp_segmented_dense_build] -\n");
-	assert(input_size == 3);
+	assert(input_size == (self->functional ? 4 + !self->no_bias : 3));
 	assert(output_size == 1);
 	const ccv_nnc_tensor_param_t params = ccv_nnc_tensor_symbol_params(graph, inputs[0]);
 	const ccv_nnc_tensor_param_t indices_params = ccv_nnc_tensor_symbol_params(graph, inputs[1]);
 	const ccv_nnc_tensor_param_t counts_params = ccv_nnc_tensor_symbol_params(graph, inputs[2]);
-	ccv_nnc_tensor_param_t weights_params = params;
-	memset(weights_params.dim, 0, sizeof(weights_params.dim));
-	weights_params.dim[0] = self->segments;
-	weights_params.dim[1] = self->count;
-	weights_params.dim[2] = params.dim[ccv_nnc_tensor_nd(params.dim) - 1];
-	if (!self->weights.graph)
-		self->weights = ccv_nnc_tensor_symbol_new(graph, weights_params, "weights");
-	assert(self->weights.graph == graph);
-	const ccv_nnc_tensor_symbol_t weights = ccv_cnnp_model_get_symbol(super, self->weights);
-	ccv_nnc_tensor_param_t bias_params = params;
-	memset(bias_params.dim, 0, sizeof(bias_params.dim));
-	bias_params.dim[0] = self->segments;
-	bias_params.dim[1] = self->count;
+	ccv_nnc_tensor_param_t weights_params;
+	ccv_nnc_tensor_symbol_t weights;
+	if (self->functional)
+	{
+		weights = inputs[3];
+		weights_params = ccv_nnc_tensor_symbol_params(graph, weights);
+	} else {
+		weights_params = params;
+		memset(weights_params.dim, 0, sizeof(weights_params.dim));
+		weights_params.dim[0] = self->segments;
+		weights_params.dim[1] = self->count;
+		weights_params.dim[2] = params.dim[ccv_nnc_tensor_nd(params.dim) - 1];
+		if (!self->weights.graph)
+			self->weights = ccv_nnc_tensor_symbol_new(graph, weights_params, "weights");
+		assert(self->weights.graph == graph);
+		weights = ccv_cnnp_model_get_symbol(super, self->weights);
+	}
+	ccv_nnc_tensor_param_t bias_params = {};
+	ccv_nnc_tensor_symbol_t bias = {};
+	if (!self->no_bias)
+	{
+		if (self->functional)
+		{
+			bias = inputs[4];
+			bias_params = ccv_nnc_tensor_symbol_params(graph, bias);
+		} else {
+			bias_params = params;
+			memset(bias_params.dim, 0, sizeof(bias_params.dim));
+			bias_params.dim[0] = self->segments;
+			bias_params.dim[1] = self->count;
+			if (!self->bias.graph)
+				self->bias = ccv_nnc_tensor_symbol_new(graph, bias_params, "bias");
+			bias = ccv_cnnp_model_get_symbol(super, self->bias);
+		}
+	}
 	ccv_nnc_cmd_t cmd = {0};
 	cmd.cmd = CCV_NNC_SEGMENTED_GEMM_FORWARD;
 	cmd.info.blas.a[0] = 1;
@@ -5450,22 +5473,20 @@ static void _ccv_cnnp_segmented_dense_build(ccv_cnnp_model_t* const super, ccv_n
 			params, indices_params, counts_params,
 			weights_params,
 			bias_params,
-		}, 5, ccv_nnc_no_hint, &output_params, 1);
+		}, 4 + !self->no_bias, ccv_nnc_no_hint, &output_params, 1);
 	const ccv_nnc_tensor_symbol_t output = ccv_nnc_tensor_symbol_new(graph, output_params, 0);
 	if (self->no_bias)
 		ccv_nnc_graph_exec_symbol_new(graph, cmd, TENSOR_SYMBOL_LIST(inputs[0], inputs[1], inputs[2], weights), TENSOR_SYMBOL_LIST(output), "segmented_dense");
-	else {
-		if (!self->bias.graph)
-			self->bias = ccv_nnc_tensor_symbol_new(graph, bias_params, "bias");
-		const ccv_nnc_tensor_symbol_t bias = ccv_cnnp_model_get_symbol(super, self->bias);
+	else
 		ccv_nnc_graph_exec_symbol_new(graph, cmd, TENSOR_SYMBOL_LIST(inputs[0], inputs[1], inputs[2], weights, bias), TENSOR_SYMBOL_LIST(output), "segmented_dense");
-	}
 	outputs[0] = output;
 }
 
 static void _ccv_cnnp_segmented_dense_init_states(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_cnnp_state_initializer_f initializer, void* const context)
 {
 	ccv_cnnp_model_segmented_dense_t* const self = (ccv_cnnp_model_segmented_dense_t*)super;
+	if (self->functional)
+		return;
 	const ccv_nnc_tensor_param_t weight_params = ccv_nnc_tensor_symbol_params(graph, self->weights);
 	const int c = weight_params.dim[1];
 	const float std = sqrtf(2) / sqrtf(c);
@@ -5478,6 +5499,8 @@ static void _ccv_cnnp_segmented_dense_init_states(ccv_cnnp_model_t* const super,
 static void _ccv_cnnp_segmented_dense_add_to_parameter(ccv_cnnp_model_t* const super, const ccv_cnnp_add_to_array_f add_to_array, void* const parameters, const int is_trainable)
 {
 	ccv_cnnp_model_segmented_dense_t* const self = (ccv_cnnp_model_segmented_dense_t*)super;
+	if (self->functional)
+		return;
 	add_to_array(parameters, self->weights, is_trainable);
 	if (self->bias.graph)
 		add_to_array(parameters, self->bias, is_trainable);
@@ -5492,11 +5515,11 @@ static const ccv_cnnp_model_vtab_t ccv_cnnp_segmented_dense_isa = {
 	.copy = _ccv_cnnp_segmented_dense_copy,
 };
 
-ccv_cnnp_model_t* ccv_cnnp_segmented_dense(const int segments, const int count, const int no_bias, const int flags, const int is_trainable, const char* const name)
+ccv_cnnp_model_t* ccv_cnnp_segmented_dense(const int segments, const int count, const int no_bias, const int flags, const int is_trainable, const int functional, const char* const name)
 {
 	ccv_cnnp_model_segmented_dense_t* const model_segmented_dense = (ccv_cnnp_model_segmented_dense_t*)cccalloc(1, sizeof(ccv_cnnp_model_segmented_dense_t));
 	model_segmented_dense->super.isa = &ccv_cnnp_segmented_dense_isa;
-	model_segmented_dense->super.input_size = 3;
+	model_segmented_dense->super.input_size = functional ? 4 + !no_bias : 3;
 	model_segmented_dense->super.outputs = &model_segmented_dense->output;
 	model_segmented_dense->super.output_size = 1;
 	model_segmented_dense->super.is_trainable = is_trainable;
@@ -5509,13 +5532,14 @@ ccv_cnnp_model_t* ccv_cnnp_segmented_dense(const int segments, const int count, 
 	model_segmented_dense->count = count;
 	model_segmented_dense->no_bias = no_bias;
 	model_segmented_dense->flags = flags;
+	model_segmented_dense->functional = functional;
 	return (ccv_cnnp_model_t*)model_segmented_dense;
 }
 
 static ccv_cnnp_model_t* _ccv_cnnp_segmented_dense_copy(const ccv_cnnp_model_t* const super, void* const context)
 {
 	const ccv_cnnp_model_segmented_dense_t* const self = (const ccv_cnnp_model_segmented_dense_t*)super;
-	return ccv_cnnp_segmented_dense(self->segments, self->count, self->no_bias, self->flags, self->super.is_trainable, self->super.name);
+	return ccv_cnnp_segmented_dense(self->segments, self->count, self->no_bias, self->flags, self->super.is_trainable, self->functional, self->super.name);
 }
 
 // MARK - SwiGLU Layer
@@ -5621,33 +5645,42 @@ typedef struct {
 	int segments;
 	int count;
 	float clamp;
+	int functional;
 } ccv_cnnp_model_segmented_swiglu_t;
 
 static void _ccv_cnnp_segmented_swiglu_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
 {
 	ccv_cnnp_model_segmented_swiglu_t* const self = (ccv_cnnp_model_segmented_swiglu_t*)super;
 	PRINT(CCV_CLI_VERBOSE, "[cnnp_segmented_swiglu_build] -\n");
-	assert(input_size == 4);
+	assert(input_size == (self->functional ? 6 : 4));
 	assert(output_size == 1);
 	const ccv_nnc_tensor_param_t params = ccv_nnc_tensor_symbol_params(graph, inputs[0]);
-	const int params_nd = ccv_nnc_tensor_nd(params.dim);
-	assert(params_nd >= 1);
-	ccv_nnc_tensor_param_t weights_params = params;
-	memset(weights_params.dim, 0, sizeof(weights_params.dim));
-	weights_params.dim[0] = self->segments;
-	weights_params.dim[1] = self->count;
-	weights_params.dim[2] = params.dim[params_nd - 1];
-	if (!self->gate_weights.graph)
-		self->gate_weights = ccv_nnc_tensor_symbol_new(graph, weights_params, "gate.weight");
-	if (!self->up_weights.graph)
-		self->up_weights = ccv_nnc_tensor_symbol_new(graph, weights_params, "up.weight");
-	assert(self->gate_weights.graph == graph);
-	assert(self->up_weights.graph == graph);
-	const ccv_nnc_tensor_symbol_t gate_weights = ccv_cnnp_model_get_symbol(super, self->gate_weights);
-	const ccv_nnc_tensor_symbol_t up_weights = ccv_cnnp_model_get_symbol(super, self->up_weights);
+	ccv_nnc_tensor_symbol_t gate_weights;
+	ccv_nnc_tensor_symbol_t up_weights;
+	if (self->functional)
+	{
+		gate_weights = inputs[3];
+		up_weights = inputs[4];
+	} else {
+		const int params_nd = ccv_nnc_tensor_nd(params.dim);
+		assert(params_nd >= 1);
+		ccv_nnc_tensor_param_t weights_params = params;
+		memset(weights_params.dim, 0, sizeof(weights_params.dim));
+		weights_params.dim[0] = self->segments;
+		weights_params.dim[1] = self->count;
+		weights_params.dim[2] = params.dim[params_nd - 1];
+		if (!self->gate_weights.graph)
+			self->gate_weights = ccv_nnc_tensor_symbol_new(graph, weights_params, "gate.weight");
+		if (!self->up_weights.graph)
+			self->up_weights = ccv_nnc_tensor_symbol_new(graph, weights_params, "up.weight");
+		assert(self->gate_weights.graph == graph);
+		assert(self->up_weights.graph == graph);
+		gate_weights = ccv_cnnp_model_get_symbol(super, self->gate_weights);
+		up_weights = ccv_cnnp_model_get_symbol(super, self->up_weights);
+	}
 	const ccv_nnc_cmd_t cmd = CMD_SEGMENTED_SWIGLU_FORWARD(self->clamp);
 	const ccv_nnc_tensor_symbol_t command_inputs[] = {
-		inputs[0], inputs[1], inputs[2], gate_weights, up_weights, inputs[3],
+		inputs[0], inputs[1], inputs[2], gate_weights, up_weights, inputs[self->functional ? 5 : 3],
 	};
 	ccv_nnc_tensor_param_t command_input_params[6];
 	int i;
@@ -5662,6 +5695,8 @@ static void _ccv_cnnp_segmented_swiglu_build(ccv_cnnp_model_t* const super, ccv_
 static void _ccv_cnnp_segmented_swiglu_init_states(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_cnnp_state_initializer_f initializer, void* const context)
 {
 	ccv_cnnp_model_segmented_swiglu_t* const self = (ccv_cnnp_model_segmented_swiglu_t*)super;
+	if (self->functional)
+		return;
 	const ccv_nnc_tensor_param_t weight_params = ccv_nnc_tensor_symbol_params(graph, self->gate_weights);
 	const float bound = sqrtf(6.f / weight_params.dim[2]);
 	initializer(context, CMD_RANDOM_UNIFORM_FORWARD(-bound, bound), ccv_nnc_no_hint, 0, 0, self->gate_weights);
@@ -5671,6 +5706,8 @@ static void _ccv_cnnp_segmented_swiglu_init_states(ccv_cnnp_model_t* const super
 static void _ccv_cnnp_segmented_swiglu_add_to_parameter(ccv_cnnp_model_t* const super, const ccv_cnnp_add_to_array_f add_to_array, void* const parameters, const int is_trainable)
 {
 	ccv_cnnp_model_segmented_swiglu_t* const self = (ccv_cnnp_model_segmented_swiglu_t*)super;
+	if (self->functional)
+		return;
 	add_to_array(parameters, self->gate_weights, is_trainable);
 	add_to_array(parameters, self->up_weights, is_trainable);
 }
@@ -5684,11 +5721,11 @@ static const ccv_cnnp_model_vtab_t ccv_cnnp_segmented_swiglu_isa = {
 	.copy = _ccv_cnnp_segmented_swiglu_copy,
 };
 
-ccv_cnnp_model_t* ccv_cnnp_segmented_swiglu(const int segments, const int count, const float clamp, const int is_trainable, const char* const name)
+ccv_cnnp_model_t* ccv_cnnp_segmented_swiglu(const int segments, const int count, const float clamp, const int is_trainable, const int functional, const char* const name)
 {
 	ccv_cnnp_model_segmented_swiglu_t* const model = (ccv_cnnp_model_segmented_swiglu_t*)cccalloc(1, sizeof(ccv_cnnp_model_segmented_swiglu_t));
 	model->super.isa = &ccv_cnnp_segmented_swiglu_isa;
-	model->super.input_size = 4;
+	model->super.input_size = functional ? 6 : 4;
 	model->super.outputs = &model->output;
 	model->super.output_size = 1;
 	model->super.is_trainable = is_trainable;
@@ -5698,11 +5735,12 @@ ccv_cnnp_model_t* ccv_cnnp_segmented_swiglu(const int segments, const int count,
 	model->segments = segments;
 	model->count = count;
 	model->clamp = clamp;
+	model->functional = functional;
 	return (ccv_cnnp_model_t*)model;
 }
 
 static ccv_cnnp_model_t* _ccv_cnnp_segmented_swiglu_copy(const ccv_cnnp_model_t* const super, void* const context)
 {
 	const ccv_cnnp_model_segmented_swiglu_t* const self = (const ccv_cnnp_model_segmented_swiglu_t*)super;
-	return ccv_cnnp_segmented_swiglu(self->segments, self->count, self->clamp, self->super.is_trainable, self->super.name);
+	return ccv_cnnp_segmented_swiglu(self->segments, self->count, self->clamp, self->super.is_trainable, self->functional, self->super.name);
 }
