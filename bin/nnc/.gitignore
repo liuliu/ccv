@@ -4,3 +4,4 @@ nnc-sym
 routed_segmented_gemm_bench
 moe_routing_bench
 segmented_swiglu_bench
+interleaved_batched_gemm_bench
