@@ -41,6 +41,7 @@ void ccv_nnc_deinit_stream_signal(ccv_nnc_stream_signal_t* const signal);
 CCV_WARN_UNUSED(int) ccv_nnc_gpu_device_count(void);
 void ccv_nnc_mps_set_queue_watermark(int watermark);
 CCV_WARN_UNUSED(int) ccv_nnc_mps_queue_watermark(void);
+void ccv_nnc_mps_set_whole_file_mapping_size_limit(size_t size_limit);
 void ccv_nnc_mps_clear_graph_executable_cache(void);
 void ccv_nnc_mps_depalettize(const void* input, const int datatype, const size_t input_length, const int qbits, const int number_in_blocks, void* output, const size_t output_length, void* const command_buffer);
 void ccv_nnc_mps_dequantize_8i_rowwise(const void* input, const int datatype, const size_t input_length, const size_t row_length, void* output, const size_t output_length, void* const command_buffer);

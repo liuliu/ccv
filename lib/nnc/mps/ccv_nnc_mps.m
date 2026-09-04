@@ -393,6 +393,8 @@ int ccv_nnc_mps_file_backed_region(const ccv_nnc_tensor_t* const tensor, ccv_nnc
 
 @end
 
+static size_t _ccv_nnc_mps_whole_file_mapping_size_limit = 0;
+
 static MTLWholeFileMapping* _ccv_nnc_mps_whole_file_mapping(const char* const file, const size_t required_size, const off_t offset)
 {
 	static dispatch_once_t once;
@@ -411,21 +413,30 @@ static MTLWholeFileMapping* _ccv_nnc_mps_whole_file_mapping(const char* const fi
 		close(fd);
 		return nil;
 	}
-	NSString* const key = [NSString stringWithFormat:@"%llu:%llu:%llu",
+	const size_t file_size = (size_t)status.st_size;
+	const size_t size_limit = _ccv_nnc_mps_whole_file_mapping_size_limit;
+	const size_t mapping_size = size_limit > 0 ? ccv_min(file_size, size_limit) : file_size;
+	if ((size_t)offset > mapping_size || required_size > mapping_size - (size_t)offset)
+	{
+		close(fd);
+		return nil;
+	}
+	NSString* const key = [NSString stringWithFormat:@"%llu:%llu:%llu:%llu",
 		(unsigned long long)status.st_dev,
 		(unsigned long long)status.st_ino,
-		(unsigned long long)status.st_size];
+		(unsigned long long)status.st_size,
+		(unsigned long long)mapping_size];
 	os_unfair_lock_lock(&lock);
 	MTLWholeFileMapping* mapping = [[mappings objectForKey:key] retain];
 	if (!mapping)
 	{
-		void* const base = mmap(0, status.st_size, PROT_READ, MAP_SHARED, fd, 0);
+		void* const base = mmap(0, mapping_size, PROT_READ, MAP_SHARED, fd, 0);
 		if (base != MAP_FAILED)
 		{
-			madvise(base, status.st_size, MADV_NORMAL);
+			madvise(base, mapping_size, MADV_NORMAL);
 			mapping = [MTLWholeFileMapping new];
 			mapping.base = base;
-			mapping.size = status.st_size;
+			mapping.size = mapping_size;
 			[mappings setObject:mapping forKey:key];
 		}
 	}
@@ -1110,6 +1121,11 @@ int ccv_nnc_mps_queue_watermark(void)
 void ccv_nnc_mps_set_queue_watermark(int watermark)
 {
 	command_buffers_watermark = ccv_max(watermark, 0);
+}
+
+void ccv_nnc_mps_set_whole_file_mapping_size_limit(const size_t size_limit)
+{
+	_ccv_nnc_mps_whole_file_mapping_size_limit = size_limit;
 }
 
 void ccv_nnc_mps_set_binary_artifacts(const char** const paths_to_read, const int paths_to_read_size, const char* const path_to_write)

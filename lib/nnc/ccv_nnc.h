@@ -698,6 +698,13 @@ enum {
 	CCV_NNC_TENSOR_MEMORY_MAP_ON_DEMAND = 0x2, /**< Defer tensor map until read on supported devices. */
 };
 /**
+ * Set the maximum number of bytes in each shared whole-file mapping. A tensor
+ * outside the shared prefix falls back to an eager per-tensor mapping. This is
+ * a Metal-only option and only affects mappings created after the call.
+ * @param size_limit The maximum shared mapping size, or 0 to map the complete file.
+ */
+void ccv_nnc_set_whole_file_mapping_size_limit(size_t size_limit);
+/**
  * Create a new tensor with data from a file. This will create a mmap tensor if that is preferred.
  * @param params Tensor parameters.
  * @param filename The file to load tensor content from.

@@ -956,6 +956,13 @@ void ccv_nnc_set_queue_watermark(int watermark)
 #endif
 }
 
+void ccv_nnc_set_whole_file_mapping_size_limit(const size_t size_limit)
+{
+#ifdef HAVE_MPS
+	ccv_nnc_mps_set_whole_file_mapping_size_limit(size_limit);
+#endif
+}
+
 void ccv_nnc_set_device_permutation(const int type, const int* const device_map, const int size)
 {
 	if (type != CCV_STREAM_CONTEXT_GPU)

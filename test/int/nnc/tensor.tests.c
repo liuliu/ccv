@@ -118,6 +118,35 @@ TEST_CASE("Metal tensors share an eager whole-file mapping")
 	ccv_nnc_tensor_free(b_again);
 }
 
+TEST_CASE("Metal whole-file mapping size limit falls back outside the shared prefix")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_DATA_TRANSFER_FORWARD, CCV_NNC_BACKEND_MPS));
+	FILE* const file = fopen("tensor-whole-file-limit.bin", "w+");
+	float* const values = (float*)ccmalloc(sizeof(float) * 4096 * 5);
+	int i;
+	for (i = 0; i < 4096 * 5; i++)
+		values[i] = (float)(i + 1);
+	fwrite(values, 1, sizeof(float) * 4096 * 5, file);
+	fclose(file);
+	ccfree(values);
+	ccv_nnc_set_whole_file_mapping_size_limit(4096);
+	ccv_nnc_tensor_t* const tensor_a = ccv_nnc_tensor_new_from_file(GPU_TENSOR_NHWC(000, 32F, 5), "tensor-whole-file-limit.bin", 0, CCV_NNC_TENSOR_MEMORY_MAP_WHOLE_FILE);
+	ccv_nnc_tensor_t* const tensor_b = ccv_nnc_tensor_new_from_file(GPU_TENSOR_NHWC(000, 32F, 4), "tensor-whole-file-limit.bin", 4096 * 4 * 4, CCV_NNC_TENSOR_MEMORY_MAP_WHOLE_FILE);
+	ccv_nnc_set_whole_file_mapping_size_limit(0);
+	remove("tensor-whole-file-limit.bin");
+	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 5), 0);
+	ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 4), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(tensor_a, tensor_b), TENSOR_LIST(a, b), 0);
+	const float expected_a[] = {1, 2, 3, 4, 5};
+	const float expected_b[] = {4096 * 4 + 1, 4096 * 4 + 2, 4096 * 4 + 3, 4096 * 4 + 4};
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, a->data.f32, expected_a, 5, 1e-5, "the tensor within the shared prefix should match its file range");
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, b->data.f32, expected_b, 4, 1e-5, "the tensor outside the shared prefix should fall back to its own mapping");
+	ccv_nnc_tensor_free(tensor_a);
+	ccv_nnc_tensor_free(tensor_b);
+	ccv_nnc_tensor_free(a);
+	ccv_nnc_tensor_free(b);
+}
+
 static int _tensor_xor_encode(const void* const data, const size_t data_size, const int datatype, const int* const dimensions, const int dimension_count, void* const context, void* const encoded, size_t* const encoded_size, ccv_nnc_tensor_param_t* const params, unsigned int* const identifier)
 {
 	unsigned char* const u8 = (unsigned char*)data;
