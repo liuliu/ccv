@@ -3,7 +3,8 @@
 #include "../ccv_nnc_mfa.hpp"
 
 uint32_t SparseIndexedAttentionKernel::threadgroupMemoryAllocation() const noexcept {
-  return rowsPerBlock * maxHeadDimension * (uint32_t)memoryPrecision.size() + (rowsPerBlock + 2) * sizeof(uint32_t);
+  const uint32_t allocation = rowsPerBlock * maxHeadDimension * (uint32_t)memoryPrecision.size() + (rowsPerBlock + 2) * sizeof(uint32_t);
+  return (allocation + 15) & ~15;
 }
 
 MTL::Size SparseIndexedAttentionKernel::threadgroupSize() const noexcept {
