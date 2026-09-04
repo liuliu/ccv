@@ -14,6 +14,8 @@ SRCS += ccv_nnc_mfa_swiglu.cpp kernels/Int8SwiGLUDescriptor.cpp kernels/Int8SwiG
 
 SRCS += ccv_nnc_mfa_moe_routing.cpp kernels/MoERoutingDescriptor.cpp kernels/MoERoutingKernel.cpp
 
+SRCS += ccv_nnc_mfa_moe_weights_streaming.cpp kernels/MoEWeightsStreamingDescriptor.cpp kernels/MoEWeightsStreamingKernel.cpp
+
 SRCS += ccv_nnc_mfa_rmsnorm_cmul.cpp kernels/RMSNormCmulDescriptor.cpp kernels/RMSNormCmulKernel.cpp
 
 SRCS += ccv_nnc_mfa_scatter_add.cpp kernels/ScatterAddDescriptor.cpp kernels/ScatterAddKernel.cpp

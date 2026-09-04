@@ -115,6 +115,19 @@ static int _ccv_nnc_segmented_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_h
 	const ccv_nnc_tensor_view_t* bias = input_size > 4 ? (const ccv_nnc_tensor_view_t*)inputs[4] : 0;
 	assert(output_size == 1);
 	ccv_nnc_tensor_view_t* b = (ccv_nnc_tensor_view_t*)outputs[0];
+	ccv_nnc_mps_moe_weights_view_t weight_view = {};
+	const int weight_resolved = ccv_nnc_mps_moe_weights_resolve(inputs[3], &weight_view);
+	if (weight_resolved < 0)
+		return CCV_NNC_EXEC_INVALID;
+	ccv_nnc_tensor_view_t resolved_weight;
+	if (weight_resolved)
+	{
+		resolved_weight = *(const ccv_nnc_tensor_view_t*)inputs[3];
+		resolved_weight.info = weight_view.info;
+		resolved_weight.data.u8 = (uint8_t*)weight_view.buffer;
+		resolved_weight.dataof = weight_view.offset;
+		w = &resolved_weight;
+	}
 	assert(!bias || (bias->info.dim[1] == 0 || bias->info.dim[2] == 0 || bias->info.dim[3] == 0)); // It is a 1-d array
 	int a_batch_size, a_rows, a_cols, a_batch_inc, a_rows_inc, a_cols_inc;
 	int w_batch_size, w_rows, w_cols, w_batch_inc, w_rows_inc, w_cols_inc;
@@ -375,6 +388,7 @@ static int _ccv_nnc_segmented_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_h
 			};
 			ccv_nnc_mfa_prepare_segmented_int8_gemv(context, params);
 			mtl_command_batch_t* command_batch = ccv_nnc_stream_context_start_command_batch(stream_context);
+			ccv_nnc_mps_moe_weights_encode_wait(inputs[3], command_batch);
 			mtl_buffer_t* bias_buffer = NULL;
 			if (bias)
 				bias_buffer = mpgetbuffer((ccv_nnc_tensor_t*)bias);
@@ -396,7 +410,7 @@ static int _ccv_nnc_segmented_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_h
 				bias ? bias->dataof : 0,
 			};
 			ccv_nnc_mfa_encode_segmented_int8_gemv(context, params, command_batch, tensors, tensor_offsets);
-			ccv_nnc_stream_context_finish_command_batch(stream_context, command_batch);
+			ccv_nnc_mps_moe_weights_finish_command_batch(inputs + 3, 1, stream_context, command_batch);
 			return CCV_NNC_EXEC_SUCCESS;
 		}
 		if (use_segmented_scaled_gemm)
@@ -436,6 +450,7 @@ static int _ccv_nnc_segmented_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_h
 				w_dataof = scratch_offset;
 			}
 			mtl_command_batch_t* command_batch = ccv_nnc_stream_context_start_command_batch(stream_context);
+			ccv_nnc_mps_moe_weights_encode_wait(inputs[3], command_batch);
 			if (w_8i_rowwise_x_format)
 			{
 				mtl_buffer_t* decode_tensors[6] = {
@@ -476,7 +491,7 @@ static int _ccv_nnc_segmented_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_h
 				bias ? bias->dataof : 0,
 			};
 			ccv_nnc_mfa_encode_segmented_scaled_gemm(context, params, command_batch, tensors, tensor_offsets);
-			ccv_nnc_stream_context_finish_command_batch(stream_context, command_batch);
+			ccv_nnc_mps_moe_weights_finish_command_batch(inputs + 3, 1, stream_context, command_batch);
 			return CCV_NNC_EXEC_SUCCESS;
 		}
 		// On supported devices, use Metal directly.
@@ -522,6 +537,7 @@ static int _ccv_nnc_segmented_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_h
 		}
 
 		mtl_command_batch_t* command_batch = ccv_nnc_stream_context_start_command_batch(stream_context);
+		ccv_nnc_mps_moe_weights_encode_wait(inputs[3], command_batch);
 		if (CCV_GET_DATA_TYPE(a->info.datatype) == CCV_QX && ((a_qx_subtype >= 0x400 && a_qx_subtype <= 0x800) || a_qx_subtype == CCV_NNC_QX_8I_ROWWISE || a_qx_subtype == CCV_NNC_QX_8I_ROWWISE_X))
 			_ccv_nnc_mfa_encode_qx_decode(context, a_decode_params, command_batch, mpgetbuffer((ccv_nnc_tensor_t*)a), a->dataof, (mtl_buffer_t*)scratch, scratch_offset);
 		if (CCV_GET_DATA_TYPE(w->info.datatype) == CCV_QX && ((w_qx_subtype >= 0x400 && w_qx_subtype <= 0x800) || w_qx_subtype == CCV_NNC_QX_8I_ROWWISE || w_qx_subtype == CCV_NNC_QX_8I_ROWWISE_X))
@@ -548,7 +564,7 @@ static int _ccv_nnc_segmented_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_h
 			bias ? bias->dataof : 0, // D offset
 		};
 		ccv_nnc_mfa_encode_segmented_gemm(context, params, command_batch, tensors, tensor_offsets);
-		ccv_nnc_stream_context_finish_command_batch(stream_context, command_batch);
+		ccv_nnc_mps_moe_weights_finish_command_batch(inputs + 3, 1, stream_context, command_batch);
 	}
 	return CCV_NNC_EXEC_SUCCESS;
 }

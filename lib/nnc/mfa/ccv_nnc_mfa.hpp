@@ -59,6 +59,7 @@ extern "C" {
 #include "ccv_nnc_mfa_segmented_gemm.hpp"
 #include "ccv_nnc_mfa_gated_delta.hpp"
 #include "ccv_nnc_mfa_moe_routing.hpp"
+#include "ccv_nnc_mfa_moe_weights_streaming.hpp"
 #include "ccv_nnc_mfa_scatter_add.hpp"
 #include "ccv_nnc_mfa_argmax.hpp"
 

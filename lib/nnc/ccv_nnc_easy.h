@@ -297,7 +297,9 @@ static inline size_t ccv_nnc_tensor_data_size_without_padding(const ccv_nnc_tens
 			return 0;
 		const int qx_datatype = (params.datatype & 0xff) << 12;
 		const int qx_subtype = params.datatype & 0xf00;
-		if (qx_subtype >= 0x400 && qx_subtype <= 0x800)
+		if (qx_subtype == CCV_NNC_QX_EPHERMAL_STAGING)
+			data_size = 1;
+		else if (qx_subtype >= 0x400 && qx_subtype <= 0x800)
 		{
 			const int number_in_blocks = params.reserved;
 			const int num_blocks = (int)((count + number_in_blocks - 1) / number_in_blocks);

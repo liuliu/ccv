@@ -5744,3 +5744,58 @@ static ccv_cnnp_model_t* _ccv_cnnp_segmented_swiglu_copy(const ccv_cnnp_model_t*
 	const ccv_cnnp_model_segmented_swiglu_t* const self = (const ccv_cnnp_model_segmented_swiglu_t*)super;
 	return ccv_cnnp_segmented_swiglu(self->segments, self->count, self->clamp, self->super.is_trainable, self->functional, self->super.name);
 }
+
+// MARK - MoE Weights Streaming
+
+typedef struct {
+	ccv_cnnp_model_t super;
+	ccv_nnc_tensor_symbol_t outputs[6];
+	int resident_slots;
+	int routing_width;
+} ccv_cnnp_model_moe_weights_streaming_t;
+
+static void _ccv_cnnp_moe_weights_streaming_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
+{
+	ccv_cnnp_model_moe_weights_streaming_t* const self = (ccv_cnnp_model_moe_weights_streaming_t*)super;
+	PRINT(CCV_CLI_VERBOSE, "[cnnp_moe_weights_streaming_build] - resident_slots: %d, routing_width: %d\n", self->resident_slots, self->routing_width);
+	assert(input_size == 6);
+	assert(output_size == 6);
+	const ccv_nnc_cmd_t cmd = CMD_MOE_WEIGHTS_STREAMING_FORWARD(self->resident_slots, self->routing_width);
+	ccv_nnc_tensor_param_t input_params[6];
+	ccv_nnc_tensor_param_t output_params[6];
+	int i;
+	for (i = 0; i < 6; i++)
+		input_params[i] = ccv_nnc_tensor_symbol_params(graph, inputs[i]);
+	ccv_nnc_hint_tensor_auto(cmd, input_params, 6, ccv_nnc_no_hint, output_params, 6);
+	for (i = 0; i < 6; i++)
+		outputs[i] = ccv_nnc_tensor_symbol_new(graph, output_params[i], 0);
+	ccv_nnc_graph_exec_symbol_new(graph, cmd, inputs, 6, outputs, 6, "moe_weights_streaming");
+}
+
+static ccv_cnnp_model_t* _ccv_cnnp_moe_weights_streaming_copy(const ccv_cnnp_model_t* const super, void* const context);
+
+static const ccv_cnnp_model_vtab_t ccv_cnnp_moe_weights_streaming_isa = {
+	.build = _ccv_cnnp_moe_weights_streaming_build,
+	.copy = _ccv_cnnp_moe_weights_streaming_copy,
+};
+
+ccv_cnnp_model_t* ccv_cnnp_moe_weights_streaming(const int resident_slots, const int routing_width, const char* const name)
+{
+	assert(resident_slots > 0);
+	assert(routing_width > 0);
+	ccv_cnnp_model_moe_weights_streaming_t* const model = (ccv_cnnp_model_moe_weights_streaming_t*)cccalloc(1, sizeof(ccv_cnnp_model_moe_weights_streaming_t));
+	model->super.isa = &ccv_cnnp_moe_weights_streaming_isa;
+	model->super.input_size = 6;
+	model->super.outputs = model->outputs;
+	model->super.output_size = 6;
+	model->resident_slots = resident_slots;
+	model->routing_width = routing_width;
+	ccv_cnnp_model_copy_name(&model->super, name);
+	return (ccv_cnnp_model_t*)model;
+}
+
+static ccv_cnnp_model_t* _ccv_cnnp_moe_weights_streaming_copy(const ccv_cnnp_model_t* const super, void* const context)
+{
+	const ccv_cnnp_model_moe_weights_streaming_t* const self = (const ccv_cnnp_model_moe_weights_streaming_t*)super;
+	return ccv_cnnp_moe_weights_streaming(self->resident_slots, self->routing_width, self->super.name);
+}

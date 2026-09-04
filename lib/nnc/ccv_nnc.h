@@ -359,6 +359,10 @@ typedef struct {
 			int flags; /**< [moe_routing.flags] Optional routing behavior, such as avoiding activation duplication for a single input token. */
 		} moe_routing;
 		struct {
+			int resident_slots; /**< [moe_weights_streaming.resident_slots] Number of expert slots retained for decode. */
+			int routing_width; /**< [moe_weights_streaming.routing_width] Number of route weights that identifies decode. */
+		} moe_weights_streaming;
+		struct {
 			int datatype; /**< [conform_data_format.datatype] The data format to emulate while retaining Float32 storage. */
 			int preserved_tail; /**< [conform_data_format.preserved_tail] Number of values at the end of each row to leave unchanged. */
 		} conform_data_format;
@@ -1042,6 +1046,7 @@ void ccv_nnc_set_binary_artifacts(const char** const paths_to_read, const int pa
 enum {
 	CCV_NNC_QX_8I_ROWWISE = 0x900,
 	CCV_NNC_QX_8I_ROWWISE_X = 0xa00,
+	CCV_NNC_QX_EPHERMAL_STAGING = 0xf00,
 };
 
 /* Packed row-wise int8-compatible low-bit payload formats. */
@@ -5255,6 +5260,12 @@ CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_swiglu(const int count, const float 
  * @return A segmented SwiGLU layer model.
  */
 CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_segmented_swiglu(const int segments, const int count, const float clamp, const int is_trainable, const int functional, const char* const name);
+/**
+ * A unified gate / up / down MoE weights-streaming operation. Inputs are expert IDs,
+ * counts, route weights, gate weights, up weights, and down weights. Outputs preserve
+ * the routing tensors and expose three ephemeral staging handles.
+ */
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_moe_weights_streaming(const int resident_slots, const int routing_width, const char* const name);
 
 /** @} */
 

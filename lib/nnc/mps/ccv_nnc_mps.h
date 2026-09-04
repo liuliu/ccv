@@ -98,6 +98,19 @@ void ccv_nnc_stream_context_finish_mps_command_buffer(ccv_nnc_stream_context_t* 
 int ccv_nnc_mps_encode_fast_fence_signal_in_command_batch(MTLCommandBatch* command_batch, id<MTLBuffer> timestamp, size_t timestamp_offset, uint32_t expected, uint32_t value, id<MTLBuffer> input, off_t input_offset, size_t input_size);
 /** Waits until the system-coherent timestamp is at least value and orders later buffer accesses after it. */
 int ccv_nnc_mps_encode_fast_fence_wait_in_command_batch(MTLCommandBatch* command_batch, id<MTLBuffer> timestamp, size_t timestamp_offset, uint32_t value);
+
+typedef struct {
+	id<MTLBuffer> buffer;
+	off_t offset;
+	ccv_nnc_tensor_param_t info;
+} ccv_nnc_mps_moe_weights_view_t;
+
+/** Encodes the CPU-to-GPU readiness wait in the consumer's command batch. */
+void ccv_nnc_mps_moe_weights_encode_wait(const ccv_nnc_tensor_t* tensor, MTLCommandBatch* command_batch);
+/** Returns 0 for an ordinary tensor, 1 for a resolved staging handle, and -1 on failure. */
+int ccv_nnc_mps_moe_weights_resolve(const ccv_nnc_tensor_t* tensor, ccv_nnc_mps_moe_weights_view_t* view);
+/** Finishes a consumer batch and retires the prefill staging leases used by its weight tensors. */
+void ccv_nnc_mps_moe_weights_finish_command_batch(ccv_nnc_tensor_t* const* tensors, int tensor_count, ccv_nnc_stream_context_t* stream_context, MTLCommandBatch* command_batch);
 int ccv_nnc_mps_encode_tensor_fast_fence(MPSCommandBuffer* const command_buffer, ccv_nnc_tensor_t* const tensor, id<MTLBuffer> const buffer, unsigned char* const aligned_ptr, const size_t aligned_size, const off_t offset, const size_t size);
 CCV_WARN_UNUSED(MPSGraphExecutable*) ccv_nnc_mps_graph_executable_cache(const ccv_nnc_mps_graph_key_t key, int* indices, void(NS_NOESCAPE ^block)(MPSGraph* graph, NSMutableArray<MPSGraphTensor*>* inputTensors, NSMutableArray<MPSGraphShapedType*>* inputShapedTypes, NSMutableArray<MPSGraphTensor*>* resultTensors));
 CCV_WARN_UNUSED(ccv_nnc_mps_graph_key_t) ccv_nnc_mps_graph_key_new(const ccv_nnc_cmd_t cmd, const int index, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size);

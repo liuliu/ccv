@@ -217,6 +217,10 @@
 #define CMD_MOE_ROUTING_FORWARD_FLAGS(_kth, _weight_scale, _preselected, _flags) ccv_nnc_cmd(CCV_NNC_MOE_ROUTING_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.moe_routing={.kth=(_kth),.weight_scale=(_weight_scale),.preselected=(_preselected),.flags=(_flags)}}), 0)
 // CCV_NNC_MOE_ROUTING_BACKWARD
 #define CMD_MOE_ROUTING_BACKWARD(_kth, _weight_scale, _preselected) ccv_nnc_cmd(CCV_NNC_MOE_ROUTING_BACKWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.moe_routing={.kth=(_kth),.weight_scale=(_weight_scale),.preselected=(_preselected)}}), 0)
+// CCV_NNC_MOE_WEIGHTS_STREAMING_FORWARD
+#define CMD_MOE_WEIGHTS_STREAMING_FORWARD(_resident_slots, _routing_width) ccv_nnc_cmd(CCV_NNC_MOE_WEIGHTS_STREAMING_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.moe_weights_streaming={.resident_slots=(_resident_slots),.routing_width=(_routing_width)}}), 0)
+// CCV_NNC_MOE_WEIGHTS_STREAMING_BACKWARD
+#define CMD_MOE_WEIGHTS_STREAMING_BACKWARD(_resident_slots, _routing_width) ccv_nnc_cmd(CCV_NNC_MOE_WEIGHTS_STREAMING_BACKWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.moe_weights_streaming={.resident_slots=(_resident_slots),.routing_width=(_routing_width)}}), 0)
 // CCV_NNC_NMS_FORWARD
 #define CMD_NMS_FORWARD(_iou_threshold) ccv_nnc_cmd(CCV_NNC_NMS_FORWARD, 0, ((ccv_nnc_cmd_param_t){.nms={.iou_threshold=_iou_threshold}}), 0)
 // CCV_NNC_NMS_BACKWARD

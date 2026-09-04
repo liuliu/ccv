@@ -26,10 +26,34 @@ static int _ccv_nnc_segmented_swiglu_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc
 	const ccv_nnc_tensor_view_t* const a = (const ccv_nnc_tensor_view_t*)inputs[0];
 	const ccv_nnc_tensor_view_t* const indices = (const ccv_nnc_tensor_view_t*)inputs[1];
 	const ccv_nnc_tensor_view_t* const counts = (const ccv_nnc_tensor_view_t*)inputs[2];
-	const ccv_nnc_tensor_view_t* const gate_w = (const ccv_nnc_tensor_view_t*)inputs[3];
-	const ccv_nnc_tensor_view_t* const up_w = (const ccv_nnc_tensor_view_t*)inputs[4];
+	const ccv_nnc_tensor_view_t* gate_w = (const ccv_nnc_tensor_view_t*)inputs[3];
+	const ccv_nnc_tensor_view_t* up_w = (const ccv_nnc_tensor_view_t*)inputs[4];
 	const ccv_nnc_tensor_view_t* const route_weight = (const ccv_nnc_tensor_view_t*)inputs[5];
 	ccv_nnc_tensor_view_t* const output = (ccv_nnc_tensor_view_t*)outputs[0];
+	ccv_nnc_mps_moe_weights_view_t gate_weight_view = {};
+	ccv_nnc_mps_moe_weights_view_t up_weight_view = {};
+	const int gate_resolved = ccv_nnc_mps_moe_weights_resolve(inputs[3], &gate_weight_view);
+	const int up_resolved = ccv_nnc_mps_moe_weights_resolve(inputs[4], &up_weight_view);
+	if (gate_resolved < 0 || up_resolved < 0)
+		return CCV_NNC_EXEC_INVALID;
+	ccv_nnc_tensor_view_t resolved_gate_weight;
+	ccv_nnc_tensor_view_t resolved_up_weight;
+	if (gate_resolved)
+	{
+		resolved_gate_weight = *(const ccv_nnc_tensor_view_t*)inputs[3];
+		resolved_gate_weight.info = gate_weight_view.info;
+		resolved_gate_weight.data.u8 = (uint8_t*)gate_weight_view.buffer;
+		resolved_gate_weight.dataof = gate_weight_view.offset;
+		gate_w = &resolved_gate_weight;
+	}
+	if (up_resolved)
+	{
+		resolved_up_weight = *(const ccv_nnc_tensor_view_t*)inputs[4];
+		resolved_up_weight.info = up_weight_view.info;
+		resolved_up_weight.data.u8 = (uint8_t*)up_weight_view.buffer;
+		resolved_up_weight.dataof = up_weight_view.offset;
+		up_w = &resolved_up_weight;
+	}
 	const int a_nd = ccv_nnc_tensor_nd(a->info.dim);
 	const int w_nd = ccv_nnc_tensor_nd(gate_w->info.dim);
 	const int up_w_nd = ccv_nnc_tensor_nd(up_w->info.dim);
@@ -97,6 +121,9 @@ static int _ccv_nnc_segmented_swiglu_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc
 			};
 			ccv_nnc_mfa_prepare_segmented_int8_swiglu(context, params);
 			mtl_command_batch_t* const command_batch = ccv_nnc_stream_context_start_command_batch(stream_context);
+			ccv_nnc_mps_moe_weights_encode_wait(inputs[3], command_batch);
+			if (!command_batch)
+				return CCV_NNC_EXEC_INVALID;
 			mtl_buffer_t* tensors[8] = {
 				mpgetbuffer((ccv_nnc_tensor_t*)gate_w),
 				mpgetbuffer((ccv_nnc_tensor_t*)up_w),
@@ -113,7 +140,7 @@ static int _ccv_nnc_segmented_swiglu_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc
 			};
 			ccv_nnc_mfa_encode_segmented_int8_swiglu(
 				context, params, command_batch, tensors, tensor_offsets);
-			ccv_nnc_stream_context_finish_command_batch(stream_context, command_batch);
+			ccv_nnc_mps_moe_weights_finish_command_batch(inputs + 3, 2, stream_context, command_batch);
 			return CCV_NNC_EXEC_SUCCESS;
 		}
 		const size_t intermediate_size = (size_t)M * N * CCV_GET_DATA_TYPE_SIZE(a->info.datatype);
@@ -143,6 +170,9 @@ static int _ccv_nnc_segmented_swiglu_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc
 		ccv_nnc_mfa_prepare_segmented_int8_gemv(context, gemv_params);
 		ccv_nnc_mfa_prepare_swish_mul(context, swish_params);
 		mtl_command_batch_t* const command_batch = ccv_nnc_stream_context_start_command_batch(stream_context);
+		ccv_nnc_mps_moe_weights_encode_wait(inputs[3], command_batch);
+		if (!command_batch)
+			return CCV_NNC_EXEC_INVALID;
 		mtl_buffer_t* gate_tensors[6] = {
 			mpgetbuffer((ccv_nnc_tensor_t*)a), mpgetbuffer((ccv_nnc_tensor_t*)indices),
 			mpgetbuffer((ccv_nnc_tensor_t*)counts), mpgetbuffer((ccv_nnc_tensor_t*)gate_w),
@@ -163,7 +193,7 @@ static int _ccv_nnc_segmented_swiglu_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc
 		};
 		size_t swish_offsets[4] = { output->dataof, 0, route_weight->dataof, output->dataof };
 		ccv_nnc_mfa_encode_swish_mul(context, swish_params, command_batch, swish_tensors, swish_offsets);
-		ccv_nnc_stream_context_finish_command_batch(stream_context, command_batch);
+		ccv_nnc_mps_moe_weights_finish_command_batch(inputs + 3, 2, stream_context, command_batch);
 		return CCV_NNC_EXEC_SUCCESS;
 	}
 
@@ -220,6 +250,9 @@ static int _ccv_nnc_segmented_swiglu_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc
 		};
 		ccv_nnc_mfa_prepare_segmented_scaled_swiglu(context, params);
 		mtl_command_batch_t* const command_batch = ccv_nnc_stream_context_start_command_batch(stream_context);
+		ccv_nnc_mps_moe_weights_encode_wait(inputs[3], command_batch);
+		if (!command_batch)
+			return CCV_NNC_EXEC_INVALID;
 		mtl_buffer_t* tensors[8] = {
 			mpgetbuffer((ccv_nnc_tensor_t*)gate_w),
 			mpgetbuffer((ccv_nnc_tensor_t*)up_w),
@@ -236,7 +269,7 @@ static int _ccv_nnc_segmented_swiglu_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc
 		};
 		ccv_nnc_mfa_encode_segmented_scaled_swiglu(
 			context, params, command_batch, tensors, tensor_offsets);
-		ccv_nnc_stream_context_finish_command_batch(stream_context, command_batch);
+		ccv_nnc_mps_moe_weights_finish_command_batch(inputs + 3, 2, stream_context, command_batch);
 		return CCV_NNC_EXEC_SUCCESS;
 	}
 	const ccv_nnc_mfa_swish_mul_params_t swish_params = {
@@ -298,6 +331,9 @@ static int _ccv_nnc_segmented_swiglu_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc
 		}
 	}
 	mtl_command_batch_t* const command_batch = ccv_nnc_stream_context_start_command_batch(stream_context);
+	ccv_nnc_mps_moe_weights_encode_wait(inputs[3], command_batch);
+	if (!command_batch)
+		return CCV_NNC_EXEC_INVALID;
 	int projection;
 	for (projection = 0; projection < 2; projection++)
 	{
@@ -333,7 +369,7 @@ static int _ccv_nnc_segmented_swiglu_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc
 	};
 	size_t swish_offsets[4] = { output->dataof, intermediate_offset, route_weight->dataof, output->dataof };
 	ccv_nnc_mfa_encode_swish_mul(context, swish_params, command_batch, swish_tensors, swish_offsets);
-	ccv_nnc_stream_context_finish_command_batch(stream_context, command_batch);
+	ccv_nnc_mps_moe_weights_finish_command_batch(inputs + 3, 2, stream_context, command_batch);
 	return CCV_NNC_EXEC_SUCCESS;
 }
 
