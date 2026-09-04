@@ -5515,7 +5515,7 @@ static const ccv_cnnp_model_vtab_t ccv_cnnp_segmented_dense_isa = {
 	.copy = _ccv_cnnp_segmented_dense_copy,
 };
 
-ccv_cnnp_model_t* ccv_cnnp_segmented_dense(const int segments, const int count, const int no_bias, const int flags, const int is_trainable, const int functional, const char* const name)
+ccv_cnnp_model_t* ccv_cnnp_segmented_dense(const int segments, const int count, const int no_bias, const int flags, const int functional, const int is_trainable, const char* const name)
 {
 	ccv_cnnp_model_segmented_dense_t* const model_segmented_dense = (ccv_cnnp_model_segmented_dense_t*)cccalloc(1, sizeof(ccv_cnnp_model_segmented_dense_t));
 	model_segmented_dense->super.isa = &ccv_cnnp_segmented_dense_isa;
@@ -5539,7 +5539,7 @@ ccv_cnnp_model_t* ccv_cnnp_segmented_dense(const int segments, const int count, 
 static ccv_cnnp_model_t* _ccv_cnnp_segmented_dense_copy(const ccv_cnnp_model_t* const super, void* const context)
 {
 	const ccv_cnnp_model_segmented_dense_t* const self = (const ccv_cnnp_model_segmented_dense_t*)super;
-	return ccv_cnnp_segmented_dense(self->segments, self->count, self->no_bias, self->flags, self->super.is_trainable, self->functional, self->super.name);
+	return ccv_cnnp_segmented_dense(self->segments, self->count, self->no_bias, self->flags, self->functional, self->super.is_trainable, self->super.name);
 }
 
 // MARK - SwiGLU Layer
@@ -5721,7 +5721,7 @@ static const ccv_cnnp_model_vtab_t ccv_cnnp_segmented_swiglu_isa = {
 	.copy = _ccv_cnnp_segmented_swiglu_copy,
 };
 
-ccv_cnnp_model_t* ccv_cnnp_segmented_swiglu(const int segments, const int count, const float clamp, const int is_trainable, const int functional, const char* const name)
+ccv_cnnp_model_t* ccv_cnnp_segmented_swiglu(const int segments, const int count, const float clamp, const int functional, const int is_trainable, const char* const name)
 {
 	ccv_cnnp_model_segmented_swiglu_t* const model = (ccv_cnnp_model_segmented_swiglu_t*)cccalloc(1, sizeof(ccv_cnnp_model_segmented_swiglu_t));
 	model->super.isa = &ccv_cnnp_segmented_swiglu_isa;
@@ -5742,7 +5742,7 @@ ccv_cnnp_model_t* ccv_cnnp_segmented_swiglu(const int segments, const int count,
 static ccv_cnnp_model_t* _ccv_cnnp_segmented_swiglu_copy(const ccv_cnnp_model_t* const super, void* const context)
 {
 	const ccv_cnnp_model_segmented_swiglu_t* const self = (const ccv_cnnp_model_segmented_swiglu_t*)super;
-	return ccv_cnnp_segmented_swiglu(self->segments, self->count, self->clamp, self->super.is_trainable, self->functional, self->super.name);
+	return ccv_cnnp_segmented_swiglu(self->segments, self->count, self->clamp, self->functional, self->super.is_trainable, self->super.name);
 }
 
 // MARK - MoE Weights Streaming
