@@ -1730,9 +1730,11 @@ std::string AttentionKernel::accumulate(const AttentionAccumulateDescriptor& acc
 	        "ACCUMULATOR_IS_UNINITIALIZED",
 	        (type.value == AttentionKernelType::forward && masked) ?
 	            "first_accumulation" :
+	            (type.value == AttentionKernelType::forward && slidingWindow > 0 ?
+	                traversalOffsetValue() + " == traversal_start" :
 	            (type.value == AttentionKernelType::backwardKeyValue ?
 	                "(query_head_group == 0 && " + traversalOffsetValue() + " == 0)" :
-	                traversalOffsetValue() + " == 0"));
+	                traversalOffsetValue() + " == 0")));
 	    source.SetValue("INITIALIZE_ACCUMULATOR", initializeAccumulator(descriptor));
     if (cached(C)) {
       source.SetValue("LOAD_ACCUMULATOR", "");

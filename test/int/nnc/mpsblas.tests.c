@@ -6848,6 +6848,30 @@ TEST_CASE("scaled dot product attention with attention sinks on mps")
 	REQUIRE_EQ(status, 0, "NAInt8 per-head sink should run and match CPU reference with attention sinks (status %d max abs %g relative %g at %d: CPU %g GPU %g)", status, max_abs, max_relative, max_idx, expected, actual);
 }
 
+TEST_CASE("scaled dot product attention sliding window ignores poisoned accumulator scratch")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SCALED_DOT_PRODUCT_ATTENTION_FORWARD, CCV_NNC_BACKEND_MPS));
+#ifdef HAVE_MPS
+	const size_t scratch_bytes = 4 * 1024 * 1024;
+	float* const poison = ccmalloc(scratch_bytes);
+	for (size_t i = 0; i < scratch_bytes / sizeof(float); i++)
+		poison[i] = NAN;
+	mtl_buffer_t* const scratch = ccv_nnc_mfa_request_scratch(ccv_nnc_default_mfa_context(), scratch_bytes);
+	mpmemcpy(scratch, 0, CCV_TENSOR_GPU_MEMORY, poison, 0, CCV_TENSOR_CPU_MEMORY, scratch_bytes);
+	ccfree(poison);
+	float max_abs = 0, max_relative = 0, expected = 0, actual = 0;
+	int max_idx = 0;
+	// D=512 spills O to scratch. With C > R and a short causal window, even
+	// the first query starts at a nonzero key tile and must not load old O.
+	const int status = _mps_sdpa_attention_sinks_compare(
+		CCV_16F, 1, CCV_NNC_GEMM_16F, 1, 257, 513, 4, 1, 512, 1, 4, 32,
+		5e-3, &max_abs, &max_relative, &max_idx, &expected, &actual);
+	REQUIRE_EQ(status, 0,
+		"sliding-window attention must initialize its first accumulator despite NaN scratch (status %d max abs %g relative %g at %d: CPU %g GPU %g)",
+		status, max_abs, max_relative, max_idx, expected, actual);
+#endif
+}
+
 TEST_CASE("scaled dot product attention with varlen NA mps")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SCALED_DOT_PRODUCT_ATTENTION_FORWARD, CCV_NNC_BACKEND_MPS));
