@@ -267,7 +267,7 @@ void ccv_nnc_mfa_encode_segmented_scaled_swiglu(
 
   if (!params.use_neural_accelerators) {
     CCV_NNC_MFA_PRECONDITION(
-      params.data_type == MTL::DataTypeFloat && params.format == 0 &&
+      params.data_type == MTL::DataTypeFloat &&
       (params.N % 8) == 0 && (params.K % 8) == 0);
     CCV_NNC_MFA_PRECONDITION(
       (uint64_t)params.expert_count * params.N * params.K <= UINT32_MAX);
@@ -298,10 +298,32 @@ void ccv_nnc_mfa_encode_segmented_scaled_swiglu(
     const size_t scale_bytes = (size_t)params.M * sizeof(float);
     const size_t intermediate_offset = align_up(scale_offset + scale_bytes, 128);
     const size_t intermediate_bytes = (size_t)params.M * params.N * sizeof(float);
-    MTL::Buffer* const scratch = context->request_scratch(
-      intermediate_offset + intermediate_bytes);
+    const size_t row_count = (size_t)params.expert_count * params.N;
     const size_t weight_scale_offset = rowwise_8i_scale_offset(
-      (size_t)params.expert_count * params.N, params.K);
+      row_count, params.K);
+    ccv_nnc_mfa_dequantize_8i_rowwise_x_selected_params_t decode_params = {};
+    size_t decode_scratch_size = 0;
+    if (params.format) {
+      decode_params = (ccv_nnc_mfa_dequantize_8i_rowwise_x_selected_params_t){
+        .data_type = params.data_type,
+        .format = params.format,
+        .row_length = params.K,
+        .rows_per_expert = params.N,
+        .expert_count = params.expert_count,
+        .bincount = params.bincount,
+      };
+      decode_scratch_size =
+        ccv_nnc_mfa_dequantize_8i_rowwise_x_selected_reserved_scratch_size(decode_params);
+    }
+    // Keep the decoded bank separate from the shared activations and gate output;
+    // reuse it for up only after gate's output has been rescaled.
+    const size_t decode_scratch_offset = align_up(
+      intermediate_offset + intermediate_bytes, 256);
+    const size_t decoded_weight_offset = align_up(
+      decode_scratch_offset + decode_scratch_size, 256);
+    MTL::Buffer* const scratch = context->request_scratch(params.format ?
+      decoded_weight_offset + weight_scale_offset + row_count * sizeof(float) :
+      intermediate_offset + intermediate_bytes);
     {
       auto encoder = command_batch->startCommand();
       encoder->setComputePipelineState(quantize_pipeline->pipeline.get());
@@ -315,6 +337,21 @@ void ccv_nnc_mfa_encode_segmented_scaled_swiglu(
       command_batch->finishCommand(encoder);
     }
     for (int projection = 0; projection < 2; ++projection) {
+      MTL::Buffer* weight = tensors[projection];
+      size_t weight_offset = tensor_offsets[projection];
+      if (params.format) {
+        MTL::Buffer* decode_tensors[6] = {
+          weight, tensors[3], tensors[4], scratch, scratch, nullptr,
+        };
+        size_t decode_tensor_offsets[5] = {
+          weight_offset, tensor_offsets[3], tensor_offsets[4],
+          decoded_weight_offset, decode_scratch_offset,
+        };
+        ccv_nnc_mfa_encode_dequantize_8i_rowwise_x_selected(
+          context, decode_params, command_batch, decode_tensors, decode_tensor_offsets);
+        weight = scratch;
+        weight_offset = decoded_weight_offset;
+      }
       MTL::Buffer* const destination = projection == 0 ? scratch : tensors[6];
       const size_t destination_offset = projection == 0 ?
         intermediate_offset : tensor_offsets[6];
@@ -325,13 +362,14 @@ void ccv_nnc_mfa_encode_segmented_scaled_swiglu(
           MTL::ResourceUsageRead | MTL::ResourceUsageWrite : MTL::ResourceUsageRead);
         encoder->useResource(tensors[3], MTL::ResourceUsageRead);
         encoder->useResource(tensors[4], MTL::ResourceUsageRead);
-        encoder->useResource(tensors[projection], MTL::ResourceUsageRead);
+        if (weight != scratch)
+          encoder->useResource(weight, MTL::ResourceUsageRead);
         if (destination != scratch)
           encoder->useResource(destination, MTL::ResourceUsageWrite);
         encoder->setBuffer(scratch, activation_offset, 0);
         encoder->setBuffer(tensors[3], tensor_offsets[3], 1);
         encoder->setBuffer(tensors[4], tensor_offsets[4], 2);
-        encoder->setBuffer(tensors[projection], tensor_offsets[projection], 3);
+        encoder->setBuffer(weight, weight_offset, 3);
         encoder->setBuffer(destination, destination_offset, 4);
         encoder->dispatchThreadgroups(
           MTL::Size((params.N + 7) / 8, params.bincount, 1), MTL::Size(32, 1, 1));
@@ -343,13 +381,14 @@ void ccv_nnc_mfa_encode_segmented_scaled_swiglu(
         encoder->useResource(destination, MTL::ResourceUsageRead | MTL::ResourceUsageWrite);
         if (destination != scratch)
           encoder->useResource(scratch, MTL::ResourceUsageRead);
-        encoder->useResource(tensors[projection], MTL::ResourceUsageRead);
+        if (weight != scratch)
+          encoder->useResource(weight, MTL::ResourceUsageRead);
         encoder->useResource(tensors[3], MTL::ResourceUsageRead);
         encoder->useResource(tensors[4], MTL::ResourceUsageRead);
         encoder->setBuffer(destination, destination_offset, 0);
         encoder->setBuffer(scratch, scale_offset, 1);
         encoder->setBuffer(
-          tensors[projection], tensor_offsets[projection] + weight_scale_offset, 2);
+          weight, weight_offset + weight_scale_offset, 2);
         encoder->setBuffer(tensors[3], tensor_offsets[3], 3);
         encoder->setBuffer(tensors[4], tensor_offsets[4], 4);
         encoder->dispatchThreadgroups(

@@ -229,7 +229,7 @@ static int _ccv_nnc_segmented_swiglu_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc
 		ccv_nnc_mfa_has_neural_accelerators(context) &&
 		(mtl_datatype != 121 || ccv_nnc_mfa_neural_accelerators_support_bfloat(context));
 	const int use_segmented_scaled_swiglu_without_neural_accelerators =
-		!use_neural_accelerators && gate_format == 0 && a->info.datatype == CCV_32F &&
+		!use_neural_accelerators && rowwise_shape_supported && a->info.datatype == CCV_32F &&
 		(N % 8) == 0 && (K % 8) == 0 &&
 		ccv_nnc_tensor_count(a->info) <= UINT32_MAX &&
 		ccv_nnc_tensor_count(gate_w->info) <= UINT32_MAX &&

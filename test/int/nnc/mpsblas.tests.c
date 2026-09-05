@@ -1844,6 +1844,15 @@ static int _mps_segmented_scaled_gemm_validate_format_shape_experts_dims(const i
 	for (i = 0; i < total_m; i++)
 		for (k = 0; k < k_dim; k++)
 			a_values[i * k_dim + k] = _mps_segmented_scaled_gemm_a_value(i, k);
+	if (force_fallback && datatype == CCV_32F && !use_bias)
+	{
+		// Avoid pervasive half-integer quantization ties in the periodic fixture
+		// when comparing CPU division with Metal's fast-math reciprocal.
+		dsfmt_t dsfmt;
+		dsfmt_init_gen_rand(&dsfmt, 0);
+		for (i = 0; i < total_m * k_dim; i++)
+			a_values[i] = (float)(dsfmt_genrand_open_close(&dsfmt) - 0.5);
+	}
 	for (i = 0; i < expert_count; i++)
 		for (j = 0; j < n_dim; j++)
 			for (k = 0; k < k_dim; k++)
@@ -1911,9 +1920,22 @@ static int _mps_segmented_scaled_gemm_validate_format_shape_experts_dims(const i
 	ccv_nnc_tensor_t* const hw_ref = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, expert_count, n_dim, k_dim), 0);
 	ccv_nnc_tensor_t* const hbias_ref = use_bias ? ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, expert_count, n_dim), 0) : 0;
 	ccv_nnc_tensor_t* const bt = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, total_m, n_dim), 0);
-	if (force_fallback && datatype == CCV_32F && !use_bias && !format)
-		_mps_forward_scaled_gemm_quantized_reference(datatype, ha->data.u8, total_m, k_dim, a_ref);
-	else if (force_fallback)
+	if (force_fallback && datatype == CCV_32F && !use_bias && total_m != bincount)
+	{
+		// Int8MatMul quantizes activations with absmax rather than the offline
+		// weight quantizer's iteratively fitted scale.
+		for (i = 0; i < total_m; i++)
+		{
+			float max_abs = 0;
+			for (k = 0; k < k_dim; k++)
+				max_abs = ccv_max(max_abs, fabsf(ha->data.f32[i * k_dim + k]));
+			const float scale = max_abs > 0 ? max_abs / 127.0f : 1.0f / 127.0f;
+			const float inv_scale = max_abs > 0 ? 127.0f / max_abs : 127.0f;
+			for (k = 0; k < k_dim; k++)
+				a_ref[i * k_dim + k] = scale *
+					ccv_clamp((int)lrintf(ha->data.f32[i * k_dim + k] * inv_scale), -127, 127);
+		}
+	} else if (force_fallback)
 		_mps_forward_scaled_gemm_to_float(datatype, ha->data.u8, total_m * k_dim, a_ref);
 	else
 		_mps_forward_scaled_gemm_quantized_reference(datatype, ha->data.u8, total_m, k_dim, a_ref);
@@ -1936,6 +1958,12 @@ static int _mps_segmented_scaled_gemm_validate_format_shape_experts_dims(const i
 	double max_rel = 0;
 	for (i = 0; i < total_m * n_dim; i++)
 	{
+		// A later finite element must not hide NaNs through ccv_max.
+		if (!isfinite(actual[i]) || !isfinite(bt->data.f32[i]))
+		{
+			max_abs = max_rel = INFINITY;
+			break;
+		}
 		const double diff = fabs((double)actual[i] - (double)bt->data.f32[i]);
 		const double denom = ccv_max(1.0, ccv_max(fabs((double)actual[i]), fabs((double)bt->data.f32[i])));
 		max_abs = ccv_max(max_abs, diff);
@@ -2320,8 +2348,8 @@ TEST_CASE("mps segmented gemm with row-wise 8i-x weight fallback dequantize")
 	}
 	double max_abs = 0;
 	double max_rel = 0;
-	REQUIRE_EQ(_mps_segmented_scaled_gemm_validate_format(CCV_32F, 0, 1, CCV_NNC_QX_8I_ROWWISE_Q5_K, &max_abs, &max_rel), 0, "segmented fallback row-wise 8i-x fp32 validation should run");
-	REQUIRE(max_rel < 3e-3, "segmented fallback row-wise 8i-x fp32 should match dense reference, max_abs=%g max_rel=%g", max_abs, max_rel);
+	REQUIRE_EQ(_mps_segmented_scaled_gemm_validate_format(CCV_32F, 0, 1, CCV_NNC_QX_8I_ROWWISE_Q5_K, &max_abs, &max_rel), 0, "segmented Int8MatMul row-wise 8i-x fp32 validation should run");
+	REQUIRE(max_rel < 3e-3, "segmented Int8MatMul row-wise 8i-x fp32 should match quantized reference, max_abs=%g max_rel=%g", max_abs, max_rel);
 	max_abs = 0;
 	max_rel = 0;
 	REQUIRE_EQ(_mps_segmented_scaled_gemm_validate_format(CCV_16BF, 0, 1, CCV_NNC_QX_8I_ROWWISE_Q5_K, &max_abs, &max_rel), 0, "segmented fallback row-wise 8i-x bf16 validation should run");
@@ -2359,6 +2387,34 @@ TEST_CASE("mps segmented gemm emulates int8 with normalized half values and floa
 	REQUIRE(max_rel < 3e-3,
 		"segmented Int8MatMul should match the quantized activation reference, max_abs=%g max_rel=%g",
 		max_abs, max_rel);
+}
+
+TEST_CASE("mps segmented gemm uses Int8MatMul for packed weights and float scales")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SEGMENTED_GEMM_FORWARD, CCV_NNC_BACKEND_MPS));
+	const int formats[] = {
+		CCV_NNC_QX_8I_ROWWISE_Q4_K, CCV_NNC_QX_8I_ROWWISE_Q3_K,
+		CCV_NNC_QX_8I_ROWWISE_Q2_K, CCV_NNC_QX_8I_ROWWISE_IQ2_S,
+		CCV_NNC_QX_8I_ROWWISE_IQ2_XS, CCV_NNC_QX_8I_ROWWISE_IQ3_S,
+		CCV_NNC_QX_8I_ROWWISE_IQ3_XXS, CCV_NNC_QX_8I_ROWWISE_IQ2_XXS,
+		CCV_NNC_QX_8I_ROWWISE_Q5_K, CCV_NNC_QX_8I_ROWWISE_Q6_K,
+	};
+	int i, shape;
+	for (i = 0; i < sizeof(formats) / sizeof(formats[0]); i++)
+		for (shape = 0; shape < 2; shape++)
+		{
+			double max_abs = 0;
+			double max_rel = 0;
+			// The smaller shape has an empty bin; the larger has full tiles plus tails.
+			// Guard rows and fewer bins than experts check selected-decode bounds.
+			REQUIRE_EQ(_mps_segmented_scaled_gemm_validate_format_shape_experts_dims(
+				CCV_32F, 0, 1, formats[i], shape ? 97 : 5, 8, 6, 1,
+				shape ? 256 : 128, shape ? 512 : 256, &max_abs, &max_rel), 0,
+				"packed Int8MatMul should execute for format=%d shape=%d", formats[i], shape);
+			REQUIRE(max_rel < 1e-4,
+				"packed Int8MatMul should match quantized CPU reference: format=%d shape=%d max_abs=%g max_rel=%g",
+				formats[i], shape, max_abs, max_rel);
+		}
 }
 
 TEST_CASE("mps fp32 row-wise 8i fallback quantizes values outside the fp16 range")

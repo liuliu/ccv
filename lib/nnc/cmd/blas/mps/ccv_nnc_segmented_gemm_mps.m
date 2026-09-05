@@ -294,7 +294,7 @@ static int _ccv_nnc_segmented_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_h
 			(mtl_data_type != 121 || ccv_nnc_mfa_neural_accelerators_support_bfloat(context));
 		const int use_segmented_scaled_gemm_without_neural_accelerators =
 			!use_neural_accelerators &&
-			w_qx_subtype == CCV_NNC_QX_8I_ROWWISE &&
+			w_qx_8i_rowwise &&
 			mtl_data_type == 3 &&
 			!bias &&
 			(w_rows % 8) == 0 &&
