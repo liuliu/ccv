@@ -43,6 +43,7 @@ static void _ccv_nnc_tensor_variable_free(ccv_nnc_dynamic_graph_t* const graph, 
 	const int index = tensor_variable->index;
 	if (tensor_variable->tensor_view)
 	{
+		_ccv_nnc_tensor_variable_wait_fast_fence(tensor_variable->tensor_view);
 		if (tensor_variable->destructor_hook.func)
 			tensor_variable->destructor_hook.func(graph, (ccv_nnc_tensor_t*)tensor_variable->tensor_view, tensor_variable->destructor_hook.context);
 		if (!CCV_NNC_IS_EXTERN_TENSOR_VIEW(tensor_variable->tensor_view))
@@ -83,6 +84,7 @@ static void _ccv_nnc_tensor_variable_graph_bind_free(ccv_nnc_dynamic_graph_t* co
 		ccv_array_free(bind->destinations);
 	if (bind->tensor_view)
 	{
+		_ccv_nnc_tensor_variable_wait_fast_fence(bind->tensor_view);
 		if (bind->destructor_hook.func)
 			bind->destructor_hook.func(graph, (ccv_nnc_tensor_t*)bind->tensor_view, bind->destructor_hook.context);
 		if (!CCV_NNC_IS_EXTERN_TENSOR_VIEW(bind->tensor_view))
