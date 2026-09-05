@@ -4,18 +4,17 @@
 
 Int8MatMulKernel::Int8MatMulKernel(Int8MatMulKernelDescriptor descriptor, MTL::Device* const device)
 {
-	(void)descriptor;
 	threadgroupSize = MTL::Size(256, 1, 1);
-	source = createMetalSimdgroupMatrixStorage(false) + createSource();
+	source = createMetalSimdgroupMatrixStorage(false) + createSource(descriptor.blockM);
 	auto sourceString = NS::String::string(source.c_str(), NS::UTF8StringEncoding);
 	NS::Error* error = nil;
 	library = NS::TransferPtr(device->newLibrary(sourceString, nil, &error));
 	CCV_NNC_MFA_CHECK_ERROR(error);
 }
 
-std::string Int8MatMulKernel::createSource() const noexcept
+std::string Int8MatMulKernel::createSource(const uint32_t blockM) const noexcept
 {
-	return R"(
+	return "\n#define INT8_SEGMENTED_BLOCK_M " + std::to_string(blockM) + R"(
 #include <metal_stdlib>
 using namespace metal;
 
@@ -130,43 +129,46 @@ kernel void int8_matmul_segmented(
     return;
   const ushort2 morton = morton_order(lane_id);
   const device char* B_base = B + (ulong)expert * N * K;
-  const uint full_count = (uint)count_i & ~15u;
-  for (uint m0 = 0; m0 < full_count; m0 += 16) {
-    simdgroup_matrix_storage<float> accum[2];
-    accum[0] = simdgroup_matrix_storage<float>(0);
-    accum[1] = simdgroup_matrix_storage<float>(0);
+  const uint full_count = (uint)count_i & ~(INT8_SEGMENTED_BLOCK_M - 1u);
+  for (uint m0 = 0; m0 < full_count; m0 += INT8_SEGMENTED_BLOCK_M) {
+    simdgroup_matrix_storage<float> accum[INT8_SEGMENTED_BLOCK_M / 8];
+#pragma clang loop unroll(full)
+    for (ushort m = 0; m < INT8_SEGMENTED_BLOCK_M / 8; ++m)
+      accum[m] = simdgroup_matrix_storage<float>(0);
     for (uint k0 = 0; k0 < K; k0 += 8) {
       const device char* B_lane = B_base + (ulong)(n0 + morton.x) * K + k0 + morton.y;
-      simdgroup_matrix_storage<half> a_reg[2];
+      simdgroup_matrix_storage<half> a_reg[INT8_SEGMENTED_BLOCK_M / 8];
       simdgroup_matrix_storage<half> b_reg;
 #pragma clang loop unroll(full)
-      for (ushort m = 0; m < 2; ++m) {
+      for (ushort m = 0; m < INT8_SEGMENTED_BLOCK_M / 8; ++m) {
         const uint row = m0 + m * 8 + morton.y;
         const device half* A_lane = A + (ulong)(row_offset + row) * K + k0 + morton.x;
         a_reg[m].load(A_lane, K, ushort2(0, 0), false);
       }
       b_reg.load(B_lane, K, ushort2(0, 0), true);
       *b_reg.thread_elements() *= half(0.0078125f);
-      accum[0].multiply(a_reg[0], b_reg);
-      accum[1].multiply(a_reg[1], b_reg);
+#pragma clang loop unroll(full)
+      for (ushort m = 0; m < INT8_SEGMENTED_BLOCK_M / 8; ++m)
+        accum[m].multiply(a_reg[m], b_reg);
     }
 #pragma clang loop unroll(full)
-    for (ushort m = 0; m < 2; ++m) {
+    for (ushort m = 0; m < INT8_SEGMENTED_BLOCK_M / 8; ++m) {
       const uint row = m0 + m * 8 + morton.y;
       device float* C_lane = C + (ulong)(row_offset + row) * N + n0 + morton.x;
       accum[m].store(C_lane, N, ushort2(0, 0), false);
     }
   }
   if (full_count < (uint)count_i) {
-    simdgroup_matrix_storage<float> accum[2];
-    accum[0] = simdgroup_matrix_storage<float>(0);
-    accum[1] = simdgroup_matrix_storage<float>(0);
+    simdgroup_matrix_storage<float> accum[INT8_SEGMENTED_BLOCK_M / 8];
+#pragma clang loop unroll(full)
+    for (ushort m = 0; m < INT8_SEGMENTED_BLOCK_M / 8; ++m)
+      accum[m] = simdgroup_matrix_storage<float>(0);
     for (uint k0 = 0; k0 < K; k0 += 8) {
       const device char* B_lane = B_base + (ulong)(n0 + morton.x) * K + k0 + morton.y;
-      simdgroup_matrix_storage<half> a_reg[2];
+      simdgroup_matrix_storage<half> a_reg[INT8_SEGMENTED_BLOCK_M / 8];
       simdgroup_matrix_storage<half> b_reg;
 #pragma clang loop unroll(full)
-      for (ushort m = 0; m < 2; ++m) {
+      for (ushort m = 0; m < INT8_SEGMENTED_BLOCK_M / 8; ++m) {
         const uint row = full_count + m * 8 + morton.y;
         if (row < (uint)count_i) {
           const ulong address = (ulong)(row_offset + row) * K + k0 + morton.x;
@@ -177,11 +179,12 @@ kernel void int8_matmul_segmented(
       }
       b_reg.load(B_lane, K, ushort2(0, 0), true);
       *b_reg.thread_elements() *= half(0.0078125f);
-      accum[0].multiply(a_reg[0], b_reg);
-      accum[1].multiply(a_reg[1], b_reg);
+#pragma clang loop unroll(full)
+      for (ushort m = 0; m < INT8_SEGMENTED_BLOCK_M / 8; ++m)
+        accum[m].multiply(a_reg[m], b_reg);
     }
 #pragma clang loop unroll(full)
-    for (ushort m = 0; m < 2; ++m) {
+    for (ushort m = 0; m < INT8_SEGMENTED_BLOCK_M / 8; ++m) {
       const uint row = full_count + m * 8 + morton.y;
       if (row < (uint)count_i) {
         const float2 values = *accum[m].thread_elements();

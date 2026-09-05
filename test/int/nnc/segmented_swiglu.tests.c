@@ -452,9 +452,9 @@ TEST_CASE("MPS segmented SwiGLU executes grouped rowwise int8 prefill")
 	_segmented_swiglu_mps_rowwise_case(0, 0, 1, 10, "Q8_0 grouped prefill", __case_result__);
 }
 
-static void _segmented_swiglu_mps_float_rowwise_case(const int format, const int n, const int k, int* const __case_result__)
+static void _segmented_swiglu_mps_float_rowwise_case(const int format, const int n, const int k, const int large_groups, int* const __case_result__)
 {
-	const int rows = 97;
+	const int rows = large_groups ? 389 : 97;
 	const int segments = 6;
 	const int experts = 8;
 	const float clamp = 10;
@@ -470,6 +470,16 @@ static void _segmented_swiglu_mps_float_rowwise_case(const int format, const int
 	int i;
 	for (i = 0; i < rows * k; i++)
 		ha->data.f32[i] = (float)(dsfmt_genrand_open_close(&dsfmt) - 0.5);
+	if (large_groups)
+	{
+		// Keep the expanded fixture off half-integer rounding boundaries: the
+		// CPU and Metal reciprocal can otherwise choose adjacent int8 values.
+		// Quarter-step offsets still require real activation quantization.
+		for (i = 0; i < rows * k; i++)
+			ha->data.f32[i] = (floorf(ha->data.f32[i] * 252) + 0.25f) / 128;
+		for (i = 0; i < rows; i++)
+			ha->data.f32[i * k] = 127.0f / 128;
+	}
 	// These values cannot be represented by FP16 directly. The fallback must first
 	// quantize them to bounded q / 128 FP16 values and keep the row scale in FP32.
 	ha->data.f32[0] = 1e8f;
@@ -480,7 +490,7 @@ static void _segmented_swiglu_mps_float_rowwise_case(const int format, const int
 		hup->data.f32[i] = (float)(dsfmt_genrand_open_close(&dsfmt) - 0.5) / 8;
 	}
 	const int selected[] = { 7, 1, 5, 2, 6, 3 };
-	const int rows_per_segment[] = { 0, 2, 17, 31, 19, 28 };
+	const int rows_per_segment[] = { 0, 2, large_groups ? 65 : 17, large_groups ? 111 : 31, large_groups ? 99 : 19, large_groups ? 112 : 28 };
 	memcpy(hindices->data.i32, selected, sizeof(selected));
 	memcpy(hcounts->data.i32, rows_per_segment, sizeof(rows_per_segment));
 	for (i = 0; i < rows; i++)
@@ -627,7 +637,7 @@ static void _segmented_swiglu_mps_float_rowwise_case(const int format, const int
 TEST_CASE("MPS segmented SwiGLU emulates int8 with normalized half values and float scales")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SEGMENTED_SWIGLU_FORWARD, CCV_NNC_BACKEND_MPS));
-	_segmented_swiglu_mps_float_rowwise_case(0, 64, 128, __case_result__);
+	_segmented_swiglu_mps_float_rowwise_case(0, 64, 128, 0, __case_result__);
 }
 
 TEST_CASE("MPS segmented SwiGLU uses Int8MatMul for packed weights and float scales")
@@ -642,10 +652,11 @@ TEST_CASE("MPS segmented SwiGLU uses Int8MatMul for packed weights and float sca
 	};
 	int i;
 	for (i = 0; i < sizeof(formats) / sizeof(formats[0]); i++)
-		_segmented_swiglu_mps_float_rowwise_case(formats[i], 256, 256, __case_result__);
-	_segmented_swiglu_mps_float_rowwise_case(CCV_NNC_QX_8I_ROWWISE_IQ2_XXS, 512, 256, __case_result__);
-	_segmented_swiglu_mps_float_rowwise_case(CCV_NNC_QX_8I_ROWWISE_IQ2_XXS, 256, 512, __case_result__);
-	_segmented_swiglu_mps_float_rowwise_case(CCV_NNC_QX_8I_ROWWISE_IQ2_XXS, 256, 4096, __case_result__);
+		_segmented_swiglu_mps_float_rowwise_case(formats[i], 256, 256, 0, __case_result__);
+	_segmented_swiglu_mps_float_rowwise_case(CCV_NNC_QX_8I_ROWWISE_IQ2_XXS, 512, 256, 0, __case_result__);
+	_segmented_swiglu_mps_float_rowwise_case(CCV_NNC_QX_8I_ROWWISE_IQ2_XXS, 256, 512, 0, __case_result__);
+	_segmented_swiglu_mps_float_rowwise_case(CCV_NNC_QX_8I_ROWWISE_IQ2_XXS, 256, 4096, 0, __case_result__);
+	_segmented_swiglu_mps_float_rowwise_case(CCV_NNC_QX_8I_ROWWISE_IQ2_XXS, 256, 4096, 1, __case_result__);
 }
 
 TEST_CASE("MPS segmented SwiGLU executes grouped IQ2_XXS prefill")

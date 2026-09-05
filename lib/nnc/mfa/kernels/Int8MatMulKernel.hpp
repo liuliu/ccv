@@ -12,7 +12,7 @@ struct Int8MatMulKernel {
 	Int8MatMulKernel(Int8MatMulKernelDescriptor descriptor, MTL::Device* device);
 
 private:
-	std::string createSource() const noexcept;
+	std::string createSource(uint32_t blockM) const noexcept;
 };
 
 #endif

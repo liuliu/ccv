@@ -32,7 +32,11 @@ std::pair<Int8MatMulKernelDescriptor, PipelineValue<Int8MatMulKernel>*> Int8MatM
 	(void)binaryArchivesToRead;
 	(void)binaryArchiveToWrite;
 	(void)pathToWrite;
-	const Int8MatMulKernelDescriptor kernelDesc;
+	// Larger routed groups reuse each loaded weight tile across more rows.
+	// blockM changes generated register arrays, so it belongs in the library key.
+	const Int8MatMulKernelDescriptor kernelDesc = {
+		.blockM = operation == Int8MatMulSegmented && binCount > 0 && M / binCount >= 64 ? 32u : 16u,
+	};
 	auto iterator = libraryCache->find(kernelDesc);
 	Int8MatMulKernel* kernel;
 	if (iterator != libraryCache->end())

@@ -15,13 +15,14 @@ enum Int8MatMulOperation : uint8_t {
 };
 
 struct Int8MatMulKernelDescriptor {
-	constexpr bool operator==(const Int8MatMulKernelDescriptor&) const { return true; }
+	uint32_t blockM = 16;
+	constexpr bool operator==(const Int8MatMulKernelDescriptor& rhs) const { return blockM == rhs.blockM; }
 };
 
 template<>
 struct std::hash<Int8MatMulKernelDescriptor>
 {
-	std::size_t operator()(const Int8MatMulKernelDescriptor&) const noexcept { return 0; }
+	std::size_t operator()(const Int8MatMulKernelDescriptor& hash) const noexcept { return hash.blockM; }
 };
 
 struct Int8MatMulKernel;

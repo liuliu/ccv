@@ -1852,6 +1852,15 @@ static int _mps_segmented_scaled_gemm_validate_format_shape_experts_dims(const i
 		dsfmt_init_gen_rand(&dsfmt, 0);
 		for (i = 0; i < total_m * k_dim; i++)
 			a_values[i] = (float)(dsfmt_genrand_open_close(&dsfmt) - 0.5);
+		if (total_m / bincount >= 64)
+		{
+			// Make the larger 32-row-tile fixture unambiguous under either CPU
+			// or Metal reciprocal rounding, without making quantization a no-op.
+			for (i = 0; i < total_m * k_dim; i++)
+				a_values[i] = (floorf(a_values[i] * 252) + 0.25f) / 128;
+			for (i = 0; i < total_m; i++)
+				a_values[i * k_dim] = 127.0f / 128;
+		}
 	}
 	for (i = 0; i < expert_count; i++)
 		for (j = 0; j < n_dim; j++)
@@ -2401,14 +2410,14 @@ TEST_CASE("mps segmented gemm uses Int8MatMul for packed weights and float scale
 	};
 	int i, shape;
 	for (i = 0; i < sizeof(formats) / sizeof(formats[0]); i++)
-		for (shape = 0; shape < 2; shape++)
+		for (shape = 0; shape < 3; shape++)
 		{
 			double max_abs = 0;
 			double max_rel = 0;
 			// The smaller shape has an empty bin; the larger has full tiles plus tails.
 			// Guard rows and fewer bins than experts check selected-decode bounds.
 			REQUIRE_EQ(_mps_segmented_scaled_gemm_validate_format_shape_experts_dims(
-				CCV_32F, 0, 1, formats[i], shape ? 97 : 5, 8, 6, 1,
+				CCV_32F, 0, 1, formats[i], shape == 2 ? 513 : (shape ? 97 : 5), 8, 6, 1,
 				shape ? 256 : 128, shape ? 512 : 256, &max_abs, &max_rel), 0,
 				"packed Int8MatMul should execute for format=%d shape=%d", formats[i], shape);
 			REQUIRE(max_rel < 1e-4,
