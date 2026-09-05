@@ -556,8 +556,8 @@ int main(int argc, char** argv)
 		leadingDimensions[AttentionOperand::dK] = true;
 		leadingDimensions[AttentionOperand::dV] = true;
 		leadingDimensions[AttentionOperand::dO] = true;
-		int j, k, l, m;
-		unsigned short headDimensions[] = { 40, 64, 80, 128, 160, 256 };
+		int j, k, l;
+		const unsigned short headDimensions[] = { 40, 64, 80, 128, 160, 256, 512 };
 		bool lowPrecisionInputs = true;
 		for (j = 0; j < 2; j++)
 		{
@@ -570,9 +570,8 @@ int main(int argc, char** argv)
 					bool isBF16 = l == 0 ? false : true;
 					if (isBF16 && lowPrecisionIntermediates) // These two are not compatible.
 						continue;
-					for (m = 0; m < 6; m++)
+					for (const unsigned short headDimension : headDimensions)
 					{
-						unsigned short headDimension = headDimensions[m];
 						bool forwardIsCausalVariants[] = { false, true, false, true, false, true, true, true };
 						bool forwardMaskedVariants[] = { false, false, true, true, false, false, false, true };
 						bool forwardIsVarlenVariants[] = { false, false, false, false, true, true, false, false };
