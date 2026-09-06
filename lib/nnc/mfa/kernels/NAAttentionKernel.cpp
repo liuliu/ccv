@@ -2452,6 +2452,7 @@ void NAAttentionKernel::loopForward(CodeWriter &source) const noexcept {
   if (!checkCEdge1) { // Process the remainder path.
     source += R"(
   if (C_remainder > 0) {
+    const uint c = C - C_remainder;
     #pragma clang loop unroll(full)
     for (unsigned short k = 0; k < cS_0.get_capacity(); ++k) {
       if (cS_0.is_valid_element(k)) {
@@ -2466,7 +2467,7 @@ void NAAttentionKernel::loopForward(CodeWriter &source) const noexcept {
     #pragma clang loop unroll(full)
     for (unsigned short k = 0; k < K_edge; k += {{BLOCK_DIMENSIONS_HEAD}}) {
       auto mQ = Q.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_PARALLELIZATION}}>(tgid.y * {{HEAD_DIMENSION}} + k, tgid.x * {{BLOCK_DIMENSIONS_PARALLELIZATION}});
-      auto mK_0 = K.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>(tgid.y {{H_HK_RATIO}}* {{HEAD_DIMENSION}} + k, C - C_remainder);
+      auto mK_0 = K.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>(tgid.y {{H_HK_RATIO}}* {{HEAD_DIMENSION}} + k, c);
       matmul_qk_op.run(mQ, mK_0, cS_0);
     }
 )";
@@ -2475,7 +2476,7 @@ void NAAttentionKernel::loopForward(CodeWriter &source) const noexcept {
       source += R"(
     {
       auto mQ = Q.slice<{{HEAD_DIMENSION_REMAINDER}}, {{BLOCK_DIMENSIONS_PARALLELIZATION}}>(tgid.y * {{HEAD_DIMENSION}} + {{HEAD_DIMENSION_HEAD_DIMENSION_REMAINDER}}, tgid.x * {{BLOCK_DIMENSIONS_PARALLELIZATION}});
-      auto mK_0 = K.slice<{{HEAD_DIMENSION_REMAINDER}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>(tgid.y {{H_HK_RATIO}}* {{HEAD_DIMENSION}} + {{HEAD_DIMENSION_HEAD_DIMENSION_REMAINDER}}, C - C_remainder);
+      auto mK_0 = K.slice<{{HEAD_DIMENSION_REMAINDER}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>(tgid.y {{H_HK_RATIO}}* {{HEAD_DIMENSION}} + {{HEAD_DIMENSION_HEAD_DIMENSION_REMAINDER}}, c);
       matmul_qk_op_remainder.run(mQ, mK_0, cS_0);
     }
 )";
@@ -2521,17 +2522,31 @@ void NAAttentionKernel::loopForward(CodeWriter &source) const noexcept {
         cL[k] = cL[k] * correction[k] + cL_0_new[k];
       }
     }
-    #pragma clang loop unroll(full)
-    for (unsigned short k = 0; k < cO_0.get_capacity(); ++k) {
-      if (cO_0.is_valid_element(k)) {
-        auto it = cO_0.get_iterator(k);
-        auto dst_it = correction.map_iterator(it);
+    if (c == 0) {
+      #pragma clang loop unroll(full)
+      for (unsigned short k = 0; k < cO_0.get_capacity(); ++k) {
+        if (cO_0.is_valid_element(k)) {
 )";
-    for (unsigned short i = 0; i < kBlocks; i++) {
+    for (unsigned short i = 0; i < kBlocks; ++i) {
       source.SetValue("LOOP_INDEX", std::to_string(i));
-      source += "        cO_{{LOOP_INDEX}}[k] *= *dst_it;\n";
+      source += "          cO_{{LOOP_INDEX}}[k] = 0;\n";
     }
     source += R"(
+        }
+      }
+    } else {
+      #pragma clang loop unroll(full)
+      for (unsigned short k = 0; k < cO_0.get_capacity(); ++k) {
+        if (cO_0.is_valid_element(k)) {
+          auto it = cO_0.get_iterator(k);
+          auto dst_it = correction.map_iterator(it);
+)";
+    for (unsigned short i = 0; i < kBlocks; ++i) {
+      source.SetValue("LOOP_INDEX", std::to_string(i));
+      source += "          cO_{{LOOP_INDEX}}[k] *= *dst_it;\n";
+    }
+    source += R"(
+        }
       }
     }
     #pragma clang loop unroll(full)
@@ -2556,7 +2571,7 @@ void NAAttentionKernel::loopForward(CodeWriter &source) const noexcept {
       source.SetValue("LOOP_INDEX", std::to_string(i));
       source.SetValue("LOOP_INDEX_BLOCK_DIMENSIONS_HEAD", std::to_string(i * blockDimensions[2]));
       source += R"(
-    auto mV_0_{{LOOP_INDEX}} = V.slice<{{BLOCK_DIMENSIONS_HEAD}}, dynamic_extent>(tgid.y {{H_HK_RATIO}}* {{HEAD_DIMENSION}} + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}}, C - C_remainder);
+    auto mV_0_{{LOOP_INDEX}} = V.slice<{{BLOCK_DIMENSIONS_HEAD}}, dynamic_extent>(tgid.y {{H_HK_RATIO}}* {{HEAD_DIMENSION}} + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}}, c);
     matmul_pv_op.run(mP, mV_0_{{LOOP_INDEX}}, cO_{{LOOP_INDEX}});
 )";
     }
