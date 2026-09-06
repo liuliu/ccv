@@ -813,10 +813,21 @@ static int _ccv_nnc_moe_weights_streaming_forw(const ccv_nnc_cmd_t cmd, const cc
 	state->prefill = prefill;
 	if (full_prefill)
 	{
-		const int status = ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0,
-			TENSOR_LIST(inputs[0], inputs[1], inputs[2]), TENSOR_LIST(outputs[0], outputs[1], outputs[2]), stream_context);
-		if (status != CCV_NNC_EXEC_SUCCESS)
-			return status;
+		@autoreleasepool {
+			MPSCommandBuffer* const command_buffer = ccv_nnc_stream_context_start_mps_command_buffer(stream_context);
+			id<MTLBlitCommandEncoder> const encoder = [command_buffer.commandBuffer blitCommandEncoder];
+			int i;
+			for (i = 0; i < 3; i++)
+			{
+				if (inputs[i] == outputs[i])
+					continue;
+				[encoder copyFromBuffer:mpgetbuffer(inputs[i]) sourceOffset:mpgetoffset(inputs[i])
+					toBuffer:mpgetbuffer(outputs[i]) destinationOffset:mpgetoffset(outputs[i])
+					size:ccv_nnc_tensor_data_size_without_padding(inputs[i]->info)];
+			}
+			[encoder endEncoding];
+			ccv_nnc_stream_context_finish_mps_command_buffer(stream_context, command_buffer);
+		}
 		// Let preceding GPU work overlap the asynchronous weight load.
 		ccv_nnc_stream_context_commit(stream_context);
 	} else if (!_ccv_nnc_moe_encode_gpu_plan(state, inputs, outputs, generation, stream_context))
