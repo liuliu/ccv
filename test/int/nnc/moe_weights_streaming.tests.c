@@ -9,12 +9,12 @@
 #include <string.h>
 #include <unistd.h>
 
-#ifdef HAVE_MPS
-
 TEST_SETUP()
 {
 	ccv_nnc_init();
 }
+
+TEST_TEARDOWN() {}
 
 static void _moe_weights_streaming_fill_half(ccv_float16_t* const data, const size_t count, const int seed)
 {
@@ -62,7 +62,8 @@ static int _moe_weights_streaming_run_case(
 	ccv_nnc_tensor_t* const down_source, ccv_nnc_tensor_t* const gate_reference,
 	ccv_nnc_tensor_t* const up_reference, ccv_nnc_tensor_t* const down_reference,
 	const int* const selected, const int* const segment_counts, const int segment_count,
-	const int row_count, const int case_seed, double* const max_difference)
+	const int row_count, const int case_seed, const int resident_slots,
+	const int expected_full, double* const max_difference)
 {
 	const int n = gate_source->info.dim[1];
 	const int k = gate_source->info.dim[2];
@@ -106,7 +107,7 @@ static int _moe_weights_streaming_run_case(
 		status = ccv_nnc_cmd_exec(gemm, ccv_nnc_no_hint, 0,
 			TENSOR_LIST(reference_hidden, indices, counts, down_reference),
 			TENSOR_LIST(reference_output), stream);
-	ccv_nnc_cmd_t streaming = CMD_MOE_WEIGHTS_STREAMING_FORWARD(2, 1);
+	ccv_nnc_cmd_t streaming = CMD_MOE_WEIGHTS_STREAMING_FORWARD(resident_slots, 1);
 	streaming.backend = CCV_NNC_BACKEND_MPS;
 	ccv_nnc_tensor_param_t streamed_params[6] = {};
 	ccv_nnc_hint_tensor_auto(streaming,
@@ -140,9 +141,15 @@ static int _moe_weights_streaming_run_case(
 			TENSOR_LIST(streamed_output), stream);
 	if (status == CCV_NNC_EXEC_SUCCESS)
 		status = ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0,
-			TENSOR_LIST(reference_output, streamed_output),
-			TENSOR_LIST(host_reference, host_streamed), stream);
+			TENSOR_LIST(reference_output, streamed_output, streamed[0]),
+			TENSOR_LIST(host_reference, host_streamed, host_indices), stream);
 	ccv_nnc_stream_context_wait(stream);
+	if (status == CCV_NNC_EXEC_SUCCESS && row_count > 1)
+	{
+		// Full load keeps logical expert IDs; selective staging compacts them.
+		if (expected_full ? memcmp(host_indices->data.i32, selected, sizeof(int) * segment_count) != 0 : host_indices->data.i32[0] != 0)
+			status = CCV_NNC_EXEC_INVALID;
+	}
 	if (status == CCV_NNC_EXEC_SUCCESS)
 	{
 		float* const reference_values = (float*)ccmalloc(sizeof(float) * row_count * k);
@@ -151,7 +158,10 @@ static int _moe_weights_streaming_run_case(
 		ccv_half_precision_to_float((const uint16_t*)host_streamed->data.f16, streamed_values, row_count * k);
 		*max_difference = 0;
 		for (i = 0; i < row_count * k; i++)
-			*max_difference = ccv_max(*max_difference, fabs((double)reference_values[i] - streamed_values[i]));
+			if (!isfinite(reference_values[i]) || !isfinite(streamed_values[i]))
+				*max_difference = INFINITY;
+			else
+				*max_difference = ccv_max(*max_difference, fabs((double)reference_values[i] - streamed_values[i]));
 		ccfree(streamed_values);
 		ccfree(reference_values);
 	}
@@ -211,7 +221,8 @@ TEST_CASE("MoE weights streaming infers lightweight shape-compatible handles")
 TEST_CASE("MPS MoE weights streaming covers resident decode, eviction, and prefill")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_MOE_WEIGHTS_STREAMING_FORWARD, CCV_NNC_BACKEND_MPS));
-	const int experts = 4;
+	// Use a different expert count from DS4 to check the resident ratio, not 64 slots.
+	const int experts = 128;
 	const int n = 256;
 	const int k = 512;
 	const size_t weight_count = (size_t)experts * n * k;
@@ -288,6 +299,17 @@ TEST_CASE("MPS MoE weights streaming covers resident decode, eviction, and prefi
 	const int decode_indices[] = { 0, 1, 2, 3 };
 	const int decode_experts[] = { 0, 1, 0, 2, 1 };
 	double max_difference = 0;
+	const int cold_indices[] = { 3, 0, 2, 1 };
+	const int cold_counts[] = { 1024, 0, 1024, 1024 };
+	for (int repeat = 0; repeat < 2; repeat++)
+	{
+		REQUIRE_EQ(_moe_weights_streaming_run_case(
+			streamed_weights[0], streamed_weights[1], streamed_weights[2],
+			reference_weights[0], reference_weights[1], reference_weights[2],
+			cold_indices, cold_counts, 4, 3072, 23 + repeat, 2, 1, &max_difference), CCV_NNC_EXEC_SUCCESS,
+			"full prefill should work before the GPU slot map is initialized");
+		REQUIRE(max_difference < 1e-3, "cold full prefill should preserve original expert IDs and scales");
+	}
 	for (i = 0; i < 5; i++)
 	{
 		int decode_counts[] = { 0, 0, 0, 0 };
@@ -295,7 +317,7 @@ TEST_CASE("MPS MoE weights streaming covers resident decode, eviction, and prefi
 		REQUIRE_EQ(_moe_weights_streaming_run_case(
 			streamed_weights[0], streamed_weights[1], streamed_weights[2],
 			reference_weights[0], reference_weights[1], reference_weights[2],
-			decode_indices, decode_counts, 4, 1, 31 + i, &max_difference),
+			decode_indices, decode_counts, 4, 1, 31 + i, 2, 0, &max_difference),
 			CCV_NNC_EXEC_SUCCESS,
 			"decode should execute across cold misses, a resident hit, and eviction");
 		REQUIRE(max_difference < 1e-3,
@@ -303,16 +325,85 @@ TEST_CASE("MPS MoE weights streaming covers resident decode, eviction, and prefi
 			max_difference);
 	}
 	const int prefill_indices[] = { 1, 3, 0, 2 };
-	const int prefill_counts[] = { 2, 2, 0, 0 };
-	REQUIRE_EQ(_moe_weights_streaming_run_case(
-		streamed_weights[0], streamed_weights[1], streamed_weights[2],
-		reference_weights[0], reference_weights[1], reference_weights[2],
-		prefill_indices, prefill_counts, 4, 4, 47, &max_difference),
-		CCV_NNC_EXEC_SUCCESS,
-		"prefill should combine a resident hit with a file-backed miss");
-	REQUIRE(max_difference < 1e-3,
-		"partially resident prefill should match the same rowwise weights without streaming (max difference %.8g)",
-		max_difference);
+	const int prefill_lengths[] = { 4, 3072, 4, 4096 };
+	for (int step = 0; step < 4; step++)
+	{
+		const int m = prefill_lengths[step];
+		const int prefill_counts[] = { m / 2, m - m / 2, 0, 0 };
+		REQUIRE_EQ(_moe_weights_streaming_run_case(
+			streamed_weights[0], streamed_weights[1], streamed_weights[2],
+			reference_weights[0], reference_weights[1], reference_weights[2],
+			prefill_indices, prefill_counts, 4, m, 47 + step, 2, step % 2, &max_difference),
+			CCV_NNC_EXEC_SUCCESS,
+			"prefill should switch between selective staging and full loading");
+		REQUIRE(max_difference < 1e-3,
+			"partially resident prefill should match the same rowwise weights without streaming (max difference %.8g)",
+			max_difference);
+		const int resident_counts[] = { 0, 1, 0, 0 };
+		REQUIRE_EQ(_moe_weights_streaming_run_case(
+			streamed_weights[0], streamed_weights[1], streamed_weights[2],
+			reference_weights[0], reference_weights[1], reference_weights[2],
+			decode_indices, resident_counts, 4, 1, 55 + step, 2, 0, &max_difference), CCV_NNC_EXEC_SUCCESS,
+			"decode should retain resident weights after switching prefill paths");
+		REQUIRE(max_difference < 1e-3, "post-prefill resident decode should match reference");
+	}
+	const int boundary_lengths[] = { 3071, 3072, 3073 };
+	for (int boundary = 0; boundary < 3; boundary++)
+	{
+		const int m = boundary_lengths[boundary];
+		const int boundary_counts[] = { m / 2, m - m / 2, 0, 0 };
+		REQUIRE_EQ(_moe_weights_streaming_run_case(
+			streamed_weights[0], streamed_weights[1], streamed_weights[2],
+			reference_weights[0], reference_weights[1], reference_weights[2],
+			prefill_indices, boundary_counts, 4, m, 71 + boundary, 2, boundary > 0, &max_difference), CCV_NNC_EXEC_SUCCESS,
+			"the default policy should switch metadata layout at the M threshold");
+		REQUIRE(max_difference < 1e-3, "adaptive prefill boundary should match reference");
+		const int resident_counts[] = { 0, 1, 0, 0 };
+		REQUIRE_EQ(_moe_weights_streaming_run_case(
+			streamed_weights[0], streamed_weights[1], streamed_weights[2],
+			reference_weights[0], reference_weights[1], reference_weights[2],
+			decode_indices, resident_counts, 4, 1, 77 + boundary, 2, 0, &max_difference), CCV_NNC_EXEC_SUCCESS,
+			"default decode should retain the resident cache across adaptive prefill");
+		REQUIRE(max_difference < 1e-3, "post-adaptive decode should match reference");
+	}
+	// Each capacity change creates fresh state on the same source weights.
+	// Check cold and warm dispatch at the 25% resident cutoff, with both high
+	// expert IDs and a zero-count entry.
+	const int slot_boundaries[] = { experts / 4 - 1, experts / 4, experts / 4 + 1 };
+	const int high_indices[] = { experts - 1, experts / 2, 1, 0 };
+	const int high_decode_counts[] = { 1, 0, 0, 0 };
+	for (int boundary = 0; boundary < 3; boundary++)
+	{
+		const int slots = slot_boundaries[boundary];
+		const int cold_counts[] = { 1024, 2048, 0, 0 };
+		for (int cold = 0; cold < 2; cold++)
+		{
+			REQUIRE_EQ(_moe_weights_streaming_run_case(
+				streamed_weights[0], streamed_weights[1], streamed_weights[2],
+				reference_weights[0], reference_weights[1], reference_weights[2],
+				high_indices, cold_counts, 4, 3072, 91 + cold, slots, boundary < 2, &max_difference), CCV_NNC_EXEC_SUCCESS,
+				"repeated cold prefill should use the configured resident-capacity cutoff");
+			REQUIRE(max_difference < 1e-3, "cold combo prefill should match reference");
+		}
+		const int warm_lengths[] = { 3071, 3072, 3584, 4095, 4096, 4097 };
+		for (int step = 0; step < 6; step++)
+		{
+			REQUIRE_EQ(_moe_weights_streaming_run_case(
+				streamed_weights[0], streamed_weights[1], streamed_weights[2],
+				reference_weights[0], reference_weights[1], reference_weights[2],
+				high_indices, high_decode_counts, 4, 1, 95 + step, slots, 0, &max_difference), CCV_NNC_EXEC_SUCCESS,
+				"resident decode should survive a combo prefill transition");
+			REQUIRE(max_difference < 1e-3, "combo decode should match reference");
+			const int m = warm_lengths[step];
+			const int counts[] = { 1024, m - 1024, 0, 0 };
+			REQUIRE_EQ(_moe_weights_streaming_run_case(
+				streamed_weights[0], streamed_weights[1], streamed_weights[2],
+				reference_weights[0], reference_weights[1], reference_weights[2],
+				high_indices, counts, 4, m, 101 + step, slots, step >= 4 || (step > 0 && boundary < 2), &max_difference), CCV_NNC_EXEC_SUCCESS,
+				"warm prefill should honor both slot and M boundaries");
+			REQUIRE(max_difference < 1e-3, "warm combo prefill should match reference");
+		}
+	}
 	for (i = 0; i < 3; i++)
 	{
 		ccv_nnc_tensor_free(streamed_weights[i]);
@@ -322,7 +413,5 @@ TEST_CASE("MPS MoE weights streaming covers resident decode, eviction, and prefi
 		unlink(paths[i]);
 	}
 }
-
-#endif
 
 #include "case_main.h"

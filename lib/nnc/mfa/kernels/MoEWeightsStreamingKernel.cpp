@@ -25,6 +25,7 @@ struct Plan {
 
 struct Params {
 	uint generation;
+	uint initialize;
 	uint index_count;
 	uint expert_count;
 	uint resident_slots;
@@ -56,7 +57,7 @@ kernel void moe_weights_streaming(
 	plan->load_count = 0;
 	plan->invalid = 0;
 	const bool prefill = p.route_weight_count != p.routing_width;
-	if (p.generation == 1)
+	if (p.initialize)
 	{
 		for (uint i = 0; i < p.expert_count; i++)
 			logical_to_slot[i] = -1;

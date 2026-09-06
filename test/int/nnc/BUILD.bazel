@@ -1,6 +1,13 @@
 load("@local_config_ccv//config:build_defs.bzl", "ccv_default_copts")
 
 cc_binary(
+    name = "moe_weights_streaming.tests",
+    srcs = ["moe_weights_streaming.tests.c"],
+    copts = ccv_default_copts(),
+    deps = ["//test:case", "//lib:nnc"],
+)
+
+cc_binary(
 	name = "cudnn.tests",
 	srcs = ["cudnn.tests.c"],
 	copts = ccv_default_copts(),

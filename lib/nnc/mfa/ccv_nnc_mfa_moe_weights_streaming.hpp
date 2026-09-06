@@ -3,6 +3,7 @@
 
 typedef struct {
 	uint32_t generation;
+	uint32_t initialize;
 	uint32_t index_count;
 	uint32_t expert_count;
 	uint32_t resident_slots;

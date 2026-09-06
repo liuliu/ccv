@@ -425,6 +425,7 @@ static int _ccv_nnc_moe_encode_gpu_plan(MFAMoEWeightsStreamingState* const state
 		return 0;
 	const ccv_nnc_mfa_moe_weights_streaming_params_t params = {
 		.generation = (uint32_t)generation,
+		.initialize = state->gpu_last_encoded_generation == 0,
 		.index_count = (uint32_t)ccv_nnc_tensor_count(inputs[0]->info),
 		.expert_count = (uint32_t)state->expert_count,
 		.resident_slots = (uint32_t)state->resident_slot_count,
@@ -483,7 +484,9 @@ static int _ccv_nnc_moe_pread_all(const int fd, const off_t source_offset, void*
 	size_t completed = 0;
 	while (completed < size)
 	{
-		const ssize_t result = pread(fd, (unsigned char*)destination + completed, size - completed, source_offset + (off_t)completed);
+		// macOS rejects requests above INT_MAX instead of returning a partial read.
+		const size_t read_size = ccv_min(size - completed, (size_t)INT_MAX);
+		const ssize_t result = pread(fd, (unsigned char*)destination + completed, read_size, source_offset + (off_t)completed);
 		if (result > 0)
 			completed += (size_t)result;
 		else if (result < 0 && errno == EINTR)
@@ -522,6 +525,8 @@ static int _ccv_nnc_moe_open_source_fds(MFAMoEWeightsStreamingState* const state
 			break;
 		state->source_fds[i] = fd;
 		state->source_fd_owners[i] = !shared_fd;
+		if (!shared_fd)
+			(void)fcntl(fd, F_NOCACHE, 1);
 		struct stat status;
 		if (fstat(fd, &status) != 0 || state->source_offsets[i] < 0 ||
 			(uint64_t)state->source_offsets[i] > (uint64_t)status.st_size ||
@@ -648,6 +653,26 @@ static void _ccv_nnc_moe_publish_ready_generation(MFAMoEWeightsStreamingState* c
 		ready_generation, &ready, generation, 1, __ATOMIC_RELEASE, __ATOMIC_ACQUIRE)) {}
 }
 
+static void _ccv_nnc_moe_load_full_prefill(MFAMoEWeightsStreamingState* const state,
+	const uint64_t generation,
+	id<MTLBuffer> const gate, id<MTLBuffer> const up, id<MTLBuffer> const down)
+{
+	id<MTLBuffer> const buffers[3] = { gate, up, down };
+	id<MTLBuffer> const* const read_buffers = buffers;
+	const int opened = _ccv_nnc_moe_open_source_fds(state);
+	__block _Atomic(int) failed = !opened;
+	if (opened)
+		dispatch_apply(3, dispatch_get_global_queue(QOS_CLASS_USER_INTERACTIVE, 0), ^(size_t projection) {
+			// Preserve the source layout and expert IDs, including the scale plane.
+			if (!_ccv_nnc_moe_pread_all(state->source_fds[projection], state->source_offsets[projection],
+				read_buffers[projection].contents, state->source_layouts[projection].size))
+				atomic_store(&failed, 1);
+		});
+	if (atomic_load(&failed))
+		fprintf(stderr, "MoE full prefill load failed (generation=%llu)\n", (unsigned long long)generation);
+	_ccv_nnc_moe_publish_ready_generation(state, (uint32_t)generation);
+}
+
 static void _ccv_nnc_moe_load_gpu_plan(MFAMoEWeightsStreamingState* const state, const uint64_t generation,
 	const int expert_count, const int prefill, id<MTLBuffer> const prefill_gate_buffer,
 	id<MTLBuffer> const prefill_up_buffer, id<MTLBuffer> const prefill_down_buffer)
@@ -701,32 +726,24 @@ static void _ccv_nnc_moe_load_gpu_plan(MFAMoEWeightsStreamingState* const state,
 		_ccv_nnc_moe_publish_ready_generation(state, (uint32_t)generation);
 		return;
 	}
-	int projection;
 	const int source_open_failed = plan->load_count > 0 && !_ccv_nnc_moe_open_source_fds(state);
-	dispatch_group_t const read_group = dispatch_group_create();
-	dispatch_queue_t const read_queue = dispatch_get_global_queue(QOS_CLASS_USER_INTERACTIVE, 0);
-	__block _Atomic(int) read_failed = source_open_failed;
-	int read_task_count = 0;
+	typedef struct {
+		int source; // Resident slot for copies, source expert for reads.
+		int slot;
+		int count;
+	} ccv_nnc_moe_load_task_t;
+	ccv_nnc_moe_load_task_t task_storage[plan->desired_count + plan->load_count + 1];
+	ccv_nnc_moe_load_task_t* const tasks = task_storage;
+	int task_count = 0;
 	if (prefill)
 		for (i = 0; i < plan->desired_count; i++)
 		{
 			const int resident_slot = desired_slots[i];
 			if (resident_slot < 0)
 				continue;
-			for (projection = 0; projection < 3; projection++)
-			{
-				const int copy_projection = projection;
-				const int copy_resident_slot = resident_slot;
-				const int prefill_slot = (int)i;
-				id<MTLBuffer> const prefill_buffer = prefill_buffers[projection];
-				dispatch_group_async(read_group, read_queue, ^{
-					if (!_ccv_nnc_moe_copy_resident_to_prefill(
-						state, copy_projection, copy_resident_slot, prefill_slot, prefill_buffer))
-						atomic_store(&read_failed, 1);
-				});
-				read_task_count++;
-			}
+			tasks[task_count++] = (ccv_nnc_moe_load_task_t){ resident_slot, (int)i, 1 };
 		}
+	const int resident_copy_count = task_count;
 	if (prefill && !source_open_failed)
 	{
 		i = 0;
@@ -739,36 +756,31 @@ static void _ccv_nnc_moe_load_gpu_plan(MFAMoEWeightsStreamingState* const state,
 				load_experts[i + run_length] == read_expert + (int)run_length &&
 				load_slots[i + run_length] == read_slot + (int)run_length)
 				run_length++;
-			for (projection = 0; projection < 3; projection++)
-			{
-				const int read_projection = projection;
-				const int read_count = (int)run_length;
-				id<MTLBuffer> const prefill_buffer = prefill_buffers[projection];
-				dispatch_group_async(read_group, read_queue, ^{
-					if (!_ccv_nnc_moe_read_prefill_expert_span(
-						state, read_projection, read_expert, read_count, read_slot, prefill_buffer))
-						atomic_store(&read_failed, 1);
-				});
-				read_task_count++;
-			}
+			tasks[task_count++] = (ccv_nnc_moe_load_task_t){ read_expert, read_slot, (int)run_length };
 			i += run_length;
 		}
 	} else if (!source_open_failed)
 		for (i = 0; i < plan->load_count; i++)
-			for (projection = 0; projection < 3; projection++)
-			{
-				const int read_projection = projection;
-				const int read_expert = load_experts[i];
-				const int read_slot = load_slots[i];
-				dispatch_group_async(read_group, read_queue, ^{
-					if (!_ccv_nnc_moe_read_expert(state, read_projection, read_expert, read_slot))
-						atomic_store(&read_failed, 1);
-				});
-				read_task_count++;
-			}
-	if (read_task_count > 0)
-		dispatch_group_wait(read_group, DISPATCH_TIME_FOREVER);
-	dispatch_release(read_group);
+			tasks[task_count++] = (ccv_nnc_moe_load_task_t){ load_experts[i], load_slots[i], 1 };
+	// One apply keeps resident copies and coalesced reads in the same batch.
+	// Its synchronous lifetime also keeps the stack task list and buffers alive.
+	id<MTLBuffer> const* const read_buffers = prefill_buffers;
+	__block _Atomic(int) read_failed = source_open_failed;
+	dispatch_apply((size_t)task_count * 3, dispatch_get_global_queue(QOS_CLASS_USER_INTERACTIVE, 0), ^(size_t index) {
+		const ccv_nnc_moe_load_task_t task = tasks[index / 3];
+		const int projection = (int)(index % 3);
+		int success;
+		if (index / 3 < (size_t)resident_copy_count)
+			success = _ccv_nnc_moe_copy_resident_to_prefill(
+				state, projection, task.source, task.slot, read_buffers[projection]);
+		else if (prefill)
+			success = _ccv_nnc_moe_read_prefill_expert_span(
+				state, projection, task.source, task.count, task.slot, read_buffers[projection]);
+		else
+			success = _ccv_nnc_moe_read_expert(state, projection, task.source, task.slot);
+		if (!success)
+			atomic_store(&read_failed, 1);
+	});
 	if (atomic_load(&read_failed))
 		fprintf(stderr, "MoE weights asynchronous load failed (generation=%llu)\n",
 			(unsigned long long)generation);
@@ -788,21 +800,38 @@ static int _ccv_nnc_moe_weights_streaming_forw(const ccv_nnc_cmd_t cmd, const cc
 		return CCV_NNC_EXEC_INVALID;
 	const size_t route_weight_count = ccv_nnc_tensor_count(inputs[2]->info);
 	const int prefill = route_weight_count != (size_t)cmd.info.moe_weights_streaming.routing_width;
+	const size_t tokens = route_weight_count / cmd.info.moe_weights_streaming.routing_width;
+	// Use token count, not routed rows. Above 25% resident coverage, retain
+	// selective loading until the larger prefill boundary (tuned on DS4).
+	const int full_prefill = tokens >= 4096 || (tokens >= 3072 &&
+		(size_t)state->resident_slot_count * 4 <= (size_t)state->expert_count);
 	if (prefill && !_ccv_nnc_moe_prepare_prefill_buffers(state))
 		return CCV_NNC_EXEC_INVALID;
 	if (state->generation >= UINT32_MAX)
 		return CCV_NNC_EXEC_INVALID;
 	const uint64_t generation = ++state->generation;
 	state->prefill = prefill;
-	if (!_ccv_nnc_moe_encode_gpu_plan(state, inputs, outputs, generation, stream_context))
+	if (full_prefill)
+	{
+		const int status = ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0,
+			TENSOR_LIST(inputs[0], inputs[1], inputs[2]), TENSOR_LIST(outputs[0], outputs[1], outputs[2]), stream_context);
+		if (status != CCV_NNC_EXEC_SUCCESS)
+			return status;
+		// Let preceding GPU work overlap the asynchronous weight load.
+		ccv_nnc_stream_context_commit(stream_context);
+	} else if (!_ccv_nnc_moe_encode_gpu_plan(state, inputs, outputs, generation, stream_context))
 		return CCV_NNC_EXEC_INVALID;
 	id<MTLBuffer> const prefill_gate_buffer = state->prefill_buffers[0];
 	id<MTLBuffer> const prefill_up_buffer = state->prefill_buffers[1];
 	id<MTLBuffer> const prefill_down_buffer = state->prefill_buffers[2];
 	dispatch_async(_ccv_nnc_moe_weight_queue(), ^{
 		@autoreleasepool {
-			_ccv_nnc_moe_load_gpu_plan(state, generation, state->expert_count, prefill,
-				prefill_gate_buffer, prefill_up_buffer, prefill_down_buffer);
+			if (full_prefill)
+				_ccv_nnc_moe_load_full_prefill(state, generation,
+					prefill_gate_buffer, prefill_up_buffer, prefill_down_buffer);
+			else
+				_ccv_nnc_moe_load_gpu_plan(state, generation, state->expert_count, prefill,
+					prefill_gate_buffer, prefill_up_buffer, prefill_down_buffer);
 		}
 	});
 	return CCV_NNC_EXEC_SUCCESS;
