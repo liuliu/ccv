@@ -46,6 +46,10 @@ struct NAAttentionKernel {
   bool isVarlen;
 
   bool loadC;
+  bool loadR = false;
+  bool hasRemainderR = true;
+  bool hasRemainderC = true;
+  bool loadStrides = false;
 
   bool attentionSinks;
 
@@ -70,6 +74,7 @@ private:
   /// AttentionKernel+Source
   std::string createSource() const noexcept;
   void createConstants(CodeWriter &source) const noexcept;
+  void createRuntimeConstants(CodeWriter &source) const noexcept;
   void createLoadCConstants(CodeWriter &source) const noexcept;
   void loopForward(CodeWriter &source) const noexcept;
   void loopForwardSplitKV(CodeWriter &source) const noexcept;

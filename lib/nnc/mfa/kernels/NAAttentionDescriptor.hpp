@@ -56,6 +56,8 @@ struct NAAttentionDescriptor {
 
   /// Whether to load C from a buffer instead of a function constant.
   bool loadC = false;
+  bool loadR = false;
+  bool loadStrides = false;
 
   bool operator==(const NAAttentionDescriptor& rhs) const;
 

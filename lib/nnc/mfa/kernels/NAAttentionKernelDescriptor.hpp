@@ -34,6 +34,10 @@ struct NAAttentionKernelDescriptor {
   bool isVarlen;
 
   bool loadC;
+  bool loadR = false;
+  bool hasRemainderR = true;
+  bool hasRemainderC = true;
+  bool loadStrides = false;
 
   bool attentionSinks;
 

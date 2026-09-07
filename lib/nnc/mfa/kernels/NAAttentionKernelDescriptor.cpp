@@ -17,6 +17,10 @@ bool NAAttentionKernelDescriptor::operator==(const NAAttentionKernelDescriptor& 
   masked == rhs.masked &&
   isVarlen == rhs.isVarlen &&
   loadC == rhs.loadC &&
+  loadR == rhs.loadR &&
+  hasRemainderR == rhs.hasRemainderR &&
+  hasRemainderC == rhs.hasRemainderC &&
+  loadStrides == rhs.loadStrides &&
   attentionSinks == rhs.attentionSinks &&
   slidingWindow == rhs.slidingWindow &&
   splitKV == rhs.splitKV &&
@@ -35,7 +39,8 @@ std::size_t std::hash<NAAttentionKernelDescriptor>::operator()(const NAAttention
       (uint16_t)(hash.masked ? 1 : 0),
       (uint16_t)(hash.isVarlen ? 1 : 0) }));
   combine_32(seed, hash.splitKV);
-  combine_32(seed, hash.loadC ? 1 : 0);
+  combine_32(seed, (hash.hasRemainderR ? 1 : 0) | (hash.hasRemainderC ? 2 : 0));
+  combine_32(seed, (hash.loadC ? 1 : 0) | (hash.loadR ? 2 : 0) | (hash.loadStrides ? 4 : 0));
   combine_32(seed, hash.attentionSinks ? 1 : 0);
   combine_32(seed, hash.slidingWindow);
   return seed;

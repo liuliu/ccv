@@ -38,6 +38,10 @@ NAAttentionKernel::NAAttentionKernel(NAAttentionKernelDescriptor descriptor, MTL
   masked = descriptor.masked;
   isVarlen = descriptor.isVarlen;
   loadC = descriptor.loadC;
+  loadR = descriptor.loadR;
+  hasRemainderR = descriptor.hasRemainderR;
+  hasRemainderC = descriptor.hasRemainderC;
+  loadStrides = descriptor.loadStrides;
   attentionSinks = descriptor.attentionSinks;
   slidingWindow = descriptor.slidingWindow;
   splitKV = descriptor.splitKV;
@@ -218,6 +222,8 @@ kernel void attention(
   const device uint* C_buf [[buffer(21)]],
 )";
   }
+  if (loadR || loadStrides)
+    source += "  constant uint* dimensions [[buffer(22)]],\n";
   source += R"(
   threadgroup uchar *threadgroup_block [[threadgroup(0)]],
   ushort lane_id [[thread_index_in_simdgroup]],
@@ -228,6 +234,7 @@ kernel void attention(
   if (loadC) {
     createLoadCConstants(source);
   }
+  createRuntimeConstants(source);
   source += R"(
   const uint split_group = tgid.x / Hq;
   const uint head = tgid.x - split_group * Hq;
@@ -279,14 +286,20 @@ using namespace mpp::tensor_ops;
 
   if (type.value == AttentionKernelType::forward && masked) {
     source.SetValue("MEMORY_NAME_Q", memoryName(AttentionOperand::Q));
+    source.SetValue("RUNTIME_ARGUMENT", (loadR || loadStrides) ? "    constant uint* dimensions [[buffer(22)]],\n" : "");
+    source.SetValue("C_ARGUMENT", loadC ? "    const device uint* C_buf [[buffer(21)]],\n" : "");
     source += R"(
 kernel void generate_attention_block_mask(
     device const {{MEMORY_NAME_Q}} *Mask_buf [[buffer(15)]],
     device uchar *Block_mask_buf [[buffer(16)]],
-    threadgroup uint *block_mask_scratch [[threadgroup(0)]],
+{{RUNTIME_ARGUMENT}}{{C_ARGUMENT}}    threadgroup uint *block_mask_scratch [[threadgroup(0)]],
     ushort tid [[thread_index_in_threadgroup]],
     uint3 tgid [[threadgroup_position_in_grid]]
 ) {
+)";
+    if (loadC) createLoadCConstants(source);
+    createRuntimeConstants(source);
+    source += R"(
   const uint q_start = tgid.x * {{BLOCK_DIMENSIONS_PARALLELIZATION}};
   const uint c_start = tgid.y * {{BLOCK_DIMENSIONS_TRAVERSAL}};
   const uint q_extent = min((uint){{BLOCK_DIMENSIONS_PARALLELIZATION}}, R - q_start);
@@ -374,6 +387,7 @@ kernel void generate_attention_block_mask(
     if (loadC) {
       createLoadCConstants(source);
     }
+    createRuntimeConstants(source);
   } else {
     source += R"(
       ushort tid [[thread_index_in_threadgroup]],
@@ -448,8 +462,9 @@ void NAAttentionKernel::createConstants(CodeWriter &source) const noexcept {
 // R = row dimension (output sequence)
 // C = column dimension (input sequence)
 // Hq = number of query heads.
-constant uint R [[function_constant(0)]];
 )";
+  if (!loadR)
+    source += "constant uint R [[function_constant(0)]];\n";
   if (!loadC) {
     source += R"(
 constant uint C [[function_constant(1)]];
@@ -513,9 +528,13 @@ constant uint C_edge = C >= {{BLOCK_DIMENSIONS_TRAVERSAL_2}} ? C + 1 - {{BLOCK_D
 )";
         }
       }
-      source += R"(
+      if (!loadR) {
+        source += R"(
 constant uint R_edge = R >= {{BLOCK_DIMENSIONS_PARALLELIZATION}} ? R + 1 - {{BLOCK_DIMENSIONS_PARALLELIZATION}} : 0;
 constant uint R_remainder = R % {{BLOCK_DIMENSIONS_PARALLELIZATION}};
+)";
+      }
+      source += R"(
 constant uint K_edge = {{HEAD_DIMENSION}} + 1 - {{BLOCK_DIMENSIONS_HEAD}};
 )";
     }
@@ -558,6 +577,7 @@ constant uint SplitKV_blocks_per_split = (SplitKV_c_blocks + SplitKV_splits - 1)
     }
   }
   for (const auto& operand : operands) {
+    if (loadStrides) continue;
     source.SetValue("OPERAND_NAME", operand.name());
     source.SetValue("OPERAND_BUFFER_INDEX", std::to_string(operand.bufferIndex() + 2));
     source += R"(
@@ -565,11 +585,17 @@ constant uint {{OPERAND_NAME}}_batch_stride [[function_constant({{OPERAND_BUFFER
 )";
   }
   if (type.value == AttentionKernelType::forward && masked) {
-    source += R"(
+    if (!loadStrides) {
+      source += R"(
 constant uint Mask_batch_stride [[function_constant(15)]];
 constant uint Block_mask_batch_stride [[function_constant(16)]];
+)";
+    }
+    if (!loadC) {
+      source += R"(
 constant uint K_block_tiles = (C + {{BLOCK_DIMENSIONS_TRAVERSAL}} - 1) / {{BLOCK_DIMENSIONS_TRAVERSAL}};
 )";
+    }
   }
   if (type.value == AttentionKernelType::forward) {
     source += R"(
@@ -627,12 +653,40 @@ inline uint ceil_log2_u32(uint x) {
   }
 }
 
+void NAAttentionKernel::createRuntimeConstants(CodeWriter &source) const noexcept {
+  if (loadR) {
+    source.SetValue("R_REMAINDER", hasRemainderR ? "R % " + std::to_string(blockDimensions[0]) + "u" : "make_uniform(0u)");
+    source += "  const uniform<uint> R = make_uniform(dimensions[0]);\n";
+    if (!isVarlen) {
+      source += R"(
+  const uniform<uint> R_edge = make_uniform(metal::max(uint(R), {{BLOCK_DIMENSIONS_PARALLELIZATION}}u - 1u) + 1u - {{BLOCK_DIMENSIONS_PARALLELIZATION}}u);
+  const uniform<uint> R_remainder = {{R_REMAINDER}};
+)";
+    }
+  }
+  if (loadStrides) {
+    for (const auto operand : { AttentionOperand::Q, AttentionOperand::K, AttentionOperand::V, AttentionOperand::O }) {
+      const AttentionOperand value(operand);
+      source += "  const uniform<uint> " + value.name() + "_batch_stride = make_uniform(dimensions[" + std::to_string(1 + value.bufferIndex()) + "]);\n";
+    }
+    if (masked) {
+      source += "  const uniform<uint> Mask_batch_stride = make_uniform(dimensions[5]);\n";
+      source += "  const uniform<uint> Block_mask_batch_stride = make_uniform(dimensions[6]);\n";
+    }
+  }
+}
+
 void NAAttentionKernel::createLoadCConstants(CodeWriter &source) const noexcept {
+  source.SetValue("HAS_C_REMAINDER", hasRemainderC ? "true" : "false");
+  source.SetValue("C_REMAINDER", hasRemainderC ? "C % " + std::to_string(blockDimensions[1]) + "u" : "make_uniform(0u)");
   source.SetValue("BLOCK_DIMENSIONS_TRAVERSAL", std::to_string(blockDimensions[1]));
   source.SetValue("BLOCK_DIMENSIONS_TRAVERSAL_2", std::to_string(blockDimensions[1] * 2));
   source += R"(
   const uniform<uint> C = make_uniform(C_buf[0]);
 )";
+  if (masked) {
+    source += "  const uniform<uint> K_block_tiles = (C + {{BLOCK_DIMENSIONS_TRAVERSAL}}u - 1u) / {{BLOCK_DIMENSIONS_TRAVERSAL}}u;\n";
+  }
   if (type.value != AttentionKernelType::forward || isVarlen) {
     return;
   }
@@ -646,7 +700,7 @@ void NAAttentionKernel::createLoadCConstants(CodeWriter &source) const noexcept 
 )";
   } else if (isCausal || masked) {
     source += R"(
-  const uniform<uint> C_single_remainder = C % {{BLOCK_DIMENSIONS_TRAVERSAL}}u;
+  const uniform<uint> C_single_remainder = {{C_REMAINDER}};
   uniform<uint> C_single_edge = 0u;
   if (C >= {{BLOCK_DIMENSIONS_TRAVERSAL}}u) {
     C_single_edge = C + 1u - {{BLOCK_DIMENSIONS_TRAVERSAL}}u;
@@ -654,8 +708,8 @@ void NAAttentionKernel::createLoadCConstants(CodeWriter &source) const noexcept 
 )";
   } else {
     source += R"(
-  uniform<uint> C_remainder = C % {{BLOCK_DIMENSIONS_TRAVERSAL}}u;
-  if ((C % {{BLOCK_DIMENSIONS_TRAVERSAL_2}}u) == {{BLOCK_DIMENSIONS_TRAVERSAL}}u) {
+  uniform<uint> C_remainder = {{C_REMAINDER}};
+  if ({{HAS_C_REMAINDER}} && (C % {{BLOCK_DIMENSIONS_TRAVERSAL_2}}u) == {{BLOCK_DIMENSIONS_TRAVERSAL}}u) {
     C_remainder = {{BLOCK_DIMENSIONS_TRAVERSAL}}u;
   }
 )";
@@ -720,6 +774,8 @@ std::string NAAttentionKernel::createBufferBindings() const noexcept {
   if (type.value == AttentionKernelType::forward && loadC) {
     output += "  const device uint* C_buf [[buffer(21)]],\n";
   }
+  if (loadR || loadStrides)
+    output += "  constant uint* dimensions [[buffer(22)]],\n";
   return output;
 }
 
@@ -1173,14 +1229,19 @@ std::string NAAttentionKernel::createSplitKVCombine() const noexcept {
   source.SetValue("MEMORY_NAME_O", memoryName(AttentionOperand::O));
   source.SetValue("MEMORY_NAME_L", memoryName(AttentionOperand::L));
   source.SetValue("HEAD_DIMENSION", std::to_string(headDimension));
+  source.SetValue("BLOCK_DIMENSIONS_PARALLELIZATION", std::to_string(blockDimensions[0]));
+  source.SetValue("RUNTIME_ARGUMENT", (loadR || loadStrides) ? "  constant uint* dimensions [[buffer(22)]],\n" : "");
   source += R"(
 kernel void attention_splitkv_combine(
   device {{MEMORY_NAME_O}}* O_buf [[buffer(3)]],
   device {{MEMORY_NAME_L}}* L_buf [[buffer(4)]],
   device const float* PartialO_buf [[buffer(5)]],
   device const float* PartialL_buf [[buffer(6)]],
-  uint gid [[thread_position_in_grid]]
+{{RUNTIME_ARGUMENT}}  uint gid [[thread_position_in_grid]]
 ) {
+)";
+  createRuntimeConstants(source);
+  source += R"(
   const uint total = Batch_dimension * Hq * R * {{HEAD_DIMENSION}};
   if (gid >= total) {
     return;

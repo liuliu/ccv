@@ -11,15 +11,20 @@ bool NAAttentionDescriptor::operator==(const NAAttentionDescriptor& rhs) const {
     lhsMatrixDimensions[1] = 0;
     rhsMatrixDimensions[1] = 0;
   }
-  bool loadCSourceMatch = true;
-  if (loadC && rhs.loadC) {
+  if (loadR && rhs.loadR) {
+    lhsMatrixDimensions[0] = rhsMatrixDimensions[0] = 0;
+  }
+  bool dynamicSourceMatch = true;
+  if ((loadR || loadC) && (rhs.loadR || rhs.loadC)) {
     const auto lhsBlockDimensions = blockDimensions();
     const auto rhsBlockDimensions = rhs.blockDimensions();
     const auto lhsExecutionSIMDGroups = executionSIMDGroups();
     const auto rhsExecutionSIMDGroups = rhs.executionSIMDGroups();
-    loadCSourceMatch =
+    dynamicSourceMatch =
       simd_all(lhsBlockDimensions == rhsBlockDimensions) &&
       lhsExecutionSIMDGroups == rhsExecutionSIMDGroups &&
+      (!loadR || isVarlen || ((matrixDimensions[0] % lhsBlockDimensions[0] != 0) == (rhs.matrixDimensions[0] % rhsBlockDimensions[0] != 0))) &&
+      (!loadC || isVarlen || ((matrixDimensions[1] % (lhsBlockDimensions[1] * ((isCausal || masked) ? 1 : 2)) != 0) == (rhs.matrixDimensions[1] % (rhsBlockDimensions[1] * ((rhs.isCausal || rhs.masked) ? 1 : 2)) != 0))) &&
       checkCEdge1(lhsBlockDimensions) == rhs.checkCEdge1(rhsBlockDimensions) &&
       splitKV(lhsBlockDimensions, lhsExecutionSIMDGroups) == rhs.splitKV(rhsBlockDimensions, rhsExecutionSIMDGroups);
   }
@@ -33,14 +38,16 @@ bool NAAttentionDescriptor::operator==(const NAAttentionDescriptor& rhs) const {
   isVarlen == rhs.isVarlen &&
   attentionSinks == rhs.attentionSinks &&
   slidingWindow == rhs.slidingWindow &&
-  maskBatchStride == rhs.maskBatchStride &&
+  (loadStrides || maskBatchStride == rhs.maskBatchStride) &&
   loadC == rhs.loadC &&
-  loadCSourceMatch &&
+  loadR == rhs.loadR &&
+  loadStrides == rhs.loadStrides &&
+  dynamicSourceMatch &&
   type == rhs.type &&
   (lowPrecisionInputs == rhs.lowPrecisionInputs) &&
   (isBF16 == rhs.isBF16) &&
   (lowPrecisionIntermediates == rhs.lowPrecisionIntermediates) &&
-  batchStrides == rhs.batchStrides &&
+  (loadStrides || batchStrides == rhs.batchStrides) &&
   simd_all(lhsMatrixDimensions == rhsMatrixDimensions);
 }
 
@@ -50,10 +57,10 @@ std::size_t std::hash<NAAttentionDescriptor>::operator()(const NAAttentionDescri
   combine_32(seed, hash.batchDimension);
   combine_32(seed, hash.Hq);
   combine_32(seed, hash.Hk);
-  combine_32(seed, hash.matrixDimensions[0]);
+  combine_32(seed, hash.loadR ? 0 : hash.matrixDimensions[0]);
   combine_32(seed, hash.loadC ? 0 : hash.matrixDimensions[1]);
   combine_32(seed, hash.matrixDimensions[2]);
-  if (hash.loadC) {
+  if (hash.loadR || hash.loadC) {
     const auto blockDimensions = hash.blockDimensions();
     const uint16_t executionSIMDGroups = hash.executionSIMDGroups();
     combine_64(seed, pack_64(simd_make_ushort4(blockDimensions, 0)));
@@ -61,6 +68,8 @@ std::size_t std::hash<NAAttentionDescriptor>::operator()(const NAAttentionDescri
         executionSIMDGroups,
         hash.splitKV(blockDimensions, executionSIMDGroups) }));
     combine_32(seed, hash.checkCEdge1(blockDimensions) ? 1 : 0);
+    if (hash.loadR && !hash.isVarlen) combine_32(seed, hash.matrixDimensions[0] % blockDimensions[0] != 0);
+    if (hash.loadC && !hash.isVarlen) combine_32(seed, hash.matrixDimensions[1] % (blockDimensions[1] * ((hash.isCausal || hash.masked) ? 1 : 2)) != 0);
   }
   combine_32(seed, pack_32(simd::uchar4 { hash.lowPrecisionInputs, hash.isBF16, hash.lowPrecisionIntermediates, hash.isCausal }));
   combine_32(seed, pack_32(simd::ushort2 {
@@ -68,9 +77,9 @@ std::size_t std::hash<NAAttentionDescriptor>::operator()(const NAAttentionDescri
       (uint16_t)(hash.isVarlen ? 1 : 0) }));
   combine_32(seed, hash.attentionSinks ? 1 : 0);
   combine_32(seed, hash.slidingWindow);
-  combine_32(seed, hash.maskBatchStride);
+  combine_32(seed, hash.loadStrides ? 0 : hash.maskBatchStride);
   combine_32(seed, pack_32(simd::ushort2 { hash.type.value, 0 } ));
-  combine_32(seed, hash.loadC ? 1 : 0);
+  combine_32(seed, (hash.loadC ? 1 : 0) | (hash.loadR ? 2 : 0) | (hash.loadStrides ? 4 : 0));
   return seed;
 }
 
@@ -140,7 +149,12 @@ NAAttentionKernelDescriptor NAAttentionDescriptor::kernelDescriptor(MTL::Device 
   auto blockDimensions = this->blockDimensions();
   const uint16_t executionSIMDGroups = this->executionSIMDGroups();
   const bool checkCEdge1 = this->checkCEdge1(blockDimensions);
-  return NAAttentionKernelDescriptor(blockDimensions, matrixDimensions[2], Hq, Hk, executionSIMDGroups, checkCEdge1, createMemoryPrecisions(), type, scale, createBypassThreadgroupMemory(), isCausal, masked, isVarlen, splitKV(blockDimensions, executionSIMDGroups), loadC, attentionSinks, slidingWindow);
+  auto descriptor = NAAttentionKernelDescriptor(blockDimensions, matrixDimensions[2], Hq, Hk, executionSIMDGroups, checkCEdge1, createMemoryPrecisions(), type, scale, createBypassThreadgroupMemory(), isCausal, masked, isVarlen, splitKV(blockDimensions, executionSIMDGroups), loadC, attentionSinks, slidingWindow);
+  descriptor.loadR = loadR;
+  descriptor.hasRemainderR = !loadR || isVarlen || matrixDimensions[0] % blockDimensions[0] != 0;
+  descriptor.hasRemainderC = !loadC || isVarlen || matrixDimensions[1] % (blockDimensions[1] * ((isCausal || masked) ? 1 : 2)) != 0;
+  descriptor.loadStrides = loadStrides;
+  return descriptor;
 }
 
 uint16_t NAAttentionDescriptor::splitKV(simd::ushort3 blockDimensions, uint16_t executionSIMDGroups) const noexcept {
@@ -173,7 +187,8 @@ std::pair<NAAttentionKernelDescriptor, PipelineValue<NAAttentionKernel> *> NAAtt
     (MTL::FunctionConstantValues::alloc()->init());
     uint32_t rowDimension = matrixDimensions[0];
     uint32_t columnDimension = matrixDimensions[1];
-    constants->setConstantValue(&rowDimension, MTL::DataTypeUInt, NS::Integer(0));
+    if (!loadR)
+      constants->setConstantValue(&rowDimension, MTL::DataTypeUInt, NS::Integer(0));
     if (!loadC) {
       constants->setConstantValue(&columnDimension, MTL::DataTypeUInt, 1);
     }
@@ -191,9 +206,10 @@ std::pair<NAAttentionKernelDescriptor, PipelineValue<NAAttentionKernel> *> NAAtt
     }
     for (const auto& operand : operands) {
       uint32_t batchStride = batchStrides[operand].value_or(0);
-      constants->setConstantValue(&batchStride, MTL::DataTypeUInt, 2 + operand.bufferIndex());
+      if (!loadStrides)
+        constants->setConstantValue(&batchStride, MTL::DataTypeUInt, 2 + operand.bufferIndex());
     }
-    if (type.value == AttentionKernelType::forward && masked) {
+    if (type.value == AttentionKernelType::forward && masked && !loadStrides) {
       const uint32_t qTiles = (matrixDimensions[0] + kernelDesc.blockDimensions[0] - 1) / kernelDesc.blockDimensions[0];
       const uint32_t kTiles = (matrixDimensions[1] + kernelDesc.blockDimensions[1] - 1) / kernelDesc.blockDimensions[1];
       const uint32_t maskBatchStride = masked ? this->maskBatchStride : 0;

@@ -422,11 +422,13 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
       attentionDesc.isVarlen = hash.is_varlen;
       attentionDesc.attentionSinks = hash.attention_sinks;
       attentionDesc.slidingWindow = hash.sliding_window;
-      attentionDesc.loadC = !hash.masked && !hash.is_varlen && hash.R <= 4;
+      attentionDesc.loadR = (ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M);
+      attentionDesc.loadC = (!hash.masked && !hash.is_varlen && hash.R <= 4) || (ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_ATTENTION_SPECIALIZING_C);
+      attentionDesc.loadStrides = (batch_sizes[0] > 1 || batch_sizes[1] > 1) && (ccv_nnc_flags() & (CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M | CCV_NNC_DISABLE_MFA_ATTENTION_SPECIALIZING_C));
       if (hash.masked && batch_sizes[1] > 1) {
         attentionDesc.maskBatchStride = hash.R * hash.C;
       }
-      if (params.batched) {
+      if (params.batched && batch_sizes[0] > 1) {
         attentionDesc.batchStrides[AttentionOperand::Q] = hash.R * hash.D * hash.Hq;
         attentionDesc.batchStrides[AttentionOperand::K] = hash.C * hash.D * hash.Hk;
         attentionDesc.batchStrides[AttentionOperand::V] = hash.C * hash.D * hash.Hk;
@@ -453,6 +455,11 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
       };
       const uint32_t qTiles = (hash.R + kernel->blockDimensions[0] - 1) / kernel->blockDimensions[0];
       const uint32_t kTiles = (hash.C + kernel->blockDimensions[1] - 1) / kernel->blockDimensions[1];
+      const auto& batchStrides = attentionDesc.batchStrides;
+      const uint32_t dimensions[] = { hash.R,
+        batchStrides[AttentionOperand::Q].value_or(0), batchStrides[AttentionOperand::K].value_or(0),
+        batchStrides[AttentionOperand::V].value_or(0), batchStrides[AttentionOperand::O].value_or(0),
+        attentionDesc.maskBatchStride, attentionDesc.maskBatchStride > 0 ? qTiles * kTiles : 0 };
       const bool useSplitKV = kernel->splitKV > 1;
       size_t scratchSize = 0;
       const size_t blockMaskBytes =
@@ -470,6 +477,10 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
       if (hash.masked) {
         auto encoder = command_batch->startCommand();
         encoder->setComputePipelineState(blockMaskPipeline.get());
+        if (attentionDesc.loadC)
+          encoder->setBytes(&hash.C, sizeof(hash.C), 21);
+        if (attentionDesc.loadR || attentionDesc.loadStrides)
+          encoder->setBytes(dimensions, sizeof(dimensions), 22);
         encoder->setThreadgroupMemoryLength(NAAttentionKernel::blockMaskThreads * sizeof(uint32_t) * 2, 0);
         encoder->useResource(tensors[4], MTL::ResourceUsageRead);
         encoder->useResource(scratch, MTL::ResourceUsageRead | MTL::ResourceUsageWrite);
@@ -483,6 +494,8 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
       if (useSplitKV) {
         auto encoder = command_batch->startCommand();
         encoder->setComputePipelineState(pipeline.get());
+        if (attentionDesc.loadR || attentionDesc.loadStrides)
+          encoder->setBytes(dimensions, sizeof(dimensions), 22);
         encoder->setThreadgroupMemoryLength(kernel->threadgroupMemoryAllocation(pipeline.get(), attentionDesc), 0);
         encoder->useResource(tensors[0], MTL::ResourceUsageRead);
         encoder->useResource(tensors[1], MTL::ResourceUsageRead);
@@ -510,6 +523,8 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
 
         auto combineEncoder = command_batch->startCommand();
         combineEncoder->setComputePipelineState(blockMaskPipeline.get());
+        if (attentionDesc.loadR || attentionDesc.loadStrides)
+          combineEncoder->setBytes(dimensions, sizeof(dimensions), 22);
         combineEncoder->useResource(scratch, MTL::ResourceUsageRead);
         combineEncoder->useResource(tensors[3], MTL::ResourceUsageWrite);
         if (tensors[5]) {
@@ -536,6 +551,8 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
       }
       auto encoder = command_batch->startCommand();
       encoder->setComputePipelineState(pipeline.get());
+      if (attentionDesc.loadR || attentionDesc.loadStrides)
+        encoder->setBytes(dimensions, sizeof(dimensions), 22);
       encoder->setThreadgroupMemoryLength(kernel->threadgroupMemoryAllocation(pipeline.get(), attentionDesc), 0);
 
       // Bind the function arguments.
