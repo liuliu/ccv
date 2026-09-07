@@ -19,6 +19,8 @@ SparseIndexedAttentionKernel::SparseIndexedAttentionKernel(SparseIndexedAttentio
   memoryPrecision = descriptor.memoryPrecision;
   attentionSinks = descriptor.attentionSinks;
   loadRows = descriptor.loadRows;
+  loadM = descriptor.loadM;
+  loadK = descriptor.loadK;
   source = createSource();
   auto string = NS::String::string(source.c_str(), NS::UTF8StringEncoding);
   NS::Error* error = nil;
@@ -28,6 +30,8 @@ SparseIndexedAttentionKernel::SparseIndexedAttentionKernel(SparseIndexedAttentio
 
 std::string SparseIndexedAttentionKernel::createSource() const noexcept {
   CodeWriter source;
+  source.SetValue("T_FUNCTION_CONSTANT", loadM ? "" : "constant uint T [[function_constant(0)]];\n");
+  source.SetValue("K_FUNCTION_CONSTANT", loadK ? "" : "constant uint K [[function_constant(5)]];\n");
   source.SetValue("REAL", memoryPrecision.name());
   source.SetValue("THREADS", std::to_string(threadsPerThreadgroup));
   source.SetValue("SIMD_GROUPS", std::to_string(simdGroupsPerThreadgroup));
@@ -41,7 +45,7 @@ using namespace metal;
 
 typedef {{REAL}} real;
 
-constant uint T [[function_constant(0)]];\)";
+{{T_FUNCTION_CONSTANT}}\)";
   if (!loadRows) {
     source += R"(
 constant uint dense_rows [[function_constant(1)]];
@@ -50,8 +54,7 @@ constant uint sparse_rows [[function_constant(2)]];\)";
   source += R"(
 constant uint H [[function_constant(3)]];
 constant uint D [[function_constant(4)]];
-constant uint K [[function_constant(5)]];
-constant bool is_causal [[function_constant(6)]];
+{{K_FUNCTION_CONSTANT}}constant bool is_causal [[function_constant(6)]];
 constant uint sink_head_stride [[function_constant(7)]];
 constant float scale [[function_constant(8)]];
 constant uint sliding_window [[function_constant(9)]];
@@ -72,9 +75,9 @@ kernel void sparse_indexed_attention(
   }
   source += R"(
   device real* out [[buffer(5)]],\)";
-  if (loadRows) {
+  if (loadRows || loadM || loadK) {
     source += R"(
-  constant uint2& runtime_rows [[buffer(6)]],\)";
+  constant uint4& runtime_rows [[buffer(6)]],\)";
   }
   source += R"(
   threadgroup uchar* scratch [[threadgroup(0)]],
@@ -83,6 +86,10 @@ kernel void sparse_indexed_attention(
   ushort sg [[simdgroup_index_in_threadgroup]],
   uint2 tgid [[threadgroup_position_in_grid]]
 ) {\)";
+  if (loadM)
+    source += "  const uniform<uint> T = make_uniform(runtime_rows.z);\n";
+  if (loadK)
+    source += "  const uniform<uint> K = make_uniform(runtime_rows.w);\n";
   if (loadRows) {
     source += R"(
   const uniform<uint> dense_rows = make_uniform(runtime_rows.x);

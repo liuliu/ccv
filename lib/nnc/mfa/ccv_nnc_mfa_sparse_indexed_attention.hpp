@@ -17,6 +17,8 @@ typedef struct {
   uint32_t variant;
   float scale;
   uint64_t data_type;
+  uint8_t loadM;
+  uint8_t loadC;
 } ccv_nnc_mfa_sparse_indexed_attention_params_t;
 
 #ifdef __cplusplus

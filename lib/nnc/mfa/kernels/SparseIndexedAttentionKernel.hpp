@@ -16,6 +16,8 @@ struct SparseIndexedAttentionKernel {
   GEMMOperandPrecision memoryPrecision;
   bool attentionSinks;
   bool loadRows;
+  bool loadM = false;
+  bool loadK = false;
   std::string source;
   NS::SharedPtr<MTL::Library> library;
 

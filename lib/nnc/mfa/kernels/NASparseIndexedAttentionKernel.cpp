@@ -56,6 +56,8 @@ NASparseIndexedAttentionKernel::NASparseIndexedAttentionKernel(NASparseIndexedAt
   attentionSinks = descriptor.attentionSinks;
   denseOnly = descriptor.denseOnly;
   loadRows = descriptor.loadRows;
+  loadM = descriptor.loadM;
+  loadK = descriptor.loadK;
   variant = descriptor.variant;
   source = createSource();
   auto string = NS::String::string(source.c_str(), NS::UTF8StringEncoding);
@@ -159,6 +161,8 @@ std::string NASparseIndexedAttentionKernel::createSource() const noexcept {
 
 std::string NASparseIndexedAttentionKernel::createDenseOnlySource() const noexcept {
   CodeWriter source;
+  source.SetValue("T_FUNCTION_CONSTANT", loadM ? "" : "constant uint T [[function_constant(0)]];\n");
+  source.SetValue("K_FUNCTION_CONSTANT", loadK ? "" : "constant uint K [[function_constant(4)]];\n");
   source.SetValue("REAL", memoryPrecision.name());
   source.SetValue("HEAD_DIMENSION", std::to_string(headDimension));
   source.SetValue("HEAD_GROUP", std::to_string(headGroup));
@@ -177,7 +181,7 @@ using namespace mpp::tensor_ops;
 
 typedef {{REAL}} real;
 
-constant uint T [[function_constant(0)]];\)";
+{{T_FUNCTION_CONSTANT}}\)";
   if (!loadRows) {
     source += R"(
 constant uint dense_rows [[function_constant(1)]];\)";
@@ -203,15 +207,19 @@ kernel void sparse_indexed_attention(
   }
   source += R"(
   device real* out [[buffer(5)]],\)";
-  if (loadRows) {
+  if (loadRows || loadM || loadK) {
     source += R"(
-  constant uint2& runtime_rows [[buffer(6)]],\)";
+  constant uint4& runtime_rows [[buffer(6)]],\)";
   }
   source += R"(
   threadgroup uchar* threadgroup_block [[threadgroup(0)]],
   ushort sgid [[simdgroup_index_in_threadgroup]],
   uint2 tgid [[threadgroup_position_in_grid]]
 ) {\)";
+  if (loadM)
+    source += "  const uniform<uint> T = make_uniform(runtime_rows.z);\n";
+  if (loadK && !denseOnly)
+    source += "  const uniform<uint> K = make_uniform(runtime_rows.w);\n";
   if (loadRows) {
     source += R"(
   const uniform<uint> dense_rows = make_uniform(runtime_rows.x);\)";
@@ -503,6 +511,8 @@ kernel void sparse_indexed_attention(
 
 std::string NASparseIndexedAttentionKernel::createThreadgroupSource() const noexcept {
   CodeWriter source;
+  source.SetValue("T_FUNCTION_CONSTANT", loadM ? "" : "constant uint T [[function_constant(0)]];\n");
+  source.SetValue("K_FUNCTION_CONSTANT", loadK ? "" : "constant uint K [[function_constant(4)]];\n");
   source.SetValue("REAL", memoryPrecision.name());
   source.SetValue("HEAD_DIMENSION", std::to_string(headDimension));
   source.SetValue("SPARSE_EXECUTION_SIMD_GROUPS", std::to_string(sparseExecutionSIMDGroups()));
@@ -522,7 +532,7 @@ using namespace mpp::tensor_ops;
 
 typedef {{REAL}} real;
 
-constant uint T [[function_constant(0)]];\)";
+{{T_FUNCTION_CONSTANT}}\)";
   if (!loadRows) {
     source += R"(
 constant uint dense_rows [[function_constant(1)]];
@@ -530,8 +540,7 @@ constant uint sparse_rows [[function_constant(2)]];\)";
   }
   source += R"(
 constant uint H [[function_constant(3)]];
-constant uint K [[function_constant(4)]];
-constant bool is_causal [[function_constant(5)]];
+{{K_FUNCTION_CONSTANT}}constant bool is_causal [[function_constant(5)]];
 constant uint sink_head_stride [[function_constant(6)]];
 constant float scale [[function_constant(7)]];
 constant uint sliding_window [[function_constant(8)]];
@@ -552,9 +561,9 @@ kernel void sparse_indexed_attention(
   }
   source += R"(
   device real* out [[buffer(5)]],\)";
-  if (loadRows) {
+  if (loadRows || loadM || loadK) {
     source += R"(
-  constant uint2& runtime_rows [[buffer(6)]],\)";
+  constant uint4& runtime_rows [[buffer(6)]],\)";
   }
   source += R"(
   threadgroup uchar* threadgroup_block [[threadgroup(0)]],
@@ -562,6 +571,10 @@ kernel void sparse_indexed_attention(
   ushort tid [[thread_index_in_threadgroup]],
   uint2 tgid [[threadgroup_position_in_grid]]
 ) {\)";
+  if (loadM)
+    source += "  const uniform<uint> T = make_uniform(runtime_rows.z);\n";
+  if (loadK && !denseOnly)
+    source += "  const uniform<uint> K = make_uniform(runtime_rows.w);\n";
   if (loadRows) {
     source += R"(
   const uniform<uint> dense_rows = make_uniform(runtime_rows.x);
@@ -811,6 +824,8 @@ void NASparseIndexedAttentionKernel::createThreadgroupD128AttendBlock(CodeWriter
 
 std::string NASparseIndexedAttentionKernel::createThreadgroupD128Source() const noexcept {
   CodeWriter source;
+  source.SetValue("T_FUNCTION_CONSTANT", loadM ? "" : "constant uint T [[function_constant(0)]];\n");
+  source.SetValue("K_FUNCTION_CONSTANT", loadK ? "" : "constant uint K [[function_constant(4)]];\n");
   source.SetValue("REAL", memoryPrecision.name());
   source.SetValue("HEAD_DIMENSION_D128", std::to_string(threadgroupHeadDimensionD128));
   source.SetValue("THREADGROUP_ROW_BLOCK_D128", std::to_string(threadgroupRowBlockD128));
@@ -827,7 +842,7 @@ using namespace mpp::tensor_ops;
 
 typedef {{REAL}} real;
 
-constant uint T [[function_constant(0)]];\)";
+{{T_FUNCTION_CONSTANT}}\)";
   if (!loadRows) {
     source += R"(
 constant uint dense_rows [[function_constant(1)]];
@@ -835,8 +850,7 @@ constant uint sparse_rows [[function_constant(2)]];\)";
   }
   source += R"(
 constant uint H [[function_constant(3)]];
-constant uint K [[function_constant(4)]];
-constant bool is_causal [[function_constant(5)]];
+{{K_FUNCTION_CONSTANT}}constant bool is_causal [[function_constant(5)]];
 constant uint sink_head_stride [[function_constant(6)]];
 constant float scale [[function_constant(7)]];
 constant uint sliding_window [[function_constant(8)]];
@@ -856,9 +870,9 @@ kernel void sparse_indexed_attention(
   }
   source += R"(
   device real* out [[buffer(5)]],\)";
-  if (loadRows) {
+  if (loadRows || loadM || loadK) {
     source += R"(
-  constant uint2& runtime_rows [[buffer(6)]],\)";
+  constant uint4& runtime_rows [[buffer(6)]],\)";
   }
   source += R"(
   threadgroup uchar* threadgroup_block [[threadgroup(0)]],
@@ -866,6 +880,10 @@ kernel void sparse_indexed_attention(
   ushort tid [[thread_index_in_threadgroup]],
   uint2 tgid [[threadgroup_position_in_grid]]
 ) {\)";
+  if (loadM)
+    source += "  const uniform<uint> T = make_uniform(runtime_rows.z);\n";
+  if (loadK && !denseOnly)
+    source += "  const uniform<uint> K = make_uniform(runtime_rows.w);\n";
   if (loadRows) {
     source += R"(
   const uniform<uint> dense_rows = make_uniform(runtime_rows.x);

@@ -15,6 +15,8 @@ struct NASparseIndexedAttentionKernelDescriptor {
   bool attentionSinks = false;
   bool denseOnly = false;
   bool loadRows = false;
+  bool loadM = false;
+  bool loadK = false;
   NASparseIndexedAttentionVariant variant = NASparseIndexedAttentionVariant::Threadgroup16;
 
   bool operator==(const NASparseIndexedAttentionKernelDescriptor& rhs) const;

@@ -22,6 +22,8 @@ struct NASparseIndexedAttentionKernel {
   bool attentionSinks;
   bool denseOnly;
   bool loadRows;
+  bool loadM = false;
+  bool loadK = false;
   NASparseIndexedAttentionVariant variant;
   std::string source;
   NS::SharedPtr<MTL::Library> library;

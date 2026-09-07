@@ -9,13 +9,15 @@ bool NASparseIndexedAttentionDescriptor::operator==(const NASparseIndexedAttenti
   return
   memoryPrecision == rhs.memoryPrecision &&
   attentionSinks == rhs.attentionSinks &&
-  T == rhs.T &&
+  (loadM || T == rhs.T) &&
   (loadRows ||
     (denseRows == rhs.denseRows &&
      sparseRows == rhs.sparseRows)) &&
+  loadM == rhs.loadM &&
+  loadK == rhs.loadK &&
   loadRows == rhs.loadRows &&
   H == rhs.H &&
-  K == rhs.K &&
+  (loadK ? (K == 0) == (rhs.K == 0) : K == rhs.K) &&
   isCausal == rhs.isCausal &&
   slidingWindow == rhs.slidingWindow &&
   sinkHeadStride == rhs.sinkHeadStride &&
@@ -26,9 +28,10 @@ bool NASparseIndexedAttentionDescriptor::operator==(const NASparseIndexedAttenti
 std::size_t std::hash<NASparseIndexedAttentionDescriptor>::operator()(const NASparseIndexedAttentionDescriptor& hash) const noexcept {
   using namespace ccv::nnc::mfa::hash;
   std::size_t seed = 0;
-  combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.memoryPrecision.value, hash.T }));
+  combine_32(seed, (hash.loadM ? 1 : 0) | (hash.loadK ? 2 : 0));
+  combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.memoryPrecision.value, hash.loadM ? 0 : hash.T }));
   combine_64(seed, pack_64(simd::uint2 { hash.loadRows ? 0 : hash.denseRows, hash.loadRows ? 0 : hash.sparseRows }));
-  combine_64(seed, pack_64(simd::uint2 { hash.H, hash.K }));
+  combine_64(seed, pack_64(simd::uint2 { hash.H, hash.loadK ? (hash.K == 0 ? 1u : 0u) : hash.K }));
   combine_64(seed, pack_64(simd::uint2 { hash.sinkHeadStride, hash.isCausal ? 1u : 0u }));
   combine_32(seed, hash.slidingWindow);
   combine_32(seed, pack_32(simd::ushort2 { (unsigned short)((hash.attentionSinks ? 1 : 0) | (hash.loadRows ? 2 : 0)), (unsigned short)hash.variant }));
@@ -54,18 +57,22 @@ std::pair<NASparseIndexedAttentionKernelDescriptor, PipelineValue<NASparseIndexe
   kernelDesc.attentionSinks = attentionSinks;
   kernelDesc.denseOnly = K == 0;
   kernelDesc.loadRows = loadRows;
+  kernelDesc.loadM = loadM;
+  kernelDesc.loadK = loadK;
   kernelDesc.variant = variant;
 
   auto createPipeline =
   [=](MTL::Library* library) -> MTL::ComputePipelineState* {
     auto constants = NS::TransferPtr(MTL::FunctionConstantValues::alloc()->init());
-    constants->setConstantValue(&T, MTL::DataTypeUInt, NS::UInteger(0));
+    if (!loadM)
+      constants->setConstantValue(&T, MTL::DataTypeUInt, NS::UInteger(0));
     if (!loadRows) {
       constants->setConstantValue(&denseRows, MTL::DataTypeUInt, NS::UInteger(1));
       constants->setConstantValue(&sparseRows, MTL::DataTypeUInt, NS::UInteger(2));
     }
     constants->setConstantValue(&H, MTL::DataTypeUInt, NS::UInteger(3));
-    constants->setConstantValue(&K, MTL::DataTypeUInt, NS::UInteger(4));
+    if (!loadK)
+      constants->setConstantValue(&K, MTL::DataTypeUInt, NS::UInteger(4));
     constants->setConstantValue(&isCausal, MTL::DataTypeBool, NS::UInteger(5));
     constants->setConstantValue(&sinkHeadStride, MTL::DataTypeUInt, NS::UInteger(6));
     constants->setConstantValue(&scale, MTL::DataTypeFloat, NS::UInteger(7));

@@ -152,6 +152,8 @@ static int _ccv_nnc_sparse_indexed_attention_forw(const ccv_nnc_cmd_t cmd, const
 			.sliding_window = (uint32_t)sliding_window,
 			.sink_head_stride = sink_head_stride,
 			.variant = variant,
+			.loadM = (ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M) != 0,
+			.loadC = (ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_ATTENTION_SPECIALIZING_C) != 0,
 		};
 		ccv_nnc_mfa_prepare_sparse_indexed_attention(context, params);
 		mtl_command_batch_t* command_batch = ccv_nnc_stream_context_start_command_batch(stream_context);

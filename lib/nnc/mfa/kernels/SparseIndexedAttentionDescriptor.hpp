@@ -25,6 +25,8 @@ struct SparseIndexedAttentionDescriptor {
   uint32_t sinkHeadStride = 0;
   float scale = 1;
   bool loadRows = false;
+  bool loadM = false;
+  bool loadK = false;
 
   bool operator==(const SparseIndexedAttentionDescriptor& rhs) const;
 

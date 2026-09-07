@@ -56,6 +56,8 @@ void ccv_nnc_mfa_encode_sparse_indexed_attention(ccv_nnc_mfa_context_t* context,
     descriptor.memoryPrecision = memoryPrecision;
     descriptor.attentionSinks = params.attention_sinks != 0;
     descriptor.T = params.T;
+    descriptor.loadM = params.loadM;
+    descriptor.loadK = params.loadC;
     descriptor.denseRows = params.dense_rows;
     descriptor.sparseRows = params.sparse_rows;
     descriptor.H = params.H;
@@ -89,8 +91,8 @@ void ccv_nnc_mfa_encode_sparse_indexed_attention(ccv_nnc_mfa_context_t* context,
       encoder->setBuffer(tensors[6], tensor_offsets[6], 4);
     }
     encoder->setBuffer(tensors[7], tensor_offsets[7], 5);
-    if (descriptor.loadRows) {
-      const uint32_t runtimeRows[2] = { params.dense_rows, params.sparse_rows };
+    if (descriptor.loadRows || descriptor.loadM || descriptor.loadK) {
+      const uint32_t runtimeRows[4] = { params.dense_rows, params.sparse_rows, params.T, params.K };
       encoder->setBytes(runtimeRows, sizeof(runtimeRows), 6);
     }
     encoder->dispatchThreadgroups(kernel->threadgroupsPerGrid(params.T, params.H), kernel->threadgroupSize());
@@ -118,8 +120,8 @@ void ccv_nnc_mfa_encode_sparse_indexed_attention(ccv_nnc_mfa_context_t* context,
       encoder->setBuffer(tensors[6], tensor_offsets[6], 4);
     }
     encoder->setBuffer(tensors[7], tensor_offsets[7], 5);
-    if (descriptor.loadRows) {
-      const uint32_t runtimeRows[2] = { params.dense_rows, params.sparse_rows };
+    if (descriptor.loadRows || descriptor.loadM || descriptor.loadK) {
+      const uint32_t runtimeRows[4] = { params.dense_rows, params.sparse_rows, params.T, params.K };
       encoder->setBytes(runtimeRows, sizeof(runtimeRows), 6);
     }
     encoder->dispatchThreadgroups(kernel->threadgroupsPerGrid(params.T, params.H), kernel->threadgroupSize());
