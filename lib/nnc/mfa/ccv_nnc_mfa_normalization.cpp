@@ -123,8 +123,10 @@ void ccv_nnc_mfa_encode_normalization(ccv_nnc_mfa_context_t* context, ccv_nnc_mf
   auto pipeline = pipelineValue->pipeline;
 
   encoder->setComputePipelineState(pipeline.get());
-  if (params.loadM)
-    encoder->setBytes(&params.sequence_count, sizeof(params.sequence_count), 11);
+  if (params.loadM) {
+    const uint32_t dimensions[] = { params.sequence_count, params.src_batch_stride, params.dst_batch_stride };
+    encoder->setBytes(dimensions, sizeof(dimensions), 11);
+  }
   encoder->useResource(tensors[0], MTL::ResourceUsageRead);
   encoder->useResource(tensors[1], MTL::ResourceUsageWrite);
   if (num_tensors == 6) { // This is for layer norm.

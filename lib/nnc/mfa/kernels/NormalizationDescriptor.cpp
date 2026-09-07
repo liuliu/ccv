@@ -16,8 +16,8 @@ static bool _normalization_descriptor_equals(const uint64_t data_type, const uin
     scale_translation_batched == rhs_scale_translation_batched &&
     normalization_type == rhs_normalization_type &&
     reuse_saved_statistics == rhs_reuse_saved_statistics &&
-    src_batch_stride == rhs_src_batch_stride &&
-    dst_batch_stride == rhs_dst_batch_stride;
+    (load_m || src_batch_stride == rhs_src_batch_stride) &&
+    (load_m || dst_batch_stride == rhs_dst_batch_stride);
 }
 
 bool NormalizationKernelDescriptor::operator==(const NormalizationKernelDescriptor& rhs) const {
@@ -37,7 +37,8 @@ static std::size_t _normalization_descriptor_hash(const uint64_t data_type, cons
   combine_32(seed, *reinterpret_cast<const uint32_t*>(&scale));
   combine_32(seed, pack_32(simd::uchar4 { elementwise_affine, scale_translation_batched, normalization_type, reuse_saved_statistics }));
   combine_32(seed, load_m ? 1 : 0);
-  combine_64(seed, pack_64(simd::uint2 { src_batch_stride, dst_batch_stride }));
+  if (!load_m)
+    combine_64(seed, pack_64(simd::uint2 { src_batch_stride, dst_batch_stride }));
   return seed;
 }
 

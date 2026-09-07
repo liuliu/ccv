@@ -361,13 +361,15 @@ kernel void normalization(
   defines += std::to_string(channelCount) + ";";
   defines += "\n";
 
-  defines += "constant uint src_batch_stride = ";
-  defines += std::to_string(srcBatchStride) + ";";
-  defines += "\n";
+  if (!loadM) {
+    defines += "constant uint src_batch_stride = ";
+    defines += std::to_string(srcBatchStride) + ";";
+    defines += "\n";
 
-  defines += "constant uint dst_batch_stride = ";
-  defines += std::to_string(dstBatchStride) + ";";
-  defines += "\n";
+    defines += "constant uint dst_batch_stride = ";
+    defines += std::to_string(dstBatchStride) + ";";
+    defines += "\n";
+  }
 
   defines += "constant ushort threadgroup_size = ";
   defines += std::to_string(groupSize.width) + ";";
@@ -405,7 +407,10 @@ kernel void normalization(
     shader.insert(argumentPosition, "  const device uint *loadM [[buffer(11)]],\n");
     const std::string::size_type sequenceCountPosition = shader.find("  uint threadgroup_index = tgid.z * sequence_count + tgid.x;");
     CCV_NNC_MFA_PRECONDITION(sequenceCountPosition != std::string::npos);
-    shader.insert(sequenceCountPosition, "  const uniform<uint> sequence_count = make_uniform(loadM[0]);\n");
+    shader.insert(sequenceCountPosition,
+      "  const uniform<uint> sequence_count = make_uniform(loadM[0]);\n"
+      "  const uniform<uint> src_batch_stride = make_uniform(loadM[1]);\n"
+      "  const uniform<uint> dst_batch_stride = make_uniform(loadM[2]);\n");
   }
   return shader;
 }
