@@ -140,12 +140,12 @@ AttentionKernelDescriptor AttentionDescriptor::kernelDescriptor(MTL::Device *con
 
   const uint32_t slidingWindowKernelVariant = slidingWindow > 0;
   if (device && device->supportsFamily(MTL::GPUFamily(1009))) {
-    auto descriptor = AttentionKernelDescriptor(createBlockDimensions(), createCacheState(), createHeadDimension(), createMemoryPrecisions(), true, false, createRegisterPrecisions(device), createTransposeState(), createLeadingDimensions(), type, isCausal, masked, isVarlen, attentionSinks, slidingWindowKernelVariant);
+    auto descriptor = AttentionKernelDescriptor(createBlockDimensions(), createCacheState(), createHeadDimension(), createMemoryPrecisions(), true, false, createRegisterPrecisions(device), createTransposeState(), createLeadingDimensions(), type, isCausal, masked, isVarlen, slidingWindowKernelVariant);
     descriptor.loadR = loadR;
     descriptor.loadC = loadC;
     return descriptor;
   } else {
-    auto descriptor = AttentionKernelDescriptor(createBlockDimensions(), createCacheState(), createHeadDimension(), createMemoryPrecisions(), false, true, createRegisterPrecisions(device), createTransposeState(), createLeadingDimensions(), type, isCausal, masked, isVarlen, attentionSinks, slidingWindowKernelVariant);
+    auto descriptor = AttentionKernelDescriptor(createBlockDimensions(), createCacheState(), createHeadDimension(), createMemoryPrecisions(), false, true, createRegisterPrecisions(device), createTransposeState(), createLeadingDimensions(), type, isCausal, masked, isVarlen, slidingWindowKernelVariant);
     descriptor.loadR = loadR;
     descriptor.loadC = loadC;
     return descriptor;
@@ -174,6 +174,8 @@ std::pair<AttentionKernelDescriptor, PipelineValue<AttentionKernel> *> Attention
       uint32_t slidingWindowValue = slidingWindow;
       constants->setConstantValue(&slidingWindowValue, MTL::DataTypeUInt, 27);
     }
+    if (type.value == AttentionKernelType::forward)
+      constants->setConstantValue(&attentionSinks, MTL::DataTypeBool, 28);
     std::vector<AttentionOperand> operands;
     switch (type.value) {
     case AttentionKernelType::forward:

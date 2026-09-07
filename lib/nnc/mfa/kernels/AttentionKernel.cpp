@@ -23,7 +23,6 @@ AttentionKernel::AttentionKernel(AttentionKernelDescriptor descriptor, MTL::Devi
   isCausal = descriptor.isCausal;
   masked = descriptor.masked;
   isVarlen = descriptor.isVarlen;
-  attentionSinks = descriptor.attentionSinks;
   slidingWindow = descriptor.slidingWindow;
   leadingDimensions = descriptor.leadingDimensions;
   disableAsyncCopy = false;
@@ -632,6 +631,8 @@ std::string AttentionKernel::createConstants() const noexcept {
   if (type.value == AttentionKernelType::forward && slidingWindow > 0) {
     output += "\n  constant uint sliding_window [[function_constant(27)]];\n";
   }
+  if (type.value == AttentionKernelType::forward)
+    output += "  constant bool attention_sinks [[function_constant(28)]];\n";
   std::string dimensions;
   if (!loadR) dimensions += "constant uint R [[function_constant(0)]];\n";
   if (!loadC) dimensions += "constant uint C [[function_constant(1)]];\n";
@@ -697,11 +698,11 @@ std::string AttentionKernel::createBufferBindings() const noexcept {
     output += "  device const int* QSeqOffsets_buf [[buffer(17)]],\n";
     output += "  device const int* KVSeqOffsets_buf [[buffer(18)]],\n";
   }
-  if (type.value == AttentionKernelType::forward && attentionSinks) {
+  if (type.value == AttentionKernelType::forward) {
     output += "  device const ";
     output += memoryName(AttentionOperand::Q);
-    output += "* Sinks_buf [[buffer(19)]],\n";
-    output += "  constant uint& Sink_head_stride [[buffer(20)]],\n";
+    output += "* Sinks_buf [[buffer(19), function_constant(attention_sinks)]],\n";
+    output += "  constant uint& Sink_head_stride [[buffer(20), function_constant(attention_sinks)]],\n";
   }
   if (loadR || loadC)
     output += "  constant uint* dimensions [[buffer(21)]],\n";
@@ -955,7 +956,7 @@ std::string AttentionKernel::loopForwardMasked() const noexcept {
     source.SetValue("L_MEMORY_NAME", memoryName(AttentionOperand::L));
     source.SetValue("O_LEADING_DIMENSION", leadingDimension(AttentionOperand::O));
     source.SetValue("O_TRANSPOSED", transposed(AttentionOperand::O) ? "true" : "false");
-    source.SetValue("EMPTY_LSE", attentionSinks ? "((float)Sinks_buf[gid.y * Sink_head_stride] * 1.442695041)" : "(-numeric_limits<float>::infinity())");
+    source.SetValue("EMPTY_LSE", "(attention_sinks ? (float)Sinks_buf[gid.y * Sink_head_stride] * 1.442695041 : -numeric_limits<float>::infinity())");
     source += R"(
   if (traversal_end == 0) {
     const uint tid = uint(sidx) * 32 + uint(lane_id);
@@ -2296,22 +2297,12 @@ std::string AttentionKernel::createSetup() const noexcept {
     if (cached(AttentionOperand::O)) {
       output += allocate(AttentionOperand::O);
     }
-    if (attentionSinks) {
-      output += R"(
+    output += R"(
 
-    const float sink_m = (float)Sinks_buf[gid.y * Sink_head_stride] * 1.442695041;
-    float m = sink_m;
-    float l = 1;
+    float m = attention_sinks ? (float)Sinks_buf[gid.y * Sink_head_stride] * 1.442695041 : -numeric_limits<float>::max();
+    float l = attention_sinks ? 1 : numeric_limits<float>::denorm_min();
 
 )";
-    } else {
-      output += R"(
-
-    float m = -numeric_limits<float>::max();
-    float l = numeric_limits<float>::denorm_min();
-
-)";
-    }
     break;
   case AttentionKernelType::backwardQuery: {
     if (cached(AttentionOperand::Q)) {

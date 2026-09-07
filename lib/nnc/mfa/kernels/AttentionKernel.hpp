@@ -47,8 +47,6 @@ struct AttentionKernel {
 
   bool isVarlen;
 
-  bool attentionSinks;
-
   uint32_t slidingWindow;
 
   bool disableAsyncCopy;
