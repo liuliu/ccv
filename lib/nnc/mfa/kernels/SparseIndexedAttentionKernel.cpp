@@ -169,6 +169,7 @@ kernel void sparse_indexed_attention(
     }
     threadgroup_barrier(mem_flags::mem_threadgroup);
     const uint rows = row_count[0];
+    const uniform<uint> stop = make_uniform(stop_flag[0]);
     for (uint off = uint(tid); off < rows * D; off += {{THREADS}}u) {
       const uint row = off / D;
       const uint d = off - row * D;
@@ -199,7 +200,7 @@ kernel void sparse_indexed_attention(
       }
     }
     threadgroup_barrier(mem_flags::mem_threadgroup);
-    if (stop_flag[0] != 0) {
+    if (stop != 0) {
       break;
     }
   }
