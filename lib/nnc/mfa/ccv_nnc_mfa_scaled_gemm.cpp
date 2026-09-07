@@ -258,6 +258,10 @@ void ccv_nnc_mfa_encode_scaled_gemm(mfa::context* context, ccv_nnc_mfa_scaled_ge
     matmulDesc.batchStrides = std::nullopt;
   }
   matmulDesc.useBias = params.fused_bias;
+  // Source / output batches may be interleaved; packed activations are contiguous.
+  const uint32_t dimensions[] = {
+    params.M, params.batch_stride_a, params.batch_stride_c, params.M * params.K, params.M,
+  };
 
   auto pool = NS::AutoreleasePool::alloc()->init();
   auto &shaderCache = context->kernel_cache;
@@ -293,7 +297,7 @@ void ccv_nnc_mfa_encode_scaled_gemm(mfa::context* context, ccv_nnc_mfa_scaled_ge
     encoder->setBuffer(scratch, 0, 1);
     encoder->setBuffer(scratch, a_layout.scale_offset, 2);
     if (matmulDesc.loadM) {
-      encoder->setBytes(&params.M, sizeof(params.M), 3);
+      encoder->setBytes(dimensions, sizeof(dimensions), 3);
     }
     encoder->dispatchThreadgroups(
         MTL::Size(params.M, 1, params.batch_dimension),
@@ -370,7 +374,7 @@ void ccv_nnc_mfa_encode_scaled_gemm(mfa::context* context, ccv_nnc_mfa_scaled_ge
     if (num_tensors >= 4)
       encoder->setBuffer(tensors[3], tensor_offsets[3], 5);
     if (matmulDesc.loadM)
-      encoder->setBytes(&params.M, sizeof(params.M), params.fused_bias ? 6 : 5);
+      encoder->setBytes(dimensions, sizeof(dimensions), params.fused_bias ? 6 : 5);
     encoder->dispatchThreadgroups(
         kernel->threadgroupsPerGrid(params.M, params.N, params.batch_dimension),
         MTL::Size(kernel->threadgroupSize(matmulPipeline.get()), 1, 1));

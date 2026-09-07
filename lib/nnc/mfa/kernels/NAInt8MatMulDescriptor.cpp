@@ -29,13 +29,19 @@ bool NAInt8MatMulDescriptor::operator==(const NAInt8MatMulDescriptor& rhs) const
     lhsMatrixDimensions[0] = groupM(lhsMatrixDimensions[0]);
     rhsMatrixDimensions[0] = groupM(rhsMatrixDimensions[0]);
   }
+  auto lhsBatchStrides = batchStrides.value_or(simd::uint4(UINT32_MAX));
+  auto rhsBatchStrides = rhs.batchStrides.value_or(simd::uint4(UINT32_MAX));
+  if (loadM) {
+    lhsBatchStrides[0] = rhsBatchStrides[0] = 0;
+    lhsBatchStrides[2] = rhsBatchStrides[2] = 0;
+  }
   return
     batchDimension == rhs.batchDimension &&
     ioPrecision == rhs.ioPrecision &&
-    simd_all(batchStrides.value_or(simd::uint4(UINT32_MAX)) == rhs.batchStrides.value_or(simd::uint4(UINT32_MAX))) &&
+    simd_all(lhsBatchStrides == rhsBatchStrides) &&
     simd_all(leadingDimensions.value_or(simd::uint2(UINT32_MAX)) == rhs.leadingDimensions.value_or(simd::uint2(UINT32_MAX))) &&
-    packedABatchStride == rhs.packedABatchStride &&
-    aScaleBatchStride == rhs.aScaleBatchStride &&
+    (loadM || packedABatchStride == rhs.packedABatchStride) &&
+    (loadM || aScaleBatchStride == rhs.aScaleBatchStride) &&
     useBias == rhs.useBias &&
     loadM == rhs.loadM &&
     supportIndirectCommandBuffers == rhs.supportIndirectCommandBuffers &&
@@ -51,17 +57,17 @@ std::size_t std::hash<NAInt8MatMulDescriptor>::operator()(const NAInt8MatMulDesc
   combine_32(seed, hash.matrixDimensions[1]);
   combine_32(seed, hash.matrixDimensions[2]);
   if (hash.batchStrides.has_value()) {
-    combine_32(seed, hash.batchStrides.value()[0]);
+    combine_32(seed, hash.loadM ? 0 : hash.batchStrides.value()[0]);
     combine_32(seed, hash.batchStrides.value()[1]);
-    combine_32(seed, hash.batchStrides.value()[2]);
+    combine_32(seed, hash.loadM ? 0 : hash.batchStrides.value()[2]);
     combine_32(seed, hash.batchStrides.value()[3]);
   }
   if (hash.leadingDimensions.has_value()) {
     combine_32(seed, hash.leadingDimensions.value()[0]);
     combine_32(seed, hash.leadingDimensions.value()[1]);
   }
-  combine_32(seed, hash.packedABatchStride.value_or(0));
-  combine_32(seed, hash.aScaleBatchStride.value_or(0));
+  combine_32(seed, hash.loadM ? 0 : hash.packedABatchStride.value_or(0));
+  combine_32(seed, hash.loadM ? 0 : hash.aScaleBatchStride.value_or(0));
   combine_32(seed, hash.useBias ? 1 : 0);
   combine_32(seed, hash.loadM ? 1 : 0);
   combine_32(seed, hash.supportIndirectCommandBuffers ? 1 : 0);
@@ -123,13 +129,17 @@ std::pair<NAInt8MatMulKernelDescriptor, PipelineValue<NAInt8MatMulKernel> *> NAI
     constants->setConstantValue(&N, MTL::DataTypeUInt, NS::UInteger(1));
     constants->setConstantValue(&K, MTL::DataTypeUInt, NS::UInteger(2));
     constants->setConstantValue(&batched, MTL::DataTypeBool, NS::UInteger(11));
-    constants->setConstantValue(&batchStrideA, MTL::DataTypeUInt, NS::UInteger(15));
+    if (!this->loadM)
+      constants->setConstantValue(&batchStrideA, MTL::DataTypeUInt, NS::UInteger(15));
     constants->setConstantValue(&batchStrideB, MTL::DataTypeUInt, NS::UInteger(16));
-    constants->setConstantValue(&batchStrideC, MTL::DataTypeUInt, NS::UInteger(17));
+    if (!this->loadM)
+      constants->setConstantValue(&batchStrideC, MTL::DataTypeUInt, NS::UInteger(17));
     constants->setConstantValue(&batchStrideBias, MTL::DataTypeUInt, NS::UInteger(18));
-    constants->setConstantValue(&batchStrideAScale, MTL::DataTypeUInt, NS::UInteger(19));
+    if (!this->loadM)
+      constants->setConstantValue(&batchStrideAScale, MTL::DataTypeUInt, NS::UInteger(19));
     constants->setConstantValue(&batchStrideBScale, MTL::DataTypeUInt, NS::UInteger(20));
-    constants->setConstantValue(&batchStridePackedA, MTL::DataTypeUInt, NS::UInteger(21));
+    if (!this->loadM)
+      constants->setConstantValue(&batchStridePackedA, MTL::DataTypeUInt, NS::UInteger(21));
     if (this->leadingDimensions.has_value()) {
       const uint32_t leadingDimensionA = this->leadingDimensions.value()[0];
       const uint32_t leadingDimensionC = this->leadingDimensions.value()[1];

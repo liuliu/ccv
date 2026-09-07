@@ -125,13 +125,9 @@ inline uint2 morton_decode_rectangular_2d(uint code,
 constant uint N [[function_constant(1)]];
 constant uint K [[function_constant(2)]];
 constant bool batched [[function_constant(11)]];
-constant uint A_batch_stride [[function_constant(15)]];
 constant uint B_batch_stride [[function_constant(16)]];
-constant uint C_batch_stride [[function_constant(17)]];
 constant uint bias_batch_stride [[function_constant(18)]];
-constant uint A_scale_batch_stride [[function_constant(19)]];
 constant uint B_scale_batch_stride [[function_constant(20)]];
-constant uint A_packed_batch_stride [[function_constant(21)]];
 {{LEADING_DIMENSION_CONSTANTS}}
 inline float quantize_reduce_max(float value,
                                  threadgroup float* scratch,
@@ -164,6 +160,10 @@ inline float quantize_reduce_max(float value,
   if (!loadM) {
     source += R"(
 constant uint M [[function_constant(0)]];
+constant uint A_batch_stride [[function_constant(15)]];
+constant uint C_batch_stride [[function_constant(17)]];
+constant uint A_scale_batch_stride [[function_constant(19)]];
+constant uint A_packed_batch_stride [[function_constant(21)]];
 )";
   }
   source += R"(
@@ -187,6 +187,10 @@ kernel void quantize_activation(
   if (loadM) {
     source += R"(
   const uniform<uint> M = make_uniform(loadM_buf[0]);
+  const uniform<uint> A_batch_stride = make_uniform(batched ? loadM_buf[1] : 0);
+  const uniform<uint> C_batch_stride = make_uniform(batched ? loadM_buf[2] : 0);
+  const uniform<uint> A_packed_batch_stride = make_uniform(batched ? loadM_buf[3] : 0);
+  const uniform<uint> A_scale_batch_stride = make_uniform(batched ? loadM_buf[4] : 0);
 )";
   }
   source += R"(
@@ -258,6 +262,10 @@ kernel void int8_matmul(
   if (loadM) {
     source += R"(
   const uniform<uint> M = make_uniform(loadM_buf[0]);
+  const uniform<uint> A_batch_stride = make_uniform(batched ? loadM_buf[1] : 0);
+  const uniform<uint> C_batch_stride = make_uniform(batched ? loadM_buf[2] : 0);
+  const uniform<uint> A_packed_batch_stride = make_uniform(batched ? loadM_buf[3] : 0);
+  const uniform<uint> A_scale_batch_stride = make_uniform(batched ? loadM_buf[4] : 0);
 )";
   }
   source += R"(
