@@ -23,6 +23,8 @@ struct AttentionParameterRow {
 };
 
 struct AttentionDescriptor {
+  bool loadR = false;
+  bool loadC = false;
   /// The number of equally sized attention per sequence that run in parallel.
   uint32_t batchDimension = 1;
 

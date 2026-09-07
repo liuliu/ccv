@@ -593,6 +593,8 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
       CCV_NNC_MFA_PRECONDITION(!params.masked);
     }
     AttentionDescriptor attentionDesc;
+    attentionDesc.loadR = params.type == 0 && (ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M);
+    attentionDesc.loadC = params.type == 0 && (ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_ATTENTION_SPECIALIZING_C);
     attentionDesc.lowPrecisionInputs = (params.data_type != MTL::DataTypeFloat) ? true : false;
     attentionDesc.isBF16 = params.data_type == MTL::DataTypeBFloat;
     attentionDesc.lowPrecisionIntermediates = (params.data_type != MTL::DataTypeFloat && !hash.upcast) ? true : false;
@@ -657,6 +659,15 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
         sizeof(float) * hash.R * hash.Hq * attentionDesc.batchDimension : 0;
       const uint32_t qTiles = (hash.R + kernel->blockDimensions[0] - 1) / kernel->blockDimensions[0];
       const uint32_t kTiles = (hash.C + kernel->blockDimensions[1] - 1) / kernel->blockDimensions[1];
+      const auto& batchStrides = attentionDesc.batchStrides;
+      const uint32_t dimensions[] = {
+        hash.R, hash.C,
+        batchStrides[AttentionOperand::Q].value_or(0),
+        batchStrides[AttentionOperand::K].value_or(0),
+        batchStrides[AttentionOperand::V].value_or(0),
+        batchStrides[AttentionOperand::O].value_or(0),
+        attentionDesc.maskBatchStride, attentionDesc.maskBatchStride ? qTiles * kTiles : 0,
+      };
       auto align_up =
       [&](uint64_t value) -> uint64_t {
         return (value + 255) & ~((uint64_t)255);
@@ -675,6 +686,8 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
         blockMaskEncoder->useResource(scratch, MTL::ResourceUsageRead | MTL::ResourceUsageWrite);
         blockMaskEncoder->setBuffer(tensors[4], tensor_offsets[4], 15);
         blockMaskEncoder->setBuffer(scratch, blockMaskOffset, 16);
+        if (attentionDesc.loadR || attentionDesc.loadC)
+          blockMaskEncoder->setBytes(dimensions, sizeof(dimensions), 21);
         blockMaskEncoder->dispatchThreadgroups(
             MTL::Size(qTiles, kTiles, batch_sizes[1]),
             MTL::Size(AttentionKernel::blockMaskThreads, 1, 1));
@@ -684,6 +697,8 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
       // Allocate a new command.
       auto encoder = command_batch->startCommand();
       encoder->setComputePipelineState(pipeline.get());
+      if (attentionDesc.loadR || attentionDesc.loadC)
+        encoder->setBytes(dimensions, sizeof(dimensions), 21);
       encoder->setThreadgroupMemoryLength(kernel->threadgroupMemoryAllocation, 0);
     
       // Bind the function arguments.

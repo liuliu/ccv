@@ -11,6 +11,8 @@ struct AttentionDescriptor;
 
 /// A configuration for a Attention kernel.
 struct AttentionKernelDescriptor {
+  bool loadR = false;
+  bool loadC = false;
   /// parallelization, traversal, head
   simd::ushort3 blockDimensions;
 

@@ -11,6 +11,8 @@ struct AttentionAccumulateDescriptor;
 struct AttentionOuterProductDescriptor;
 
 struct AttentionKernel {
+  bool loadR = false;
+  bool loadC = false;
   static constexpr uint16_t blockMaskThreads = 256;
 
   NS::SharedPtr<MTL::Library> library;
@@ -87,6 +89,7 @@ private:
   /// AttentionKernel+Source
   std::string createSource() const noexcept;
   std::string createConstants() const noexcept;
+  std::string createRuntimeConstants() const noexcept;
   std::string createAdjustOffsets() const noexcept;
   std::string createBufferBindings() const noexcept;
   std::string loopForward() const noexcept;

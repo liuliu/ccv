@@ -9,6 +9,8 @@
 
 AttentionKernel::AttentionKernel(AttentionKernelDescriptor descriptor, MTL::Device *const device) {
   type = descriptor.type;
+  loadR = descriptor.loadR;
+  loadC = descriptor.loadC;
   cacheState = descriptor.cacheState;
   memoryPrecisions = descriptor.memoryPrecisions;
   preferAsyncCache = descriptor.preferAsyncCache;
@@ -43,7 +45,8 @@ AttentionKernel::AttentionKernel(AttentionKernelDescriptor descriptor, MTL::Devi
     library = NS::TransferPtr(device->newLibrary(string, nil, &error));
     if (error) {
       error = nil;
-      library = NS::TransferPtr(findPrecompiledLibrary(descriptor, device, &error));
+      if (!loadR && !loadC)
+        library = NS::TransferPtr(findPrecompiledLibrary(descriptor, device, &error));
       if (!library) {
         preferAsyncCache = false;
         preferAsyncLoad = false;
@@ -301,7 +304,8 @@ std::string AttentionKernel::paddedTraversalEdgeValue() const noexcept {
   auto blockDim = blockDimensions[1];
   auto remainder = traversalDimensionValue() + " % " + std::to_string(blockDim);
 
-  std::string output = "(" + remainder + " == 0) ? " + std::to_string(blockDim) + " : " + remainder;
+  const auto fullTile = (loadC && !isVarlen) ? "make_uniform(" + std::to_string(blockDim) + "u)" : std::to_string(blockDim);
+  std::string output = "(" + remainder + " == 0) ? " + fullTile + " : " + remainder;
   output = "((" + output + ") + 7) / 8 * 8";
   return output;
 }
@@ -416,6 +420,8 @@ unsigned short AttentionKernel::createThreadgroupMemoryAllocation() const noexce
 
 std::string AttentionKernel::createSource() const noexcept {
   CodeWriter source;
+  source.SetValue("RUNTIME_ARGUMENT", (loadR || loadC) ? "  constant uint* dimensions [[buffer(21)]],\n" : "");
+  source.SetValue("RUNTIME_CONSTANTS", createRuntimeConstants());
 
   bool injectBF16Methods = false;
   switch (type.value) {
@@ -453,11 +459,11 @@ std::string AttentionKernel::createSource() const noexcept {
 kernel void generate_attention_block_mask(
     device const {{MEMORY_NAME_Q}} *Mask_buf [[buffer(15)]],
     device uchar *Block_mask_buf [[buffer(16)]],
-    threadgroup uint *block_mask_scratch [[threadgroup(0)]],
+{{RUNTIME_ARGUMENT}}    threadgroup uint *block_mask_scratch [[threadgroup(0)]],
     ushort tid [[thread_index_in_threadgroup]],
     uint3 tgid [[threadgroup_position_in_grid]]
 ) {
-  const uint q_start = tgid.x * {{BLOCK_DIMENSIONS_PARALLELIZATION}};
+{{RUNTIME_CONSTANTS}}  const uint q_start = tgid.x * {{BLOCK_DIMENSIONS_PARALLELIZATION}};
   const uint c_start = tgid.y * {{BLOCK_DIMENSIONS_TRAVERSAL}};
   const uint q_extent = min((uint){{BLOCK_DIMENSIONS_PARALLELIZATION}}, R - q_start);
   const uint c_extent = min((uint){{BLOCK_DIMENSIONS_TRAVERSAL}}, C - c_start);
@@ -546,7 +552,7 @@ kernel void generate_attention_block_mask(
       ushort sidx [[simdgroup_index_in_threadgroup]],
       ushort lane_id [[thread_index_in_simdgroup]]
     ) {
-      ushort2 morton_offset = morton_order(lane_id);
+{{RUNTIME_CONSTANTS}}      ushort2 morton_offset = morton_order(lane_id);
       gid = { gid.x % (({{DISPATCH_DIMENSION}} + {{BLOCK_DIMENSIONS_PARALLELIZATION}} - 1) / {{BLOCK_DIMENSIONS_PARALLELIZATION}}), (gid.x / (({{DISPATCH_DIMENSION}} + {{BLOCK_DIMENSIONS_PARALLELIZATION}} - 1) / {{BLOCK_DIMENSIONS_PARALLELIZATION}})) % {{DISPATCH_HEADS}}, gid.x / ({{DISPATCH_HEADS}} * (({{DISPATCH_DIMENSION}} + {{BLOCK_DIMENSIONS_PARALLELIZATION}} - 1) / {{BLOCK_DIMENSIONS_PARALLELIZATION}}))};
       uint parallelization_group_offset = gid.x;
       parallelization_group_offset *= {{BLOCK_DIMENSIONS_PARALLELIZATION}};
@@ -602,8 +608,10 @@ std::string AttentionKernel::createConstants() const noexcept {
   }
   std::string output = "";
   for (const auto& operand : operands) {
-    output += "  constant uint " + operand.name() + "_batch_stride [[function_constant(";
-    output += std::to_string(operand.bufferIndex() + 5) + ")]];\n";
+    if (!loadR && !loadC) {
+      output += "  constant uint " + operand.name() + "_batch_stride [[function_constant(";
+      output += std::to_string(operand.bufferIndex() + 5) + ")]];\n";
+    }
     if (leadingDimensions[operand].value_or(false)) {
       output += "  constant uint " + operand.name() + "_leading_dimension [[function_constant(";
       output += std::to_string(operand.bufferIndex() + 15) + ")]];\n";
@@ -615,21 +623,24 @@ std::string AttentionKernel::createConstants() const noexcept {
         << ((memoryPrecisions[AttentionOperand::Q].value() == GEMMOperandPrecision::FP16) ?
             (-65504.0f * 0.5f) :
             (-std::numeric_limits<float>::max() * 0.5f));
-    output += "\n  constant uint Mask_batch_stride [[function_constant(25)]];\n";
-    output += "  constant uint Block_mask_batch_stride [[function_constant(26)]];\n";
-    output += "  constant uint K_block_tiles = (C + " + std::to_string(blockDimensions[1]) + " - 1) / " + std::to_string(blockDimensions[1]) + ";\n";
+    if (!loadR && !loadC) {
+      output += "\n  constant uint Mask_batch_stride [[function_constant(25)]];\n";
+      output += "  constant uint Block_mask_batch_stride [[function_constant(26)]];\n";
+      output += "  constant uint K_block_tiles = (C + " + std::to_string(blockDimensions[1]) + " - 1) / " + std::to_string(blockDimensions[1]) + ";\n";
+    }
     output += "  constant float MASKED_THRESHOLD = " + maskedThreshold.str() + ";\n";
   }
   if (type.value == AttentionKernelType::forward && slidingWindow > 0) {
     output += "\n  constant uint sliding_window [[function_constant(27)]];\n";
   }
-  return R"(
+  std::string dimensions;
+  if (!loadR) dimensions += "constant uint R [[function_constant(0)]];\n";
+  if (!loadC) dimensions += "constant uint C [[function_constant(1)]];\n";
+  return dimensions + R"(
 
     // R = row dimension (output sequence)
     // C = column dimension (input sequence)
     // Hq = number of query heads.
-    constant uint R [[function_constant(0)]];
-    constant uint C [[function_constant(1)]];
 
     constant uint Hq [[function_constant(2)]];
     constant uint H_Hk_ratio [[function_constant(3)]];
@@ -638,6 +649,23 @@ std::string AttentionKernel::createConstants() const noexcept {
 	constant float dot_product_scale = dot_product_scale_derivative * 1.442695041;
 
 )" + output;
+}
+
+std::string AttentionKernel::createRuntimeConstants() const noexcept {
+  if (!loadR && !loadC) return "";
+  std::string output;
+  if (loadR) output += "  const uniform<uint> R = make_uniform(dimensions[0]);\n";
+  if (loadC) output += "  const uniform<uint> C = make_uniform(dimensions[1]);\n";
+  for (const auto operand : { AttentionOperand::Q, AttentionOperand::K, AttentionOperand::V, AttentionOperand::O }) {
+    const AttentionOperand value(operand);
+    output += "  const uniform<uint> " + value.name() + "_batch_stride = make_uniform(dimensions[" + std::to_string(2 + value.bufferIndex()) + "]);\n";
+  }
+  if (masked) {
+    output += "  const uniform<uint> Mask_batch_stride = make_uniform(dimensions[6]);\n";
+    output += "  const uniform<uint> Block_mask_batch_stride = make_uniform(dimensions[7]);\n";
+    output += "  const uniform<uint> K_block_tiles = make_uniform((uint(C) + " + std::to_string(blockDimensions[1] - 1) + "u) / " + std::to_string(blockDimensions[1]) + "u);\n";
+  }
+  return output;
 }
 
 std::string AttentionKernel::createBufferBindings() const noexcept {
@@ -676,6 +704,8 @@ std::string AttentionKernel::createBufferBindings() const noexcept {
     output += "* Sinks_buf [[buffer(19)]],\n";
     output += "  constant uint& Sink_head_stride [[buffer(20)]],\n";
   }
+  if (loadR || loadC)
+    output += "  constant uint* dimensions [[buffer(21)]],\n";
   return output;
 }
 
@@ -1634,13 +1664,17 @@ std::string AttentionKernel::accumulate(const AttentionAccumulateDescriptor& acc
   auto innerLoopTraversal =
   [=](std::string traversalStart, std::string traversalEnd, LoopIterationDescriptor descriptor) -> std::string {
     CodeWriter source;
-    source.SetValue("TRAVERSAL_START", traversalStart);
-    source.SetValue("TRAVERSAL_END", traversalEnd);
+    // Keep register-array indices constant when the tail length is loaded at runtime.
+    const bool runtimeTraversal = loadC && !isVarlen;
+    source.SetValue("TRAVERSAL_START", runtimeTraversal ? "0" : traversalStart);
+    source.SetValue("TRAVERSAL_END", runtimeTraversal ? std::to_string(blockDimensions[1]) : traversalEnd);
+    source.SetValue("TRAVERSAL_GUARD", runtimeTraversal ? "if (c < " + traversalStart + " || c >= " + traversalEnd + ") continue;" : "");
     source.SetValue("INNER_LOOP_HEAD", innerLoopHead(descriptor));
     source += R"(
 
     #pragma clang loop unroll(full)
     for (ushort c = {{TRAVERSAL_START}}; c < {{TRAVERSAL_END}}; c += 8) {
+      {{TRAVERSAL_GUARD}}
       {{INNER_LOOP_HEAD}}
     }
 
@@ -2752,8 +2786,11 @@ std::string AttentionKernel::outerProduct(const AttentionOuterProductDescriptor&
   auto innerLoopTraversal =
   [=](std::string traversalStart, std::string traversalEnd, LoopIterationDescriptor descriptor) -> std::string {
     CodeWriter source;
-    source.SetValue("TRAVERSAL_START", traversalStart);
-    source.SetValue("TRAVERSAL_END", traversalEnd);
+    // Keep register-array indices constant when the tail length is loaded at runtime.
+    const bool runtimeTraversal = loadC && !isVarlen;
+    source.SetValue("TRAVERSAL_START", runtimeTraversal ? "0" : traversalStart);
+    source.SetValue("TRAVERSAL_END", runtimeTraversal ? std::to_string(blockDimensions[1]) : traversalEnd);
+    source.SetValue("TRAVERSAL_GUARD", runtimeTraversal ? "if (c < " + traversalStart + " || c >= " + traversalEnd + ") continue;" : "");
     source.SetValue("A", A.name());
     source.SetValue("B", B.name());
     source.SetValue("C", C.name());
@@ -2767,6 +2804,7 @@ std::string AttentionKernel::outerProduct(const AttentionOuterProductDescriptor&
 
     #pragma clang loop unroll(full)
     for (ushort c = {{TRAVERSAL_START}}; c < {{TRAVERSAL_END}}; c += 8) {
+      {{TRAVERSAL_GUARD}}
       // Load the RHS from memory.
       ushort2 {{B}}_origin(c, d);
       simdgroup_matrix_storage<{{REGISTER_NAME_B}}> {{B}};

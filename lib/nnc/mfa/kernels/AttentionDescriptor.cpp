@@ -5,7 +5,12 @@
 #include "../ccv_nnc_mfa_error.hpp"
 
 bool AttentionDescriptor::operator==(const AttentionDescriptor& rhs) const {
+  auto lhsDimensions = matrixDimensions;
+  auto rhsDimensions = rhs.matrixDimensions;
+  if (loadR) lhsDimensions[0] = rhsDimensions[0] = 0;
+  if (loadC) lhsDimensions[1] = rhsDimensions[1] = 0;
   return
+  loadR == rhs.loadR && loadC == rhs.loadC &&
   batchDimension == rhs.batchDimension &&
   Hq == rhs.Hq &&
   Hk == rhs.Hk &&
@@ -15,14 +20,14 @@ bool AttentionDescriptor::operator==(const AttentionDescriptor& rhs) const {
   isVarlen == rhs.isVarlen &&
   attentionSinks == rhs.attentionSinks &&
   slidingWindow == rhs.slidingWindow &&
-  maskBatchStride == rhs.maskBatchStride &&
+  ((loadR || loadC) || maskBatchStride == rhs.maskBatchStride) &&
   type == rhs.type &&
   (lowPrecisionInputs == rhs.lowPrecisionInputs) &&
   (isBF16 == rhs.isBF16) &&
   (lowPrecisionIntermediates == rhs.lowPrecisionIntermediates) &&
   simd_all(leadingDimensions.value_or(simd::uint4(UINT32_MAX)) == rhs.leadingDimensions.value_or(simd::uint4(UINT32_MAX))) &&
-  batchStrides == rhs.batchStrides &&
-  simd_all(matrixDimensions == rhs.matrixDimensions) &&
+  ((loadR || loadC) || batchStrides == rhs.batchStrides) &&
+  simd_all(lhsDimensions == rhsDimensions) &&
   simd_all(transposeState == rhs.transposeState);
 }
 
@@ -32,8 +37,8 @@ std::size_t std::hash<AttentionDescriptor>::operator()(const AttentionDescriptor
   combine_32(seed, hash.batchDimension);
   combine_32(seed, hash.Hq);
   combine_32(seed, hash.Hk);
-  combine_32(seed, hash.matrixDimensions[0]);
-  combine_32(seed, hash.matrixDimensions[1]);
+  combine_32(seed, hash.loadR ? 0 : hash.matrixDimensions[0]);
+  combine_32(seed, hash.loadC ? 0 : hash.matrixDimensions[1]);
   combine_32(seed, hash.matrixDimensions[2]);
   if (hash.leadingDimensions.has_value()) {
     combine_32(seed, hash.leadingDimensions.value()[0]);
@@ -48,7 +53,8 @@ std::size_t std::hash<AttentionDescriptor>::operator()(const AttentionDescriptor
       (uint16_t)(hash.isVarlen ? 1 : 0) }));
   combine_32(seed, hash.attentionSinks ? 1 : 0);
   combine_32(seed, hash.slidingWindow);
-  combine_32(seed, hash.maskBatchStride);
+  combine_32(seed, (hash.loadR || hash.loadC) ? 0 : hash.maskBatchStride);
+  combine_32(seed, (hash.loadR ? 1 : 0) | (hash.loadC ? 2 : 0));
   combine_32(seed, pack_32(simd::ushort2 { hash.type.value, 0 } ));
   return seed;
 }
@@ -134,9 +140,15 @@ AttentionKernelDescriptor AttentionDescriptor::kernelDescriptor(MTL::Device *con
 
   const uint32_t slidingWindowKernelVariant = slidingWindow > 0;
   if (device && device->supportsFamily(MTL::GPUFamily(1009))) {
-    return AttentionKernelDescriptor(createBlockDimensions(), createCacheState(), createHeadDimension(), createMemoryPrecisions(), true, false, createRegisterPrecisions(device), createTransposeState(), createLeadingDimensions(), type, isCausal, masked, isVarlen, attentionSinks, slidingWindowKernelVariant);
+    auto descriptor = AttentionKernelDescriptor(createBlockDimensions(), createCacheState(), createHeadDimension(), createMemoryPrecisions(), true, false, createRegisterPrecisions(device), createTransposeState(), createLeadingDimensions(), type, isCausal, masked, isVarlen, attentionSinks, slidingWindowKernelVariant);
+    descriptor.loadR = loadR;
+    descriptor.loadC = loadC;
+    return descriptor;
   } else {
-    return AttentionKernelDescriptor(createBlockDimensions(), createCacheState(), createHeadDimension(), createMemoryPrecisions(), false, true, createRegisterPrecisions(device), createTransposeState(), createLeadingDimensions(), type, isCausal, masked, isVarlen, attentionSinks, slidingWindowKernelVariant);
+    auto descriptor = AttentionKernelDescriptor(createBlockDimensions(), createCacheState(), createHeadDimension(), createMemoryPrecisions(), false, true, createRegisterPrecisions(device), createTransposeState(), createLeadingDimensions(), type, isCausal, masked, isVarlen, attentionSinks, slidingWindowKernelVariant);
+    descriptor.loadR = loadR;
+    descriptor.loadC = loadC;
+    return descriptor;
   }
 }
 
@@ -148,8 +160,10 @@ std::pair<AttentionKernelDescriptor, PipelineValue<AttentionKernel> *> Attention
     (MTL::FunctionConstantValues::alloc()->init());
     uint32_t rowDimension = matrixDimensions[0];
     uint32_t columnDimension = matrixDimensions[1];
-    constants->setConstantValue(&rowDimension, MTL::DataTypeUInt, NS::Integer(0));
-    constants->setConstantValue(&columnDimension, MTL::DataTypeUInt, 1);
+    if (!loadR)
+      constants->setConstantValue(&rowDimension, MTL::DataTypeUInt, NS::Integer(0));
+    if (!loadC)
+      constants->setConstantValue(&columnDimension, MTL::DataTypeUInt, 1);
     uint32_t Hq = this->Hq;
     constants->setConstantValue(&Hq, MTL::DataTypeUInt, 2);
     uint32_t HHkRatio = this->Hq / this->Hk;
@@ -174,7 +188,8 @@ std::pair<AttentionKernelDescriptor, PipelineValue<AttentionKernel> *> Attention
     }
     for (const auto& operand : operands) {
       uint32_t batchStride = batchStrides[operand].value_or(0);
-      constants->setConstantValue(&batchStride, MTL::DataTypeUInt, 5 + operand.bufferIndex());
+      if (!loadR && !loadC)
+        constants->setConstantValue(&batchStride, MTL::DataTypeUInt, 5 + operand.bufferIndex());
       if (leadingDimensions.has_value()) {
         if (operand.value == AttentionOperand::Q || operand.value == AttentionOperand::dQ) {
           uint32_t leadingDimension = leadingDimensions.value()[0];
@@ -196,8 +211,10 @@ std::pair<AttentionKernelDescriptor, PipelineValue<AttentionKernel> *> Attention
       const uint32_t kTiles = (matrixDimensions[1] + kernelDesc.blockDimensions[1] - 1) / kernelDesc.blockDimensions[1];
       const uint32_t maskBatchStride = masked ? this->maskBatchStride : 0;
       const uint32_t blockMaskBatchStride = masked && maskBatchStride > 0 ? qTiles * kTiles : 0;
-      constants->setConstantValue(&maskBatchStride, MTL::DataTypeUInt, NS::UInteger(25));
-      constants->setConstantValue(&blockMaskBatchStride, MTL::DataTypeUInt, NS::UInteger(26));
+      if (!loadR && !loadC) {
+        constants->setConstantValue(&maskBatchStride, MTL::DataTypeUInt, NS::UInteger(25));
+        constants->setConstantValue(&blockMaskBatchStride, MTL::DataTypeUInt, NS::UInteger(26));
+      }
     }
 
     NS::String* swiftName = NS::String::string("attention", NS::UTF8StringEncoding);
@@ -235,14 +252,18 @@ std::pair<AttentionKernelDescriptor, PipelineValue<AttentionKernel> *> Attention
     (MTL::FunctionConstantValues::alloc()->init());
     uint32_t rowDimension = matrixDimensions[0];
     uint32_t columnDimension = matrixDimensions[1];
-    constants->setConstantValue(&rowDimension, MTL::DataTypeUInt, NS::Integer(0));
-    constants->setConstantValue(&columnDimension, MTL::DataTypeUInt, 1);
+    if (!loadR)
+      constants->setConstantValue(&rowDimension, MTL::DataTypeUInt, NS::Integer(0));
+    if (!loadC)
+      constants->setConstantValue(&columnDimension, MTL::DataTypeUInt, 1);
     const uint32_t qTiles = (matrixDimensions[0] + kernelDesc.blockDimensions[0] - 1) / kernelDesc.blockDimensions[0];
     const uint32_t kTiles = (matrixDimensions[1] + kernelDesc.blockDimensions[1] - 1) / kernelDesc.blockDimensions[1];
     const uint32_t maskBatchStride = masked ? this->maskBatchStride : 0;
     const uint32_t blockMaskBatchStride = masked && maskBatchStride > 0 ? qTiles * kTiles : 0;
-    constants->setConstantValue(&maskBatchStride, MTL::DataTypeUInt, NS::UInteger(25));
-    constants->setConstantValue(&blockMaskBatchStride, MTL::DataTypeUInt, NS::UInteger(26));
+    if (!loadR && !loadC)
+      constants->setConstantValue(&maskBatchStride, MTL::DataTypeUInt, NS::UInteger(25));
+    if (!loadR && !loadC)
+      constants->setConstantValue(&blockMaskBatchStride, MTL::DataTypeUInt, NS::UInteger(26));
     if (slidingWindow > 0) {
       uint32_t slidingWindowValue = slidingWindow;
       constants->setConstantValue(&slidingWindowValue, MTL::DataTypeUInt, 27);
