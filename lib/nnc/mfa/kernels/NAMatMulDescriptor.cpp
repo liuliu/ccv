@@ -29,7 +29,7 @@ bool NAMatMulDescriptor::operator==(const NAMatMulDescriptor& rhs) const {
   (batchDimension == rhs.batchDimension) &&
   simd_all(lhsMatrixDimensions == rhsMatrixDimensions) &&
   simd_all(leadingDimensions.value_or(simd::uint2(UINT32_MAX)) == rhs.leadingDimensions.value_or(simd::uint2(UINT32_MAX))) &&
-  simd_all(batchStrides.value_or(simd::uint4(UINT32_MAX)) == rhs.batchStrides.value_or(simd::uint4(UINT32_MAX))) &&
+  (loadM || simd_all(batchStrides.value_or(simd::uint4(UINT32_MAX)) == rhs.batchStrides.value_or(simd::uint4(UINT32_MAX)))) &&
   memoryPrecisions == rhs.memoryPrecisions &&
   registerPrecisionC == rhs.registerPrecisionC &&
   simd_all(transposeState == rhs.transposeState) &&
@@ -49,7 +49,7 @@ std::size_t std::hash<NAMatMulDescriptor>::operator()(const NAMatMulDescriptor& 
     combine_32(seed, hash.leadingDimensions.value()[0]);
     combine_32(seed, hash.leadingDimensions.value()[1]);
   }
-  if (hash.batchStrides.has_value()) {
+  if (!hash.loadM && hash.batchStrides.has_value()) {
     combine_32(seed, hash.batchStrides.value()[0]);
     combine_32(seed, hash.batchStrides.value()[1]);
     combine_32(seed, hash.batchStrides.value()[2]);
@@ -130,10 +130,12 @@ std::pair<NAMatMulKernelDescriptor, PipelineValue<NAMatMulKernel> *> NAMatMulDes
     auto batchStrideB = batchStrides[1];
     auto batchStrideC = batchStrides[2];
     auto batchStrideBias = batchStrides[3];
-    constants->setConstantValue(&batchStrideA, MTL::DataTypeUInt, 15);
-    constants->setConstantValue(&batchStrideB, MTL::DataTypeUInt, 16);
-    constants->setConstantValue(&batchStrideC, MTL::DataTypeUInt, 17);
-    constants->setConstantValue(&batchStrideBias, MTL::DataTypeUInt, 18);
+    if (!this->loadM) {
+      constants->setConstantValue(&batchStrideA, MTL::DataTypeUInt, 15);
+      constants->setConstantValue(&batchStrideB, MTL::DataTypeUInt, 16);
+      constants->setConstantValue(&batchStrideC, MTL::DataTypeUInt, 17);
+      constants->setConstantValue(&batchStrideBias, MTL::DataTypeUInt, 18);
+    }
     if (this->leadingDimensions.has_value()) {
       auto leadingDimensionA = this->leadingDimensions.value()[0];
       auto leadingDimensionC = this->leadingDimensions.value()[1];

@@ -233,6 +233,10 @@ kernel void matmul(device {{MEMORY_NAME_A}} *A_buf [[buffer(0)]],
   if (loadM) {
     source += R"(
   const uniform<uint> M = make_uniform(loadM[0]);
+  const uniform<uint> A_batch_stride = make_uniform(batched ? loadM[1] : 0);
+  const uniform<uint> B_batch_stride = make_uniform(batched ? loadM[2] : 0);
+  const uniform<uint> C_batch_stride = make_uniform(batched ? loadM[3] : 0);
+  const uniform<uint> bias_batch_stride = make_uniform(batched ? loadM[4] : 0);
 )";
   }
   source += R"(
@@ -615,6 +619,7 @@ kernel void reduce_sum_2(device {{MEMORY_NAME_C}}2 *A_buf [[buffer(0)]],
     if (loadM) {
       source += R"(
   const uniform<uint> M = make_uniform(loadM[0]);
+  const uniform<uint> C_batch_stride = make_uniform(batched ? loadM[3] : 0);
 )";
     }
     source += R"(
@@ -648,6 +653,7 @@ kernel void reduce_sum(device {{MEMORY_NAME_C}} *A_buf [[buffer(0)]],
     if (loadM) {
       source += R"(
   const uniform<uint> M = make_uniform(loadM[0]);
+  const uniform<uint> C_batch_stride = make_uniform(batched ? loadM[3] : 0);
 )";
     }
     source += R"(
@@ -678,11 +684,6 @@ constant uint N [[function_constant(1)]];
 constant uint K [[function_constant(2)]];
 // Specify the batch / batch strides at PSO creation time.
 constant bool batched [[function_constant(11)]];
-
-constant uint A_batch_stride [[function_constant(15)]];
-constant uint B_batch_stride [[function_constant(16)]];
-constant uint C_batch_stride [[function_constant(17)]];
-constant uint bias_batch_stride [[function_constant(18)]];
 )";
   if (useLeadingDimensions) {
     constants += R"(
@@ -693,6 +694,10 @@ constant uint C_leading_dimension [[function_constant(7)]];
   if (!loadM) {
     constants += R"(
 constant uint M [[function_constant(0)]];
+constant uint A_batch_stride [[function_constant(15)]];
+constant uint B_batch_stride [[function_constant(16)]];
+constant uint C_batch_stride [[function_constant(17)]];
+constant uint bias_batch_stride [[function_constant(18)]];
 )";
   }
   constants += R"(

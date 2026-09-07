@@ -251,6 +251,9 @@ size_t ccv_nnc_mfa_gemm_reserved_scratch_size(ccv_nnc_mfa_gemm_params_t params)
 
 void ccv_nnc_mfa_encode_gemm(mfa::context* context, ccv_nnc_mfa_gemm_params_t params, MTL::CommandBatch* command_batch, MTL::Buffer** tensors, size_t* tensor_offsets)
 {
+  const uint32_t dimensions[] = {
+    params.M, params.batch_stride_a, params.batch_stride_b, params.batch_stride_c, params.batch_stride_d,
+  };
   int num_tensors = 0;
   while (tensors[num_tensors] != nullptr) {
     num_tensors += 1;
@@ -369,7 +372,7 @@ void ccv_nnc_mfa_encode_gemm(mfa::context* context, ccv_nnc_mfa_gemm_params_t pa
         encoder->setBuffer(tensors[i], tensor_offsets[i], i);
 	  }
     }
-    encoder->setBytes(&params.M, sizeof(params.M), num_tensors);
+    encoder->setBytes(dimensions, sizeof(dimensions), num_tensors);
   
     // Calculate the grid size.
     MTL::Size gridSize = kernel->threadgroupsPerGrid(gemmDesc);
@@ -386,7 +389,7 @@ void ccv_nnc_mfa_encode_gemm(mfa::context* context, ccv_nnc_mfa_gemm_params_t pa
       encoder->setComputePipelineState(second.get());
       encoder->setBuffer(scratch, 0, 0);
       encoder->setBuffer(tensors[2], tensor_offsets[2], 1);
-      encoder->setBytes(&params.M, sizeof(params.M), 2);
+      encoder->setBytes(dimensions, sizeof(dimensions), 2);
       encoder->useResource(scratch, MTL::ResourceUsageRead);
       encoder->useResource(tensors[2], MTL::ResourceUsageWrite);
       if ((params.N % 2) == 0) {
@@ -462,7 +465,7 @@ void ccv_nnc_mfa_encode_gemm(mfa::context* context, ccv_nnc_mfa_gemm_params_t pa
       encoder->setBuffer(tensors[i], tensor_offsets[i], i);
     }
     if (gemmDesc.loadM) {
-      encoder->setBytes(&params.M, sizeof(params.M), num_tensors);
+      encoder->setBytes(dimensions, sizeof(dimensions), num_tensors);
     }
   
     // Calculate the grid size.

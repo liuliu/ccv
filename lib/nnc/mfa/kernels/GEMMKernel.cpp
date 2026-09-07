@@ -340,6 +340,16 @@ kernel void gemm(device {{MEMORY_NAME_A}} *A [[buffer(0)]],
                  ushort sidx [[simdgroup_index_in_threadgroup]],
                  ushort lane_id [[thread_index_in_simdgroup]])
 {
+)";
+  if (loadM) {
+    source += R"(
+  const uniform<uint> A_batch_stride = make_uniform(batched ? loadM[1] : 0);
+  const uniform<uint> B_batch_stride = make_uniform(batched ? loadM[2] : 0);
+  const uniform<uint> C_batch_stride = make_uniform(batched ? loadM[3] : 0);
+  const uniform<uint> bias_batch_stride = make_uniform(batched ? loadM[4] : 0);
+)";
+  }
+  source += R"(
   if (batched) {
     A = A + A_batch_stride * gid.z;
     B = B + B_batch_stride * gid.z;
@@ -450,11 +460,6 @@ constant bool load_previous_C [[function_constant(10)]];
 // Specify the batch / batch strides at PSO creation time.
 constant bool batched [[function_constant(11)]];
 
-constant uint A_batch_stride [[function_constant(15)]];
-constant uint B_batch_stride [[function_constant(16)]];
-constant uint C_batch_stride [[function_constant(17)]];
-constant uint bias_batch_stride [[function_constant(18)]];
-
 // Whether each matrix is transposed.
 constant bool A_trans = {{TRANSPOSE_STATE_A}};
 constant bool B_trans = {{TRANSPOSE_STATE_B}};
@@ -490,6 +495,10 @@ constant ushort N_shift = (N < N_group) ? 0 : {{REGISTER_N}} - N_remainder;
   if (!loadM) {
     constants += R"(
 constant uint M [[function_constant(0)]];
+constant uint A_batch_stride [[function_constant(15)]];
+constant uint B_batch_stride [[function_constant(16)]];
+constant uint C_batch_stride [[function_constant(17)]];
+constant uint bias_batch_stride [[function_constant(18)]];
 // Thresholds that mark the matrix edge.
 constant uint M_edge = M - (M % M_group);
 // Find the number of elements in the final block. If the matrix
