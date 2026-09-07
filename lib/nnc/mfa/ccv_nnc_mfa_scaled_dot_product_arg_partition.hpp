@@ -13,6 +13,7 @@ typedef struct {
   float scale;
   uint8_t is_causal;
   uint8_t use_neural_accelerators;
+  uint8_t loadM;
 } ccv_nnc_mfa_scaled_dot_product_arg_partition_params_t;
 
 typedef struct {

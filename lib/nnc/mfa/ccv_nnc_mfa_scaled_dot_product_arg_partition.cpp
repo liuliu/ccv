@@ -109,6 +109,7 @@ void ccv_nnc_mfa_encode_scaled_dot_product_arg_partition(ccv_nnc_mfa_context_t* 
         CCV_NNC_MFA_PRECONDITION(false);
     }
     descriptor.T = params.T;
+    descriptor.loadM = params.loadM;
     descriptor.C = params.C;
     descriptor.H = params.H;
     descriptor.D = params.D;
@@ -133,7 +134,8 @@ void ccv_nnc_mfa_encode_scaled_dot_product_arg_partition(ccv_nnc_mfa_context_t* 
     const struct {
       uint32_t C;
       int32_t query_offset;
-    } runtimeParams = { params.C, params.query_offset };
+      uint32_t T;
+    } runtimeParams = { params.C, params.query_offset, params.T };
 
     const uint32_t topKTileC = 2048;
     const uint32_t topKMergeLists = 4;
@@ -205,6 +207,8 @@ void ccv_nnc_mfa_encode_scaled_dot_product_arg_partition(ccv_nnc_mfa_context_t* 
           topKMergeEncoder->setBuffer(scratch, outputIndexOffset, 3);
         }
         topKMergeEncoder->setBytes(&inputLists, sizeof(inputLists), 4);
+        if (params.loadM)
+          topKMergeEncoder->setBytes(&runtimeParams, sizeof(runtimeParams), 5);
         topKMergeEncoder->dispatchThreadgroups(MTL::Size(outputLists, params.T, 1), kernel->topKMergeThreadgroupSize);
         command_batch->finishCommand(topKMergeEncoder);
         if (isFinal) {

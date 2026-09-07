@@ -8,8 +8,9 @@
 bool NAScaledDotProductArgPartitionDescriptor::operator==(const NAScaledDotProductArgPartitionDescriptor& rhs) const {
   return
   memoryPrecision == rhs.memoryPrecision &&
-  T == rhs.T &&
+  (loadM || T == rhs.T) &&
   (loadC || C == rhs.C) &&
+  loadM == rhs.loadM &&
   loadC == rhs.loadC &&
   H == rhs.H &&
   D == rhs.D &&
@@ -26,7 +27,8 @@ bool NAScaledDotProductArgPartitionDescriptor::operator==(const NAScaledDotProdu
 std::size_t std::hash<NAScaledDotProductArgPartitionDescriptor>::operator()(const NAScaledDotProductArgPartitionDescriptor& hash) const noexcept {
   using namespace ccv::nnc::mfa::hash;
   std::size_t seed = 0;
-  combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.memoryPrecision.value, hash.T }));
+  combine_32(seed, hash.loadM ? 1 : 0);
+  combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.memoryPrecision.value, hash.loadM ? 0 : hash.T }));
   combine_64(seed, pack_64(simd::uint2 { hash.loadC ? 0 : hash.C, hash.H }));
   combine_64(seed, pack_64(simd::uint2 { hash.D, hash.kth }));
   combine_64(seed, pack_64(simd::uint2 { hash.compressionRatio, hash.isCausal ? 1u : 0u }));
@@ -57,12 +59,14 @@ std::pair<NAScaledDotProductArgPartitionKernelDescriptor, PipelineValue<NAScaled
   kernelDesc.scoreBlockN = scoreBlockN;
   kernelDesc.scoreSIMDGroups = scoreSIMDGroups;
   kernelDesc.loadC = loadC;
+  kernelDesc.loadM = loadM;
   kernelDesc.isCausal = isCausal;
 
   auto createPipeline =
   [=](MTL::Library* library, const char* name) -> MTL::ComputePipelineState* {
     auto constants = NS::TransferPtr(MTL::FunctionConstantValues::alloc()->init());
-    constants->setConstantValue(&T, MTL::DataTypeUInt, NS::UInteger(0));
+    if (!loadM)
+      constants->setConstantValue(&T, MTL::DataTypeUInt, NS::UInteger(0));
     if (!loadC) {
       constants->setConstantValue(&C, MTL::DataTypeUInt, NS::UInteger(1));
     }

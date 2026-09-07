@@ -10,6 +10,7 @@ struct ScaledDotProductArgPartitionKernelDescriptor {
   uint16_t scoreBlockN = 32;
   uint16_t scoreSIMDGroups = 4;
   bool loadC = false;
+  bool loadM = false;
 
   bool operator==(const ScaledDotProductArgPartitionKernelDescriptor& rhs) const;
 };

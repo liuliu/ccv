@@ -9,6 +9,7 @@ NAScaledDotProductArgPartitionKernel::NAScaledDotProductArgPartitionKernel(NASca
   scoreBlockN = descriptor.scoreBlockN;
   scoreSIMDGroups = descriptor.scoreSIMDGroups;
   loadC = descriptor.loadC;
+  loadM = descriptor.loadM;
   isCausal = descriptor.isCausal;
   scoreThreadgroupSize = MTL::Size(scoreSIMDGroups * 32, 1, 1);
   topKThreadgroupSize = MTL::Size(1, 1, 1);
@@ -33,13 +34,16 @@ std::string NAScaledDotProductArgPartitionKernel::createSource() const noexcept 
   source.SetValue("topk_threads", "512");
   source.SetValue("topk_values_per_thread", "4");
   source.SetValue("topk_sort_values", "2048");
+  source.SetValue("T_FUNCTION_CONSTANT", loadM ? "" : "constant uint T [[function_constant(0)]];\n");
+  source.SetValue("LOAD_M_VALUE", loadM ? "  const uniform<uint> T = make_uniform(runtime_params.T);\n" : "");
+  source.SetValue("TOPK_MERGE_M_ARGUMENT", loadM ? "  constant SDPAPRuntimeParams& runtime_params [[buffer(5)]],\n" : "");
   source.SetValue("C_FUNCTION_CONSTANT", loadC ? "" : "constant uint C [[function_constant(1)]];\n");
   source.SetValue("QUERY_OFFSET_FUNCTION_CONSTANT", loadC ? "" : "constant int query_offset [[function_constant(7)]];\n");
   source.SetValue("LOAD_C_PARAMETER", loadC ? ", uniform<uint> C, uniform<int> query_offset" : "");
   source.SetValue("VISIBLE_COUNT_FOR_TOKEN", loadC ? "visible_count_for_token(t, C, query_offset)" : "visible_count_for_token(t)");
-  source.SetValue("INDEX_SCORE_C_ARGUMENT", loadC ? "  constant SDPAPRuntimeParams& runtime_params [[buffer(4)]],\n" : "");
-  source.SetValue("TOPK_SERIAL_C_ARGUMENT", loadC ? "  constant SDPAPRuntimeParams& runtime_params [[buffer(2)]],\n" : "");
-  source.SetValue("TOPK_C_ARGUMENT", loadC ? "  constant SDPAPRuntimeParams& runtime_params [[buffer(3)]],\n" : "");
+  source.SetValue("INDEX_SCORE_C_ARGUMENT", (loadC || loadM) ? "  constant SDPAPRuntimeParams& runtime_params [[buffer(4)]],\n" : "");
+  source.SetValue("TOPK_SERIAL_C_ARGUMENT", (loadC || loadM) ? "  constant SDPAPRuntimeParams& runtime_params [[buffer(2)]],\n" : "");
+  source.SetValue("TOPK_C_ARGUMENT", (loadC || loadM) ? "  constant SDPAPRuntimeParams& runtime_params [[buffer(3)]],\n" : "");
   source.SetValue("LOAD_C_VALUE", loadC ? "  const uniform<uint> C = make_uniform(runtime_params.C);\n  const uniform<int> query_offset = make_uniform(runtime_params.query_offset);\n" : "");
   std::string scoreTileCulling;
   if (isCausal) {
@@ -73,8 +77,7 @@ using namespace mpp::tensor_ops;
 
 typedef {{memory_precision}} real;
 
-constant uint T [[function_constant(0)]];
-{{C_FUNCTION_CONSTANT}}constant uint H [[function_constant(2)]];
+{{T_FUNCTION_CONSTANT}}{{C_FUNCTION_CONSTANT}}constant uint H [[function_constant(2)]];
 constant uint D [[function_constant(3)]];
 constant uint compression_ratio [[function_constant(4)]];
 constant bool is_causal [[function_constant(5)]];
@@ -84,6 +87,7 @@ constant float scale [[function_constant(6)]];
 struct SDPAPRuntimeParams {
   uint C;
   int query_offset;
+  uint T;
 };
 
 inline uint visible_count_for_token(uint t{{LOAD_C_PARAMETER}}) {
@@ -260,7 +264,7 @@ kernel void index_score(
   ushort sgid [[simdgroup_index_in_threadgroup]],
   uint2 tgid [[threadgroup_position_in_grid]]
 ) {
-{{LOAD_C_VALUE}}  const uint c_start = tgid.x * {{score_block_n}};
+{{LOAD_C_VALUE}}{{LOAD_M_VALUE}}  const uint c_start = tgid.x * {{score_block_n}};
   const uint t_start = tgid.y * {{score_block_m}};
 {{SCORE_TILE_CULLING}}  auto Q = tensor<device real, dextents<int32_t, 2>, tensor_inline>(q, dextents<int32_t, 2>(H * D, T));
   auto K = tensor<device real, dextents<int32_t, 2>, tensor_inline>(k, dextents<int32_t, 2>(D, C));
@@ -334,7 +338,7 @@ kernel void topk_serial(
   device int* selected [[buffer(1)]],
 {{TOPK_SERIAL_C_ARGUMENT}}  uint t [[thread_position_in_grid]]
 ) {
-{{LOAD_C_VALUE}}  if (t >= T) {
+{{LOAD_C_VALUE}}{{LOAD_M_VALUE}}  if (t >= T) {
     return;
   }
   float top_scores[{{kth}}];
@@ -373,7 +377,7 @@ kernel void topk_tile(
 {{TOPK_C_ARGUMENT}}  uint2 tgid [[threadgroup_position_in_grid]],
   uint tid [[thread_index_in_threadgroup]]
 ) {
-{{LOAD_C_VALUE}}  const uint tile = tgid.x;
+{{LOAD_C_VALUE}}{{LOAD_M_VALUE}}  const uint tile = tgid.x;
   const uint t = tgid.y;
   if (t >= T) {
     return;
@@ -408,10 +412,10 @@ kernel void topk_merge(
   device float* reduced_scores [[buffer(2)]],
   device int* reduced_indices [[buffer(3)]],
   constant uint& num_lists [[buffer(4)]],
-  uint2 tgid [[threadgroup_position_in_grid]],
+{{TOPK_MERGE_M_ARGUMENT}}  uint2 tgid [[threadgroup_position_in_grid]],
   uint tid [[thread_index_in_threadgroup]]
 ) {
-  const uint group = tgid.x;
+{{LOAD_M_VALUE}}  const uint group = tgid.x;
   const uint t = tgid.y;
   if (t >= T) {
     return;

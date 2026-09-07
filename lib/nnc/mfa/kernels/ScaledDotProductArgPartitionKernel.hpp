@@ -12,6 +12,7 @@ struct ScaledDotProductArgPartitionKernel {
   uint16_t scoreBlockN;
   uint16_t scoreSIMDGroups;
   bool loadC;
+  bool loadM = false;
   MTL::Size scoreThreadgroupSize;
   MTL::Size topKThreadgroupSize;
   MTL::Size topKTileThreadgroupSize;

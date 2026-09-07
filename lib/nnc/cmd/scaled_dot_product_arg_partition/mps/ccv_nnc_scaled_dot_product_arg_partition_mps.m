@@ -142,6 +142,7 @@ static int _ccv_nnc_scaled_dot_product_arg_partition_forw(const ccv_nnc_cmd_t cm
 				.scale = cmd.info.scaled_dot_product_arg_partition.scale,
 				.is_causal = (uint8_t)(cmd.info.scaled_dot_product_arg_partition.is_causal != 0),
 				.use_neural_accelerators = (uint8_t)use_neural_accelerators,
+				.loadM = (ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M) != 0,
 			};
 			ccv_nnc_mfa_prepare_scaled_dot_product_arg_partition(context, params);
 			mtl_command_batch_t* command_batch = ccv_nnc_stream_context_start_command_batch(stream_context);
