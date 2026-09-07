@@ -19,8 +19,8 @@ bool SwishMulDescriptor::operator==(const SwishMulDescriptor& rhs) const {
   daPrecision == rhs.daPrecision &&
   dbPrecision == rhs.dbPrecision &&
   loadM == rhs.loadM &&
-  weightCount == rhs.weightCount &&
-  ((loadM && !weighted) || length == rhs.length);
+  (weighted ? length / weightCount == rhs.length / rhs.weightCount : weightCount == rhs.weightCount) &&
+  (loadM || length == rhs.length);
 }
 
 std::size_t std::hash<SwishMulDescriptor>::operator()(const SwishMulDescriptor& hash) const noexcept {
@@ -31,8 +31,8 @@ std::size_t std::hash<SwishMulDescriptor>::operator()(const SwishMulDescriptor& 
   combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.bPrecision.value, (unsigned int)hash.daPrecision.value }));
   combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.dbPrecision.value, (unsigned int)hash.value }));
   combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.weightPrecision.value, (unsigned int)hash.weighted }));
-  combine_32(seed, hash.weightCount);
-  combine_64(seed, (hash.loadM && !hash.weighted) ? 0 : (uint64_t)hash.length);
+  combine_32(seed, hash.weighted ? hash.length / hash.weightCount : hash.weightCount);
+  combine_64(seed, hash.loadM ? 0 : (uint64_t)hash.length);
   combine_32(seed, hash.loadM ? 1 : 0);
   combine_64(seed, pack_64(simd::uint2 { *reinterpret_cast<const uint32_t*>(&hash.beta), *reinterpret_cast<const uint32_t*>(&hash.scale) }));
   combine_32(seed, *reinterpret_cast<const uint32_t*>(&hash.clamp));
