@@ -1,11 +1,9 @@
 #include "ScaledDotProductArgPartitionEnumerateKernelDescriptor.hpp"
 
 bool ScaledDotProductArgPartitionEnumerateKernelDescriptor::operator==(const ScaledDotProductArgPartitionEnumerateKernelDescriptor& rhs) const {
-  (void)rhs;
-  return true;
+  return loadM == rhs.loadM;
 }
 
 std::size_t std::hash<ScaledDotProductArgPartitionEnumerateKernelDescriptor>::operator()(const ScaledDotProductArgPartitionEnumerateKernelDescriptor& hash) const noexcept {
-  (void)hash;
-  return 0;
+  return hash.loadM ? 1 : 0;
 }

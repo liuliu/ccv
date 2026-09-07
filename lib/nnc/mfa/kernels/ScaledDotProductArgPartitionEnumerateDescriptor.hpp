@@ -12,6 +12,7 @@ struct ScaledDotProductArgPartitionEnumerateKernelDescriptor;
 struct ScaledDotProductArgPartitionEnumerateKernel;
 
 struct ScaledDotProductArgPartitionEnumerateDescriptor {
+  bool loadM = false;
   uint32_t T = 0;
   uint32_t C = 0;
   uint32_t kth = 0;

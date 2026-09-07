@@ -22,6 +22,7 @@ typedef struct {
   uint32_t compression_ratio;
   int32_t query_offset;
   uint8_t is_causal;
+  uint8_t loadM;
 } ccv_nnc_mfa_scaled_dot_product_arg_partition_enumerate_params_t;
 
 #ifdef __cplusplus

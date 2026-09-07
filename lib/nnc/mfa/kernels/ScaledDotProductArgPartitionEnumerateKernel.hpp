@@ -7,6 +7,7 @@
 #include "ScaledDotProductArgPartitionEnumerateKernelDescriptor.hpp"
 
 struct ScaledDotProductArgPartitionEnumerateKernel {
+  bool loadM = false;
   MTL::Size threadgroupSize;
   std::string source;
   NS::SharedPtr<MTL::Library> library;

@@ -5,6 +5,7 @@
 #include <functional>
 
 struct ScaledDotProductArgPartitionEnumerateKernelDescriptor {
+  bool loadM = false;
   bool operator==(const ScaledDotProductArgPartitionEnumerateKernelDescriptor& rhs) const;
 };
 

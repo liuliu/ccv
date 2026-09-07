@@ -15,6 +15,7 @@ static int _ccv_nnc_scaled_dot_product_arg_partition_enumerate(const ccv_nnc_cmd
 		if (ccv_nnc_mfa_context_supported(context) && !(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA))
 		{
 			const ccv_nnc_mfa_scaled_dot_product_arg_partition_enumerate_params_t params = {
+				.loadM = (ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M) != 0,
 				.T = (uint32_t)T,
 				.C = (uint32_t)C,
 				.kth = (uint32_t)kth,

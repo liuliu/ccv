@@ -53,6 +53,7 @@ void ccv_nnc_mfa_encode_scaled_dot_product_arg_partition_enumerate(ccv_nnc_mfa_c
   CCV_NNC_MFA_PRECONDITION(tensors[1] == nullptr);
 
   ScaledDotProductArgPartitionEnumerateDescriptor descriptor;
+  descriptor.loadM = params.loadM;
   descriptor.T = params.T;
   descriptor.C = params.C;
   descriptor.kth = params.kth;
@@ -72,6 +73,10 @@ void ccv_nnc_mfa_encode_scaled_dot_product_arg_partition_enumerate(ccv_nnc_mfa_c
   encoder->setComputePipelineState(pipeline.get());
   encoder->useResource(tensors[0], MTL::ResourceUsageWrite);
   encoder->setBuffer(tensors[0], tensor_offsets[0], 0);
+  if (params.loadM) {
+    const uint32_t dimensions[] = { params.T, params.C, static_cast<uint32_t>(params.query_offset) };
+    encoder->setBytes(dimensions, sizeof(dimensions), 1);
+  }
   const MTL::Size gridSize = kernel->gridSize(params.T, params.kth);
   CCV_NNC_MFA_PRECONDITION(gridSize.width > 0);
   encoder->dispatchThreadgroups(gridSize, kernel->threadgroupSize);
