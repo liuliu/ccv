@@ -16,6 +16,20 @@
 #include <dispatch/dispatch.h>
 #endif
 
+// [M, 1, D]op [1, H, 1] -> [M, H, D]. Return the channel-weight input bit.
+static inline uint8_t _ccv_nnc_mps_channel_broadcast(const ccv_nnc_tensor_param_t a, const ccv_nnc_tensor_param_t b, const ccv_nnc_tensor_param_t c)
+{
+	if (ccv_nnc_tensor_nd(a.dim) != 3 || ccv_nnc_tensor_nd(b.dim) != 3 || ccv_nnc_tensor_nd(c.dim) != 3)
+		return 0;
+	if (a.dim[0] == c.dim[0] && a.dim[1] == 1 && a.dim[2] == c.dim[2] &&
+		b.dim[0] == 1 && b.dim[1] == c.dim[1] && b.dim[2] == 1)
+		return 2;
+	if (b.dim[0] == c.dim[0] && b.dim[1] == 1 && b.dim[2] == c.dim[2] &&
+		a.dim[0] == 1 && a.dim[1] == c.dim[1] && a.dim[2] == 1)
+		return 1;
+	return 0;
+}
+
 static int _ccv_nnc_mul_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
 {
 	assert(input_size == 2);
@@ -60,13 +74,15 @@ static int _ccv_nnc_mul_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 		return CCV_NNC_EXEC_SUCCESS;
 	}
 	const ccv_nnc_tensor_view_t* const b = (const ccv_nnc_tensor_view_t*)inputs[1];
+	const uint8_t channel_broadcast = _ccv_nnc_mps_channel_broadcast(a->info, b->info, c->info);
 	@autoreleasepool {
 		ccv_nnc_mfa_context_t* const context = ccv_nnc_default_mfa_context();
 		const size_t count = ccv_nnc_tensor_count(c->info);
 		const uint32_t mtl_data_type = a->info.datatype == CCV_32F ? 3 : (a->info.datatype == CCV_16F ? 16 : (a->info.datatype == CCV_16BF ? 121 : UINT32_MAX));
 		if (p == 1 && a->info.datatype == b->info.datatype && a->info.datatype == c->info.datatype &&
-			memcmp(a->info.dim, c->info.dim, sizeof(c->info.dim)) == 0 &&
-			memcmp(b->info.dim, c->info.dim, sizeof(c->info.dim)) == 0 &&
+			(channel_broadcast || (memcmp(a->info.dim, c->info.dim, sizeof(c->info.dim)) == 0 &&
+			memcmp(b->info.dim, c->info.dim, sizeof(c->info.dim)) == 0)) &&
+			(!channel_broadcast || (mpgetbuffer(inputs[0]) != mpgetbuffer(outputs[0]) && mpgetbuffer(inputs[1]) != mpgetbuffer(outputs[0]))) &&
 			mtl_data_type != UINT32_MAX && count > 0 && count <= UINT32_MAX &&
 			CCV_IS_TENSOR_CONTIGUOUS(a) && CCV_IS_TENSOR_CONTIGUOUS(b) && CCV_IS_TENSOR_CONTIGUOUS(c) &&
 			ccv_nnc_mfa_context_supported(context) && !(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA))
@@ -75,6 +91,9 @@ static int _ccv_nnc_mul_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 				.data_type = mtl_data_type,
 				.length = (uint32_t)count,
 				.loadM = !!(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M),
+				.channel_broadcast = channel_broadcast,
+				.channel_count = channel_broadcast ? c->info.dim[1] : 0,
+				.channel_length = channel_broadcast ? c->info.dim[2] : 0,
 			};
 			ccv_nnc_mfa_prepare_mul(context, params);
 			mtl_command_batch_t* const command_batch = ccv_nnc_stream_context_start_command_batch(stream_context);

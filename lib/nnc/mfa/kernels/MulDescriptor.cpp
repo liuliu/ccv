@@ -8,6 +8,9 @@ bool MulDescriptor::operator==(const MulDescriptor& rhs) const {
   memoryPrecision == rhs.memoryPrecision &&
   value == rhs.value &&
   loadM == rhs.loadM &&
+  channel_broadcast == rhs.channel_broadcast &&
+  channel_count == rhs.channel_count &&
+  channel_length == rhs.channel_length &&
   (loadM || value == 0 || length == rhs.length);
 }
 
@@ -17,6 +20,9 @@ std::size_t std::hash<MulDescriptor>::operator()(const MulDescriptor& hash) cons
   combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.memoryPrecision.value, (unsigned int)hash.value }));
   combine_32(seed, hash.loadM || hash.value == 0 ? 0 : hash.length);
   combine_32(seed, hash.loadM ? 1 : 0);
+  combine_32(seed, hash.channel_broadcast);
+  combine_32(seed, hash.channel_count);
+  combine_32(seed, hash.channel_length);
   return seed;
 }
 
@@ -39,6 +45,7 @@ std::pair<MulKernelDescriptor, PipelineValue<MulKernel> *> MulDescriptor::findKe
   MulKernelDescriptor kernelDesc;
   kernelDesc.value = value;
   kernelDesc.loadM = loadM;
+  kernelDesc.channel_broadcast = channel_broadcast;
   kernelDesc.memoryPrecision = memoryPrecision;
 
   // WARNING: The owner must explicitly retain the compute pipeline.
@@ -50,6 +57,12 @@ std::pair<MulKernelDescriptor, PipelineValue<MulKernel> *> MulDescriptor::findKe
     if (!loadM && value != 0) {
       const uint32_t count = value == 1 ? length / 4 : length;
       constants->setConstantValue(&count, MTL::DataTypeUInt, NS::UInteger(0));
+    }
+
+    if (channel_broadcast) {
+      constants->setConstantValue(&channel_count, MTL::DataTypeUInt, NS::UInteger(1));
+      const uint32_t channel_length = value == 2 ? this->channel_length : this->channel_length / 4;
+      constants->setConstantValue(&channel_length, MTL::DataTypeUInt, NS::UInteger(2));
     }
 
     NS::String* swiftName = NS::String::string("mul", NS::UTF8StringEncoding);

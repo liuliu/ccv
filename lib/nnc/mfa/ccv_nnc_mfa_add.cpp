@@ -17,6 +17,8 @@ void ccv_nnc_mfa_prepare_add(mfa::context* context, ccv_nnc_mfa_add_params_t par
 void ccv_nnc_mfa_encode_add(ccv_nnc_mfa_context_t* context, ccv_nnc_mfa_add_params_t params, mtl_command_batch_t* command_batch, mtl_buffer_t** tensors, size_t* tensor_offsets)
 {
   CCV_NNC_MFA_PRECONDITION(!(params.negative_mask | params.broadcast | params.scaled_mask) || params.args <= 8);
+  CCV_NNC_MFA_PRECONDITION(!params.channel_broadcast ||
+    ((params.channel_broadcast == 1 || params.channel_broadcast == 2) && params.args == 2 && !params.broadcast && params.channel_count > 0 && params.channel_length > 0));
   auto encoder = command_batch->startCommand();
   
   int num_tensors = 0;
@@ -40,13 +42,17 @@ void ccv_nnc_mfa_encode_add(ccv_nnc_mfa_context_t* context, ccv_nnc_mfa_add_para
   }
   descriptor.length = params.length;
   descriptor.loadM = params.loadM;
+  descriptor.channel_broadcast = params.channel_broadcast;
+  descriptor.channel_count = params.channel_broadcast ? params.channel_count : 0;
+  descriptor.channel_length = params.channel_broadcast ? params.channel_length : 0;
   descriptor.negative_mask = params.negative_mask;
   descriptor.broadcast = params.broadcast;
   descriptor.scaled_mask = params.scaled_mask;
 
-  if (!params.loadM && params.length % (4 * threadgroup_width) == 0) {
+  const bool vectorized = params.length % 4 == 0 && (!params.channel_broadcast || params.channel_length % 4 == 0);
+  if (vectorized && !params.loadM && params.length % (4 * threadgroup_width) == 0) {
     descriptor.value = 0;
-  } else if (params.length % 4 == 0) {
+  } else if (vectorized) {
     descriptor.value = 1;
   } else {
     descriptor.value = 2;
@@ -88,7 +94,7 @@ void ccv_nnc_mfa_encode_add(ccv_nnc_mfa_context_t* context, ccv_nnc_mfa_add_para
   }
 
   unsigned int count;
-  if (params.length % 4 == 0) {
+  if (vectorized) {
     count = params.length / 4;
   } else {
     count = params.length;

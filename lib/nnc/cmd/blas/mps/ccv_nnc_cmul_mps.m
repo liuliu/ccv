@@ -92,7 +92,7 @@ static int _ccv_nnc_cmul_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 				assert(nd = ccv_nnc_tensor_nd(c->info.dim));
 				int adim[CCV_NNC_MAX_DIM_ALLOC];
 				int bdim[CCV_NNC_MAX_DIM_ALLOC];
-				int cdim[CCV_NNC_MAX_DIM_ALLOC];
+				int cdim[CCV_NNC_MAX_DIM_ALLOC] = {0};
 				int squeezed_dims = 0;
 				for (i = nd - 1; i >= 0; i--)
 				{
@@ -104,9 +104,9 @@ static int _ccv_nnc_cmul_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 					squeezed_dims += 1;
 				}
 				nd = squeezed_dims;
-				int astride[CCV_NNC_MAX_DIM_ALLOC];
-				int bstride[CCV_NNC_MAX_DIM_ALLOC];
-				int cstride[CCV_NNC_MAX_DIM_ALLOC];
+				int astride[CCV_NNC_MAX_DIM_ALLOC] = {0};
+				int bstride[CCV_NNC_MAX_DIM_ALLOC] = {0};
+				int cstride[CCV_NNC_MAX_DIM_ALLOC] = {0};
 				astride[0] = 1;
 				bstride[0] = 1;
 				cstride[0] = 1;
@@ -339,7 +339,7 @@ static int _ccv_nnc_cmul_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 						assert(nd = ccv_nnc_tensor_nd(c->info.dim));
 						int adim[CCV_NNC_MAX_DIM_ALLOC];
 						int bdim[CCV_NNC_MAX_DIM_ALLOC];
-						int cdim[CCV_NNC_MAX_DIM_ALLOC];
+						int cdim[CCV_NNC_MAX_DIM_ALLOC] = {0};
 						int squeezed_dims = 0;
 						for (i = nd - 1; i >= 0; i--)
 						{
@@ -351,9 +351,9 @@ static int _ccv_nnc_cmul_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 							squeezed_dims += 1;
 						}
 						nd = squeezed_dims;
-						int astride[CCV_NNC_MAX_DIM_ALLOC];
-						int bstride[CCV_NNC_MAX_DIM_ALLOC];
-						int cstride[CCV_NNC_MAX_DIM_ALLOC];
+						int astride[CCV_NNC_MAX_DIM_ALLOC] = {0};
+						int bstride[CCV_NNC_MAX_DIM_ALLOC] = {0};
+						int cstride[CCV_NNC_MAX_DIM_ALLOC] = {0};
 						astride[0] = 1;
 						bstride[0] = 1;
 						cstride[0] = 1;
@@ -426,7 +426,7 @@ static int _ccv_nnc_cmul_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 						assert(nd = ccv_nnc_tensor_nd(d->info.dim));
 						int adim[CCV_NNC_MAX_DIM_ALLOC];
 						int bdim[CCV_NNC_MAX_DIM_ALLOC];
-						int cdim[CCV_NNC_MAX_DIM_ALLOC];
+						int cdim[CCV_NNC_MAX_DIM_ALLOC] = {0};
 						int squeezed_dims = 0;
 						for (i = nd - 1; i >= 0; i--)
 						{
@@ -438,9 +438,9 @@ static int _ccv_nnc_cmul_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 							squeezed_dims += 1;
 						}
 						nd = squeezed_dims;
-						int astride[CCV_NNC_MAX_DIM_ALLOC];
-						int bstride[CCV_NNC_MAX_DIM_ALLOC];
-						int cstride[CCV_NNC_MAX_DIM_ALLOC];
+						int astride[CCV_NNC_MAX_DIM_ALLOC] = {0};
+						int bstride[CCV_NNC_MAX_DIM_ALLOC] = {0};
+						int cstride[CCV_NNC_MAX_DIM_ALLOC] = {0};
 						astride[0] = 1;
 						bstride[0] = 1;
 						cstride[0] = 1;

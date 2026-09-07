@@ -11,6 +11,7 @@ AddKernel::AddKernel(AddKernelDescriptor descriptor, MTL::Device *const device) 
   value = descriptor.value;
 
   loadM = descriptor.loadM;
+  channel_broadcast = descriptor.channel_broadcast;
 
   negative_mask = descriptor.negative_mask;
 
@@ -43,7 +44,7 @@ std::string AddKernel::createSource() const noexcept {
   std::string buffers = "";
   const bool vectorized = value == 0 || value == 1;
   for (int i = 0; i < args; i++) {
-    const bool scalar = i < 8 && (broadcast & (1u << i));
+    const bool scalar = i < 8 && ((broadcast | channel_broadcast) & (1u << i));
     buffers += scalar || !vectorized ? "device const real *src" : "device const real4 *src";
     buffers += std::to_string(i) + " [[buffer(" + std::to_string(i) + ")]],\n";
   }
@@ -53,7 +54,10 @@ std::string AddKernel::createSource() const noexcept {
   for (int i = 0; i < args; i++) {
     const bool scalar = i < 8 && (broadcast & (1u << i));
     const bool subtract = i < 8 && (negative_mask & (1u << i));
-    std::string item = "src" + std::to_string(i) + (scalar ? "[0]" : "[idx]");
+    std::string index = scalar ? "0" : "idx";
+    if (channel_broadcast)
+      index = (channel_broadcast & (1u << i)) ? "(idx / channel_length) % channel_count" : "(idx / channel_length / channel_count) * channel_length + idx % channel_length";
+    std::string item = "src" + std::to_string(i) + "[" + index + "]";
     if (i < 8 && (scaled_mask & (1u << i)))
       item = "(" + (vectorized ? std::string("real4") : std::string("real")) + "(scales[" + std::to_string(i) + "]) * " + item + ")";
     if (i == 0)
@@ -166,6 +170,10 @@ std::string AddKernel::createConstants() const noexcept {
   if (value != 0 && !loadM) {
     defines += "constant uint count [[function_constant(0)]];";
     defines += "\n";
+  }
+  if (channel_broadcast) {
+    defines += "constant uint channel_count [[function_constant(1)]];\n";
+    defines += "constant uint channel_length [[function_constant(2)]];\n";
   }
   return defines;
 }

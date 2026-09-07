@@ -10,6 +10,10 @@ typedef struct {
   uint8_t broadcast;
   uint8_t scaled_mask;
   float scales[8];
+  // [M, 1, D] op [1, H, 1]; bit 0 / 1 identifies the channel-weight input.
+  uint8_t channel_broadcast;
+  uint32_t channel_count;
+  uint32_t channel_length;
 } ccv_nnc_mfa_add_params_t;
 
 #ifdef __cplusplus

@@ -5321,6 +5321,82 @@ TEST_CASE("clamp forward with only min")
 	ccv_nnc_tensor_free(bt);
 }
 
+TEST_CASE("MFA channel broadcast add and multiply match CPU with specialized and dynamic lengths")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_MUL_FORWARD, CCV_NNC_BACKEND_MPS) && ccv_nnc_cmd_ok(CCV_NNC_ADD_FORWARD, CCV_NNC_BACKEND_MPS));
+	const int shapes[][3] = { {17, 4, 128}, {257, 4, 128}, {4, 4, 128}, {129, 4, 513}, {4, 3, 127}, {1, 4, 768}, {37, 1, 257} };
+	const int datatypes[] = { CCV_32F, CCV_16F, CCV_16BF };
+	const int formats[] = { CCV_TENSOR_FORMAT_NHWC, CCV_TENSOR_FORMAT_NCHW };
+	const ccv_nnc_cmd_t cmds[] = { CMD_MUL_FORWARD(1), CMD_ADD_FORWARD(1, 1), CMD_ADD_FORWARD(-1, 1) };
+	const uint64_t old_flags = ccv_nnc_flags();
+	ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA);
+	dsfmt_t dsfmt;
+	dsfmt_init_gen_rand(&dsfmt, 17);
+	int f, d, s, i, j, op, reverse, dynamic;
+	for (f = 0; f < 2; f++)
+		for (d = 0; d < 3; d++)
+			for (s = 0; s < 7; s++)
+			{
+				const int m = shapes[s][0], h = shapes[s][1], width = shapes[s][2];
+				ccv_nnc_tensor_param_t params[] = { CPU_TENSOR_NHWC(32F, m, 1, width), CPU_TENSOR_NHWC(32F, 1, h, 1), CPU_TENSOR_NHWC(32F, m, h, width) };
+				ccv_nnc_tensor_t* cpu[3];
+				ccv_nnc_tensor_t* host[3];
+				ccv_nnc_tensor_t* storage[3];
+				ccv_nnc_tensor_view_t* gpu[3];
+				for (i = 0; i < 3; i++)
+				{
+					params[i].format = formats[f];
+					cpu[i] = ccv_nnc_tensor_new(0, params[i], 0);
+					const int count = ccv_nnc_tensor_count(params[i]);
+					if (i < 2)
+						for (j = 0; j < count; j++)
+							cpu[i]->data.f32[j] = dsfmt_genrand_open_close(&dsfmt) * 4 - 2;
+					params[i].datatype = datatypes[d];
+					host[i] = ccv_nnc_tensor_new(0, params[i], 0);
+					params[i].type = CCV_TENSOR_GPU_MEMORY;
+					ccv_nnc_tensor_param_t storage_params = params[i];
+					memset(storage_params.dim, 0, sizeof(storage_params.dim));
+					storage_params.dim[0] = count + 8;
+					storage[i] = ccv_nnc_tensor_new(0, storage_params, 0);
+					int stride[CCV_NNC_MAX_DIM_ALLOC];
+					ccv_nnc_tensor_get_stride(params[i].dim, stride);
+					gpu[i] = ccv_nnc_tensor_view_new(storage[i], params[i], DIM_ALLOC(0, 0, 4), stride);
+				}
+				ccv_nnc_tensor_t* const result = ccv_nnc_tensor_new(0, cpu[2]->info, 0);
+				ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(cpu[0], cpu[1]), TENSOR_LIST(host[0], host[1]), 0);
+				ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(host[0], host[1]), TENSOR_LIST(cpu[0], cpu[1]), 0);
+				ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(host[0], host[1]), TENSOR_LIST(gpu[0], gpu[1]), 0);
+				for (op = 0; op < 3; op++)
+					for (reverse = 0; reverse < 2; reverse++)
+					{
+						ccv_nnc_cmd_exec(cmds[op], ccv_nnc_no_hint, 0, TENSOR_LIST(cpu[reverse], cpu[1 - reverse]), TENSOR_LIST(cpu[2]), 0);
+						for (dynamic = 0; dynamic < 2; dynamic++)
+						{
+							if (dynamic)
+								ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M);
+							else
+								ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M);
+							REQUIRE_EQ(CCV_NNC_EXEC_SUCCESS, ccv_nnc_cmd_exec(cmds[op], ccv_nnc_no_hint, 0, TENSOR_LIST(gpu[reverse], gpu[1 - reverse]), TENSOR_LIST(gpu[2]), 0), "channel broadcast should execute");
+							ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(gpu[2]), TENSOR_LIST(host[2]), 0);
+							ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(host[2]), TENSOR_LIST(result), 0);
+							REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, cpu[2]->data.f32, result->data.f32, m * h * width, d == 0 ? 1e-6 : (d == 1 ? 2e-3 : 2e-2), "channel broadcast should match CPU for datatype %d shape %d op %d reverse %d dynamic %d", datatypes[d], s, op, reverse, dynamic);
+						}
+					}
+				ccv_nnc_tensor_free(result);
+				for (i = 0; i < 3; i++)
+				{
+					ccv_nnc_tensor_view_free(gpu[i]);
+					ccv_nnc_tensor_free(storage[i]);
+					ccv_nnc_tensor_free(host[i]);
+					ccv_nnc_tensor_free(cpu[i]);
+				}
+			}
+	if (!(old_flags & CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M))
+		ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M);
+	if (old_flags & CCV_NNC_DISABLE_MFA)
+		ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA);
+}
+
 TEST_CASE("MFA elementwise multiply matches CPU across dynamic lengths and dispatch variants")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_MUL_FORWARD, CCV_NNC_BACKEND_MPS));

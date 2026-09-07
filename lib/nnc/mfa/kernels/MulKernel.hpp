@@ -16,6 +16,8 @@ struct MulKernel {
 
   bool loadM;
 
+  uint8_t channel_broadcast;
+
   GEMMOperandPrecision memoryPrecision;
 
   MulKernel(MulKernelDescriptor descriptor, MTL::Device *const device);

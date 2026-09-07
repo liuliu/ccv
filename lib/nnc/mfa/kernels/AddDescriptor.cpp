@@ -9,6 +9,9 @@ bool AddDescriptor::operator==(const AddDescriptor& rhs) const {
   args == rhs.args &&
   value == rhs.value &&
   loadM == rhs.loadM &&
+  channel_broadcast == rhs.channel_broadcast &&
+  channel_count == rhs.channel_count &&
+  channel_length == rhs.channel_length &&
   negative_mask == rhs.negative_mask &&
   broadcast == rhs.broadcast &&
   scaled_mask == rhs.scaled_mask &&
@@ -23,6 +26,9 @@ std::size_t std::hash<AddDescriptor>::operator()(const AddDescriptor& hash) cons
   combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.negative_mask, (unsigned int)hash.broadcast }));
   combine_32(seed, (unsigned int)hash.scaled_mask);
   combine_32(seed, hash.loadM ? 1 : 0);
+  combine_32(seed, hash.channel_broadcast);
+  combine_32(seed, hash.channel_count);
+  combine_32(seed, hash.channel_length);
   return seed;
 }
 
@@ -46,6 +52,7 @@ std::pair<AddKernelDescriptor, PipelineValue<AddKernel> *> AddDescriptor::findKe
   kernelDesc.args = args;
   kernelDesc.value = value;
   kernelDesc.loadM = loadM;
+  kernelDesc.channel_broadcast = channel_broadcast;
   kernelDesc.negative_mask = negative_mask;
   kernelDesc.broadcast = broadcast;
   kernelDesc.scaled_mask = scaled_mask;
@@ -67,6 +74,12 @@ std::pair<AddKernelDescriptor, PipelineValue<AddKernel> *> AddDescriptor::findKe
         count = length;
         constants->setConstantValue(&count, MTL::DataTypeUInt, NS::UInteger(0));
       }
+    }
+
+    if (channel_broadcast) {
+      constants->setConstantValue(&channel_count, MTL::DataTypeUInt, NS::UInteger(1));
+      const uint32_t channel_length = value == 2 ? this->channel_length : this->channel_length / 4;
+      constants->setConstantValue(&channel_length, MTL::DataTypeUInt, NS::UInteger(2));
     }
 
     NS::String* swiftName = NS::String::string("add", NS::UTF8StringEncoding);

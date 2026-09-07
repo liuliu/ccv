@@ -18,6 +18,8 @@ struct AddKernel {
 
   bool loadM;
 
+  uint8_t channel_broadcast;
+
   uint8_t negative_mask;
 
   uint8_t broadcast;

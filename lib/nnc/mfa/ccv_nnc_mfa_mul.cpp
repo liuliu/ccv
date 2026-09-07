@@ -12,6 +12,8 @@ void ccv_nnc_mfa_encode_mul(ccv_nnc_mfa_context_t* context, ccv_nnc_mfa_mul_para
 {
   CCV_NNC_MFA_PRECONDITION(params.length > 0);
   CCV_NNC_MFA_PRECONDITION(tensors[0] && tensors[1] && tensors[2] && !tensors[3]);
+  CCV_NNC_MFA_PRECONDITION(!params.channel_broadcast ||
+    ((params.channel_broadcast == 1 || params.channel_broadcast == 2) && params.channel_count > 0 && params.channel_length > 0));
   auto encoder = command_batch->startCommand();
   for (int i = 0; i < 3; i++)
     encoder->setBuffer(tensors[i], tensor_offsets[i], NS::UInteger(i));
@@ -29,9 +31,13 @@ void ccv_nnc_mfa_encode_mul(ccv_nnc_mfa_context_t* context, ccv_nnc_mfa_mul_para
   }
   descriptor.length = params.length;
   descriptor.loadM = params.loadM;
-  if (!params.loadM && params.length % (4 * threadgroup_width) == 0) {
+  descriptor.channel_broadcast = params.channel_broadcast;
+  descriptor.channel_count = params.channel_broadcast ? params.channel_count : 0;
+  descriptor.channel_length = params.channel_broadcast ? params.channel_length : 0;
+  const bool vectorized = params.length % 4 == 0 && (!params.channel_broadcast || params.channel_length % 4 == 0);
+  if (vectorized && !params.loadM && params.length % (4 * threadgroup_width) == 0) {
     descriptor.value = 0;
-  } else if (params.length % 4 == 0) {
+  } else if (vectorized) {
     descriptor.value = 1;
   } else {
     descriptor.value = 2;
@@ -51,7 +57,7 @@ void ccv_nnc_mfa_encode_mul(ccv_nnc_mfa_context_t* context, ccv_nnc_mfa_mul_para
   if (tensors[0] != tensors[2] && tensors[1] != tensors[2])
     encoder->useResource(tensors[2], MTL::ResourceUsageWrite);
 
-  const uint32_t count = params.length % 4 == 0 ? params.length / 4 : params.length;
+  const uint32_t count = vectorized ? params.length / 4 : params.length;
   if (params.loadM)
     encoder->setBytes(&count, sizeof(count), NS::UInteger(3));
   const MTL::Size gridSize = MTL::Size(((size_t)count + threadgroup_width - 1) / threadgroup_width, 1, 1);
