@@ -14,7 +14,13 @@ static void serializeBinaries(MTL::BinaryArchive *const binaryArchive, const std
 }
 
 bool NAInt8AttentionDescriptor::operator==(const NAInt8AttentionDescriptor& rhs) const {
+  auto lhsDimensions = matrixDimensions;
+  auto rhsDimensions = rhs.matrixDimensions;
+  if (loadR) lhsDimensions[0] = rhsDimensions[0] = 0;
+  if (loadC) lhsDimensions[1] = rhsDimensions[1] = 0;
   return
+    loadR == rhs.loadR && loadC == rhs.loadC &&
+    (!(loadR || loadC) || kernelDescriptor() == rhs.kernelDescriptor()) &&
     batchDimension == rhs.batchDimension &&
     Hq == rhs.Hq &&
     Hk == rhs.Hk &&
@@ -26,9 +32,9 @@ bool NAInt8AttentionDescriptor::operator==(const NAInt8AttentionDescriptor& rhs)
     masked == rhs.masked &&
     isVarlen == rhs.isVarlen &&
     attentionSinks == rhs.attentionSinks &&
-    maskBatchStride == rhs.maskBatchStride &&
-    batchStrides == rhs.batchStrides &&
-    simd_all(matrixDimensions == rhs.matrixDimensions);
+    ((loadR || loadC) || maskBatchStride == rhs.maskBatchStride) &&
+    ((loadR || loadC) || batchStrides == rhs.batchStrides) &&
+    simd_all(lhsDimensions == rhsDimensions);
 }
 
 std::size_t std::hash<NAInt8AttentionDescriptor>::operator()(const NAInt8AttentionDescriptor& hash) const noexcept {
@@ -46,11 +52,14 @@ std::size_t std::hash<NAInt8AttentionDescriptor>::operator()(const NAInt8Attenti
       (uint16_t)(hash.masked ? 1 : 0) }));
   combine_32(seed, hash.isVarlen ? 1 : 0);
   combine_32(seed, hash.attentionSinks ? 1 : 0);
-  combine_32(seed, hash.maskBatchStride);
-  combine_32(seed, hash.matrixDimensions[0]);
-  combine_32(seed, hash.matrixDimensions[1]);
+  combine_32(seed, (hash.loadR || hash.loadC) ? 0 : hash.maskBatchStride);
+  combine_32(seed, hash.loadR ? 0 : hash.matrixDimensions[0]);
+  combine_32(seed, hash.loadC ? 0 : hash.matrixDimensions[1]);
   combine_32(seed, hash.matrixDimensions[2]);
   combine_32(seed, *reinterpret_cast<const uint32_t*>(&hash.scale));
+  combine_32(seed, (hash.loadR ? 1 : 0) | (hash.loadC ? 2 : 0));
+  if (hash.loadR || hash.loadC)
+    combine_64(seed, std::hash<NAInt8AttentionKernelDescriptor>{}(hash.kernelDescriptor()));
   return seed;
 }
 
@@ -94,7 +103,7 @@ NAInt8AttentionKernelDescriptor NAInt8AttentionDescriptor::kernelDescriptor() co
       isCausal &&
       !masked &&
       (isVarlen || matrixDimensions[0] > matrixDimensions[1]);
-  return NAInt8AttentionKernelDescriptor(
+  auto descriptor = NAInt8AttentionKernelDescriptor(
       blockDimensions,
       (unsigned short)matrixDimensions[2],
       Hq,
@@ -114,6 +123,10 @@ NAInt8AttentionKernelDescriptor NAInt8AttentionDescriptor::kernelDescriptor() co
       has_causal_empty_rows,
       isVarlen,
       attentionSinks);
+  descriptor.loadR = loadR;
+  descriptor.hasRRemainder = !loadR || isVarlen || matrixDimensions[0] % blockDimensions[0] != 0;
+  descriptor.loadC = loadC;
+  return descriptor;
 }
 
 std::pair<NAInt8AttentionKernelDescriptor, PipelineValue<NAInt8AttentionKernel> *> NAInt8AttentionDescriptor::findKernel(
@@ -185,22 +198,28 @@ std::pair<NAInt8AttentionKernelDescriptor, PipelineValue<NAInt8AttentionKernel> 
   const uint32_t vMeanBatchStride = batchDimension > 1 ? Hk * matrixDimensions[2] : 0;
   const uint32_t maskBatchStride = masked ? this->maskBatchStride : 0;
   const uint32_t blockMaskBatchStride = masked && maskBatchStride > 0 ? q_tiles * k_tiles : 0;
-  attentionConstants->setConstantValue(&rowDimension, MTL::DataTypeUInt, NS::UInteger(0));
-  attentionConstants->setConstantValue(&columnDimension, MTL::DataTypeUInt, NS::UInteger(1));
-  attentionConstants->setConstantValue(&qBatchStride, MTL::DataTypeUInt, NS::UInteger(2));
-  attentionConstants->setConstantValue(&kBatchStride, MTL::DataTypeUInt, NS::UInteger(3));
-  attentionConstants->setConstantValue(&vBatchStride, MTL::DataTypeUInt, NS::UInteger(4));
-  attentionConstants->setConstantValue(&oBatchStride, MTL::DataTypeUInt, NS::UInteger(5));
+  if (!loadR)
+    attentionConstants->setConstantValue(&rowDimension, MTL::DataTypeUInt, NS::UInteger(0));
+  if (!loadC)
+    attentionConstants->setConstantValue(&columnDimension, MTL::DataTypeUInt, NS::UInteger(1));
+  if (!loadR && !loadC) {
+    attentionConstants->setConstantValue(&qBatchStride, MTL::DataTypeUInt, NS::UInteger(2));
+    attentionConstants->setConstantValue(&kBatchStride, MTL::DataTypeUInt, NS::UInteger(3));
+    attentionConstants->setConstantValue(&vBatchStride, MTL::DataTypeUInt, NS::UInteger(4));
+    attentionConstants->setConstantValue(&oBatchStride, MTL::DataTypeUInt, NS::UInteger(5));
+  }
   attentionConstants->setConstantValue(&dOBatchStride, MTL::DataTypeUInt, NS::UInteger(6));
   attentionConstants->setConstantValue(&dVBatchStride, MTL::DataTypeUInt, NS::UInteger(7));
   attentionConstants->setConstantValue(&dKBatchStride, MTL::DataTypeUInt, NS::UInteger(8));
   attentionConstants->setConstantValue(&dQBatchStride, MTL::DataTypeUInt, NS::UInteger(9));
-  attentionConstants->setConstantValue(&qScaleBatchStride, MTL::DataTypeUInt, NS::UInteger(10));
-  attentionConstants->setConstantValue(&kScaleBatchStride, MTL::DataTypeUInt, NS::UInteger(11));
-  attentionConstants->setConstantValue(&vScaleBatchStride, MTL::DataTypeUInt, NS::UInteger(12));
+  if (!loadR && !loadC) {
+    attentionConstants->setConstantValue(&qScaleBatchStride, MTL::DataTypeUInt, NS::UInteger(10));
+    attentionConstants->setConstantValue(&kScaleBatchStride, MTL::DataTypeUInt, NS::UInteger(11));
+    attentionConstants->setConstantValue(&vScaleBatchStride, MTL::DataTypeUInt, NS::UInteger(12));
+  }
   attentionConstants->setConstantValue(&dOScaleBatchStride, MTL::DataTypeUInt, NS::UInteger(13));
   attentionConstants->setConstantValue(&vMeanBatchStride, MTL::DataTypeUInt, NS::UInteger(14));
-  if (masked) {
+  if (masked && !loadR && !loadC) {
     attentionConstants->setConstantValue(&maskBatchStride, MTL::DataTypeUInt, NS::UInteger(15));
     attentionConstants->setConstantValue(&blockMaskBatchStride, MTL::DataTypeUInt, NS::UInteger(16));
   }
@@ -216,19 +235,23 @@ std::pair<NAInt8AttentionKernelDescriptor, PipelineValue<NAInt8AttentionKernel> 
   const uint32_t kBatchStrideQ = batchStrides[AttentionOperand::K].value_or(0);
   const uint32_t vBatchStrideQ = batchStrides[AttentionOperand::V].value_or(0);
   const uint32_t kvScaleBatchStride = batchDimension > 1 ? Hk * k_tiles : 0;
-  quantizeConstants->setConstantValue(&qSequence, MTL::DataTypeUInt, NS::UInteger(900));
-  quantizeConstants->setConstantValue(&kvSequence, MTL::DataTypeUInt, NS::UInteger(901));
+  if (!loadR)
+    quantizeConstants->setConstantValue(&qSequence, MTL::DataTypeUInt, NS::UInteger(900));
+  if (!loadC)
+    quantizeConstants->setConstantValue(&kvSequence, MTL::DataTypeUInt, NS::UInteger(901));
   quantizeConstants->setConstantValue(&qHeads, MTL::DataTypeUInt, NS::UInteger(902));
   quantizeConstants->setConstantValue(&kvHeads, MTL::DataTypeUInt, NS::UInteger(903));
   quantizeConstants->setConstantValue(&qTileSize, MTL::DataTypeUInt, NS::UInteger(904));
   quantizeConstants->setConstantValue(&kvTileSize, MTL::DataTypeUInt, NS::UInteger(905));
-  quantizeConstants->setConstantValue(&q_tiles, MTL::DataTypeUInt, NS::UInteger(906));
-  quantizeConstants->setConstantValue(&k_tiles, MTL::DataTypeUInt, NS::UInteger(907));
-  quantizeConstants->setConstantValue(&qBatchStrideQ, MTL::DataTypeUInt, NS::UInteger(908));
-  quantizeConstants->setConstantValue(&kBatchStrideQ, MTL::DataTypeUInt, NS::UInteger(909));
-  quantizeConstants->setConstantValue(&vBatchStrideQ, MTL::DataTypeUInt, NS::UInteger(910));
-  quantizeConstants->setConstantValue(&qScaleBatchStride, MTL::DataTypeUInt, NS::UInteger(911));
-  quantizeConstants->setConstantValue(&kvScaleBatchStride, MTL::DataTypeUInt, NS::UInteger(912));
+  if (!loadR && !loadC) {
+    quantizeConstants->setConstantValue(&q_tiles, MTL::DataTypeUInt, NS::UInteger(906));
+    quantizeConstants->setConstantValue(&k_tiles, MTL::DataTypeUInt, NS::UInteger(907));
+    quantizeConstants->setConstantValue(&qBatchStrideQ, MTL::DataTypeUInt, NS::UInteger(908));
+    quantizeConstants->setConstantValue(&kBatchStrideQ, MTL::DataTypeUInt, NS::UInteger(909));
+    quantizeConstants->setConstantValue(&vBatchStrideQ, MTL::DataTypeUInt, NS::UInteger(910));
+    quantizeConstants->setConstantValue(&qScaleBatchStride, MTL::DataTypeUInt, NS::UInteger(911));
+    quantizeConstants->setConstantValue(&kvScaleBatchStride, MTL::DataTypeUInt, NS::UInteger(912));
+  }
 
   NS::SharedPtr<MTL::ComputePipelineState> pipeline;
   NS::SharedPtr<MTL::ComputePipelineState> second;

@@ -41,6 +41,9 @@ struct NAInt8AttentionKernel {
   bool masked;
   bool isVarlen;
   bool hasCausalEmptyRows;
+  bool loadR = false;
+  bool hasRRemainder = true;
+  bool loadC = false;
   bool attentionSinks;
 
   NAInt8AttentionKernel(NAInt8AttentionKernelDescriptor descriptor, MTL::Device *const device);
@@ -52,6 +55,7 @@ struct NAInt8AttentionKernel {
 private:
   std::string createSource() const noexcept;
   void createConstants(CodeWriter& source) const noexcept;
+  std::string createRuntimeConstants(bool quantize) const noexcept;
   std::string createBufferBindings() const noexcept;
   std::string createAdjustOffsets() const noexcept;
   std::string createComputeD() const noexcept;

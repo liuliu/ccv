@@ -25,6 +25,8 @@ struct NAInt8AttentionDescriptor {
   bool isCausal = false;
   bool masked = false;
   bool isVarlen = false;
+  bool loadR = false;
+  bool loadC = false;
   bool attentionSinks = false;
   uint32_t maskBatchStride = 0;
 
@@ -38,7 +40,7 @@ struct NAInt8AttentionDescriptor {
       const std::string& pathToWrite,
       std::unordered_map<NAInt8AttentionKernelDescriptor, std::unique_ptr<NAInt8AttentionKernel>> *const libraryCache) const noexcept;
 
-private:
+  // Includes the existing length-dependent source variants.
   NAInt8AttentionKernelDescriptor kernelDescriptor() const noexcept;
 };
 

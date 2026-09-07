@@ -25,6 +25,9 @@ struct NAInt8AttentionKernelDescriptor {
   bool masked;
   bool isVarlen;
   bool hasCausalEmptyRows;
+  bool loadR = false;
+  bool hasRRemainder = true;
+  bool loadC = false;
   bool attentionSinks;
 
   NAInt8AttentionKernelDescriptor() = delete;

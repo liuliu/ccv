@@ -3,6 +3,8 @@
 
 bool NAInt8AttentionKernelDescriptor::operator==(const NAInt8AttentionKernelDescriptor& rhs) const {
   return
+    loadR == rhs.loadR && loadC == rhs.loadC &&
+    hasRRemainder == rhs.hasRRemainder &&
     simd_all(blockDimensions == rhs.blockDimensions) &&
     type == rhs.type &&
     headDimension == rhs.headDimension &&
@@ -27,6 +29,7 @@ bool NAInt8AttentionKernelDescriptor::operator==(const NAInt8AttentionKernelDesc
 std::size_t std::hash<NAInt8AttentionKernelDescriptor>::operator()(const NAInt8AttentionKernelDescriptor& hash) const noexcept {
   std::size_t seed = 0;
   using namespace ccv::nnc::mfa::hash;
+  combine_32(seed, (hash.loadR ? 1 : 0) | (hash.loadC ? 2 : 0) | (hash.hasRRemainder ? 4 : 0));
   combine_64(seed, pack_64(simd_make_ushort4(hash.blockDimensions, 0)));
   combine_32(seed, pack_32(simd::ushort2 {
       hash.headDimension,

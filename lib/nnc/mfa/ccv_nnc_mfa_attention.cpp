@@ -199,6 +199,8 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
     }
     if (params.type == 0 && params.use_neural_accelerators && params.use_quantized_attention) {
       NAInt8AttentionDescriptor attentionDesc;
+      attentionDesc.loadR = (ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M);
+      attentionDesc.loadC = (ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_ATTENTION_SPECIALIZING_C);
       switch (params.data_type) {
       case MTL::DataTypeHalf:
         attentionDesc.ioPrecision = GEMMOperandPrecision::FP16;
@@ -295,10 +297,23 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
       auto lBuffer = tensors[5] ? tensors[5] : scratch;
       const size_t lBufferOffset = tensors[5] ? tensor_offsets[5] : lOffset;
 
+      const auto& batchStrides = attentionDesc.batchStrides;
+      // Runtime entries mirror the attention function-constant indices.
+      const uint32_t dimensions[] = { hash.R, hash.C,
+        batchStrides[AttentionOperand::Q].value_or(0), batchStrides[AttentionOperand::K].value_or(0),
+        batchStrides[AttentionOperand::V].value_or(0), batchStrides[AttentionOperand::O].value_or(0),
+        0, 0, 0, 0,
+        batchDimension > 1 ? hash.Hq * qTiles : 0,
+        batchDimension > 1 ? hash.Hk * kTiles : 0,
+        batchDimension > 1 ? hash.Hk * kTiles : 0,
+        0, 0, attentionDesc.maskBatchStride,
+        attentionDesc.maskBatchStride > 0 ? qTiles * kTiles : 0 };
       auto encodeQuantize =
       [&](NS::SharedPtr<MTL::ComputePipelineState> quantizePipeline, uint16_t threads, MTL::Buffer* source, size_t sourceOffset, size_t int8Offset, size_t scaleOffset, uint32_t scaleTiles, uint32_t heads, MTL::Buffer* seqOffsets, size_t seqOffsetsOffset) {
         auto encoder = command_batch->startCommand();
         encoder->setComputePipelineState(quantizePipeline.get());
+        if (attentionDesc.loadR || attentionDesc.loadC)
+          encoder->setBytes(dimensions, sizeof(dimensions), 21);
         encoder->useResource(source, MTL::ResourceUsageRead);
         encoder->useResource(scratch, MTL::ResourceUsageRead | MTL::ResourceUsageWrite);
         if (hash.is_varlen) {
@@ -319,6 +334,8 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
       {
         auto encoder = command_batch->startCommand();
         encoder->setComputePipelineState(computeVMeanPipeline.get());
+        if (attentionDesc.loadR || attentionDesc.loadC)
+          encoder->setBytes(dimensions, sizeof(dimensions), 21);
         encoder->useResource(tensors[2], MTL::ResourceUsageRead);
         encoder->useResource(scratch, MTL::ResourceUsageRead | MTL::ResourceUsageWrite);
         if (hash.is_varlen) {
@@ -341,6 +358,8 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
       {
         auto encoder = command_batch->startCommand();
         encoder->setComputePipelineState(quantizeVPipeline.get());
+        if (attentionDesc.loadR || attentionDesc.loadC)
+          encoder->setBytes(dimensions, sizeof(dimensions), 21);
         encoder->useResource(tensors[2], MTL::ResourceUsageRead);
         encoder->useResource(scratch, MTL::ResourceUsageRead | MTL::ResourceUsageWrite);
         encoder->setBuffer(tensors[2], tensor_offsets[2], 0);
@@ -357,6 +376,8 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
       if (hash.masked) {
         auto encoder = command_batch->startCommand();
         encoder->setComputePipelineState(blockMaskPipeline.get());
+        if (attentionDesc.loadR || attentionDesc.loadC)
+          encoder->setBytes(dimensions, sizeof(dimensions), 21);
         encoder->setThreadgroupMemoryLength(NAInt8AttentionKernel::blockMaskThreads * sizeof(uint32_t) * 2, 0);
         encoder->useResource(tensors[4], MTL::ResourceUsageRead);
         encoder->useResource(scratch, MTL::ResourceUsageRead | MTL::ResourceUsageWrite);
@@ -370,6 +391,8 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
 
       auto encoder = command_batch->startCommand();
       encoder->setComputePipelineState(pipeline.get());
+      if (attentionDesc.loadR || attentionDesc.loadC)
+        encoder->setBytes(dimensions, sizeof(dimensions), 21);
       encoder->setThreadgroupMemoryLength(kernel->threadgroupMemoryAllocation(), 0);
       encoder->useResource(scratch, MTL::ResourceUsageRead | MTL::ResourceUsageWrite);
       encoder->useResource(tensors[3], MTL::ResourceUsageWrite);
