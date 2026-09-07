@@ -1049,6 +1049,10 @@ void ccv_nnc_set_device_permutation(const int type, const int* const device_map,
  * @param path_to_write The file path to write binary artifacts. Whether it is a file or directory is implementation dependent.
  */
 void ccv_nnc_set_binary_artifacts(const char** const paths_to_read, const int paths_to_read_size, const char* const path_to_write);
+/**
+ * Remove system level cache artifacts and other resources.
+ */
+void ccv_nnc_vacuum(void);
 
 enum {
 	CCV_NNC_QX_8I_ROWWISE = 0x900,

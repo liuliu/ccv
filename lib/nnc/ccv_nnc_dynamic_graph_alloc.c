@@ -11,9 +11,6 @@
 void ccv_nnc_dynamic_graph_gc(ccv_nnc_dynamic_graph_t* const graph)
 {
 	ccv_nnc_xpu_gc(-1, &graph->xpu_alloc);
-#ifdef HAVE_MPS
-	ccv_nnc_mps_clear_graph_executable_cache();
-#endif
 }
 
 ccv_nnc_compilation_artifact_t* ccv_nnc_compilation_artifact_new(ccv_nnc_graph_t* const graph, ccv_nnc_tensor_arena_t* const tensor_arena, ccv_nnc_graph_exec_arena_t* const exec_arena)

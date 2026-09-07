@@ -978,3 +978,10 @@ void ccv_nnc_set_binary_artifacts(const char** const paths_to_read, const int pa
 	ccv_nnc_mps_set_binary_artifacts(paths_to_read, paths_to_read_size, path_to_write);
 #endif
 }
+
+void ccv_nnc_vacuum(void)
+{
+#ifdef HAVE_MPS
+	ccv_nnc_mps_clear_graph_executable_cache();
+#endif
+}
