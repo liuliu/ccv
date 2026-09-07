@@ -45,8 +45,7 @@ AttentionKernel::AttentionKernel(AttentionKernelDescriptor descriptor, MTL::Devi
     library = NS::TransferPtr(device->newLibrary(string, nil, &error));
     if (error) {
       error = nil;
-      if (!loadR && !loadC)
-        library = NS::TransferPtr(findPrecompiledLibrary(descriptor, device, &error));
+      library = NS::TransferPtr(findPrecompiledLibrary(descriptor, device, &error));
       if (!library) {
         preferAsyncCache = false;
         preferAsyncLoad = false;
