@@ -24,8 +24,6 @@ AddKernel::AddKernel(AddKernelDescriptor descriptor, MTL::Device *const device) 
 
   threadgroupMemoryAllocation = createThreadgroupMemoryAllocation();
 
-  threadgroupSize = MTL::Size(256, 1, 1);
-
   // Compile the shader source.
   {
     auto string = NS::String::string(source.c_str(), NS::UTF8StringEncoding);

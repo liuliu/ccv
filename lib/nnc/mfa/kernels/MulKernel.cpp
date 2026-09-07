@@ -8,7 +8,6 @@ MulKernel::MulKernel(MulKernelDescriptor descriptor, MTL::Device *const device) 
   memoryPrecision = descriptor.memoryPrecision;
   source = createSource();
   threadgroupMemoryAllocation = createThreadgroupMemoryAllocation();
-  threadgroupSize = MTL::Size(256, 1, 1);
 
   auto string = NS::String::string(source.c_str(), NS::UTF8StringEncoding);
   NS::Error* error = nil;

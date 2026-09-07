@@ -26,6 +26,9 @@ void ccv_nnc_mfa_encode_add(ccv_nnc_mfa_context_t* context, ccv_nnc_mfa_add_para
   }
   CCV_NNC_MFA_PRECONDITION(num_tensors == 1 + params.args);
 
+  // Larger 16-bit unary / binary workloads benefit from wider threadgroups.
+  const unsigned int threadgroup_width = params.args <= 2 && params.data_type != MTL::DataTypeFloat && params.length >= 262144 ? 512 : 256;
+
   AddDescriptor descriptor;
   descriptor.args = params.args;
   if (params.data_type == MTL::DataTypeFloat) {
@@ -41,7 +44,7 @@ void ccv_nnc_mfa_encode_add(ccv_nnc_mfa_context_t* context, ccv_nnc_mfa_add_para
   descriptor.broadcast = params.broadcast;
   descriptor.scaled_mask = params.scaled_mask;
 
-  if (!params.loadM && params.length % (4 * 256) == 0) {
+  if (!params.loadM && params.length % (4 * threadgroup_width) == 0) {
     descriptor.value = 0;
   } else if (params.length % 4 == 0) {
     descriptor.value = 1;
@@ -54,7 +57,6 @@ void ccv_nnc_mfa_encode_add(ccv_nnc_mfa_context_t* context, ccv_nnc_mfa_add_para
   DeviceProperties dprops = DeviceProperties();
   auto pipelineValue = shaderCache.findKernel<AddKernel, AddDescriptor, AddKernelDescriptor>(descriptor, context->device.get(), dprops);
   pool->drain();
-  auto kernel = pipelineValue->kernel;
   auto pipeline = pipelineValue->pipeline;
 
   encoder->setComputePipelineState(pipeline.get());
@@ -93,9 +95,9 @@ void ccv_nnc_mfa_encode_add(ccv_nnc_mfa_context_t* context, ccv_nnc_mfa_add_para
   }
   if (params.loadM)
     encoder->setBytes(&count, sizeof(count), NS::UInteger(num_tensors + (params.scaled_mask ? 1 : 0)));
-  const int num_blocks = (count + 255) / 256;
+  const size_t num_blocks = ((size_t)count + threadgroup_width - 1) / threadgroup_width;
   MTL::Size gridSize = MTL::Size(num_blocks, 1, 1);
   CCV_NNC_MFA_PRECONDITION(gridSize.depth > 0);
-  encoder->dispatchThreadgroups(gridSize, kernel->threadgroupSize);
+  encoder->dispatchThreadgroups(gridSize, MTL::Size(threadgroup_width, 1, 1));
   command_batch->finishCommand(encoder);
 }

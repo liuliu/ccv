@@ -12,9 +12,6 @@ struct AddKernel {
 
   unsigned short threadgroupMemoryAllocation;
 
-  /// The number of threads per group.
-  MTL::Size threadgroupSize;
-
   uint8_t args;
 
   uint8_t value;

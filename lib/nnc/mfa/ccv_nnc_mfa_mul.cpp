@@ -16,6 +16,9 @@ void ccv_nnc_mfa_encode_mul(ccv_nnc_mfa_context_t* context, ccv_nnc_mfa_mul_para
   for (int i = 0; i < 3; i++)
     encoder->setBuffer(tensors[i], tensor_offsets[i], NS::UInteger(i));
 
+  // Larger 16-bit unary / binary workloads benefit from wider threadgroups.
+  const unsigned int threadgroup_width = params.data_type != MTL::DataTypeFloat && params.length >= 262144 ? 512 : 256;
+
   MulDescriptor descriptor;
   if (params.data_type == MTL::DataTypeFloat) {
     descriptor.memoryPrecision = GEMMOperandPrecision::FP32;
@@ -26,7 +29,7 @@ void ccv_nnc_mfa_encode_mul(ccv_nnc_mfa_context_t* context, ccv_nnc_mfa_mul_para
   }
   descriptor.length = params.length;
   descriptor.loadM = params.loadM;
-  if (!params.loadM && params.length % (4 * 256) == 0) {
+  if (!params.loadM && params.length % (4 * threadgroup_width) == 0) {
     descriptor.value = 0;
   } else if (params.length % 4 == 0) {
     descriptor.value = 1;
@@ -51,7 +54,7 @@ void ccv_nnc_mfa_encode_mul(ccv_nnc_mfa_context_t* context, ccv_nnc_mfa_mul_para
   const uint32_t count = params.length % 4 == 0 ? params.length / 4 : params.length;
   if (params.loadM)
     encoder->setBytes(&count, sizeof(count), NS::UInteger(3));
-  const MTL::Size gridSize = MTL::Size(((size_t)count + 255) / 256, 1, 1);
-  encoder->dispatchThreadgroups(gridSize, pipelineValue->kernel->threadgroupSize);
+  const MTL::Size gridSize = MTL::Size(((size_t)count + threadgroup_width - 1) / threadgroup_width, 1, 1);
+  encoder->dispatchThreadgroups(gridSize, MTL::Size(threadgroup_width, 1, 1));
   command_batch->finishCommand(encoder);
 }
