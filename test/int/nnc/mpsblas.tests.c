@@ -4,6 +4,7 @@
 #include <ccv.h>
 #include <nnc/ccv_nnc.h>
 #include <nnc/ccv_nnc_easy.h>
+#include <nnc/ccv_nnc_internal.h>
 #include <nnc/mps/ccv_nnc_mps.h>
 #include <3rdparty/dsfmt/dSFMT.h>
 #ifdef HAVE_MPS
@@ -5318,6 +5319,93 @@ TEST_CASE("clamp forward with only min")
 	ccv_nnc_tensor_free(ha);
 	ccv_nnc_tensor_free(hb);
 	ccv_nnc_tensor_free(bt);
+}
+
+TEST_CASE("MFA elementwise multiply matches CPU across dynamic lengths and dispatch variants")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_MUL_FORWARD, CCV_NNC_BACKEND_MPS));
+	const int datatypes[] = { CCV_32F, CCV_16F, CCV_16BF };
+	const int lengths[] = { 384 * 128 * 8, 1024 * 128 * 8, 1028, 1025, 1 };
+	const int formats[] = { CCV_TENSOR_FORMAT_NHWC, CCV_TENSOR_FORMAT_NCHW };
+	const uint64_t old_flags = ccv_nnc_flags();
+	ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA);
+	dsfmt_t dsfmt;
+	dsfmt_init_gen_rand(&dsfmt, 0);
+	int f, d, l, dynamic, i;
+	for (f = 0; f < 2; f++)
+		for (d = 0; d < 3; d++)
+			for (l = 0; l < 5; l++)
+			{
+				const int length = lengths[l];
+				ccv_nnc_tensor_param_t params = CPU_TENSOR_NHWC(32F, length);
+				params.format = formats[f];
+				if (l < 2)
+				{
+					params.dim[0] = length / (128 * 8);
+					params.dim[1] = 128;
+					params.dim[2] = 8;
+				}
+				ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, params, 0);
+				ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, params, 0);
+				ccv_nnc_tensor_t* const reference = ccv_nnc_tensor_new(0, params, 0);
+				ccv_nnc_tensor_t* const result = ccv_nnc_tensor_new(0, params, 0);
+				for (i = 0; i < length; i++)
+				{
+					a->data.f32[i] = dsfmt_genrand_open_close(&dsfmt) * 4 - 2;
+					b->data.f32[i] = dsfmt_genrand_open_close(&dsfmt) * 4 - 2;
+				}
+				params.datatype = datatypes[d];
+				ccv_nnc_tensor_t* const ha = ccv_nnc_tensor_new(0, params, 0);
+				ccv_nnc_tensor_t* const hb = ccv_nnc_tensor_new(0, params, 0);
+				ccv_nnc_tensor_t* const hc = ccv_nnc_tensor_new(0, params, 0);
+				ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(a, b), TENSOR_LIST(ha, hb), 0);
+				ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha, hb), TENSOR_LIST(a, b), 0);
+				ccv_nnc_cmd_exec(CMD_MUL_FORWARD(1), ccv_nnc_no_hint, 0, TENSOR_LIST(a, b), TENSOR_LIST(reference), 0);
+				params.type = CCV_TENSOR_GPU_MEMORY;
+				ccv_nnc_tensor_param_t storage_params = params;
+				memset(storage_params.dim, 0, sizeof(storage_params.dim));
+				storage_params.dim[0] = length + 8;
+				ccv_nnc_tensor_t* const ga_storage = ccv_nnc_tensor_new(0, storage_params, 0);
+				ccv_nnc_tensor_t* const gb_storage = ccv_nnc_tensor_new(0, storage_params, 0);
+				ccv_nnc_tensor_t* const gc_storage = ccv_nnc_tensor_new(0, storage_params, 0);
+				int stride[CCV_NNC_MAX_DIM_ALLOC];
+				int ofs[CCV_NNC_MAX_DIM_ALLOC] = {};
+				ofs[ccv_nnc_tensor_nd(params.dim) - 1] = 4;
+				ccv_nnc_tensor_get_stride(params.dim, stride);
+				ccv_nnc_tensor_view_t* const ga = ccv_nnc_tensor_view_new(ga_storage, params, ofs, stride);
+				ccv_nnc_tensor_view_t* const gb = ccv_nnc_tensor_view_new(gb_storage, params, ofs, stride);
+				ccv_nnc_tensor_view_t* const gc = ccv_nnc_tensor_view_new(gc_storage, params, ofs, stride);
+				ccv_nnc_tensor_view_t* const output = l % 3 == 0 ? gc : (l % 3 == 1 ? ga : gb);
+				for (dynamic = 0; dynamic < 2; dynamic++)
+				{
+					if (dynamic)
+						ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M);
+					else
+						ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M);
+					ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha, hb), TENSOR_LIST(ga, gb), 0);
+					REQUIRE_EQ(CCV_NNC_EXEC_SUCCESS, ccv_nnc_cmd_exec(CMD_MUL_FORWARD(1), ccv_nnc_no_hint, 0, TENSOR_LIST(ga, gb), TENSOR_LIST(output), 0), "MFA multiply should execute");
+					ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(output), TENSOR_LIST(hc), 0);
+					ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(hc), TENSOR_LIST(result), 0);
+					REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, reference->data.f32, result->data.f32, length, d == 0 ? 1e-6 : (d == 1 ? 2e-3 : 2e-2), "MFA multiply should match CPU for datatype %d length %d dynamic %d", datatypes[d], length, dynamic);
+				}
+				ccv_nnc_tensor_view_free(ga);
+				ccv_nnc_tensor_view_free(gb);
+				ccv_nnc_tensor_view_free(gc);
+				ccv_nnc_tensor_free(ga_storage);
+				ccv_nnc_tensor_free(gb_storage);
+				ccv_nnc_tensor_free(gc_storage);
+				ccv_nnc_tensor_free(a);
+				ccv_nnc_tensor_free(b);
+				ccv_nnc_tensor_free(reference);
+				ccv_nnc_tensor_free(result);
+				ccv_nnc_tensor_free(ha);
+				ccv_nnc_tensor_free(hb);
+				ccv_nnc_tensor_free(hc);
+			}
+	if (!(old_flags & CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M))
+		ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M);
+	if (old_flags & CCV_NNC_DISABLE_MFA)
+		ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA);
 }
 
 TEST_CASE("MFA scalar multiply matches MPSGraph across data types and dispatch variants")

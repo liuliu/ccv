@@ -50,6 +50,7 @@ extern "C" {
 #include "ccv_nnc_mfa_reduce_logsumexp.hpp"
 #include "ccv_nnc_mfa_softplus.hpp"
 #include "ccv_nnc_mfa_add.hpp"
+#include "ccv_nnc_mfa_mul.hpp"
 #include "ccv_nnc_mfa_fast_fence.hpp"
 #include "ccv_nnc_mfa_rotate_half.hpp"
 #include "ccv_nnc_mfa_scaled_dot_product_arg_partition.hpp"
