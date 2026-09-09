@@ -12,6 +12,9 @@ typedef struct {
   uint32_t bincount;
   uint8_t use_neural_accelerators;
   float clamp;
+  // Optional streamed-weight readiness. Activations can be quantized before waiting.
+  mtl_buffer_t* readiness_buffer;
+  uint32_t readiness_value;
 } ccv_nnc_mfa_segmented_scaled_swiglu_params_t;
 
 #ifdef __cplusplus

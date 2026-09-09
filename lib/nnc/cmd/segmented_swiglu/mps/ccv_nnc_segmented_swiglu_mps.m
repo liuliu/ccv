@@ -247,10 +247,13 @@ static int _ccv_nnc_segmented_swiglu_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc
 			.bincount = bincount,
 			.use_neural_accelerators = use_neural_accelerators,
 			.clamp = cmd.info.segmented_swiglu.clamp,
+			// Streamed gate and up weights are expected to share a loader state.
+			// Its readiness generation covers all projections, so gate readiness covers up too.
+			.readiness_buffer = (__bridge mtl_buffer_t*)gate_weight_view.readiness_buffer,
+			.readiness_value = gate_weight_view.readiness_value,
 		};
 		ccv_nnc_mfa_prepare_segmented_scaled_swiglu(context, params);
 		mtl_command_batch_t* const command_batch = ccv_nnc_stream_context_start_command_batch(stream_context);
-		ccv_nnc_mps_moe_weights_encode_wait(inputs[3], command_batch);
 		if (!command_batch)
 			return CCV_NNC_EXEC_INVALID;
 		mtl_buffer_t* tensors[8] = {

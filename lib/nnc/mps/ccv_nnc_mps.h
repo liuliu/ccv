@@ -104,6 +104,8 @@ typedef struct {
 	id<MTLBuffer> buffer;
 	off_t offset;
 	ccv_nnc_tensor_param_t info;
+	id<MTLBuffer> readiness_buffer;
+	uint32_t readiness_value;
 } ccv_nnc_mps_moe_weights_view_t;
 
 /** Encodes the CPU-to-GPU readiness wait in the consumer's command batch. */

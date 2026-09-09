@@ -336,6 +336,13 @@ void ccv_nnc_mfa_encode_segmented_scaled_swiglu(
         MTL::Size(params.M, 1, 1), quantize_pipeline->kernel->threadgroupSize);
       command_batch->finishCommand(encoder);
     }
+    // Quantization only reads activations. Wait for streamed weights and establish
+    // buffer visibility before the first weight read, including packed-weight dequantization.
+    if (params.readiness_buffer && params.readiness_value) {
+      const int encoded = ccv_nnc_mfa_encode_fast_fence_wait(
+        context, params.readiness_value, command_batch, params.readiness_buffer, 0);
+      CCV_NNC_MFA_PRECONDITION(encoded != 0);
+    }
     for (int projection = 0; projection < 2; ++projection) {
       MTL::Buffer* weight = tensors[projection];
       size_t weight_offset = tensor_offsets[projection];
@@ -445,6 +452,14 @@ void ccv_nnc_mfa_encode_segmented_scaled_swiglu(
     tensors[2], tensor_offsets[2], tensors[3], tensor_offsets[3],
     tensors[4], tensor_offsets[4], scratch);
 
+  // The prologue consumes only activations and GPU-produced routing metadata.
+  // Wait for streamed weights and establish buffer visibility before the first
+  // weight read, including packed-weight dequantization.
+  if (params.readiness_buffer && params.readiness_value) {
+    const int encoded = ccv_nnc_mfa_encode_fast_fence_wait(
+      context, params.readiness_value, command_batch, params.readiness_buffer, 0);
+    CCV_NNC_MFA_PRECONDITION(encoded != 0);
+  }
   for (int projection = 0; projection < 2; ++projection) {
     MTL::Buffer* weight = tensors[projection];
     size_t weight_offset = tensor_offsets[projection];

@@ -885,6 +885,9 @@ int ccv_nnc_mps_moe_weights_resolve(const ccv_nnc_tensor_t* const tensor, ccv_nn
 	view->offset = 0;
 	view->info = state->prefill ?
 		state->source_infos[projection] : state->resident_layouts[projection].info;
+	view->readiness_buffer = state->gpu_ready_generation_buffer;
+	view->readiness_value = state->generation > 0 && state->generation <= UINT32_MAX ?
+		(uint32_t)state->generation : 0;
 	return 1;
 }
 
