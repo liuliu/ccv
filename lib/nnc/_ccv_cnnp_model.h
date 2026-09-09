@@ -91,6 +91,7 @@ typedef struct {
 	ccv_array_t* parameters;
 	uint64_t* parameter_flags;
 	ccv_array_t* internals; // Additional symbols need to retain.
+	ccv_array_t* pinned_refs; // Whole-file mapping pin references, held until unpin.
 	ccv_nnc_tensor_symbol_t* gradients;
 	ccv_nnc_tensor_symbol_t* outgrads;
 	ccv_nnc_tensor_symbol_t* updated_parameters;

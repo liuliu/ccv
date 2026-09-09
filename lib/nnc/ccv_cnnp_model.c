@@ -7,6 +7,8 @@
 #include "_ccv_nnc_symbolic_graph.h"
 #ifdef HAVE_CUDA
 #include "gpu/ccv_nnc_compat.h"
+#elif defined(HAVE_MPS)
+#include "mps/ccv_nnc_mps.h"
 #endif
 
 // MARK - Level-5 API
@@ -1615,6 +1617,46 @@ uint64_t ccv_cnnp_model_memory_size(const ccv_cnnp_model_t* const model)
 	if (!compiled_data || !compiled_data->tensor_arena)
 		return 0;
 	return ccv_nnc_tensor_arena_size(compiled_data->tensor_arena);
+}
+
+int ccv_cnnp_model_pin_memory(ccv_cnnp_model_t* const model, const int pin_memory)
+{
+#ifdef HAVE_MPS
+	ccv_cnnp_compiled_data_t* const compiled_data = model->compiled_data;
+	if (!compiled_data)
+		return 0;
+	int i, status = 0;
+	if (!pin_memory)
+	{
+		if (!compiled_data->pinned_refs)
+			return 0;
+		for (i = 0; i < compiled_data->pinned_refs->rnum; i++)
+			if (mpunpinmemory(*(void**)ccv_array_get(compiled_data->pinned_refs, i)) != 0)
+				status = -1;
+		ccv_array_free(compiled_data->pinned_refs);
+		compiled_data->pinned_refs = 0;
+		return status;
+	}
+	if (!compiled_data->tensors.parameters || compiled_data->pinned_refs)
+		return 0;
+	compiled_data->pinned_refs = ccv_array_new(sizeof(void*), 0, 0);
+	const int parallel_count = compiled_data->parallel_count > 0 ? compiled_data->parallel_count : _ccv_cnnp_model_root_parallel_count(model);
+	for (i = 0; i < compiled_data->parameters->rnum * parallel_count; i++)
+	{
+		ccv_nnc_tensor_t* const tensor = CCV_NNC_TENSOR(compiled_data->tensors.parameters[i]);
+		if (!tensor || CCV_TENSOR_GET_MEMORY(tensor->info.type) != CCV_TENSOR_GPU_MEMORY || !tensor->data.u8)
+			continue;
+		int result;
+		void* const mapping = mppinmemory(tensor->data.u8, &result);
+		if (mapping)
+			ccv_array_push(compiled_data->pinned_refs, &mapping);
+		if (result != 0)
+			status = -1; // Best effort: keep going after a failed mapping.
+	}
+	return status;
+#else
+	return 0;
+#endif
 }
 
 static void _ccv_cnnp_bind_tensors_to_arena(ccv_nnc_tensor_arena_t* const tensor_arena, const ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const tensor_symbols, ccv_nnc_tensor_t* const* const tensors, const int tensor_size, const int parallel_count)
@@ -3437,6 +3479,7 @@ static void _ccv_cnnp_compiled_data_free(const ccv_cnnp_model_t* const model, cc
 
 void ccv_cnnp_model_free(ccv_cnnp_model_t* const model)
 {
+	ccv_cnnp_model_pin_memory(model, 0);
 	ccv_cnnp_model_deinit(model);
 	if (model->isa->dealloc)
 		model->isa->dealloc(model);

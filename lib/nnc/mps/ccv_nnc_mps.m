@@ -37,6 +37,8 @@ id<MTLDevice> ccv_nnc_default_device(void)
 @interface MTLWholeFileMapping: NSObject
 @property (nonatomic, assign) void* base;
 @property (nonatomic, assign) NSUInteger size;
+@property (nonatomic, assign) NSUInteger pinCount;
+@property (nonatomic, assign) int pinStatus;
 @end
 
 ccv_nnc_mfa_context_t* ccv_nnc_default_mfa_context(void)
@@ -446,6 +448,36 @@ static MTLWholeFileMapping* _ccv_nnc_mps_whole_file_mapping(const char* const fi
 }
 
 static char _ccv_nnc_mps_whole_file_mapping_owner_key;
+
+void* mppinmemory(void* const ptr, int* const status)
+{
+	*status = 0;
+	MTLWholeFileMapping* const mapping = objc_getAssociatedObject((id)ptr, &_ccv_nnc_mps_whole_file_mapping_owner_key);
+	if (!mapping)
+		return 0; // No ordinary Metal buffers, per-tensor mmap, or on-demand sources.
+	@synchronized(mapping) {
+		if (mapping.pinCount == 0)
+			mapping.pinStatus = mlock(mapping.base, mapping.size);
+		mapping.pinCount++;
+		*status = mapping.pinStatus;
+		[mapping retain];
+	}
+	return mapping;
+}
+
+int mpunpinmemory(void* const ptr)
+{
+	MTLWholeFileMapping* const mapping = (MTLWholeFileMapping*)ptr;
+	int status = 0;
+	@synchronized(mapping) {
+		assert(mapping.pinCount > 0);
+		mapping.pinCount--;
+		if (mapping.pinCount == 0 && mapping.pinStatus == 0)
+			status = munlock(mapping.base, mapping.size);
+	}
+	[mapping release];
+	return status;
+}
 
 id<MTLBuffer> mpgetbuffer(const ccv_nnc_tensor_t* const tensor)
 {

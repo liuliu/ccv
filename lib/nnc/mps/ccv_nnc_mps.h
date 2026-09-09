@@ -16,6 +16,10 @@ void mpheapfree(int device, void* ptr);
 void* mpobjmalloc(int device, size_t size);
 void* mpobjcreate(void* ptr, off_t offset, size_t size);
 void mpobjfree(int device, void* ptr);
+// Acquire a whole-file mapping pin reference, or null for other buffer kinds.
+void* mppinmemory(void* ptr, int* status);
+// Release the mapping reference returned by mppinmemory (including failed pins).
+int mpunpinmemory(void* ptr);
 typedef void(*mpmp_f)(int device_id, void* const context);
 int mpregmp(int device_id, mpmp_f func, void* const context); // register memory pressure handler
 void mpunregmp(const int id); // un-register memory pressure handler.
