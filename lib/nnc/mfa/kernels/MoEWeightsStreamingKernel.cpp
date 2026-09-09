@@ -34,6 +34,14 @@ struct Params {
 	uint route_weight_bytes;
 };
 
+inline void publish_ready(device atomic_uint* ready_generation, uint generation)
+{
+	uint ready = atomic_load_explicit(ready_generation, memory_order_relaxed);
+	while (ready < generation && !atomic_compare_exchange_weak_explicit(
+		ready_generation, &ready, generation, memory_order_relaxed,
+		memory_order_relaxed)) {}
+}
+
 kernel void moe_weights_streaming(
 	device const int* input_indices [[buffer(0)]],
 	device const int* input_counts [[buffer(1)]],
@@ -45,8 +53,9 @@ kernel void moe_weights_streaming(
 	device int* slot_to_logical [[buffer(7)]],
 	device uint* last_used [[buffer(8)]],
 	device Plan* plan [[buffer(9)]],
-	device atomic_uint* ready_generation [[buffer(10)]],
-	constant Params& p [[buffer(11)]])
+	device atomic_uint* swiglu_ready_generation [[buffer(10)]],
+	device atomic_uint* down_ready_generation [[buffer(11)]],
+	constant Params& p [[buffer(12)]])
 {
 	device int* desired_experts = (device int*)(plan + 1);
 	device int* desired_slots = desired_experts + p.expert_count;
@@ -191,10 +200,8 @@ kernel void moe_weights_streaming(
 	const bool cpu_work = prefill ? plan->desired_count != 0 : plan->load_count != 0;
 	if (!cpu_work)
 	{
-		uint ready = atomic_load_explicit(ready_generation, memory_order_relaxed);
-		while (ready < p.generation && !atomic_compare_exchange_weak_explicit(
-			ready_generation, &ready, p.generation, memory_order_relaxed,
-			memory_order_relaxed)) {}
+		publish_ready(swiglu_ready_generation, p.generation);
+		publish_ready(down_ready_generation, p.generation);
 		atomic_thread_fence(mem_flags::mem_device, memory_order_seq_cst,
 			thread_scope_system);
 	}

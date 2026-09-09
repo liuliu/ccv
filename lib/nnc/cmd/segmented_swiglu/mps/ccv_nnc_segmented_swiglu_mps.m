@@ -248,7 +248,7 @@ static int _ccv_nnc_segmented_swiglu_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc
 			.use_neural_accelerators = use_neural_accelerators,
 			.clamp = cmd.info.segmented_swiglu.clamp,
 			// Streamed gate and up weights are expected to share a loader state.
-			// Its readiness generation covers all projections, so gate readiness covers up too.
+			// Their shared readiness covers gate and up; down has a separate fence.
 			.readiness_buffer = (__bridge mtl_buffer_t*)gate_weight_view.readiness_buffer,
 			.readiness_value = gate_weight_view.readiness_value,
 		};

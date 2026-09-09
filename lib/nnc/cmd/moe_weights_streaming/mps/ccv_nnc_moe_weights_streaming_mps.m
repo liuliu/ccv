@@ -32,6 +32,9 @@ typedef struct {
 	uint32_t invalid;
 } ccv_nnc_moe_gpu_plan_header_t;
 
+// Gate / up share readiness; down can load while SwiGLU executes.
+enum { CCV_NNC_MOE_READINESS_COUNT = 2 };
+
 @interface MFAMoEWeightsStreamingState : NSObject {
 @public
 	int resident_slot_count;
@@ -58,7 +61,7 @@ typedef struct {
 	id<MTLBuffer> gpu_last_used_buffer;
 	id<MTLBuffer> gpu_plan_buffer;
 	id<MTLBuffer> gpu_route_generation_buffer;
-	id<MTLBuffer> gpu_ready_generation_buffer;
+	id<MTLBuffer> gpu_ready_generation_buffers[CCV_NNC_MOE_READINESS_COUNT];
 	uint32_t gpu_last_encoded_generation;
 }
 @end
@@ -94,7 +97,8 @@ typedef struct {
 	[gpu_last_used_buffer release];
 	[gpu_plan_buffer release];
 	[gpu_route_generation_buffer release];
-	[gpu_ready_generation_buffer release];
+	for (i = 0; i < CCV_NNC_MOE_READINESS_COUNT; i++)
+		[gpu_ready_generation_buffers[i] release];
 	[super dealloc];
 }
 @end
@@ -362,18 +366,26 @@ static MFAMoEWeightsStreamingState* _ccv_nnc_moe_state_for_inputs(ccv_nnc_tensor
 		state->gpu_last_used_buffer = [device newBufferWithLength:sizeof(uint32_t) * resident_slots options:MTLResourceStorageModePrivate];
 		state->gpu_plan_buffer = [device newBufferWithLength:state->gpu_plan_size options:MTLResourceCPUCacheModeDefaultCache | MTLResourceStorageModeShared];
 		state->gpu_route_generation_buffer = [device newBufferWithLength:sizeof(uint32_t) options:MTLResourceCPUCacheModeDefaultCache | MTLResourceStorageModeShared];
-		state->gpu_ready_generation_buffer = [device newBufferWithLength:sizeof(uint32_t) options:MTLResourceCPUCacheModeDefaultCache | MTLResourceStorageModeShared];
 		if (state->gpu_plan_size == 0 ||
 			!state->resident_buffers[0] || !state->resident_buffers[1] || !state->resident_buffers[2] ||
 			!state->gpu_logical_to_slot_buffer || !state->gpu_slot_to_logical_buffer ||
 			!state->gpu_last_used_buffer || !state->gpu_plan_buffer ||
-			!state->gpu_route_generation_buffer || !state->gpu_ready_generation_buffer)
+			!state->gpu_route_generation_buffer)
 		{
 			[state release];
 			return nil;
 		}
 		__atomic_store_n((uint32_t*)state->gpu_route_generation_buffer.contents, 0, __ATOMIC_RELEASE);
-		__atomic_store_n((uint32_t*)state->gpu_ready_generation_buffer.contents, 0, __ATOMIC_RELEASE);
+		for (i = 0; i < CCV_NNC_MOE_READINESS_COUNT; i++)
+		{
+			state->gpu_ready_generation_buffers[i] = [device newBufferWithLength:sizeof(uint32_t) options:MTLResourceCPUCacheModeDefaultCache | MTLResourceStorageModeShared];
+			if (!state->gpu_ready_generation_buffers[i])
+			{
+				[state release];
+				return nil;
+			}
+			__atomic_store_n((uint32_t*)state->gpu_ready_generation_buffers[i].contents, 0, __ATOMIC_RELEASE);
+		}
 		objc_setAssociatedObject(gate_source, &ccv_nnc_moe_weights_streaming_state_key,
 			state, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
 		[state release];
@@ -434,7 +446,7 @@ static int _ccv_nnc_moe_encode_gpu_plan(MFAMoEWeightsStreamingState* const state
 		.route_weight_bytes = (uint32_t)route_weight_bytes_size,
 	};
 	MTLCommandBatch* const command_batch = ccv_nnc_stream_context_start_command_batch(stream_context);
-	mtl_buffer_t* tensors[12] = {
+	mtl_buffer_t* tensors[13] = {
 		(__bridge mtl_buffer_t*)mpgetbuffer(inputs[0]),
 		(__bridge mtl_buffer_t*)mpgetbuffer(inputs[1]),
 		(__bridge mtl_buffer_t*)mpgetbuffer(inputs[2]),
@@ -445,17 +457,18 @@ static int _ccv_nnc_moe_encode_gpu_plan(MFAMoEWeightsStreamingState* const state
 		(__bridge mtl_buffer_t*)state->gpu_slot_to_logical_buffer,
 		(__bridge mtl_buffer_t*)state->gpu_last_used_buffer,
 		(__bridge mtl_buffer_t*)state->gpu_plan_buffer,
-		(__bridge mtl_buffer_t*)state->gpu_ready_generation_buffer,
+		(__bridge mtl_buffer_t*)state->gpu_ready_generation_buffers[0],
+		(__bridge mtl_buffer_t*)state->gpu_ready_generation_buffers[1],
 		0,
 	};
-	size_t tensor_offsets[11] = {
+	size_t tensor_offsets[12] = {
 		(size_t)mpgetoffset(inputs[0]),
 		(size_t)mpgetoffset(inputs[1]),
 		(size_t)mpgetoffset(inputs[2]),
 		(size_t)mpgetoffset(outputs[0]),
 		(size_t)mpgetoffset(outputs[1]),
 		(size_t)mpgetoffset(outputs[2]),
-		0, 0, 0, 0, 0,
+		0, 0, 0, 0, 0, 0,
 	};
 	ccv_nnc_mfa_encode_moe_weights_streaming(
 		ccv_nnc_default_mfa_context(), params, command_batch, tensors, tensor_offsets);
@@ -645,9 +658,9 @@ static int _ccv_nnc_moe_copy_resident_to_prefill(MFAMoEWeightsStreamingState* co
 	return 1;
 }
 
-static void _ccv_nnc_moe_publish_ready_generation(MFAMoEWeightsStreamingState* const state, const uint32_t generation)
+static void _ccv_nnc_moe_publish_ready_generation(id<MTLBuffer> const buffer, const uint32_t generation)
 {
-	uint32_t* const ready_generation = (uint32_t*)state->gpu_ready_generation_buffer.contents;
+	uint32_t* const ready_generation = (uint32_t*)buffer.contents;
 	uint32_t ready = __atomic_load_n(ready_generation, __ATOMIC_ACQUIRE);
 	while (ready < generation && !__atomic_compare_exchange_n(
 		ready_generation, &ready, generation, 1, __ATOMIC_RELEASE, __ATOMIC_ACQUIRE)) {}
@@ -661,16 +674,18 @@ static void _ccv_nnc_moe_load_full_prefill(MFAMoEWeightsStreamingState* const st
 	id<MTLBuffer> const* const read_buffers = buffers;
 	const int opened = _ccv_nnc_moe_open_source_fds(state);
 	__block _Atomic(int) failed = !opened;
-	if (opened)
-		dispatch_apply(3, dispatch_get_global_queue(QOS_CLASS_USER_INTERACTIVE, 0), ^(size_t projection) {
-			// Preserve the source layout and expert IDs, including the scale plane.
-			if (!_ccv_nnc_moe_pread_all(state->source_fds[projection], state->source_offsets[projection],
-				read_buffers[projection].contents, state->source_layouts[projection].size))
-				atomic_store(&failed, 1);
-		});
+	__block _Atomic(int) gate_up_pending = 2;
+	dispatch_apply(3, dispatch_get_global_queue(QOS_CLASS_USER_INTERACTIVE, 0), ^(size_t projection) {
+		// Preserve the source layout and expert IDs, including the scale plane.
+		if (opened && !_ccv_nnc_moe_pread_all(state->source_fds[projection], state->source_offsets[projection],
+			read_buffers[projection].contents, state->source_layouts[projection].size))
+			atomic_store(&failed, 1);
+		// Down publishes directly; the second gate / up reader publishes for both.
+		if (projection == 2 || atomic_fetch_sub_explicit(&gate_up_pending, 1, memory_order_acq_rel) == 1)
+			_ccv_nnc_moe_publish_ready_generation(state->gpu_ready_generation_buffers[projection == 2], (uint32_t)generation);
+	});
 	if (atomic_load(&failed))
 		fprintf(stderr, "MoE full prefill load failed (generation=%llu)\n", (unsigned long long)generation);
-	_ccv_nnc_moe_publish_ready_generation(state, (uint32_t)generation);
 }
 
 static void _ccv_nnc_moe_load_gpu_plan(MFAMoEWeightsStreamingState* const state, const uint64_t generation,
@@ -723,7 +738,8 @@ static void _ccv_nnc_moe_load_gpu_plan(MFAMoEWeightsStreamingState* const state,
 	{
 		fprintf(stderr, "MoE weights GPU plan validation failed (generation=%llu)\n",
 			(unsigned long long)generation);
-		_ccv_nnc_moe_publish_ready_generation(state, (uint32_t)generation);
+		for (int group = 0; group < CCV_NNC_MOE_READINESS_COUNT; group++)
+			_ccv_nnc_moe_publish_ready_generation(state->gpu_ready_generation_buffers[group], (uint32_t)generation);
 		return;
 	}
 	const int source_open_failed = plan->load_count > 0 && !_ccv_nnc_moe_open_source_fds(state);
@@ -766,6 +782,11 @@ static void _ccv_nnc_moe_load_gpu_plan(MFAMoEWeightsStreamingState* const state,
 	// Its synchronous lifetime also keeps the stack task list and buffers alive.
 	id<MTLBuffer> const* const read_buffers = prefill_buffers;
 	__block _Atomic(int) read_failed = source_open_failed;
+	_Atomic(int) remaining[CCV_NNC_MOE_READINESS_COUNT] = { task_count * 2, task_count };
+	_Atomic(int)* const pending = remaining;
+	if (!task_count && (prefill || plan->load_count > 0))
+		for (int group = 0; group < CCV_NNC_MOE_READINESS_COUNT; group++)
+			_ccv_nnc_moe_publish_ready_generation(state->gpu_ready_generation_buffers[group], (uint32_t)generation);
 	dispatch_apply((size_t)task_count * 3, dispatch_get_global_queue(QOS_CLASS_USER_INTERACTIVE, 0), ^(size_t index) {
 		const ccv_nnc_moe_load_task_t task = tasks[index / 3];
 		const int projection = (int)(index % 3);
@@ -780,13 +801,14 @@ static void _ccv_nnc_moe_load_gpu_plan(MFAMoEWeightsStreamingState* const state,
 			success = _ccv_nnc_moe_read_expert(state, projection, task.source, task.slot);
 		if (!success)
 			atomic_store(&read_failed, 1);
+		const int group = projection == 2;
+		// Last task acquires preceding writes before publishing payload + scale readiness.
+		if (atomic_fetch_sub_explicit(&pending[group], 1, memory_order_acq_rel) == 1)
+			_ccv_nnc_moe_publish_ready_generation(state->gpu_ready_generation_buffers[group], (uint32_t)generation);
 	});
 	if (atomic_load(&read_failed))
 		fprintf(stderr, "MoE weights asynchronous load failed (generation=%llu)\n",
 			(unsigned long long)generation);
-	const int cpu_must_publish = prefill || plan->load_count > 0;
-	if (cpu_must_publish)
-		_ccv_nnc_moe_publish_ready_generation(state, (uint32_t)generation);
 }
 
 static int _ccv_nnc_moe_weights_streaming_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
@@ -850,17 +872,12 @@ static int _ccv_nnc_moe_weights_streaming_forw(const ccv_nnc_cmd_t cmd, const cc
 
 void ccv_nnc_mps_moe_weights_encode_wait(const ccv_nnc_tensor_t* const tensor, MTLCommandBatch* const command_batch)
 {
-	MFAMoEWeightsStreamingState* const state = _ccv_nnc_moe_weights_state(tensor);
-	if (!state)
+	ccv_nnc_mps_moe_weights_view_t view = {};
+	if (!command_batch || ccv_nnc_mps_moe_weights_resolve(tensor, &view) <= 0 || !view.readiness_value)
 		return;
-	const uint64_t generation = state->generation;
-	if (!command_batch || generation == 0 || generation > UINT32_MAX)
-		return;
-	// The GPU planner publishes ready_generation on an all-hit decode. The CPU
-	// loader publishes the same generation after staging misses or prefill, so
-	// every consumer can use the same unconditional wait.
+	// Wait only for the readiness group that contains this projection.
 	ccv_nnc_mps_encode_fast_fence_wait_in_command_batch(command_batch,
-		state->gpu_ready_generation_buffer, 0, (uint32_t)generation);
+		view.readiness_buffer, 0, view.readiness_value);
 }
 
 int ccv_nnc_mps_moe_weights_resolve(const ccv_nnc_tensor_t* const tensor, ccv_nnc_mps_moe_weights_view_t* const view)
@@ -885,7 +902,7 @@ int ccv_nnc_mps_moe_weights_resolve(const ccv_nnc_tensor_t* const tensor, ccv_nn
 	view->offset = 0;
 	view->info = state->prefill ?
 		state->source_infos[projection] : state->resident_layouts[projection].info;
-	view->readiness_buffer = state->gpu_ready_generation_buffer;
+	view->readiness_buffer = state->gpu_ready_generation_buffers[projection == 2];
 	view->readiness_value = state->generation > 0 && state->generation <= UINT32_MAX ?
 		(uint32_t)state->generation : 0;
 	return 1;

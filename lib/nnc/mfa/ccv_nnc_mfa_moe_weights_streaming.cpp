@@ -40,7 +40,7 @@ void ccv_nnc_mfa_encode_moe_weights_streaming(
 			NS::UInteger(num_tensors));
 		++num_tensors;
 	}
-	CCV_NNC_MFA_PRECONDITION(num_tensors == 11);
+	CCV_NNC_MFA_PRECONDITION(num_tensors == 12);
 	auto pool = NS::AutoreleasePool::alloc()->init();
 	auto pipeline_value = context->kernel_cache.findKernel<MoEWeightsStreamingKernel,
 		MoEWeightsStreamingDescriptor, MoEWeightsStreamingKernelDescriptor>(
@@ -48,7 +48,7 @@ void ccv_nnc_mfa_encode_moe_weights_streaming(
 			context->device.get(), DeviceProperties());
 	pool->drain();
 	encoder->setComputePipelineState(pipeline_value->pipeline.get());
-	encoder->setBytes(&params, sizeof(params), NS::UInteger(11));
+	encoder->setBytes(&params, sizeof(params), NS::UInteger(12));
 	encoder->useResource(tensors[0], MTL::ResourceUsageRead);
 	encoder->useResource(tensors[1], MTL::ResourceUsageRead);
 	encoder->useResource(tensors[2], MTL::ResourceUsageRead);
@@ -60,6 +60,7 @@ void ccv_nnc_mfa_encode_moe_weights_streaming(
 	encoder->useResource(tensors[8], MTL::ResourceUsageRead | MTL::ResourceUsageWrite);
 	encoder->useResource(tensors[9], MTL::ResourceUsageWrite);
 	encoder->useResource(tensors[10], MTL::ResourceUsageWrite);
+	encoder->useResource(tensors[11], MTL::ResourceUsageWrite);
 	encoder->dispatchThreadgroups(MTL::Size(1, 1, 1), MTL::Size(1, 1, 1));
 	command_batch->finishCommand(encoder);
 }
