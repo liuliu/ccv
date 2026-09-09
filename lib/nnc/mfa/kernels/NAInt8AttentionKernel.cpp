@@ -2172,6 +2172,12 @@ void NAInt8AttentionKernel::loopForward(CodeWriter& source) const noexcept {
   for (uint c = ((causal_c_edge + {{BLOCK_DIMENSIONS_TRAVERSAL}} - 1) / {{BLOCK_DIMENSIONS_TRAVERSAL}}) * {{BLOCK_DIMENSIONS_TRAVERSAL}}; c > 0;) {
     c -= {{BLOCK_DIMENSIONS_TRAVERSAL}};
 )";
+  } else if (!masked && hasCRemainder) {
+    // Fold the tail into the main loop to avoid slowing down its full tiles.
+    // Short sequences still need the dynamic-K PV multiply below.
+    source += R"(
+  for (uint c = 0; c < {{C_LENGTH}} && {{C_LENGTH}} >= {{BLOCK_DIMENSIONS_TRAVERSAL}}; c += {{BLOCK_DIMENSIONS_TRAVERSAL}}) {
+)";
   } else {
     source += R"(
   for (uint c = 0; c < {{C_EDGE}}; c += {{BLOCK_DIMENSIONS_TRAVERSAL}}) {
@@ -2289,6 +2295,12 @@ void NAInt8AttentionKernel::loopForward(CodeWriter& source) const noexcept {
           }
         }
         cP_0[k] = score;
+)";
+    } else if (hasCRemainder) {
+      source += R"(
+        // Bounded K/V loads zero-fill the last tile; exclude its invalid scores.
+        const int column = int(c) + cP_0.get_multidimensional_index(k)[0];
+        cP_0[k] = column < int({{C_LENGTH}}) ? (float)score_0 * block_scale : -numeric_limits<float>::infinity();
 )";
     } else {
       source += "        cP_0[k] = (float)score_0 * block_scale;";
@@ -2443,9 +2455,13 @@ void NAInt8AttentionKernel::loopForward(CodeWriter& source) const noexcept {
     source += R"(
   if ({{C_REMAINDER}} > 0 && causal_last_column >= int({{C_LENGTH}} - {{C_REMAINDER}})) {
 )";
-  } else {
+  } else if (masked || !hasCRemainder) {
     source += R"(
   if ({{C_REMAINDER}} > 0) {
+)";
+  } else {
+    source += R"(
+  if ({{C_REMAINDER}} > 0 && {{C_LENGTH}} < {{BLOCK_DIMENSIONS_TRAVERSAL}}) {
 )";
   }
   source += R"(

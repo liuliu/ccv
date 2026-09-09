@@ -7700,7 +7700,7 @@ TEST_CASE("scaled dot product attention with quantized NA mps for non-multiple-o
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SCALED_DOT_PRODUCT_ATTENTION_FORWARD, CCV_NNC_BACKEND_MPS));
 	const int B = 1;
-	const int R = 128;
+	const int R = 129;
 	const int H = 24;
 	const int Cs[] = { 130, 224 };
 	const int Ds[] = { 128, 130, 224 };
@@ -7822,6 +7822,68 @@ TEST_CASE("scaled dot product attention with quantized NA mps for non-multiple-o
 			ccv_nnc_tensor_free(k_tensor_f16);
 			ccv_nnc_tensor_free(v_tensor_f16);
 		}
+	}
+}
+
+TEST_CASE("scaled dot product attention with quantized NA mps across every key tail")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SCALED_DOT_PRODUCT_ATTENTION_FORWARD, CCV_NNC_BACKEND_MPS));
+	const int B = 2, R = 17, Hq = 4, Hk = 2, D = 128;
+	const int q_count = B * R * Hq * D;
+	const int old_flags = ccv_nnc_flags();
+	// Cover short sequences, an aligned tile, and all 63 remainders with both
+	// specialized and runtime lengths (reusing cached kernels across tails).
+	for (int trial = 0; trial < 132; ++trial)
+	{
+		const int shape_idx = trial % 66;
+		const int C = shape_idx == 0 ? 1 : shape_idx == 1 ? 20 : 64 + shape_idx - 2;
+		const int kv_count = B * C * Hk * D;
+		ccv_nnc_tensor_t* const q = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, B, R, Hq, D), 0);
+		ccv_nnc_tensor_t* const k = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, B, C, Hk, D), 0);
+		ccv_nnc_tensor_t* const v = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, B, C, Hk, D), 0);
+		ccv_nnc_tensor_t* const o = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, B, R, Hq, D), 0);
+		ccv_nnc_tensor_t* const actual = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, B, R, Hq, D), 0);
+		dsfmt_t dsfmt;
+		dsfmt_init_gen_rand(&dsfmt, 231 + trial);
+		for (int i = 0; i < q_count; ++i)
+			q->data.f32[i] = dsfmt_genrand_open_close(&dsfmt) - 0.5;
+		for (int i = 0; i < kv_count; ++i)
+		{
+			k->data.f32[i] = dsfmt_genrand_open_close(&dsfmt) - 0.5;
+			v->data.f32[i] = dsfmt_genrand_open_close(&dsfmt) - 0.25;
+		}
+		ccv_nnc_cmd_t cmd = CMD_SCALED_DOT_PRODUCT_ATTENTION_FORWARD(1.0 / sqrtf(D), 0);
+		ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(q, k, v), TENSOR_LIST(o), 0);
+		ccv_nnc_tensor_t* const gpu_q = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, B, R, Hq, D), 0);
+		ccv_nnc_tensor_t* const gpu_k = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, B, C, Hk, D), 0);
+		ccv_nnc_tensor_t* const gpu_v = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, B, C, Hk, D), 0);
+		ccv_nnc_tensor_t* const gpu_o = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, B, R, Hq, D), 0);
+		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(q, k, v), TENSOR_LIST(gpu_q, gpu_k, gpu_v), 0);
+		cmd.info.scaled_dot_product_attention.flags = CCV_NNC_GEMM_8I;
+		if (trial >= 66)
+			ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M | CCV_NNC_DISABLE_MFA_ATTENTION_SPECIALIZING_C);
+		ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(gpu_q, gpu_k, gpu_v), TENSOR_LIST(gpu_o), 0);
+		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(gpu_o), TENSOR_LIST(actual), 0);
+		ccv_nnc_disable_flag((CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M | CCV_NNC_DISABLE_MFA_ATTENTION_SPECIALIZING_C) & ~old_flags);
+		double error2 = 0, reference2 = 0;
+		for (int i = 0; i < q_count; ++i)
+		{
+			REQUIRE(isfinite(actual->data.f32[i]), "key tail C=%d should produce finite output at %d", C, i);
+			const double error = actual->data.f32[i] - o->data.f32[i];
+			error2 += error * error;
+			reference2 += (double)o->data.f32[i] * o->data.f32[i];
+		}
+		REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, actual->data.f32, o->data.f32, q_count, 1e-2, "every key tail should match CPU attention with batching and grouped queries (C=%d)", C);
+		REQUIRE(error2 < reference2 * 1e-4, "key tail C=%d should have relative L2 error below 1%%", C);
+		ccv_nnc_tensor_free(gpu_o);
+		ccv_nnc_tensor_free(gpu_v);
+		ccv_nnc_tensor_free(gpu_k);
+		ccv_nnc_tensor_free(gpu_q);
+		ccv_nnc_tensor_free(actual);
+		ccv_nnc_tensor_free(o);
+		ccv_nnc_tensor_free(v);
+		ccv_nnc_tensor_free(k);
+		ccv_nnc_tensor_free(q);
 	}
 }
 
