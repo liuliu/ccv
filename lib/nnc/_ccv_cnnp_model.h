@@ -161,6 +161,7 @@ struct ccv_cnnp_model_s {
 	ccv_nnc_tensor_symbol_t* inputs; // Unlike outputs, which is not dynamically allocated, inputs is dynamically allocated, and may be 0.
 	ccv_nnc_tensor_symbol_t* outputs;
 	char* name;
+	int start_index; // The minimum occurrence index for this model's name, not its children.
 	struct {
 		ccv_cnnp_model_notify_f func;
 		void* context;
@@ -197,7 +198,7 @@ typedef struct {
 
 static inline void ccv_cnnp_model_push(ccv_cnnp_model_t* const self, ccv_cnnp_model_sequence_t* const model_sequence)
 {
-	// Reset to 0.
+	// Number this model within its parent naming scope.
 	if (!model_sequence->sequences)
 		model_sequence->sequences = ccv_array_new(sizeof(ccv_cnnp_model_name_t), 1, 0);
 	khash_t(ccv_cnnp_model_name_bank)* bank = model_sequence->sequences->rnum > 0 ? ((ccv_cnnp_model_name_t*)ccv_array_get(model_sequence->sequences, model_sequence->sequences->rnum - 1))->bank : model_sequence->bank;
@@ -205,9 +206,9 @@ static inline void ccv_cnnp_model_push(ccv_cnnp_model_t* const self, ccv_cnnp_mo
 	khiter_t k = kh_put(ccv_cnnp_model_name_bank, bank, self->name ? self->name : "", &ret);
 	int sequence;
 	if (ret != 0)
-		sequence = kh_val(bank, k) = 0;
+		sequence = kh_val(bank, k) = self->start_index;
 	else
-		sequence = ++kh_val(bank, k);
+		sequence = kh_val(bank, k) = ccv_max(kh_val(bank, k) + 1, self->start_index);
 	ccv_cnnp_model_name_t name = {
 		.bank = kh_init(ccv_cnnp_model_name_bank),
 		.name = self->name,
@@ -235,6 +236,7 @@ static inline ccv_cnnp_model_t* _ccv_cnnp_model_copy(const ccv_cnnp_model_t* con
 	copy->memory_reduction = model->memory_reduction;
 	copy->max_stream_count = model->max_stream_count;
 	copy->gradient_checkpointing = model->gradient_checkpointing;
+	copy->start_index = model->start_index;
 	return copy;
 }
 

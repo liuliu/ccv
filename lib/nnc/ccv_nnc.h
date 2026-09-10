@@ -4204,6 +4204,19 @@ void ccv_cnnp_model_set_gradient_checkpointing(ccv_cnnp_model_t* const model, co
  */
 int ccv_cnnp_model_gradient_checkpointing(ccv_cnnp_model_t* const model);
 /**
+ * Set the minimum occurrence index for this model's name when generating parameter names.
+ * Same-name models in the same naming scope continue counting above previously assigned indices.
+ * This setting does not propagate to children. Set it before compiling the enclosing model.
+ * @param model The model whose own name is numbered.
+ * @param start_index A nonnegative minimum index (default: 0).
+ */
+void ccv_cnnp_model_set_start_index(ccv_cnnp_model_t* const model, const int start_index);
+/**
+ * Get the configured minimum occurrence index, not the index assigned during compilation.
+ * @param model The model whose own name is numbered.
+ */
+int ccv_cnnp_model_start_index(ccv_cnnp_model_t* const model);
+/**
  * Set compile parameters on the model so it compiles the graph with the said parameters.
  * @param model The composed model.
  * @param compile_params A ccv_nnc_symbolic_graph_compile_param_t struct defines compilation parameters.

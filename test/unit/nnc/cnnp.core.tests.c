@@ -1525,6 +1525,77 @@ TEST_CASE("model to get the internal name for parameters")
 	ccv_cnnp_model_free(multi_layer);
 }
 
+TEST_CASE("model start index is a per-name lower bound")
+{
+	ccv_cnnp_model_t* const layers[] = {
+		ccv_cnnp_dense(2, 0, 0, 1, "linear"),
+		ccv_cnnp_dense(2, 0, 0, 1, "linear"),
+		ccv_cnnp_dense(2, 0, 0, 1, "linear"),
+		ccv_cnnp_dense(2, 0, 0, 1, "linear"),
+		ccv_cnnp_dense(2, 0, 0, 1, "head"),
+	};
+	REQUIRE_EQ(ccv_cnnp_model_start_index(layers[0]), 0, "default start index should be zero");
+	ccv_cnnp_model_set_start_index(layers[1], 3);
+	ccv_cnnp_model_set_start_index(layers[2], 3);
+	REQUIRE_EQ(ccv_cnnp_model_start_index(layers[1]), 3, "should retain configured start index");
+	ccv_cnnp_model_t* const model = ccv_cnnp_sequential_new(layers, 5, 1, 0);
+	ccv_nnc_tensor_param_t params = CPU_TENSOR_NHWC(32F, 1, 2);
+	ccv_cnnp_model_compile(model, TENSOR_PARAM_LIST(params), CMD_NOOP(), CMD_NOOP());
+	const char* const names[] = { "t-linear-0-0", "t-linear-3-0", "t-linear-4-0", "t-linear-5-0", "t-head-0-0" };
+	int i;
+	for (i = 0; i < 5; i++)
+		REQUIRE(strcmp(names[i], ccv_cnnp_model_parameter_name(model, ccv_cnnp_model_parameters(layers[i], CCV_CNNP_PARAMETER_SELECT_WEIGHT, 0))) == 0, "only this name's occurrence counter should advance");
+	REQUIRE(strcmp("t-linear-3-1", ccv_cnnp_model_parameter_name(model, ccv_cnnp_model_parameters(layers[1], CCV_CNNP_PARAMETER_SELECT_BIAS, 0))) == 0, "parameter slots should still start at zero");
+	ccv_cnnp_model_free(model);
+}
+
+TEST_CASE("model start index does not propagate to children or LoRA adapters")
+{
+	ccv_cnnp_model_t* const dense = ccv_cnnp_dense(2, 1, 0, 1, "q");
+	ccv_cnnp_model_t* const adapter = ccv_cnnp_dense(2, 1, 0, 1, "q_lora_down-1");
+	ccv_cnnp_model_set_start_index(dense, 1);
+	ccv_cnnp_model_t* const block = ccv_cnnp_sequential_new(MODEL_LIST(dense, adapter), 1, "block");
+	ccv_cnnp_model_set_start_index(block, 7);
+	ccv_cnnp_model_t* const head = ccv_cnnp_dense(2, 1, 0, 1, "head");
+	ccv_cnnp_model_t* const model = ccv_cnnp_sequential_new(MODEL_LIST(block, head), 1, 0);
+	ccv_cnnp_model_set_start_index(model, 99); // An unnamed, non-parameterized container is not a naming scope.
+	ccv_nnc_tensor_param_t params = CPU_TENSOR_NHWC(32F, 1, 2);
+	ccv_cnnp_model_compile(model, TENSOR_PARAM_LIST(params), CMD_NOOP(), CMD_NOOP());
+	REQUIRE(strcmp("t-block-7-q-1-0", ccv_cnnp_model_parameter_name(model, ccv_cnnp_model_parameters(dense, CCV_CNNP_PARAMETER_SELECT_WEIGHT, 0))) == 0, "named scopes and leaf indices should be independent");
+	REQUIRE(strcmp("t-block-7-q_lora_down-1-0-0", ccv_cnnp_model_parameter_name(model, ccv_cnnp_model_parameters(adapter, CCV_CNNP_PARAMETER_SELECT_WEIGHT, 0))) == 0, "adapter occurrence should remain zero");
+	REQUIRE(strcmp("t-head-0-0", ccv_cnnp_model_parameter_name(model, ccv_cnnp_model_parameters(head, CCV_CNNP_PARAMETER_SELECT_WEIGHT, 0))) == 0, "unnamed containers should not shift their children");
+	ccv_cnnp_model_free(model);
+}
+
+TEST_CASE("model start index survives copying and recompilation")
+{
+	ccv_cnnp_model_t* const dense = ccv_cnnp_dense(2, 1, 0, 1, "linear");
+	ccv_cnnp_model_set_start_index(dense, 4);
+	ccv_cnnp_model_t* const dense_copy = ccv_cnnp_model_copy(dense, 1);
+	REQUIRE_EQ(ccv_cnnp_model_start_index(dense_copy), 4, "leaf copies should retain the setting");
+	ccv_cnnp_model_free(dense_copy);
+	ccv_cnnp_model_t* const next = ccv_cnnp_dense(2, 1, 0, 1, "linear");
+	const ccv_cnnp_model_io_t input = ccv_cnnp_input();
+	const ccv_cnnp_model_io_t first = ccv_cnnp_model_apply(dense, MODEL_IO_LIST(input));
+	const ccv_cnnp_model_io_t output = ccv_cnnp_model_apply(next, MODEL_IO_LIST(first));
+	ccv_cnnp_model_t* const model = ccv_cnnp_model_new(MODEL_IO_LIST(input), MODEL_IO_LIST(output), 1, 0);
+	ccv_nnc_tensor_param_t params = CPU_TENSOR_NHWC(32F, 1, 2);
+	ccv_cnnp_model_compile(model, TENSOR_PARAM_LIST(params), CMD_NOOP(), CMD_NOOP());
+	ccv_cnnp_model_t* const copy = ccv_cnnp_model_copy(model, 1);
+	ccv_cnnp_model_compile(copy, TENSOR_PARAM_LIST(params), CMD_NOOP(), CMD_NOOP());
+	ccv_nnc_tensor_param_t larger_params = CPU_TENSOR_NHWC(32F, 2, 2);
+	ccv_cnnp_model_compile(model, TENSOR_PARAM_LIST(larger_params), CMD_NOOP(), CMD_NOOP());
+	const char* const names[] = { "t-linear-4-0", "t-linear-5-0" };
+	int i;
+	for (i = 0; i < 2; i++)
+	{
+		REQUIRE(strcmp(names[i], ccv_cnnp_model_parameter_name(model, ccv_cnnp_model_parameters(model, ALL_PARAMETERS, i))) == 0, "recompilation should retain numbering");
+		REQUIRE(strcmp(names[i], ccv_cnnp_model_parameter_name(copy, ccv_cnnp_model_parameters(copy, ALL_PARAMETERS, i))) == 0, "functional model copies should retain numbering");
+	}
+	ccv_cnnp_model_free(copy);
+	ccv_cnnp_model_free(model);
+}
+
 static ccv_cnnp_model_t* _resnet_block_new(const int filters, const int expansion, const int strides, const int projection_shortcut)
 {
 	ccv_cnnp_model_io_t input = ccv_cnnp_input();

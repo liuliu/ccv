@@ -776,6 +776,18 @@ void ccv_cnnp_model_set_memory_reduction(ccv_cnnp_model_t* const model, const in
 		{ assert(!compiled_data->graph); }
 }
 
+void ccv_cnnp_model_set_start_index(ccv_cnnp_model_t* const model, const int start_index)
+{
+	assert(start_index >= 0);
+	assert(!model->graph && !model->parameter_indices);
+	model->start_index = start_index;
+}
+
+int ccv_cnnp_model_start_index(ccv_cnnp_model_t* const model)
+{
+	return model->start_index;
+}
+
 void ccv_cnnp_model_set_gradient_checkpointing(ccv_cnnp_model_t* const model, const int gradient_checkpointing)
 {
 	model->gradient_checkpointing = gradient_checkpointing;
