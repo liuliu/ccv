@@ -943,7 +943,8 @@ constant uint KV_scale_tile_size = {{KV_SCALE_TILE_SIZE}};
     source += R"(constant uint K_block_tiles = (C + {{BLOCK_DIMENSIONS_TRAVERSAL}} - 1) / {{BLOCK_DIMENSIONS_TRAVERSAL}};
 )";
   }
-  if (!loadC && (type != AttentionKernelType::forward || !isVarlen)) {
+  if (!loadC && (type == AttentionKernelType::backwardQuery ||
+      (type == AttentionKernelType::forward && !isVarlen))) {
     source += R"(constant uint C_remainder = C % {{BLOCK_DIMENSIONS_TRAVERSAL}};
 constant uint C_edge = C >= {{BLOCK_DIMENSIONS_TRAVERSAL}} ? C + 1 - {{BLOCK_DIMENSIONS_TRAVERSAL}} : 0;
 )";

@@ -346,8 +346,12 @@ kernel void gemm(device {{MEMORY_NAME_A}} *A [[buffer(0)]],
   const uniform<uint> A_batch_stride = make_uniform(batched ? loadM[1] : 0);
   const uniform<uint> B_batch_stride = make_uniform(batched ? loadM[2] : 0);
   const uniform<uint> C_batch_stride = make_uniform(batched ? loadM[3] : 0);
+)";
+    if (useBias) {
+      source += R"(
   const uniform<uint> bias_batch_stride = make_uniform(batched ? loadM[4] : 0);
 )";
+    }
   }
   source += R"(
   if (batched) {

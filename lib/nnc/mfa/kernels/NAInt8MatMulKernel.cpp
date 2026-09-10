@@ -188,7 +188,6 @@ kernel void quantize_activation(
     source += R"(
   const uniform<uint> M = make_uniform(loadM_buf[0]);
   const uniform<uint> A_batch_stride = make_uniform(batched ? loadM_buf[1] : 0);
-  const uniform<uint> C_batch_stride = make_uniform(batched ? loadM_buf[2] : 0);
   const uniform<uint> A_packed_batch_stride = make_uniform(batched ? loadM_buf[3] : 0);
   const uniform<uint> A_scale_batch_stride = make_uniform(batched ? loadM_buf[4] : 0);
 )";
