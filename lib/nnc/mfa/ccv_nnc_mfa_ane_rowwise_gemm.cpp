@@ -786,6 +786,10 @@ int ccv_nnc_mfa_run_ane_rowwise_gemm(
     log_ane_rowwise_error(context, error);
     return 0;
   }
+  if (!ensure_shared_scratch(cache, params, &error)) {
+    log_ane_rowwise_error(context, error);
+    return 0;
+  }
   mtl_buffer_t* const activation = tensors[0];
   mtl_buffer_t* const weight = tensors[1];
   mtl_buffer_t* const output = tensors[2];
@@ -802,11 +806,6 @@ int ccv_nnc_mfa_run_ane_rowwise_gemm(
           sizeof(error_buffer));
   if (!program) {
     log_ane_rowwise_error(context, bridge_error(error_buffer));
-    return 0;
-  }
-  if (!ensure_shared_scratch(cache, params, &error)) {
-    ccv_nnc_mfa_ane_rowwise_coreml_program_release(program);
-    log_ane_rowwise_error(context, error);
     return 0;
   }
   const size_t weight_scale_offset = tensor_offsets[1] + rowwise_8i_scale_offset(params.N, params.K);
@@ -871,6 +870,10 @@ int ccv_nnc_mfa_run_ane_na_rowwise_split_gemm(
     log_ane_rowwise_error(context, error);
     return 0;
   }
+  if (!ensure_shared_scratch(cache, ane_params, &error)) {
+    log_ane_rowwise_error(context, error);
+    return 0;
+  }
   PipelineValue<NAInt8MatMulKernel>* const full_quantize_pipeline =
       find_na_int8_pipeline(context, params, params.M);
   PipelineValue<NAInt8MatMulKernel>* const partial_matmul_pipeline =
@@ -893,11 +896,6 @@ int ccv_nnc_mfa_run_ane_na_rowwise_split_gemm(
           sizeof(error_buffer));
   if (!program) {
     log_ane_rowwise_error(context, bridge_error(error_buffer));
-    return 0;
-  }
-  if (!ensure_shared_scratch(cache, ane_params, &error)) {
-    ccv_nnc_mfa_ane_rowwise_coreml_program_release(program);
-    log_ane_rowwise_error(context, error);
     return 0;
   }
 

@@ -2151,6 +2151,77 @@ TEST_CASE("mps forward gemm with fp32 row-wise 8i weight ANE")
 	REQUIRE(bias_max_rel < 2e-3, "FP32 ANE row-wise 8i GEMM with bias should match the quantized reference, max_abs=%g max_rel=%g", bias_max_abs, bias_max_rel);
 }
 
+TEST_CASE("mps forward gemm with row-wise 8i weight ANE surface row pitch")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_MPS));
+	// Exercise padded and packed pitches, then revisit the H3 audio projection
+	// shape after changing the scratch cache. Include the i8x decode path.
+	const int widths[] = { 32, 64, 96, 128, 32 };
+	const int formats[] = { 0, CCV_NNC_QX_8I_ROWWISE_Q6_K };
+	dsfmt_t dsfmt;
+	dsfmt_init_gen_rand(&dsfmt, 42);
+	int f, shape;
+	for (f = 0; f < 2; f++)
+		for (shape = 0; shape < 5; shape++)
+		{
+			const int m_dim = 414;
+			const int n_dim = widths[shape] == 32 ? 5376 : 768;
+			const int k_dim = widths[shape];
+			ccv_nnc_tensor_t* const ha = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, m_dim, k_dim), 0);
+			ccv_nnc_tensor_t* const hw = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, n_dim, k_dim), 0);
+			ccv_nnc_tensor_t* const hbias = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, n_dim), 0);
+			ccv_nnc_tensor_t* const href = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, m_dim, n_dim), 0);
+			ccv_nnc_tensor_t* const actual = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, m_dim, n_dim), 0);
+			ccv_nnc_tensor_t* const hwq = ccv_nnc_tensor_new(0, formats[f] ? ccv_nnc_tensor_8i_rowwise_x(hw->info, formats[f]) : ccv_nnc_tensor_8i_rowwise(hw->info), 0);
+			ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, m_dim, k_dim), 0);
+			ccv_nnc_tensor_param_t w_params = hwq->info;
+			w_params.type = CCV_TENSOR_GPU_MEMORY;
+			ccv_nnc_tensor_t* const w = ccv_nnc_tensor_new(0, w_params, 0);
+			ccv_nnc_tensor_t* const bias = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, n_dim), 0);
+			ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, m_dim, n_dim), 0);
+			int i;
+			for (i = 0; i < m_dim * k_dim; i++)
+				ha->data.f32[i] = (dsfmt_genrand_open_close(&dsfmt) - 0.5) * 0.25;
+			for (i = 0; i < n_dim * k_dim; i++)
+				hw->data.f32[i] = (dsfmt_genrand_open_close(&dsfmt) - 0.5) * 0.25;
+			for (i = 0; i < n_dim; i++)
+				hbias->data.f32[i] = (dsfmt_genrand_open_close(&dsfmt) - 0.5) * 0.25;
+			const size_t qsize = formats[f] ?
+				ccv_nnc_quantize_8i_rowwise_x(hw->data.f32, CCV_32F, CCV_TENSOR_CPU_MEMORY, n_dim * k_dim, k_dim, formats[f], 0, 0, hwq->data.u8, ccv_nnc_tensor_data_size_without_padding(hwq->info)) :
+				ccv_nnc_quantize_8i_rowwise(hw->data.f32, CCV_32F, CCV_TENSOR_CPU_MEMORY, n_dim * k_dim, k_dim, 0, 0, hwq->data.u8, ccv_nnc_tensor_data_size_without_padding(hwq->info));
+			REQUIRE_EQ(qsize, ccv_nnc_tensor_data_size_without_padding(hwq->info), "rowwise weights should quantize");
+			if (formats[f])
+				ccv_nnc_dequantize_8i_rowwise_x(hwq->data.u8, CCV_32F, CCV_TENSOR_CPU_MEMORY, qsize, k_dim, formats[f], hw->data.f32, n_dim * k_dim);
+			else
+				ccv_nnc_dequantize_8i_rowwise(hwq->data.u8, CCV_32F, CCV_TENSOR_CPU_MEMORY, qsize, k_dim, hw->data.f32, n_dim * k_dim);
+			ccv_nnc_cmd_exec(CMD_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(0, 1)), ccv_nnc_no_hint, 0, TENSOR_LIST(ha, hw, hbias), TENSOR_LIST(href), 0);
+			ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha, hwq, hbias), TENSOR_LIST(a, w, bias), 0);
+			const uint64_t old_flags = ccv_nnc_flags();
+			ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA_ANE);
+			ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA_GEMM);
+			const int status = ccv_nnc_cmd_exec(CMD_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(0, 1)), ccv_nnc_no_hint, 0, TENSOR_LIST(a, w, bias), TENSOR_LIST(b), 0);
+			ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(b), TENSOR_LIST(actual), 0);
+			if (old_flags & CCV_NNC_DISABLE_MFA_ANE)
+				ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA_ANE);
+			if (!(old_flags & CCV_NNC_DISABLE_MFA_GEMM))
+				ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA_GEMM);
+			REQUIRE_EQ(status, CCV_NNC_EXEC_SUCCESS, "ANE or its layout fallback should execute");
+			for (i = 0; i < m_dim * n_dim; i++)
+				{ REQUIRE(isfinite(actual->data.f32[i]), "ANE or its layout fallback should produce finite values"); }
+			REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, actual->data.f32, href->data.f32, m_dim * n_dim, 3e-3, "ANE or its layout fallback should match CPU GEMM on decoded weights");
+			ccv_nnc_tensor_free(b);
+			ccv_nnc_tensor_free(bias);
+			ccv_nnc_tensor_free(w);
+			ccv_nnc_tensor_free(a);
+			ccv_nnc_tensor_free(hwq);
+			ccv_nnc_tensor_free(actual);
+			ccv_nnc_tensor_free(href);
+			ccv_nnc_tensor_free(hbias);
+			ccv_nnc_tensor_free(hw);
+			ccv_nnc_tensor_free(ha);
+		}
+}
+
 TEST_CASE("mps forward gemm with row-wise 8i weight NA small M")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_MPS));

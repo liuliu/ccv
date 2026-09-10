@@ -159,6 +159,17 @@ static CVPixelBufferRef create_pixel_buffer_for_dimensions(
       *error_out = "CVPixelBufferCreate failed (" + std::to_string((int)rc) + ")";
     return nullptr;
   }
+  // The Metal transforms, weight blit, and coherence ranges all assume packed
+  // rows. Core Video can add padding (for example, 32 int8 values use 64 bytes).
+  // Reject that layout before caching or encoding so GEMM falls back to Metal.
+  const size_t row_bytes = CVPixelBufferGetBytesPerRow(pixel_buffer);
+  if (row_bytes != width * bytes_per_element) {
+    if (error_out)
+      *error_out = "CoreML rowwise surface requires packed rows: logical row bytes " +
+          std::to_string(width * bytes_per_element) + ", physical row bytes " + std::to_string(row_bytes);
+    CFRelease(pixel_buffer);
+    return nullptr;
+  }
   return pixel_buffer;
 }
 
