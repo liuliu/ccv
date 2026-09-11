@@ -6633,6 +6633,16 @@ TEST_CASE("scaled dot product attention with generic varlen mps")
 				max_abs_diff = abs_diff, max_relative_diff = relative_diff, max_diff_idx = i;
 		}
 		REQUIRE(max_relative_diff <= 2e-2, "generic varlen MPS attention should match CPU reference when causal=%d (max abs %g relative %g at %d)", is_causal, max_abs_diff, max_relative_diff, max_diff_idx);
+		// In-place FP32 staging must copy packed rows, not B * max_seqlen_q rows.
+		ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS);
+		const int inplace_status = ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(gpu_q_tensor, gpu_k_tensor, gpu_v_tensor, NULL, NULL, NULL, gpu_q_seq_offsets, gpu_kv_seq_offsets), TENSOR_LIST(gpu_q_tensor, NULL), 0);
+		if (!(old_flags & CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS))
+			ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS);
+		REQUIRE_EQ(inplace_status, CCV_NNC_EXEC_SUCCESS, "in-place generic varlen attention should execute");
+		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(gpu_q_tensor), TENSOR_LIST(copy_of_gpu_o_tensor), 0);
+		for (int i = 0; i < total_q * Hq * D; i++)
+			REQUIRE(isfinite(copy_of_gpu_o_tensor->data.f32[i]), "in-place generic varlen attention should stay finite at %d", i);
+		REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, copy_of_gpu_o_tensor->data.f32, o_tensor_ref->data.f32, total_q * Hq * D, 1e-5, "in-place generic varlen attention should match CPU when causal=%d", is_causal);
 		ccv_nnc_tensor_t* const q_tensor_f16 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, 1, total_q, Hq, D), 0);
 		ccv_nnc_tensor_t* const k_tensor_f16 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, 1, total_k, Hk, D), 0);
 		ccv_nnc_tensor_t* const v_tensor_f16 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, 1, total_k, Hk, D), 0);
@@ -7091,6 +7101,97 @@ TEST_CASE("scaled dot product attention with attention sinks on mps")
 	status = _mps_sdpa_attention_sinks_compare(CCV_16F, 0, CCV_NNC_GEMM_16F | CCV_NNC_GEMM_8I, 1, 64, 64, 8, 8, 128, 0, 8, 0, 5e-2, &max_abs, &max_relative, &max_idx, &expected, &actual);
 	REQUIRE_EQ(status, 0, "NAInt8 per-head sink should run and match CPU reference with attention sinks (status %d max abs %g relative %g at %d: CPU %g GPU %g)", status, max_abs, max_relative, max_idx, expected, actual);
 }
+
+TEST_CASE("scaled dot product attention generic FP32 in-place output preserves queries")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SCALED_DOT_PRODUCT_ATTENTION_FORWARD, CCV_NNC_BACKEND_MPS));
+	const struct {
+		int B, R, C, D, is_causal, offset, has_lse;
+	} cases[] = {
+		// D=512 spills both Q and O across KV tiles in AttentionKernel.
+		{ 1, 129, 129, 512, 0, 0, 0 },
+		{ 1, 129, 129, 512, 1, 1, 1 },
+		{ 2, 257, 513, 512, 0, 1, 1 },
+		{ 2, 257, 513, 512, 1, 0, 0 },
+		{ 1, 1, 513, 512, 1, 1, 0 },
+		// Also cover the register-cached case with the same staging policy.
+		{ 2, 17, 129, 64, 1, 1, 1 },
+	};
+	const int Hq = 4, Hk = 1;
+	for (int c = 0; c < sizeof(cases) / sizeof(cases[0]); c++)
+	{
+		const int B = cases[c].B, R = cases[c].R, C = cases[c].C, D = cases[c].D;
+		const int offset = cases[c].offset * Hq * D;
+		const int q_count = B * R * Hq * D;
+		const int kv_count = B * C * Hk * D;
+		ccv_nnc_tensor_t* const q = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, B, R, Hq, D), 0);
+		ccv_nnc_tensor_t* const k = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, B, C, Hk, D), 0);
+		ccv_nnc_tensor_t* const v = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, B, C, Hk, D), 0);
+		ccv_nnc_tensor_t* const expected = ccv_nnc_tensor_new(0, q->info, 0);
+		ccv_nnc_tensor_t* const actual = ccv_nnc_tensor_new(0, q->info, 0);
+		ccv_nnc_tensor_t* const storage = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, q_count + offset + Hq * D), 0);
+		dsfmt_t dsfmt;
+		dsfmt_init_gen_rand(&dsfmt, c + 41);
+		for (int i = 0; i < q_count; i++)
+			q->data.f32[i] = (dsfmt_genrand_open_close(&dsfmt) - 0.5) * 2;
+		for (int i = 0; i < kv_count; i++)
+		{
+			k->data.f32[i] = (dsfmt_genrand_open_close(&dsfmt) - 0.5) * 2;
+			v->data.f32[i] = (dsfmt_genrand_open_close(&dsfmt) - 0.5) * 2;
+		}
+		for (int i = 0; i < q_count + offset + Hq * D; i++)
+			storage->data.f32[i] = -123;
+		ccv_nnc_tensor_t* const gpu_storage = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, q_count + offset + Hq * D), 0);
+		ccv_nnc_tensor_view_t* const gpu_q = ccv_nnc_tensor_view_new(gpu_storage, GPU_TENSOR_NHWC(000, 32F, B, R, Hq, D), DIM_ALLOC(0, cases[c].offset, 0, 0), DIM_ALLOC(R * Hq * D, Hq * D, D, 1));
+		ccv_nnc_tensor_t* const gpu_k = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, B, C, Hk, D), 0);
+		ccv_nnc_tensor_t* const gpu_v = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, B, C, Hk, D), 0);
+		ccv_nnc_tensor_t* const gpu_o = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, B, R, Hq, D), 0);
+		ccv_nnc_tensor_t* const gpu_lse = cases[c].has_lse ? ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, B, Hq, R), 0) : 0;
+		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(storage, k, v), TENSOR_LIST(gpu_storage, gpu_k, gpu_v), 0);
+		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(q), TENSOR_LIST((ccv_nnc_tensor_t*)gpu_q), 0);
+		ccv_nnc_cmd_t cmd = CMD_SCALED_DOT_PRODUCT_ATTENTION_FORWARD(1.0 / sqrtf((float)D), cases[c].is_causal);
+		const int cpu_status = ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(q, k, v), TENSOR_LIST(expected), 0);
+		ccv_nnc_stream_context_t* const stream = ccv_nnc_stream_context_new(CCV_STREAM_CONTEXT_GPU);
+		const uint64_t old_flags = ccv_nnc_flags();
+		ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS);
+		const int gpu_status = ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST((ccv_nnc_tensor_t*)gpu_q, gpu_k, gpu_v), TENSOR_LIST((ccv_nnc_tensor_t*)gpu_q, gpu_lse), stream);
+		// A subsequent compute dispatch must still work after the blit encoder.
+		const int followup_status = ccv_nnc_cmd_exec(CMD_SCALAR_MUL_FORWARD(2), ccv_nnc_no_hint, 0, TENSOR_LIST((ccv_nnc_tensor_t*)gpu_q), TENSOR_LIST(gpu_o), stream);
+		ccv_nnc_stream_context_wait(stream);
+		if (!(old_flags & CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS))
+			ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS);
+		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(gpu_o, gpu_storage), TENSOR_LIST(actual, storage), 0);
+		REQUIRE_EQ(cpu_status, CCV_NNC_EXEC_SUCCESS, "CPU reference should execute for case %d", c);
+		REQUIRE_EQ(gpu_status, CCV_NNC_EXEC_SUCCESS, "in-place generic attention should execute for case %d", c);
+		REQUIRE_EQ(followup_status, CCV_NNC_EXEC_SUCCESS, "compute should resume after the blit for case %d", c);
+		REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, storage->data.f32 + offset, expected->data.f32, q_count, 1e-5, "in-place attention should match CPU for case %d", c);
+		for (int i = 0; i < q_count; i++)
+		{
+			REQUIRE(isfinite(storage->data.f32[offset + i]) && isfinite(actual->data.f32[i]), "attention and subsequent compute should stay finite for case %d at %d", c, i);
+			expected->data.f32[i] *= 2;
+		}
+		REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, actual->data.f32, expected->data.f32, q_count, 2e-5, "compute after the blit should read the final output for case %d", c);
+		for (int i = 0; i < offset; i++)
+			REQUIRE_EQ(storage->data.f32[i], -123, "blit should preserve the destination prefix for case %d", c);
+		for (int i = offset + q_count; i < offset + q_count + Hq * D; i++)
+			REQUIRE_EQ(storage->data.f32[i], -123, "blit should preserve the destination suffix for case %d", c);
+		ccv_nnc_stream_context_free(stream);
+		if (gpu_lse)
+			ccv_nnc_tensor_free(gpu_lse);
+		ccv_nnc_tensor_free(gpu_o);
+		ccv_nnc_tensor_free(gpu_v);
+		ccv_nnc_tensor_free(gpu_k);
+		ccv_nnc_tensor_view_free(gpu_q);
+		ccv_nnc_tensor_free(gpu_storage);
+		ccv_nnc_tensor_free(storage);
+		ccv_nnc_tensor_free(actual);
+		ccv_nnc_tensor_free(expected);
+		ccv_nnc_tensor_free(v);
+		ccv_nnc_tensor_free(k);
+		ccv_nnc_tensor_free(q);
+	}
+}
+
 
 TEST_CASE("scaled dot product attention sliding window ignores poisoned accumulator scratch")
 {

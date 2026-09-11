@@ -692,8 +692,10 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
         CCV_NNC_MFA_PRECONDITION(params.output_rows <= hash.R * attentionDesc.batchDimension);
       }
       CCV_NNC_MFA_PRECONDITION(outputElements <= (uint64_t)UINT32_MAX);
-      const bool castsOutput = attentionDesc.lowPrecisionInputs;
-      const uint64_t outputScratchBytes = castsOutput ?
+      // Generic attention may spill partial O and reread Q on later KV tiles.
+      // Stage aliased FP32 output as well as the existing low-precision output.
+      const bool stagesOutput = attentionDesc.lowPrecisionInputs || tensors[0] == tensors[3];
+      const uint64_t outputScratchBytes = stagesOutput ?
         sizeof(float) * outputElements : 0;
       const uint64_t lScratchBytes = !tensors[5] ?
         sizeof(float) * hash.R * hash.Hq * attentionDesc.batchDimension : 0;
@@ -745,7 +747,7 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
       encoder->useResource(tensors[0], MTL::ResourceUsageRead);
       encoder->useResource(tensors[1], MTL::ResourceUsageRead);
       encoder->useResource(tensors[2], MTL::ResourceUsageRead);
-      if (castsOutput) {
+      if (stagesOutput) {
         encoder->useResource(scratch, MTL::ResourceUsageRead | MTL::ResourceUsageWrite);
       } else {
         encoder->useResource(tensors[3], MTL::ResourceUsageWrite);
@@ -759,7 +761,7 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
       encoder->setBuffer(tensors[0], tensor_offsets[0], AttentionOperand(AttentionOperand::Q).bufferIndex());
       encoder->setBuffer(tensors[1], tensor_offsets[1], AttentionOperand(AttentionOperand::K).bufferIndex());
       encoder->setBuffer(tensors[2], tensor_offsets[2], AttentionOperand(AttentionOperand::V).bufferIndex());
-      if (castsOutput) {
+      if (stagesOutput) {
         encoder->setBuffer(scratch, 0, AttentionOperand(AttentionOperand::O).bufferIndex());
         if (tensors[5]) {
           encoder->setBuffer(tensors[5], tensor_offsets[5], AttentionOperand(AttentionOperand::L).bufferIndex());
@@ -801,7 +803,7 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
     
       // Finish the command.
       command_batch->finishCommand(encoder);
-      if (castsOutput) {
+      if (attentionDesc.lowPrecisionInputs) {
         // Need to dispatch to cast.
         ccv_nnc_mfa_cast_params_t cast_params = {
           .original_data_type = MTL::DataTypeFloat,
@@ -820,6 +822,14 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
           tensor_offsets[3]
         };
         ccv_nnc_mfa_encode_cast(context, cast_params, command_batch, cast_tensors, cast_tensor_offsets);
+      } else if (stagesOutput) {
+        // All query reads are complete before copying the FP32 result back.
+        encoder->endEncoding();
+        auto blitEncoder = command_batch->commandBuffer->blitCommandEncoder();
+        blitEncoder->copyFromBuffer(scratch, 0, tensors[3], tensor_offsets[3], outputScratchBytes);
+        blitEncoder->endEncoding();
+        command_batch->batchedCommandCount += 1;
+        command_batch->commandEncoder = command_batch->commandBuffer->computeCommandEncoder();
       }
     } else {
       const bool use_na_int8_backward =
