@@ -85,17 +85,26 @@ kernel void segmented_gemm_prologue(device {{MEMORY_NAME_A}} *A [[buffer(0)]],
 {
   if (gid >= bincount)
     return;
+  // Cached ICB slots must be cleared even when this segment is now empty.
+  compute_command cmd = compute_command(args->icb1, gid);
+  cmd.reset();
+)";
+  if (splitK > 1) {
+    source += R"(
+  compute_command reduce_sum = compute_command(args->icb2, gid);
+  reduce_sum.reset();
+)";
+  }
+  source += R"(
   if (counts[gid] <= 0)
     return;
   int offset = 0;
   for (uint i = 0; i < gid; i++)
     offset += counts[i];
-  compute_command cmd = compute_command(args->icb1, gid);
   const int idx = indices[gid];
   if (idx < 0 || idx >= (int)expert_count)
     return;
   const int count = counts[gid];
-  cmd.reset();
   cmd.set_compute_pipeline_state(args->pipeline1);
   cmd.set_threadgroup_memory_length(threadgroup_memory_allocation, 0);
   cmd.set_kernel_buffer(A + offset * K, 0);
@@ -133,8 +142,6 @@ kernel void segmented_gemm_prologue(device {{MEMORY_NAME_A}} *A [[buffer(0)]],
   } else {
     cmd.concurrent_dispatch_threadgroups(uint3((N + N_block - 1) / N_block * {{SPLIT_K}}, (count + M_block - 1) / M_block, 1), uint3(threadgroup_size, 1, 1));
   }
-  compute_command reduce_sum = compute_command(args->icb2, gid);
-  reduce_sum.reset();
   reduce_sum.set_compute_pipeline_state(args->pipeline2);
   reduce_sum.set_kernel_buffer(D + offset * N * {{SPLIT_K}}, 0);
   reduce_sum.set_kernel_buffer(C + offset * N, 1);
