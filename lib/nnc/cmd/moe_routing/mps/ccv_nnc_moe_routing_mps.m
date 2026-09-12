@@ -108,7 +108,7 @@ static int _ccv_nnc_moe_routing_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint
 		route->info.dim[0] != expert_count) {
 		return CCV_NNC_EXEC_INVALID;
 	}
-	if (token_count == 1 && kth <= 32 && expert_count <= 256)
+	if (token_count == 1 && kth <= 32 && expert_count <= 512)
 	{
 		@autoreleasepool {
 			ccv_nnc_mfa_context_t* const context = ccv_nnc_default_mfa_context();

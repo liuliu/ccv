@@ -502,4 +502,25 @@ TEST_CASE("multi-token moe routing ignores the single input token flag and match
 	REQUIRE(result.max_weight_difference <= 5e-4f, "multi-token normalized weights should match CPU");
 }
 
+TEST_CASE("single-token moe routing supports 384 experts and the 512-expert MFA boundary")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_MOE_ROUTING_FORWARD, CCV_NNC_BACKEND_MPS));
+	// Alternate launch sizes while reusing the same kernel cache, including the
+	// first size above the MFA limit to retain coverage of the graph fallback.
+	const int expert_counts[] = {32, 255, 256, 257, 287, 288, 289, 383, 384, 385, 415, 416, 417, 511, 512, 256, 384, 513};
+	int i, mode;
+	for (i = 0; i < sizeof(expert_counts) / sizeof(expert_counts[0]); i++)
+		for (mode = 0; mode < 5; mode++)
+		{
+			// Exercise top-32 selection as well as the preselected top-32 path.
+			const moe_routing_mps_result_t result = _moe_routing_mps_case(1, expert_counts[i], mode == 2 || mode == 4 ? 32 : 6, 5120,
+				mode == 2, mode == 3, mode == 0 ? CCV_16F : CCV_32F, mode == 0 ? CCV_16F : CCV_16BF,
+				mode == 1 ? CCV_NNC_MOE_ROUTING_SINGLE_INPUT_TOKEN : 0);
+			REQUIRE_EQ(result.status, CCV_NNC_EXEC_SUCCESS, "routing should execute across the MFA expert-count boundary");
+			REQUIRE(result.metadata_match, "selected experts and grouping metadata should match CPU");
+			REQUIRE(result.gathered_match, "gathered activations should match CPU exactly");
+			REQUIRE(result.max_weight_difference <= 5e-4f, "normalized weights should match CPU");
+		}
+}
+
 #include "case_main.h"

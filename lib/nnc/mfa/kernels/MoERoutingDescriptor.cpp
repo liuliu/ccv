@@ -30,9 +30,16 @@ std::size_t std::hash<MoERoutingDescriptor>::operator()(const MoERoutingDescript
 	return seed;
 }
 
+uint32_t MoERoutingDescriptor::executionSIMDGroups() const noexcept
+{
+	// Extra threads also gather activations: at E=384, H=5120, 512 threads
+	// outperform 384 on M5 Max. See bin/mfa/moe_routing_bench.cpp.
+	return expertCount <= 256 ? 8u : 16u;
+}
+
 std::pair<MoERoutingKernelDescriptor, PipelineValue<MoERoutingKernel>*> MoERoutingDescriptor::findKernel(MTL::Device* const device, const DeviceProperties&, NS::Array* const, MTL::BinaryArchive* const, const std::string&, std::unordered_map<MoERoutingKernelDescriptor, std::unique_ptr<MoERoutingKernel>>* const libraryCache) const noexcept
 {
-	const MoERoutingKernelDescriptor kernel_descriptor { activationDataType, routingDataType };
+	const MoERoutingKernelDescriptor kernel_descriptor { activationDataType, routingDataType, executionSIMDGroups() };
 	auto iterator = libraryCache->find(kernel_descriptor);
 	if (iterator == libraryCache->end())
 		iterator = libraryCache->try_emplace(kernel_descriptor, std::make_unique<MoERoutingKernel>(kernel_descriptor, device)).first;

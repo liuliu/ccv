@@ -25,6 +25,7 @@ MoERoutingKernel::MoERoutingKernel(MoERoutingKernelDescriptor descriptor, MTL::D
 	CodeWriter source;
 	source.SetValue("ACTIVATION_TYPE", activation_type);
 	source.SetValue("ROUTING_TYPE", routing_type);
+	source.SetValue("SIMD_GROUPS", std::to_string(descriptor.executionSIMDGroups));
 	source += R"(
 #include <metal_stdlib>
 using namespace metal;
@@ -68,8 +69,8 @@ kernel void moe_routing_t1(
 	uint simd_group [[simdgroup_index_in_threadgroup]],
 	uint ntg [[threads_per_threadgroup]])
 {
-	threadgroup float group_scores[8];
-	threadgroup uint group_experts[8];
+	threadgroup float group_scores[{{SIMD_GROUPS}}];
+	threadgroup uint group_experts[{{SIMD_GROUPS}}];
 	threadgroup uint top_experts[32];
 	for (uint expert = tid; expert < expert_count; expert += ntg)
 		probabilities[expert] = routing_probability((float)logits[expert]);
