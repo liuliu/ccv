@@ -19,6 +19,8 @@ void ccv_nnc_mfa_encode_add(ccv_nnc_mfa_context_t* context, ccv_nnc_mfa_add_para
   CCV_NNC_MFA_PRECONDITION(!(params.negative_mask | params.broadcast | params.scaled_mask) || params.args <= 8);
   CCV_NNC_MFA_PRECONDITION(!params.channel_broadcast ||
     ((params.channel_broadcast == 1 || params.channel_broadcast == 2) && params.args == 2 && !params.broadcast && params.channel_count > 0 && params.channel_length > 0));
+  CCV_NNC_MFA_PRECONDITION(!params.row_broadcast ||
+    ((params.row_broadcast == 1 || params.row_broadcast == 2) && !params.channel_broadcast && params.args == 2 && !params.broadcast && params.row_length > 0 && params.length % params.row_length == 0));
   auto encoder = command_batch->startCommand();
   
   int num_tensors = 0;
@@ -42,6 +44,8 @@ void ccv_nnc_mfa_encode_add(ccv_nnc_mfa_context_t* context, ccv_nnc_mfa_add_para
   }
   descriptor.length = params.length;
   descriptor.loadM = params.loadM;
+  descriptor.row_broadcast = params.row_broadcast;
+  descriptor.row_length = params.row_broadcast ? params.row_length : 0;
   descriptor.channel_broadcast = params.channel_broadcast;
   descriptor.channel_count = params.channel_broadcast ? params.channel_count : 0;
   descriptor.channel_length = params.channel_broadcast ? params.channel_length : 0;
@@ -49,7 +53,10 @@ void ccv_nnc_mfa_encode_add(ccv_nnc_mfa_context_t* context, ccv_nnc_mfa_add_para
   descriptor.broadcast = params.broadcast;
   descriptor.scaled_mask = params.scaled_mask;
 
-  const bool vectorized = params.length % 4 == 0 && (!params.channel_broadcast || params.channel_length % 4 == 0);
+  const size_t vector_alignment = params.data_type == MTL::DataTypeFloat ? 16 : 8;
+  const bool vectorized = params.length % 4 == 0 && (!params.channel_broadcast || params.channel_length % 4 == 0) &&
+    (!params.row_broadcast || (params.row_length % 4 == 0 &&
+      tensor_offsets[0] % vector_alignment == 0 && tensor_offsets[1] % vector_alignment == 0 && tensor_offsets[2] % vector_alignment == 0));
   if (vectorized && !params.loadM && params.length % (4 * threadgroup_width) == 0) {
     descriptor.value = 0;
   } else if (vectorized) {

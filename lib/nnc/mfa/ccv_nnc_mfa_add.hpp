@@ -14,6 +14,9 @@ typedef struct {
   uint8_t channel_broadcast;
   uint32_t channel_count;
   uint32_t channel_length;
+  // Full tensor op a vector along its last axis; bit 0 / 1 identifies the vector input.
+  uint8_t row_broadcast;
+  uint32_t row_length;
 } ccv_nnc_mfa_add_params_t;
 
 #ifdef __cplusplus

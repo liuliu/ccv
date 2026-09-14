@@ -5392,6 +5392,213 @@ TEST_CASE("clamp forward with only min")
 	ccv_nnc_tensor_free(bt);
 }
 
+TEST_CASE("MFA row broadcast add and multiply match CPU with offset outputs, in-place inputs, specialized and dynamic lengths")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_MUL_FORWARD, CCV_NNC_BACKEND_MPS) && ccv_nnc_cmd_ok(CCV_NNC_ADD_FORWARD, CCV_NNC_BACKEND_MPS));
+	const struct {
+		int m, h, width;
+		int a_nd, b_nd;
+		int offsets[3];
+	} shapes[] = {
+		{1, 28, 5376, 2, 1, {4, 4, 4}},
+		{1, 414, 5376, 3, 2, {4, 4, 4}},
+		{2, 37, 513, 4, 3, {4, 4, 4}},
+		{1, 4, 128, 3, 1, {3, 4, 4}}, // Only the full input is unaligned.
+		{1, 7, 132, 2, 2, {4, 3, 4}}, // Only the row vector is unaligned.
+		{1, 4, 127, 3, 3, {4, 4, 4}}, // Total length is divisible by four, row length is not.
+		{1, 33, 257, 4, 1, {4, 4, 4}},
+		{1, 129, 257, 3, 2, {3, 3, 3}},
+		{1, 4, 128, 2, 2, {4, 4, 3}}, // Only the output is unaligned.
+		{1, 4, 128, 3, 3, {4, 4, 4}},
+		{1, 2, 256, 2, 1, {4, 4, 4}}, // Same total length, different row-length specialization.
+		{1, 128, 5376, 3, 2, {4, 4, 4}}, // Larger dispatch without bounds checks.
+	};
+	const int datatypes[] = { CCV_32F, CCV_16F, CCV_16BF };
+	const int formats[] = { CCV_TENSOR_FORMAT_NHWC, CCV_TENSOR_FORMAT_NCHW };
+	const ccv_nnc_cmd_t cmds[] = { CMD_MUL_FORWARD(1), CMD_ADD_FORWARD(1, 1), CMD_ADD_FORWARD(-1, 1), CMD_ADD_FORWARD(1, -1), CMD_ADD_FORWARD(-1, -1) };
+	const uint64_t old_flags = ccv_nnc_flags();
+	ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA);
+	dsfmt_t dsfmt;
+	dsfmt_init_gen_rand(&dsfmt, 17);
+	int f, d, s, i, j, op, reverse, dynamic, inplace;
+	for (f = 0; f < 2; f++)
+		for (d = 0; d < 3; d++)
+			for (s = 0; s < sizeof(shapes) / sizeof(shapes[0]); s++)
+			{
+				const int m = shapes[s].m, h = shapes[s].h, width = shapes[s].width;
+				ccv_nnc_tensor_param_t params[] = { CPU_TENSOR_NHWC(32F, m, h, width), CPU_TENSOR_NHWC(32F, 1, 1, width), CPU_TENSOR_NHWC(32F, m, h, width) };
+				if (shapes[s].a_nd == 2)
+					params[0] = params[2] = CPU_TENSOR_NHWC(32F, m * h, width);
+				else if (shapes[s].a_nd == 4)
+					params[0] = params[2] = CPU_TENSOR_NHWC(32F, 1, m, h, width);
+				if (shapes[s].b_nd == 1)
+					params[1] = CPU_TENSOR_NHWC(32F, width);
+				else if (shapes[s].b_nd == 2)
+					params[1] = CPU_TENSOR_NHWC(32F, 1, width);
+				ccv_nnc_tensor_t* cpu[3];
+				ccv_nnc_tensor_t* host[3];
+				ccv_nnc_tensor_t* storage[3];
+				ccv_nnc_tensor_view_t* gpu[3];
+				for (i = 0; i < 3; i++)
+				{
+					params[i].format = formats[f];
+					cpu[i] = ccv_nnc_tensor_new(0, params[i], 0);
+					const int count = ccv_nnc_tensor_count(params[i]);
+					if (i < 2)
+						for (j = 0; j < count; j++)
+							cpu[i]->data.f32[j] = dsfmt_genrand_open_close(&dsfmt) * 4 - 2;
+					params[i].datatype = datatypes[d];
+					host[i] = ccv_nnc_tensor_new(0, params[i], 0);
+					params[i].type = CCV_TENSOR_GPU_MEMORY;
+					ccv_nnc_tensor_param_t storage_params = params[i];
+					memset(storage_params.dim, 0, sizeof(storage_params.dim));
+					storage_params.dim[0] = count + 8;
+					storage[i] = ccv_nnc_tensor_new(0, storage_params, 0);
+					int stride[CCV_NNC_MAX_DIM_ALLOC];
+					ccv_nnc_tensor_get_stride(params[i].dim, stride);
+					int ofs[CCV_NNC_MAX_DIM_ALLOC] = {};
+					ofs[ccv_nnc_tensor_nd(params[i].dim) - 1] = shapes[s].offsets[i];
+					gpu[i] = ccv_nnc_tensor_view_new(storage[i], params[i], ofs, stride);
+				}
+				ccv_nnc_tensor_t* const result = ccv_nnc_tensor_new(0, cpu[2]->info, 0);
+				ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(cpu[0], cpu[1]), TENSOR_LIST(host[0], host[1]), 0);
+				ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(host[0], host[1]), TENSOR_LIST(cpu[0], cpu[1]), 0);
+				ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(host[0], host[1]), TENSOR_LIST((ccv_nnc_tensor_t*)gpu[0], (ccv_nnc_tensor_t*)gpu[1]), 0);
+				for (op = 0; op < 5; op++)
+					for (reverse = 0; reverse < 2; reverse++)
+					{
+						ccv_nnc_cmd_exec(cmds[op], ccv_nnc_no_hint, 0, TENSOR_LIST(cpu[reverse], cpu[1 - reverse]), TENSOR_LIST(cpu[2]), 0);
+						for (dynamic = 0; dynamic < 2; dynamic++)
+						{
+							if (dynamic)
+								ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M);
+							else
+								ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M);
+							for (inplace = 0; inplace < 2; inplace++)
+							{
+								ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(host[0]), TENSOR_LIST((ccv_nnc_tensor_t*)gpu[0]), 0);
+								ccv_nnc_tensor_view_t* const output = inplace ? gpu[0] : gpu[2];
+								REQUIRE_EQ(CCV_NNC_EXEC_SUCCESS, ccv_nnc_cmd_exec(cmds[op], ccv_nnc_no_hint, 0, TENSOR_LIST((ccv_nnc_tensor_t*)gpu[reverse], (ccv_nnc_tensor_t*)gpu[1 - reverse]), TENSOR_LIST((ccv_nnc_tensor_t*)output), 0), "row broadcast should execute");
+								ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST((ccv_nnc_tensor_t*)output), TENSOR_LIST(host[2]), 0);
+								ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(host[2]), TENSOR_LIST(result), 0);
+								for (j = 0; j < m * h * width; j++)
+									REQUIRE(isfinite(result->data.f32[j]), "row broadcast output should be finite at %d", j);
+								REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, cpu[2]->data.f32, result->data.f32, m * h * width, d == 0 ? 1e-6 : (d == 1 ? 2e-3 : 2e-2), "row broadcast should match CPU for datatype %d shape %d op %d reverse %d dynamic %d inplace %d", datatypes[d], s, op, reverse, dynamic, inplace);
+							}
+						}
+					}
+				ccv_nnc_tensor_free(result);
+				for (i = 0; i < 3; i++)
+				{
+					ccv_nnc_tensor_view_free(gpu[i]);
+					ccv_nnc_tensor_free(storage[i]);
+					ccv_nnc_tensor_free(host[i]);
+					ccv_nnc_tensor_free(cpu[i]);
+				}
+			}
+	if (!(old_flags & CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M))
+		ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M);
+	if (old_flags & CCV_NNC_DISABLE_MFA)
+		ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA);
+}
+
+TEST_CASE("MFA row broadcast preserves overlapping, disjoint and strided views")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_MUL_FORWARD, CCV_NNC_BACKEND_MPS) && ccv_nnc_cmd_ok(CCV_NNC_ADD_FORWARD, CCV_NNC_BACKEND_MPS));
+	const int rows = 129, width = 132, count = rows * width, storage_count = 4 * count + 16;
+	const struct {
+		int offsets[3];
+		int factors[3];
+	} layouts[] = {
+		{{4, 3 * count + 4, 8}, {1, 1, 1}}, // Shifted full-input overlap.
+		{{4, 2 * count + 4, 2 * count + 4}, {1, 1, 1}}, // Row-vector overlap.
+		{{4, 3 * count + 4, count + 8}, {1, 1, 1}}, // Disjoint slices.
+		{{4, 3 * count + 4, count + 8}, {2, 1, 1}}, // Padded rows in the full input.
+		{{4, 3 * count + 4, count + 8}, {1, 1, 2}}, // Padded rows in the output.
+		{{4, 3 * count + 4, count + 7}, {1, 1, 1}}, // Unaligned output with disjoint inputs.
+		{{8, 3 * count + 4, 4}, {1, 1, 1}}, // Backwards full-input overlap.
+		{{4, 2 * count + 8, count + 8}, {1, 1, 1}}, // Row vector starts exactly at output end.
+		{{4, 2 * count + 4, count + 8}, {1, 1, 1}}, // Row vector overlaps the last four outputs.
+	};
+	const int datatypes[] = { CCV_32F, CCV_16F, CCV_16BF };
+	const ccv_nnc_cmd_t cmds[] = { CMD_MUL_FORWARD(1), CMD_ADD_FORWARD(1, 1), CMD_ADD_FORWARD(1, -1), CMD_MUL_FORWARD(0.5), CMD_ADD_FORWARD(0.5, 2) };
+	const uint64_t old_flags = ccv_nnc_flags();
+	ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA);
+	dsfmt_t dsfmt;
+	dsfmt_init_gen_rand(&dsfmt, 42);
+	int d, layout, op, reverse, i;
+	for (d = 0; d < 3; d++)
+	{
+		ccv_nnc_tensor_t* const source = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, storage_count), 0);
+		ccv_nnc_tensor_t* const result = ccv_nnc_tensor_new(0, source->info, 0);
+		ccv_nnc_tensor_param_t params = source->info;
+		params.datatype = datatypes[d];
+		ccv_nnc_tensor_t* const host = ccv_nnc_tensor_new(0, params, 0);
+		ccv_nnc_tensor_t* const downloaded = ccv_nnc_tensor_new(0, params, 0);
+		params.type = CCV_TENSOR_GPU_MEMORY;
+		ccv_nnc_tensor_t* const storage = ccv_nnc_tensor_new(0, params, 0);
+		for (i = 0; i < storage_count; i++)
+			source->data.f32[i] = dsfmt_genrand_open_close(&dsfmt) * 2 - 1;
+		ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(source), TENSOR_LIST(host), 0);
+		ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(host), TENSOR_LIST(source), 0);
+		ccv_nnc_tensor_t* const expected = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, rows, width), 0);
+		for (layout = 0; layout < sizeof(layouts) / sizeof(layouts[0]); layout++)
+		{
+			const int* const offsets = layouts[layout].offsets;
+			const int* const factors = layouts[layout].factors;
+			ccv_nnc_tensor_view_t* gpu[3];
+			ccv_nnc_tensor_view_t* cpu[2];
+			for (i = 0; i < 3; i++)
+			{
+				ccv_nnc_tensor_param_t view_params = i == 1 ? CPU_TENSOR_NHWC(32F, 1, width) : CPU_TENSOR_NHWC(32F, 1, rows, width);
+				int stride[CCV_NNC_MAX_DIM_ALLOC];
+				ccv_nnc_tensor_get_stride(view_params.dim, stride);
+				stride[0] *= factors[i];
+				stride[1] *= factors[i];
+				int ofs[CCV_NNC_MAX_DIM_ALLOC] = {};
+				ofs[ccv_nnc_tensor_nd(view_params.dim) - 1] = offsets[i];
+				if (i < 2)
+					cpu[i] = ccv_nnc_tensor_view_new(source, view_params, ofs, stride);
+				view_params.datatype = datatypes[d];
+				view_params.type = CCV_TENSOR_GPU_MEMORY;
+				gpu[i] = ccv_nnc_tensor_view_new(storage, view_params, ofs, stride);
+			}
+			for (op = 0; op < 5; op++)
+				for (reverse = 0; reverse < 2; reverse++)
+				{
+					ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(host), TENSOR_LIST(storage), 0);
+					ccv_nnc_cmd_exec(cmds[op], ccv_nnc_no_hint, 0, TENSOR_LIST((ccv_nnc_tensor_t*)cpu[reverse], (ccv_nnc_tensor_t*)cpu[1 - reverse]), TENSOR_LIST(expected), 0);
+					REQUIRE_EQ(CCV_NNC_EXEC_SUCCESS, ccv_nnc_cmd_exec(cmds[op], ccv_nnc_no_hint, 0, TENSOR_LIST((ccv_nnc_tensor_t*)gpu[reverse], (ccv_nnc_tensor_t*)gpu[1 - reverse]), TENSOR_LIST((ccv_nnc_tensor_t*)gpu[2]), 0), "broadcast view command should execute");
+					ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(storage), TENSOR_LIST(downloaded), 0);
+					ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(downloaded), TENSOR_LIST(result), 0);
+					for (i = 0; i < storage_count; i++)
+					{
+						REQUIRE(isfinite(result->data.f32[i]), "broadcast storage should be finite at %d", i);
+						const int index = i - offsets[2];
+						if (index >= 0 && index < count * factors[2] && index % (width * factors[2]) < width)
+						{
+							REQUIRE_EQ_WITH_TOLERANCE(result->data.f32[i], expected->data.f32[index / (width * factors[2]) * width + index % width], d == 0 ? 1e-6 : (d == 1 ? 2e-3 : 2e-2), "view output should match CPU for datatype %d layout %d op %d reverse %d", datatypes[d], layout, op, reverse);
+						} else {
+							REQUIRE_EQ(result->data.f32[i], source->data.f32[i], "broadcast must preserve storage outside its output");
+						}
+					}
+				}
+			for (i = 0; i < 3; i++)
+				ccv_nnc_tensor_view_free(gpu[i]);
+			for (i = 0; i < 2; i++)
+				ccv_nnc_tensor_view_free(cpu[i]);
+		}
+		ccv_nnc_tensor_free(expected);
+		ccv_nnc_tensor_free(storage);
+		ccv_nnc_tensor_free(downloaded);
+		ccv_nnc_tensor_free(host);
+		ccv_nnc_tensor_free(result);
+		ccv_nnc_tensor_free(source);
+	}
+	if (old_flags & CCV_NNC_DISABLE_MFA)
+		ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA);
+}
+
 TEST_CASE("MFA channel broadcast add and multiply match CPU with specialized and dynamic lengths")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_MUL_FORWARD, CCV_NNC_BACKEND_MPS) && ccv_nnc_cmd_ok(CCV_NNC_ADD_FORWARD, CCV_NNC_BACKEND_MPS));

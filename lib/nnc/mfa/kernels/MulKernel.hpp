@@ -16,6 +16,8 @@ struct MulKernel {
 
   bool loadM;
 
+  uint8_t row_broadcast;
+
   uint8_t channel_broadcast;
 
   GEMMOperandPrecision memoryPrecision;

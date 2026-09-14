@@ -5,6 +5,7 @@
 MulKernel::MulKernel(MulKernelDescriptor descriptor, MTL::Device *const device) {
   value = descriptor.value;
   loadM = descriptor.loadM;
+  row_broadcast = descriptor.row_broadcast;
   channel_broadcast = descriptor.channel_broadcast;
   memoryPrecision = descriptor.memoryPrecision;
   source = createSource();
@@ -27,8 +28,8 @@ std::string MulKernel::createSource() const noexcept {
   for (int i = 0; i < 2; i++) {
     const bool channel_weight = channel_broadcast & (1u << i);
     source.SetValue("REAL" + std::to_string(i), value == 2 || channel_weight ? "real" : "real4");
-    source.SetValue("INDEX" + std::to_string(i), !channel_broadcast ? "idx" :
-      (channel_weight ? "(idx / channel_length) % channel_count" : "(idx / channel_length / channel_count) * channel_length + idx % channel_length"));
+    source.SetValue("INDEX" + std::to_string(i), row_broadcast & (1u << i) ? "idx % row_length" : (!channel_broadcast ? "idx" :
+      (channel_weight ? "(idx / channel_length) % channel_count" : "(idx / channel_length / channel_count) * channel_length + idx % channel_length")));
   }
   source.SetValue("LOAD_M", loadM ? "const device uint *loadM [[buffer(3)]]," : "");
   source.SetValue("COUNT", loadM ? "const uniform<uint> count = make_uniform(loadM[0]);" : "");
@@ -65,5 +66,7 @@ std::string MulKernel::createConstants() const noexcept {
     defines += "constant uint channel_count [[function_constant(1)]];\n";
     defines += "constant uint channel_length [[function_constant(2)]];\n";
   }
+  if (row_broadcast)
+    defines += "constant uint row_length [[function_constant(3)]];\n";
   return defines;
 }

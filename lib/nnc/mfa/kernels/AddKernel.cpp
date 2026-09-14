@@ -11,6 +11,7 @@ AddKernel::AddKernel(AddKernelDescriptor descriptor, MTL::Device *const device) 
   value = descriptor.value;
 
   loadM = descriptor.loadM;
+  row_broadcast = descriptor.row_broadcast;
   channel_broadcast = descriptor.channel_broadcast;
 
   negative_mask = descriptor.negative_mask;
@@ -57,6 +58,8 @@ std::string AddKernel::createSource() const noexcept {
     std::string index = scalar ? "0" : "idx";
     if (channel_broadcast)
       index = (channel_broadcast & (1u << i)) ? "(idx / channel_length) % channel_count" : "(idx / channel_length / channel_count) * channel_length + idx % channel_length";
+    if (row_broadcast && (row_broadcast & (1u << i)))
+      index = "idx % row_length";
     std::string item = "src" + std::to_string(i) + "[" + index + "]";
     if (i < 8 && (scaled_mask & (1u << i)))
       item = "(" + (vectorized ? std::string("real4") : std::string("real")) + "(scales[" + std::to_string(i) + "]) * " + item + ")";
@@ -175,5 +178,7 @@ std::string AddKernel::createConstants() const noexcept {
     defines += "constant uint channel_count [[function_constant(1)]];\n";
     defines += "constant uint channel_length [[function_constant(2)]];\n";
   }
+  if (row_broadcast)
+    defines += "constant uint row_length [[function_constant(3)]];\n";
   return defines;
 }

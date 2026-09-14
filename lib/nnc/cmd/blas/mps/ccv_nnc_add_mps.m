@@ -13,19 +13,7 @@
 #include <dispatch/dispatch.h>
 #endif
 
-// [M, 1, D]op [1, H, 1] -> [M, H, D]. Return the channel-weight input bit.
-static inline uint8_t _ccv_nnc_mps_channel_broadcast(const ccv_nnc_tensor_param_t a, const ccv_nnc_tensor_param_t b, const ccv_nnc_tensor_param_t c)
-{
-	if (ccv_nnc_tensor_nd(a.dim) != 3 || ccv_nnc_tensor_nd(b.dim) != 3 || ccv_nnc_tensor_nd(c.dim) != 3)
-		return 0;
-	if (a.dim[0] == c.dim[0] && a.dim[1] == 1 && a.dim[2] == c.dim[2] &&
-		b.dim[0] == 1 && b.dim[1] == c.dim[1] && b.dim[2] == 1)
-		return 2;
-	if (b.dim[0] == c.dim[0] && b.dim[1] == 1 && b.dim[2] == c.dim[2] &&
-		a.dim[0] == 1 && a.dim[1] == c.dim[1] && a.dim[2] == 1)
-		return 1;
-	return 0;
-}
+#include "ccv_nnc_blas_mps.h"
 
 static int _ccv_nnc_add_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
 {
@@ -96,7 +84,8 @@ static int _ccv_nnc_add_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 		return CCV_NNC_EXEC_SUCCESS;
 	}
 	const ccv_nnc_tensor_view_t* const b = (const ccv_nnc_tensor_view_t*)inputs[1];
-	const uint8_t channel_broadcast = _ccv_nnc_mps_channel_broadcast(a->info, b->info, c->info);
+	const uint8_t row_broadcast = _ccv_nnc_mps_row_broadcast(a, b, c);
+	const uint8_t channel_broadcast = row_broadcast ? 0 : _ccv_nnc_mps_channel_broadcast(a->info, b->info, c->info);
 	@autoreleasepool {
 		bool use_mfa = true;
 		const char *fallback_reason = NULL;
@@ -141,7 +130,7 @@ static int _ccv_nnc_add_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 			fallback_reason = "Unsupported tensor size.";
 		}
 		if (use_mfa) {
-			if (!channel_broadcast && !((a_length == length || a_length == 1) &&
+			if (!row_broadcast && !channel_broadcast && !((a_length == length || a_length == 1) &&
 				(b_length == length || b_length == 1))) {
 				use_mfa = false;
 				fallback_reason = "Broadcast semantics unsupported.";
@@ -195,7 +184,9 @@ static int _ccv_nnc_add_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 				.length = (uint32_t)length,
 				.loadM = !!(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M),
 				.negative_mask = (p < 0 ? 1 : 0) | (q < 0 ? 2 : 0),
-				.broadcast = channel_broadcast ? 0 : ((a_length == 1 ? 1 : 0) | (b_length == 1 ? 2 : 0)),
+				.broadcast = (row_broadcast || channel_broadcast) ? 0 : ((a_length == 1 ? 1 : 0) | (b_length == 1 ? 2 : 0)),
+				.row_broadcast = row_broadcast,
+				.row_length = row_broadcast ? c->info.dim[ccv_nnc_tensor_nd(c->info.dim) - 1] : 0,
 				.channel_broadcast = channel_broadcast,
 				.channel_count = channel_broadcast ? c->info.dim[1] : 0,
 				.channel_length = channel_broadcast ? c->info.dim[2] : 0,
