@@ -27,6 +27,21 @@
  */
 void ccv_nnc_init(void);
 
+/**
+ * Detach this thread's MPS command buffers, scratch and caches from default execution.
+ * Call before independent GPU work, with no command buffer checked out. This
+ * does not copy pending work or synchronize tensors from default execution.
+ * Returns 1 when detached, 0 when already detached or MPS is unavailable.
+ * State is released at thread exit. It does not follow work onto other threads.
+ */
+int ccv_nnc_fork(void);
+/**
+ * Finish this thread's detached GPU work and restore default execution.
+ * Optional for dedicated threads; required before returning a pooled worker.
+ * Call only to balance a fork that returned 1, with no active encoding.
+ */
+void ccv_nnc_join(void);
+
 enum {
 	CCV_NNC_DISABLE_MIXED_MPS_GEMM = 0x1,
 	CCV_NNC_DISABLE_MIXED_MPS_SOFTMAX = 0x2,

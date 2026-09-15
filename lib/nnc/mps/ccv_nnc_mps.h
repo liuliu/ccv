@@ -27,6 +27,8 @@ void* mpmemmap(const char* file, const size_t size, const off_t offset, const in
 void mpmemcpy(void* dest, const off_t dest_off, const int dest_type, const void* src, const off_t src_off, const int src_type, size_t n);
 
 // Stream context
+int ccv_nnc_mps_fork(void);
+void ccv_nnc_mps_join(void);
 CCV_WARN_UNUSED(ccv_nnc_stream_context_t*) ccv_nnc_init_stream_context(ccv_nnc_stream_context_t* const stream_context);
 void ccv_nnc_synchronize_stream_context(const ccv_nnc_stream_context_t* const stream_context);
 void ccv_nnc_stream_compat_add_callback(ccv_nnc_stream_context_t* const stream, const ccv_nnc_callback_f callback, const ccv_nnc_async_callback_f async_callback, void* const callback_context);

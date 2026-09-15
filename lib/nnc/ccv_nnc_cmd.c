@@ -30,6 +30,22 @@ void ccv_nnc_init(void)
 	_ccv_nnc_cmd_init();
 }
 
+int ccv_nnc_fork(void)
+{
+#ifdef HAVE_MPS
+	return ccv_nnc_mps_fork();
+#else
+	return 0;
+#endif
+}
+
+void ccv_nnc_join(void)
+{
+#ifdef HAVE_MPS
+	ccv_nnc_mps_join();
+#endif
+}
+
 static uint64_t _ccv_nnc_flags = 0;
 
 uint64_t ccv_nnc_flags(void)

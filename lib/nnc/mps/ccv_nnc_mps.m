@@ -41,8 +41,22 @@ id<MTLDevice> ccv_nnc_default_device(void)
 @property (nonatomic, assign) int pinStatus;
 @end
 
+// Default callers retain the shared batching behavior. Only an explicit fork
+// redirects pending work and completion accounting to thread-owned storage.
+typedef struct {
+	ccv_nnc_mfa_context_t* mfa_context;
+	MPSCommandBuffer* current;
+	int command_count;
+	id<MTLCommandBuffer> last;
+	struct kh_graph_executable_cache_s* graph_executable_cache;
+} ccv_nnc_mps_execution_state_t;
+static ccv_nnc_mps_execution_state_t global_execution_state;
+static __thread ccv_nnc_mps_execution_state_t* execution_state = &global_execution_state;
+
 ccv_nnc_mfa_context_t* ccv_nnc_default_mfa_context(void)
 {
+	if (execution_state != &global_execution_state)
+		return execution_state->mfa_context;
 	static dispatch_once_t once;
 	static ccv_nnc_mfa_context_t* context;
 	dispatch_once(&once, ^{
@@ -200,12 +214,53 @@ static os_unfair_lock queue_lock;
 static os_unfair_lock buffer_lock;
 #define CCV_NNC_MPS_MAX_COMMAND_BUFFER_WATERMARK (32)
 #define CCV_NNC_MPS_DEFAULT_COMMAND_BUFFER_WATERMARK (8)
-static MPSCommandBuffer* current_mps_command_buffer;
-static int current_mps_command_buffer_command_count;
 static __thread MPSCommandBuffer* checked_out_mps_command_buffer;
 static __thread int checked_out_mps_command_buffer_command_count;
+// Default completion tracking and shared Metal queue throttling stay global.
+// GPU completion callbacks must never consult the callback thread's fork state.
 static id<MTLCommandBuffer> old_last_command_buffers[CCV_NNC_MPS_MAX_COMMAND_BUFFER_WATERMARK];
 static id<MTLCommandBuffer> last_command_buffer;
+static pthread_key_t execution_state_key;
+static void _ccv_nnc_mps_destroy_fork_caches(void);
+
+static void _ccv_nnc_mps_destroy_fork(void* const opaque)
+{
+	// Native TLS may already have been reset when pthread destructors run.
+	// The registered value, rather than a fresh TLS lookup, owns this cleanup.
+	execution_state = (ccv_nnc_mps_execution_state_t*)opaque;
+	assert(!checked_out_mps_command_buffer);
+	@autoreleasepool {
+		ccv_nnc_synchronize_stream_context(0);
+		_ccv_nnc_mps_destroy_fork_caches();
+		ccv_nnc_deinit_mfa_context(execution_state->mfa_context);
+		ccfree(opaque);
+		execution_state = &global_execution_state;
+	}
+}
+
+int ccv_nnc_mps_fork(void)
+{
+	if (execution_state != &global_execution_state)
+		return 0;
+	assert(!checked_out_mps_command_buffer);
+	static dispatch_once_t once;
+	dispatch_once(&once, ^{
+		const int result = pthread_key_create(&execution_state_key, _ccv_nnc_mps_destroy_fork);
+		assert(result == 0);
+	});
+	execution_state = cccalloc(1, sizeof(ccv_nnc_mps_execution_state_t));
+	pthread_setspecific(execution_state_key, execution_state);
+	execution_state->mfa_context = ccv_nnc_init_mfa_context((__bridge mtl_device_t*)ccv_nnc_default_device());
+	return 1;
+}
+
+void ccv_nnc_mps_join(void)
+{
+	if (execution_state == &global_execution_state)
+		return;
+	pthread_setspecific(execution_state_key, 0);
+	_ccv_nnc_mps_destroy_fork(execution_state);
+}
 
 static id<MTLCommandQueue> _ccv_nnc_default_queue(void)
 {
@@ -698,8 +753,6 @@ typedef struct {
 
 KHASH_INIT(graph_executable_cache, ccv_nnc_mps_graph_key_t, ccv_nnc_graph_val_t, 1, _kh_graph_key_executable_hash_func, _kh_graph_key_executable_hash_equal)
 
-static khash_t(graph_executable_cache)* g_graph_executable_cache = 0;
-
 static inline void ccv_nnc_mps_graph_key_free(ccv_nnc_mps_graph_key_t key)
 {
 	if (key.inputs)
@@ -709,27 +762,27 @@ static inline void ccv_nnc_mps_graph_key_free(ccv_nnc_mps_graph_key_t key)
 void ccv_nnc_mps_clear_graph_executable_cache(void)
 {
 	ccv_nnc_mfa_clear_pipeline_cache(ccv_nnc_default_mfa_context());
-	if (!g_graph_executable_cache)
+	if (!execution_state->graph_executable_cache)
 		return;
 	khiter_t k;
-	for (k = kh_begin(g_graph_executable_cache); k < kh_end(g_graph_executable_cache); k++)
+	for (k = kh_begin(execution_state->graph_executable_cache); k < kh_end(execution_state->graph_executable_cache); k++)
 	{
-		if (!kh_exist(g_graph_executable_cache, k))
+		if (!kh_exist(execution_state->graph_executable_cache, k))
 			continue;
-		ccv_nnc_mps_graph_key_free(kh_key(g_graph_executable_cache, k));
-		if (kh_val(g_graph_executable_cache, k).indices)
-			ccfree(kh_val(g_graph_executable_cache, k).indices);
-		[kh_val(g_graph_executable_cache, k).exec release];
-		kh_del(graph_executable_cache, g_graph_executable_cache, k);
+		ccv_nnc_mps_graph_key_free(kh_key(execution_state->graph_executable_cache, k));
+		if (kh_val(execution_state->graph_executable_cache, k).indices)
+			ccfree(kh_val(execution_state->graph_executable_cache, k).indices);
+		[kh_val(execution_state->graph_executable_cache, k).exec release];
+		kh_del(graph_executable_cache, execution_state->graph_executable_cache, k);
 	}
 }
 
 MPSGraphExecutable* ccv_nnc_mps_graph_executable_cache(const ccv_nnc_mps_graph_key_t key, int* indices, void(NS_NOESCAPE ^block)(MPSGraph* graph, NSMutableArray<MPSGraphTensor*>* inputTensors, NSMutableArray<MPSGraphShapedType*>* inputShapedTypes, NSMutableArray<MPSGraphTensor*>* resultTensors))
 {
-	if (!g_graph_executable_cache)
-		g_graph_executable_cache = kh_init(graph_executable_cache);
+	if (!execution_state->graph_executable_cache)
+		execution_state->graph_executable_cache = kh_init(graph_executable_cache);
 	int ret = 0;
-	khiter_t k = kh_put(graph_executable_cache, g_graph_executable_cache, key, &ret);
+	khiter_t k = kh_put(graph_executable_cache, execution_state->graph_executable_cache, key, &ret);
 	if (ret != 0)
 	{
 		MPSGraph* graph = [MPSGraph new];
@@ -747,23 +800,30 @@ MPSGraphExecutable* ccv_nnc_mps_graph_executable_cache(const ccv_nnc_mps_graph_k
 		executable.options = MPSGraphOptionsSynchronizeResults;
 		[compilationDescriptor release];
 		[graph release];
-		kh_val(g_graph_executable_cache, k).exec = executable;
-		kh_val(g_graph_executable_cache, k).indice_size = (int)inputTensors.count;
-		kh_val(g_graph_executable_cache, k).indices = inputTensors.count > 0 ? (int*)ccmalloc(sizeof(int) * inputTensors.count) : 0;
+		kh_val(execution_state->graph_executable_cache, k).exec = executable;
+		kh_val(execution_state->graph_executable_cache, k).indice_size = (int)inputTensors.count;
+		kh_val(execution_state->graph_executable_cache, k).indices = inputTensors.count > 0 ? (int*)ccmalloc(sizeof(int) * inputTensors.count) : 0;
 		assert(inputTensors.count == executable.feedTensors.count);
 		int i;
 		for (i = 0; i < executable.feedTensors.count; i++)
-			indices[i] = kh_val(g_graph_executable_cache, k).indices[i] = (int)[inputTensors indexOfObject:executable.feedTensors[i]];
+			indices[i] = kh_val(execution_state->graph_executable_cache, k).indices[i] = (int)[inputTensors indexOfObject:executable.feedTensors[i]];
 		[inputTensors release];
 		[inputShapedTypes release];
 		[targetTensors release];
 	} else {
 		ccv_nnc_mps_graph_key_free(key);
 		int i;
-		for (i = 0; i < kh_val(g_graph_executable_cache, k).indice_size; i++)
-			indices[i] = kh_val(g_graph_executable_cache, k).indices[i];
+		for (i = 0; i < kh_val(execution_state->graph_executable_cache, k).indice_size; i++)
+			indices[i] = kh_val(execution_state->graph_executable_cache, k).indices[i];
 	}
-	return kh_val(g_graph_executable_cache, k).exec;
+	return kh_val(execution_state->graph_executable_cache, k).exec;
+}
+
+static void _ccv_nnc_mps_destroy_fork_caches(void)
+{
+	ccv_nnc_mps_clear_graph_executable_cache();
+	if (execution_state->graph_executable_cache)
+		kh_destroy(graph_executable_cache, execution_state->graph_executable_cache);
 }
 
 ccv_nnc_mps_graph_key_t ccv_nnc_mps_graph_key_new(const ccv_nnc_cmd_t cmd, const int index, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size)
@@ -861,7 +921,7 @@ static int _ccv_nnc_mps_current_command_buffer_needs_commit(const int command_co
 
 static void _ccv_nnc_mps_reset_current_command_buffer_accounting(void)
 {
-	current_mps_command_buffer_command_count = 0;
+	execution_state->command_count = 0;
 }
 
 static void _ccv_nnc_mps_reset_checked_out_command_buffer_accounting(void)
@@ -925,6 +985,11 @@ static void _ccv_nnc_mps_commit_command_buffer(MPSCommandBuffer* const command_b
 		_ccv_nnc_mps_release_tracked_command_buffer(buffer, buffer_size);
 	}];
 	[command_buffer commit];
+	if (execution_state != &global_execution_state)
+	{
+		[execution_state->last release];
+		execution_state->last = [mtl_command_buffer retain];
+	}
 	_ccv_nnc_mps_track_submitted_command_buffer(mtl_command_buffer, buffer_size);
 	[command_buffer release];
 	[mtl_command_buffer release];
@@ -941,10 +1006,10 @@ static void _ccv_nnc_mps_account_current_command_buffer(id<MTLCommandBuffer> con
 	MPSCommandBuffer* command_buffer = nil;
 	const int needs_commit = _ccv_nnc_mps_current_command_buffer_needs_commit(checked_out_mps_command_buffer_command_count);
 	os_unfair_lock_lock(&buffer_lock);
-	if (!current_mps_command_buffer && !needs_commit)
+	if (!execution_state->current && !needs_commit)
 	{
-		current_mps_command_buffer = checked_out_mps_command_buffer;
-		current_mps_command_buffer_command_count = checked_out_mps_command_buffer_command_count;
+		execution_state->current = checked_out_mps_command_buffer;
+		execution_state->command_count = checked_out_mps_command_buffer_command_count;
 		checked_out_mps_command_buffer = nil;
 		_ccv_nnc_mps_reset_checked_out_command_buffer_accounting();
 	} else {
@@ -960,8 +1025,8 @@ void ccv_nnc_stream_compat_commit(ccv_nnc_stream_context_t* const stream_context
 {
 	MPSCommandBuffer* command_buffer = nil;
 	os_unfair_lock_lock(&buffer_lock);
-	command_buffer = current_mps_command_buffer;
-	current_mps_command_buffer = nil;
+	command_buffer = execution_state->current;
+	execution_state->current = nil;
 	_ccv_nnc_mps_reset_current_command_buffer_accounting();
 	os_unfair_lock_unlock(&buffer_lock);
 	_ccv_nnc_mps_commit_command_buffer(command_buffer);
@@ -970,6 +1035,16 @@ void ccv_nnc_stream_compat_commit(ccv_nnc_stream_context_t* const stream_context
 void ccv_nnc_synchronize_stream_context(const ccv_nnc_stream_context_t* const stream_context)
 {
 	ccv_nnc_stream_compat_commit((ccv_nnc_stream_context_t*)stream_context);
+	// A wait in default execution may clear global tracking while detached work
+	// is still running. Keep the detached completion fence independently.
+	if (execution_state != &global_execution_state)
+	{
+		id<MTLCommandBuffer> command_buffer = execution_state->last;
+		execution_state->last = nil;
+		[command_buffer waitUntilCompleted];
+		[command_buffer release];
+		return;
+	}
 	os_unfair_lock_lock(&queue_lock);
 	id<MTLCommandBuffer> command_buffer = last_command_buffer;
 	last_command_buffer = nil;
@@ -996,8 +1071,15 @@ void ccv_nnc_stream_compat_add_callback(ccv_nnc_stream_context_t* const stream, 
 {
 	ccv_nnc_stream_compat_commit(stream);
 	os_unfair_lock_lock(&queue_lock);
-	id<MTLCommandBuffer> command_buffer = [last_command_buffer retain];
+	id<MTLCommandBuffer> command_buffer = [(execution_state != &global_execution_state ? execution_state->last : last_command_buffer) retain];
 	os_unfair_lock_unlock(&queue_lock);
+	// Metal cannot attach a handler to an already committed completion fence.
+	if (command_buffer.status >= MTLCommandBufferStatusCommitted)
+	{
+		[command_buffer waitUntilCompleted];
+		[command_buffer release];
+		command_buffer = nil;
+	}
 	if (command_buffer == nil)
 	{
 		callback(callback_context);
@@ -1017,8 +1099,15 @@ int co_stream_compat_await(co_routine_t* const self, ccv_nnc_stream_context_t* c
 {
 	ccv_nnc_stream_compat_commit(stream);
 	os_unfair_lock_lock(&queue_lock);
-	id<MTLCommandBuffer> command_buffer = [last_command_buffer retain];
+	id<MTLCommandBuffer> command_buffer = [(execution_state != &global_execution_state ? execution_state->last : last_command_buffer) retain];
 	os_unfair_lock_unlock(&queue_lock);
+	// Complete committed work before taking the synchronous await path.
+	if (command_buffer.status >= MTLCommandBufferStatusCommitted)
+	{
+		[command_buffer waitUntilCompleted];
+		[command_buffer release];
+		command_buffer = nil;
+	}
 	if (command_buffer == nil)
 		return 1;
 	co_scheduler_t* const scheduler = self->scheduler;
@@ -1131,9 +1220,9 @@ MPSCommandBuffer* ccv_nnc_stream_context_start_mps_command_buffer(ccv_nnc_stream
 	if (checked_out_mps_command_buffer)
 		return [[checked_out_mps_command_buffer retain] autorelease];
 	os_unfair_lock_lock(&buffer_lock);
-	MPSCommandBuffer* command_buffer = current_mps_command_buffer;
-	current_mps_command_buffer = nil;
-	checked_out_mps_command_buffer_command_count = current_mps_command_buffer_command_count;
+	MPSCommandBuffer* command_buffer = execution_state->current;
+	execution_state->current = nil;
+	checked_out_mps_command_buffer_command_count = execution_state->command_count;
 	_ccv_nnc_mps_reset_current_command_buffer_accounting();
 	os_unfair_lock_unlock(&buffer_lock);
 	if (!command_buffer)
