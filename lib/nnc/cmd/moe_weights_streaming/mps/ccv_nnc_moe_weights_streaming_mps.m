@@ -84,7 +84,8 @@ enum { CCV_NNC_MOE_READINESS_COUNT = 2 };
 	int i;
 	for (i = 0; i < 3; i++)
 	{
-		[source_objects[i] release];
+		if (source_objects[i] != source_objects[0])
+			[source_objects[i] release];
 		[source_paths[i] release];
 		if (source_fd_owners[i] && source_fds[i] >= 0)
 			close(source_fds[i]);
@@ -332,7 +333,11 @@ static MFAMoEWeightsStreamingState* _ccv_nnc_moe_state_for_inputs(ccv_nnc_tensor
 		int invalid_source = 0;
 		for (i = 0; i < 3; i++)
 		{
-			state->source_objects[i] = [(id)inputs[i + 3]->data.u8 retain];
+			// The gate source owns this state through its associated object. Borrow its
+			// identity to avoid retaining the entire resident cache after model unload.
+			// Retain the other sources so their identities cannot be reused while cached.
+			id const source = (id)inputs[i + 3]->data.u8;
+			state->source_objects[i] = source == gate_source ? source : [source retain];
 			state->source_dataofs[i] = inputs[i + 3]->dataof;
 			state->source_infos[i] = inputs[i + 3]->info;
 			ccv_nnc_mps_file_backed_region_t region;

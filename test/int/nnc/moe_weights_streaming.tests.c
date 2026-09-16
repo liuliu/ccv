@@ -7,6 +7,7 @@
 #include <math.h>
 #include <stdio.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
 TEST_SETUP()
@@ -404,12 +405,31 @@ TEST_CASE("MPS MoE weights streaming covers resident decode, eviction, and prefi
 			REQUIRE(max_difference < 1e-3, "warm combo prefill should match reference");
 		}
 	}
+	// A source can be shared by gate and up; neither alias may retain the owner.
+	REQUIRE_EQ(_moe_weights_streaming_run_case(
+		streamed_weights[0], streamed_weights[0], streamed_weights[2],
+		reference_weights[0], reference_weights[0], reference_weights[2],
+		high_indices, high_decode_counts, 4, 1, 113, experts / 2, 0, &max_difference), CCV_NNC_EXEC_SUCCESS,
+		"streaming should support shared gate and up sources");
+	REQUIRE(max_difference < 1e-3, "shared-source decode should match reference");
 	for (i = 0; i < 3; i++)
 	{
 		ccv_nnc_tensor_free(streamed_weights[i]);
 		ccv_nnc_tensor_free(reference_weights[i]);
 		ccv_nnc_tensor_free(quantized_weights[i]);
 		ccv_nnc_tensor_free(host_weights[i]);
+		// Streaming state owns file descriptors as well as the resident Metal buffers.
+		// After its source tensors and output handles are gone, neither may stay alive.
+		struct stat source_stat;
+		REQUIRE_EQ(stat(paths[i], &source_stat), 0, "the source file should still exist before cleanup");
+		int retained_source_fds = 0;
+		for (int fd = 0; fd < getdtablesize(); fd++)
+		{
+			struct stat fd_stat;
+			if (fstat(fd, &fd_stat) == 0 && fd_stat.st_dev == source_stat.st_dev && fd_stat.st_ino == source_stat.st_ino)
+				++retained_source_fds;
+		}
+		REQUIRE_EQ(retained_source_fds, 0, "unloading source weights must release the streaming state and its file descriptors");
 		unlink(paths[i]);
 	}
 }
