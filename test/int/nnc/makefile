@@ -9,6 +9,8 @@ ifeq ($(shell uname 2>/dev/null || echo Unknown),Darwin)
 	LDFLAGS += -Wl,-U,___test_case_setup,-U,___test_case_teardown
 endif
 
+TARGETS += signed_sqrt.tests
+
 TARGET_SRCS := $(patsubst %,%.c,$(TARGETS))
 
 .PRECIOUS: $(patsubst %,%.o,$(TARGETS))

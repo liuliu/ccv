@@ -41,6 +41,7 @@ extern "C" {
 #include "ccv_nnc_mfa_transpose.hpp"
 #include "ccv_nnc_mfa_sigmoid.hpp"
 #include "ccv_nnc_mfa_swish.hpp"
+#include "ccv_nnc_mfa_signed_sqrt.hpp"
 #include "ccv_nnc_mfa_swish_mul.hpp"
 #include "ccv_nnc_mfa_exp.hpp"
 #include "ccv_nnc_mfa_log.hpp"

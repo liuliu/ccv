@@ -322,6 +322,9 @@ typedef struct {
 			float beta; /**< [swish.beta] The beta parameter in swish: x * sigmoid(beta * x). */
 		} swish;
 		struct {
+			float minimum_magnitude; /**< [signed_sqrt.minimum_magnitude] Finite positive floor for abs(x) before the sign-preserving square root. Backward uses the active derivative at the floor and zero inside it (including zero). */
+		} signed_sqrt;
+		struct {
 			float beta; /**< [swish_mul.beta] The beta parameter in swish: x * sigmoid(beta * x). */
 			float scale; /**< [swish_mul.scale] The scale applied to value * swish(gate). */
 			float clamp; /**< [swish_mul.clamp] If positive, clamp value symmetrically and gate from above before applying swish. */
@@ -4883,6 +4886,16 @@ CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_div(const int reciprocal, const char
  * @return A model that can be applied with one input, and generate output that is the square root of the input.
  */
 CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_sqrt(const char* const name);
+/**
+ * Computes copysign(sqrt(max(abs(x), minimum_magnitude)), x) element-wise.
+ * Signed zeros produce signed sqrt(minimum_magnitude). Backward is zero for
+ * abs(x) < minimum_magnitude (including zero), and uses the active derivative
+ * 0.5 / sqrt(abs(x)) at and above the boundary.
+ * @param minimum_magnitude A finite, positive floor on the input magnitude.
+ * @param name The unique name of the model.
+ * @return A sign-preserving square root model with the input shape and dtype.
+ */
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_signed_sqrt(const float minimum_magnitude, const char* const name);
 /**
  * Natural logarithm of the input tensor.
  * @param name The unique name of the model.
