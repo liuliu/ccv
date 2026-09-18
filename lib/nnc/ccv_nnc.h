@@ -376,7 +376,7 @@ typedef struct {
 			float weight_scale; /**< [moe_routing.weight_scale] Scale applied after normalizing the selected expert weights. */
 			int preselected; /**< [moe_routing.preselected] Whether expert IDs are supplied rather than selected from the biased routing scores. */
 			int flags; /**< [moe_routing.flags] Optional routing behavior, such as avoiding activation duplication for a single input token. */
-			float normalization_epsilon; /**< [moe_routing.normalization_epsilon] Finite, nonnegative epsilon. Zero retains the denominator floor of 2^-14; positive values use sum + epsilon in FP32 (CPU and single-token MFA only). */
+			float normalization_epsilon; /**< [moe_routing.normalization_epsilon] Finite, nonnegative epsilon. Zero retains the denominator floor of 2^-14; positive values use sum + epsilon in FP32. */
 		} moe_routing;
 		struct {
 			int resident_slots; /**< [moe_weights_streaming.resident_slots] Number of expert slots retained for decode. */

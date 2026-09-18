@@ -603,15 +603,33 @@ TEST_CASE("moe routing MFA additive epsilon matches CPU across score magnitudes 
 				}
 }
 
-TEST_CASE("moe routing MPS rejects invalid epsilon and additive normalization without MFA")
+TEST_CASE("moe routing MPSGraph additive epsilon matches CPU across fallback conditions")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_MOE_ROUTING_FORWARD, CCV_NNC_BACKEND_MPS));
-	const moe_routing_mps_result_t disabled = _moe_routing_mps_case(1, 384, 6, 65, 0, 1, CCV_32F, CCV_32F, 0, 1e-20f, 0);
-	const moe_routing_mps_result_t multi_token = _moe_routing_mps_case(7, 384, 6, 65, 0, 0, CCV_32F, CCV_32F, 0, 1e-20f, 0);
-	const moe_routing_mps_result_t too_many_experts = _moe_routing_mps_case(1, 513, 6, 65, 0, 0, CCV_32F, CCV_32F, 0, 1e-20f, 0);
-	REQUIRE_EQ(disabled.status, CCV_NNC_EXEC_INVALID, "positive epsilon should require MFA when routing on MPS");
-	REQUIRE_EQ(multi_token.status, CCV_NNC_EXEC_INVALID, "positive epsilon is not supported by multi-token MPSGraph routing");
-	REQUIRE_EQ(too_many_experts.status, CCV_NNC_EXEC_INVALID, "positive epsilon is not supported above the MFA expert limit");
+	const float epsilons[] = {1e-20f, 1e-5f, 0.25f, 1e-20f};
+	const float shifts[] = {0, -30, -INFINITY};
+	const int activation_datatypes[] = {CCV_32F, CCV_16F, CCV_16BF};
+	int mode, dtype, preselected, magnitude, step;
+	for (mode = 0; mode < 4; mode++)
+		for (dtype = 0; dtype < 2; dtype++)
+			for (preselected = 0; preselected < 2; preselected++)
+				for (magnitude = 0; magnitude < sizeof(shifts) / sizeof(shifts[0]); magnitude++)
+					for (step = 0; step < sizeof(epsilons) / sizeof(epsilons[0]); step++)
+					{
+						// Force the graph, or reach it through multi-token / expert-count / top-k limits.
+						const moe_routing_mps_result_t result = _moe_routing_mps_case(mode == 1 ? 7 : 1, mode == 2 ? 513 : 384,
+							mode == 3 ? 33 : 6, 1024, preselected, mode == 0, dtype ? CCV_16F : CCV_32F,
+							activation_datatypes[magnitude], CCV_NNC_MOE_ROUTING_SINGLE_INPUT_TOKEN, epsilons[step], shifts[magnitude]);
+						REQUIRE_EQ(result.status, CCV_NNC_EXEC_SUCCESS, "MPSGraph additive normalization should execute");
+						REQUIRE(result.metadata_match, "selected IDs and grouping metadata should match CPU");
+						REQUIRE(result.gathered_match, "gathered activations should match CPU exactly");
+						REQUIRE(result.max_weight_difference <= 2e-6f, "MPSGraph weights should match CPU for mode=%d dtype=%d preselected=%d magnitude=%d epsilon=%g difference=%g", mode, dtype, preselected, magnitude, epsilons[step], result.max_weight_difference);
+					}
+}
+
+TEST_CASE("moe routing MPS rejects invalid epsilon")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_MOE_ROUTING_FORWARD, CCV_NNC_BACKEND_MPS));
 	ccv_nnc_cmd_t cmd = CMD_MOE_ROUTING_FORWARD(6, 1.5f, 0);
 	ccv_nnc_tensor_param_t input_params[] = {
 		GPU_TENSOR_NHWC(000, 32F, 1, 384),

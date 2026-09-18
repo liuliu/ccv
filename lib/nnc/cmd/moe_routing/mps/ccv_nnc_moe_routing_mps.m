@@ -147,20 +147,17 @@ static int _ccv_nnc_moe_routing_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint
 			}
 		}
 	}
-	// Additive normalization is currently supported by the MFA path only.
-	if (cmd.info.moe_routing.normalization_epsilon > 0)
-		return CCV_NNC_EXEC_INVALID;
 	@autoreleasepool {
 		MPSCommandBuffer* const command_buffer = ccv_nnc_stream_context_start_mps_command_buffer(stream_context);
 		ccv_nnc_mps_graph_key_t key = ccv_nnc_mps_graph_key_new(cmd, 0, hint, flags, inputs, input_size, outputs, output_size);
 		int input_indices[3];
 		MPSGraphExecutable* const executable = ccv_nnc_mps_graph_executable_cache(key, input_indices, ^void (MPSGraph* graph, NSMutableArray<MPSGraphTensor*>* input_tensors, NSMutableArray<MPSGraphShapedType*>* input_shapes, NSMutableArray<MPSGraphTensor*>* result_tensors) {
 			MPSGraphTensor* input_logits;
-			MPSGraphTensor* const mps_logits = ccv_nnc_mps_graph_tensor_input(graph, logits, logits->info.dim, logits->stride, &input_logits);
+			MPSGraphTensor* mps_logits = ccv_nnc_mps_graph_tensor_input(graph, logits, logits->info.dim, logits->stride, &input_logits);
 			[input_tensors addObject:input_logits];
 			[input_shapes addObject:ccv_nnc_mps_graph_tensor_input_shape(logits, logits->info.dim, logits->stride)];
 			MPSGraphTensor* input_route;
-			MPSGraphTensor* const mps_route = ccv_nnc_mps_graph_tensor_input(graph, route, route->info.dim, route->stride, &input_route);
+			MPSGraphTensor* mps_route = ccv_nnc_mps_graph_tensor_input(graph, route, route->info.dim, route->stride, &input_route);
 			[input_tensors addObject:input_route];
 			[input_shapes addObject:ccv_nnc_mps_graph_tensor_input_shape(route, route->info.dim, route->stride)];
 			MPSGraphTensor* input_activation;
@@ -168,6 +165,14 @@ static int _ccv_nnc_moe_routing_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint
 			[input_tensors addObject:input_activation];
 			[input_shapes addObject:ccv_nnc_mps_graph_tensor_input_shape(activation, activation->info.dim, activation->stride)];
 
+			if (cmd.info.moe_routing.normalization_epsilon > 0)
+			{
+				// Compute scores and normalization in FP32 so small scores and epsilon survive FP16 inputs.
+				if (mps_logits.dataType != MPSDataTypeFloat32)
+					mps_logits = [graph castTensor:mps_logits toType:MPSDataTypeFloat32 name:nil];
+				if (!cmd.info.moe_routing.preselected && mps_route.dataType != MPSDataTypeFloat32)
+					mps_route = [graph castTensor:mps_route toType:MPSDataTypeFloat32 name:nil];
+			}
 			MPSGraphTensor* const probabilities = _ccv_nnc_moe_routing_probabilities(graph, mps_logits);
 			MPSGraphTensor* selected;
 			if (cmd.info.moe_routing.preselected)
@@ -186,7 +191,10 @@ static int _ccv_nnc_moe_routing_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint
 			MPSGraphTensor* selected_probabilities = [graph gatherAlongAxis:0 withUpdatesTensor:flat_probabilities indicesTensor:flat_probability_indices name:nil];
 			selected_probabilities = [graph reshapeTensor:selected_probabilities withShape:selected_shape name:nil];
 			MPSGraphTensor* denominator = [graph reductionSumWithTensor:selected_probabilities axis:1 name:nil];
-			denominator = [graph maximumWithPrimaryTensor:denominator secondaryTensor:[graph constantWithScalar:6.103515625e-5f dataType:selected_probabilities.dataType] name:nil];
+			if (cmd.info.moe_routing.normalization_epsilon > 0)
+				denominator = [graph additionWithPrimaryTensor:denominator secondaryTensor:[graph constantWithScalar:cmd.info.moe_routing.normalization_epsilon dataType:MPSDataTypeFloat32] name:nil];
+			else
+				denominator = [graph maximumWithPrimaryTensor:denominator secondaryTensor:[graph constantWithScalar:6.103515625e-5f dataType:selected_probabilities.dataType] name:nil];
 			denominator = [graph reshapeTensor:denominator withShape:@[@(token_count), @1] name:nil];
 			MPSGraphTensor* normalized_weights = [graph divisionWithPrimaryTensor:selected_probabilities secondaryTensor:denominator name:nil];
 			normalized_weights = [graph multiplicationWithPrimaryTensor:normalized_weights secondaryTensor:[graph constantWithScalar:cmd.info.moe_routing.weight_scale dataType:normalized_weights.dataType] name:nil];
