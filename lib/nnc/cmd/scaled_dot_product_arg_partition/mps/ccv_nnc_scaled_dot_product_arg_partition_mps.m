@@ -126,7 +126,8 @@ static int _ccv_nnc_scaled_dot_product_arg_partition_forw(const ccv_nnc_cmd_t cm
 				use_mfa = false;
 			}
 		}
-		if (use_mfa && (H != 64 || D != 128 || kth > 1024))
+		// Both score shaders tile over H, but their dot-product width is fixed at 128.
+		if (use_mfa && (D != 128 || kth > 1024))
 			use_mfa = false;
 		if (use_mfa)
 		{

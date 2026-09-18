@@ -11327,6 +11327,101 @@ TEST_CASE("scaled dot product arg partition with MFA BF16 DS4-native shape")
 	REQUIRE_EQ(status, 0, "MFA BF16 selected ids should match CPU reference");
 }
 
+TEST_CASE("scaled dot product arg partition with MFA 32 index heads")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SCALED_DOT_PRODUCT_ARG_PARTITION_FORWARD, CCV_NNC_BACKEND_MPS));
+	int generic;
+	for (generic = 0; generic <= 1; generic++)
+	{
+		REQUIRE_EQ(_mps_scaled_dot_product_arg_partition_compare(17, 1057, 32, 128, 512, 1, 2, 2048, CCV_32F, 0, generic), 0, "MFA FP32 with 32 heads should match CPU reference across partial score tiles");
+		REQUIRE_EQ(_mps_scaled_dot_product_arg_partition_compare(1, 1024, 32, 128, 512, 1, 2, 2047, CCV_16F, 0, generic), 0, "MFA FP16 decode with 32 heads should match CPU reference");
+		REQUIRE_EQ(_mps_scaled_dot_product_arg_partition_compare(17, 1057, 32, 128, 512, 1, 2, 2048, CCV_16F, 0, generic), 0, "MFA FP16 prefill with 32 heads should match CPU reference");
+		REQUIRE_EQ(_mps_scaled_dot_product_arg_partition_compare(17, 1057, 64, 128, 512, 1, 2, 2048, CCV_16F, 0, generic), 0, "MFA should specialize the pipeline when switching to 64 heads");
+		REQUIRE_EQ(_mps_scaled_dot_product_arg_partition_compare(17, 1025, 32, 128, 512, 1, 2, 2048, CCV_16F, 0, generic), 0, "MFA should reuse the 32-head pipeline with a new key count");
+	}
+}
+
+TEST_CASE("scaled dot product arg partition with MFA BF16 32 index heads")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SCALED_DOT_PRODUCT_ARG_PARTITION_FORWARD, CCV_NNC_BACKEND_MPS));
+	const int status = _mps_scaled_dot_product_arg_partition_compare(17, 1057, 32, 128, 512, 1, 2, 2048, CCV_16BF, 0, 0);
+	GUARD_ELSE_RETURN(status != -1);
+	REQUIRE_EQ(status, 0, "MFA BF16 with 32 heads should match CPU reference");
+	REQUIRE_EQ(_mps_scaled_dot_product_arg_partition_compare(17, 1057, 32, 128, 512, 1, 2, 2048, CCV_16BF, 0, 1), 0, "generic MFA BF16 with 32 heads should match CPU reference");
+}
+
+TEST_CASE("scaled dot product arg partition with MFA arbitrary index heads")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SCALED_DOT_PRODUCT_ARG_PARTITION_FORWARD, CCV_NNC_BACKEND_MPS));
+	const int heads[] = { 1, 3, 7, 33, 65, 128 };
+	dsfmt_t dsfmt;
+	dsfmt_init_gen_rand(&dsfmt, 0);
+	const uint64_t old_flags = ccv_nnc_flags();
+	int shape, h, generic, i;
+	for (shape = 0; shape < 2; shape++)
+		for (h = 0; h < sizeof(heads) / sizeof(heads[0]); h++)
+		{
+			const int T = shape == 0 ? 1 : 17;
+			const int C = 1057;
+			const int H = heads[h];
+			ccv_nnc_tensor_t* const hq = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, T, H, 128), 0);
+			ccv_nnc_tensor_t* const hk = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, C, 128), 0);
+			ccv_nnc_tensor_t* const hw = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, T, H), 0);
+			ccv_nnc_tensor_t* const hq16 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, T, H, 128), 0);
+			ccv_nnc_tensor_t* const hk16 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, C, 128), 0);
+			ccv_nnc_tensor_t* const hw16 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, T, H), 0);
+			ccv_nnc_tensor_t* const href = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, T, 512), 0);
+			ccv_nnc_tensor_t* const hselected = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, T, 512), 0);
+			// Small integers keep scores exactly representable, so ranked ids can be compared exactly.
+			for (i = 0; i < T * H * 128; i++)
+				hq->data.f32[i] = (int)(dsfmt_genrand_close_open(&dsfmt) * 9) - 4;
+			for (i = 0; i < C * 128; i++)
+				hk->data.f32[i] = (int)(dsfmt_genrand_close_open(&dsfmt) * 9) - 4;
+			for (i = 0; i < T * H; i++)
+				hw->data.f32[i] = (int)(dsfmt_genrand_close_open(&dsfmt) * 4) + 1;
+			ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(hq, hk, hw), TENSOR_LIST(hq16, hk16, hw16), 0);
+			const ccv_nnc_cmd_t cmd = CMD_SCALED_DOT_PRODUCT_ARG_PARTITION_FORWARD(512, 1, 1, 2, 2048);
+			ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(hq, hk, hw), TENSOR_LIST(href), 0);
+			ccv_nnc_tensor_t* const q = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, T, H, 128), 0);
+			ccv_nnc_tensor_t* const k = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, C, 128), 0);
+			ccv_nnc_tensor_t* const w = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, T, H), 0);
+			ccv_nnc_tensor_t* const selected = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32S, T, 512), 0);
+			ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(hq16, hk16, hw16), TENSOR_LIST(q, k, w), 0);
+			for (generic = 0; generic <= 1; generic++)
+			{
+				ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA);
+				if (generic)
+					ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS);
+				else
+					ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS);
+				const int status = ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(q, k, w), TENSOR_LIST(selected), 0);
+				if (old_flags & CCV_NNC_DISABLE_MFA)
+					ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA);
+				else
+					ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA);
+				if (old_flags & CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS)
+					ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS);
+				else
+					ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS);
+				REQUIRE_EQ(status, CCV_NNC_EXEC_SUCCESS, "MFA should support arbitrary head counts");
+				ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(selected), TENSOR_LIST(hselected), 0);
+				REQUIRE_TENSOR_EQ(hselected, href, "MFA selected ids with arbitrary head counts should match CPU reference");
+			}
+			ccv_nnc_tensor_free(hq);
+			ccv_nnc_tensor_free(hk);
+			ccv_nnc_tensor_free(hw);
+			ccv_nnc_tensor_free(hq16);
+			ccv_nnc_tensor_free(hk16);
+			ccv_nnc_tensor_free(hw16);
+			ccv_nnc_tensor_free(href);
+			ccv_nnc_tensor_free(hselected);
+			ccv_nnc_tensor_free(q);
+			ccv_nnc_tensor_free(k);
+			ccv_nnc_tensor_free(w);
+			ccv_nnc_tensor_free(selected);
+		}
+}
+
 TEST_CASE("sparse indexed attention cpu reference applies dense causal window and sparse terminator")
 {
 	ccv_nnc_tensor_t* const q = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, 4, 1, 1), 0);
