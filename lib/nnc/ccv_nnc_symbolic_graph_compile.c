@@ -1202,7 +1202,8 @@ static inline void* _ccv_nnc_tensor_arena_obj_create(khash_t(obj_ptr)* obj_ptr_m
 	if (CCV_TENSOR_GET_MEMORY(params.type) == CCV_TENSOR_GPU_MEMORY)
 	{
 		int ret;
-		const size_t size = ccv_nnc_tensor_data_size_without_padding(params);
+		const size_t size = ccv_nnc_tensor_data_size(params);
+		assert(offset >= 0 && offset + size <= total_size);
 		const obj_ptr_key_t key = {
 			.ptr = ptr,
 			.offset = offset,
