@@ -1,6 +1,7 @@
 #include "ccv.h"
 #include "nnc/ccv_nnc.h"
 #include "nnc/ccv_nnc_internal.h"
+#include <math.h>
 
 static int _ccv_nnc_moe_routing_forw_bitmask(const ccv_nnc_cmd_param_t cmd, const int input_size, const int output_size, const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size)
 {
@@ -19,6 +20,7 @@ static void _ccv_nnc_moe_routing_tensor_auto_forw(const ccv_nnc_cmd_param_t cmd,
 	const int kth = cmd.moe_routing.kth;
 	assert(kth > 0);
 	assert(cmd.moe_routing.weight_scale > 0);
+	assert(isfinite(cmd.moe_routing.normalization_epsilon) && cmd.moe_routing.normalization_epsilon >= 0);
 	assert(cmd.moe_routing.preselected == 0 || cmd.moe_routing.preselected == 1);
 	const int logits_nd = ccv_nnc_tensor_nd(inputs[0].dim);
 	const int route_nd = ccv_nnc_tensor_nd(inputs[1].dim);

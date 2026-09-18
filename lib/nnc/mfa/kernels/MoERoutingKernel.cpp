@@ -39,6 +39,7 @@ constant uint hidden [[function_constant(2)]];
 constant float weight_scale [[function_constant(3)]];
 constant bool preselected [[function_constant(4)]];
 constant bool single_input_token [[function_constant(5)]];
+constant float normalization_epsilon [[function_constant(6)]];
 
 inline float stable_log1p(float x)
 {
@@ -119,7 +120,8 @@ kernel void moe_routing_t1(
 		float selected_sum = 0.0f;
 		for (uint slot = 0; slot < kth; slot++)
 			selected_sum += probabilities[top_experts[slot]];
-		const float selected_scale = weight_scale / max(selected_sum, 6.103515625e-5f);
+		const float denominator = normalization_epsilon > 0 ? selected_sum + normalization_epsilon : max(selected_sum, 6.103515625e-5f);
+		const float selected_scale = weight_scale / denominator;
 		for (uint slot = 0; slot < kth; slot++)
 		{
 			const uint expert = top_experts[slot];

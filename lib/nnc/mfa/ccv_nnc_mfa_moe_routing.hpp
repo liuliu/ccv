@@ -10,6 +10,7 @@ typedef struct {
 	float weight_scale;
 	uint32_t preselected;
 	uint32_t single_input_token;
+	float normalization_epsilon;
 } ccv_nnc_mfa_moe_routing_params_t;
 
 #ifdef __cplusplus

@@ -42,6 +42,7 @@ static int _ccv_nnc_moe_routing_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint
 	const int single_input_token = token_count == 1 && (cmd.info.moe_routing.flags & CCV_NNC_MOE_ROUTING_SINGLE_INPUT_TOKEN);
 	const int gathered_rows = single_input_token ? 1 : pair_count;
 	if (kth <= 0 || expert_count < kth || token_count <= 0 || hidden <= 0 || cmd.info.moe_routing.weight_scale <= 0 ||
+		!isfinite(cmd.info.moe_routing.normalization_epsilon) || cmd.info.moe_routing.normalization_epsilon < 0 ||
 		(cmd.info.moe_routing.preselected != 0 && cmd.info.moe_routing.preselected != 1) ||
 		ccv_nnc_tensor_nd(logits->info.dim) != 2 || ccv_nnc_tensor_nd(activation->info.dim) != 2 || activation->info.dim[0] != token_count ||
 		(logits->info.datatype != CCV_32F && logits->info.datatype != CCV_16F) || route_weights->info.datatype != CCV_32F ||
@@ -125,7 +126,7 @@ static int _ccv_nnc_moe_routing_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint
 				return CCV_NNC_EXEC_INVALID;
 			sum += probabilities[selected[slot]];
 		}
-		sum = ccv_max(sum, 6.103515625e-5f);
+		sum = cmd.info.moe_routing.normalization_epsilon > 0 ? sum + cmd.info.moe_routing.normalization_epsilon : ccv_max(sum, 6.103515625e-5f);
 		for (slot = 0; slot < kth; slot++)
 			pairs[token * kth + slot] = (ccv_nnc_moe_routing_pair_t){
 				.expert = selected[slot],

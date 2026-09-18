@@ -4,6 +4,7 @@
 #include "nnc/ccv_nnc_easy.h"
 #include "nnc/ccv_nnc_internal.h"
 #include "nnc/mps/ccv_nnc_mps.h"
+#include <math.h>
 
 static uint32_t _ccv_nnc_moe_routing_mfa_datatype(const int datatype)
 {
@@ -85,6 +86,7 @@ static int _ccv_nnc_moe_routing_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint
 	const int single_input_token = token_count == 1 && (cmd.info.moe_routing.flags & CCV_NNC_MOE_ROUTING_SINGLE_INPUT_TOKEN);
 	const int gathered_rows = single_input_token ? 1 : pair_count;
 	if (kth <= 0 || expert_count < kth || token_count <= 0 || hidden <= 0 || cmd.info.moe_routing.weight_scale <= 0 ||
+		!isfinite(cmd.info.moe_routing.normalization_epsilon) || cmd.info.moe_routing.normalization_epsilon < 0 ||
 		(cmd.info.moe_routing.preselected != 0 && cmd.info.moe_routing.preselected != 1) ||
 		ccv_nnc_tensor_nd(logits->info.dim) != 2 || ccv_nnc_tensor_nd(activation->info.dim) != 2 || activation->info.dim[0] != token_count ||
 		(logits->info.datatype != CCV_32F && logits->info.datatype != CCV_16F) || route_weights->info.datatype != CCV_32F ||
@@ -125,6 +127,7 @@ static int _ccv_nnc_moe_routing_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint
 					.weight_scale = cmd.info.moe_routing.weight_scale,
 					.preselected = (uint32_t)cmd.info.moe_routing.preselected,
 					.single_input_token = (uint32_t)single_input_token,
+					.normalization_epsilon = cmd.info.moe_routing.normalization_epsilon,
 				};
 				ccv_nnc_mfa_prepare_moe_routing(context, params);
 				mtl_command_batch_t* const command_batch = ccv_nnc_stream_context_start_command_batch(stream_context);
@@ -144,6 +147,9 @@ static int _ccv_nnc_moe_routing_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint
 			}
 		}
 	}
+	// Additive normalization is currently supported by the MFA path only.
+	if (cmd.info.moe_routing.normalization_epsilon > 0)
+		return CCV_NNC_EXEC_INVALID;
 	@autoreleasepool {
 		MPSCommandBuffer* const command_buffer = ccv_nnc_stream_context_start_mps_command_buffer(stream_context);
 		ccv_nnc_mps_graph_key_t key = ccv_nnc_mps_graph_key_new(cmd, 0, hint, flags, inputs, input_size, outputs, output_size);

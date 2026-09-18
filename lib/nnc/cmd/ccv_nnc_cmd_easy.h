@@ -354,6 +354,10 @@
 #define CMD_SIGMOID_BINARY_CROSSENTROPY_BACKWARD_X_1(_pos_weight) ccv_nnc_cmd(CCV_NNC_SIGMOID_BINARY_CROSSENTROPY_BACKWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.binary_crossentropy={.pos_weight=_pos_weight}}), 0)
 #define CMD_SIGMOID_BINARY_CROSSENTROPY_BACKWARD_X_SEL(_0, _1, _FX, ...) _FX
 #define CMD_SIGMOID_BINARY_CROSSENTROPY_BACKWARD(...) CMD_SIGMOID_BINARY_CROSSENTROPY_BACKWARD_X_SEL(CMD_SIGMOID_BINARY_CROSSENTROPY_BACKWARD_X_F, ##__VA_ARGS__, CMD_SIGMOID_BINARY_CROSSENTROPY_BACKWARD_X_1, CMD_SIGMOID_BINARY_CROSSENTROPY_BACKWARD_X_0)(__VA_ARGS__)
+// CCV_NNC_SIGNED_SQRT_FORWARD
+#define CMD_SIGNED_SQRT_FORWARD(_min) ccv_nnc_cmd(CCV_NNC_SIGNED_SQRT_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.signed_sqrt={.minimum_magnitude=(_min)}}), 0)
+// CCV_NNC_SIGNED_SQRT_BACKWARD
+#define CMD_SIGNED_SQRT_BACKWARD(_min) ccv_nnc_cmd(CCV_NNC_SIGNED_SQRT_BACKWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.signed_sqrt={.minimum_magnitude=(_min)}}), 0)
 // CCV_NNC_SOFTMAX_FORWARD
 #define CMD_SOFTMAX_FORWARD() ccv_nnc_cmd(CCV_NNC_SOFTMAX_FORWARD, 0, ccv_nnc_cmd_auto, 0)
 // CCV_NNC_SOFTMAX_BACKWARD
