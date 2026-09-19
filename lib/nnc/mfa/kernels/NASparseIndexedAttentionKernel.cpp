@@ -737,11 +737,15 @@ kernel void sparse_indexed_attention(
       auto it = cO0.get_iterator(i);
       auto dst_it = cL.map_iterator(it);
       const float inv_l = (*dst_it == 0) ? 0 : fast::divide(1, *dst_it);
+      const real r0 = (real)(cO0[i] * inv_l);
+      const real r1 = (real)(cO1[i] * inv_l);
+      const real r2 = (real)(cO2[i] * inv_l);
+      const real r3 = (real)(cO3[i] * inv_l);
       device real* out_head = out + (token * H + head) * {{HEAD_DIMENSION}}u;
-      out_head[idx[0]] = (real)(cO0[i] * inv_l);
-      out_head[idx[0] + {{DIM_BLOCK}}u] = (real)(cO1[i] * inv_l);
-      out_head[idx[0] + {{DIM_BLOCK_2}}u] = (real)(cO2[i] * inv_l);
-      out_head[idx[0] + {{DIM_BLOCK_3}}u] = (real)(cO3[i] * inv_l);
+      out_head[idx[0]] = r0;
+      out_head[idx[0] + {{DIM_BLOCK}}u] = r1;
+      out_head[idx[0] + {{DIM_BLOCK_2}}u] = r2;
+      out_head[idx[0] + {{DIM_BLOCK_3}}u] = r3;
     }
   }
 }
