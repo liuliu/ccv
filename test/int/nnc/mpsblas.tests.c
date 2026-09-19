@@ -2271,6 +2271,57 @@ TEST_CASE("mps forward gemm with row-wise 8i weight ANE K split")
 	REQUIRE(k4_max_rel < 2e-3, "ANE row-wise 8i K/4 split should match Metal, max_abs=%g max_rel=%g", k4_max_abs, k4_max_rel);
 }
 
+TEST_CASE("mps generic fp32 gemm with runtime rows and read-only parameters")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_MPS));
+	const uint64_t old_flags = ccv_nnc_flags();
+	const int row_counts[] = {37, 1, 9, 37};
+	int with_bias, step;
+	for (with_bias = 0; with_bias < 2; with_bias++)
+		for (step = 0; step < 4; step++)
+		{
+			const int rows = row_counts[step];
+			ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, rows, 32), 0);
+			ccv_nnc_tensor_t* const w = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 24, 32), 0);
+			ccv_nnc_tensor_t* const bias = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 24), 0);
+			ccv_nnc_tensor_t* const expected = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, rows, 24), 0);
+			ccv_nnc_tensor_t* const actual = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, rows, 24), 0);
+			ccv_nnc_tensor_t* const ga = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 2, rows, 32), 0);
+			ccv_nnc_tensor_t* const gw = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 2, 24, 32), 0);
+			ccv_nnc_tensor_t* const gbias = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 24), 0);
+			ccv_nnc_tensor_t* const output = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 2, rows, 24), 0);
+			int j;
+			for (j = 0; j < 2 * rows * 32; j++)
+				a->data.f32[j] = ((j * 17 + step * 11) % 101 - 50) / 101.f;
+			for (j = 0; j < 2 * 24 * 32; j++)
+				w->data.f32[j] = ((j * 13 + 7) % 97 - 48) / 97.f;
+			for (j = 0; j < 24; j++)
+				bias->data.f32[j] = (j - 12) / 32.f;
+			const ccv_nnc_cmd_t cmd = CMD_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(1, 2));
+			ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(a, w, with_bias ? bias : 0), TENSOR_LIST(expected), 0);
+			ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(a, w, bias), TENSOR_LIST(ga, gw, gbias), 0);
+			ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS | CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M);
+			const int status = ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(ga, gw, with_bias ? gbias : 0), TENSOR_LIST(output), 0);
+			if (!(old_flags & CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS))
+				ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS);
+			if (!(old_flags & CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M))
+				ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M);
+			REQUIRE_EQ(status, CCV_NNC_EXEC_SUCCESS, "generic runtime-row GEMM should run with read-only parameters");
+			ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(output), TENSOR_LIST(actual), 0);
+			REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, actual->data.f32, expected->data.f32, 2 * rows * 24, 1e-5,
+				"runtime row counts and batch strides should match CPU GEMM with and without bias");
+			ccv_nnc_tensor_free(a);
+			ccv_nnc_tensor_free(w);
+			ccv_nnc_tensor_free(bias);
+			ccv_nnc_tensor_free(expected);
+			ccv_nnc_tensor_free(actual);
+			ccv_nnc_tensor_free(ga);
+			ccv_nnc_tensor_free(gw);
+			ccv_nnc_tensor_free(gbias);
+			ccv_nnc_tensor_free(output);
+		}
+}
+
 TEST_CASE("mps forward gemm with loadM flag")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_MPS));

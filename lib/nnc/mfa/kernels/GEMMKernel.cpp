@@ -323,13 +323,13 @@ kernel void gemm(device {{MEMORY_NAME_A}} *A [[buffer(0)]],
 )";
     if (loadM) {
       source += R"(
-                   device uint *loadM [[buffer(4)]],
+                   const device uint *loadM [[buffer(4)]],
 )";
     }
   } else {
     if (loadM) {
       source += R"(
-                   device uint *loadM [[buffer(3)]],
+                   const device uint *loadM [[buffer(3)]],
 )";
     }
   }
