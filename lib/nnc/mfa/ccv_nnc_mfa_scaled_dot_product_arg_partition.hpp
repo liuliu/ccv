@@ -14,6 +14,11 @@ typedef struct {
   uint8_t is_causal;
   uint8_t use_neural_accelerators;
   uint8_t loadM;
+  uint32_t candidate_block_size;
+  uint32_t candidate_count;
+  uint8_t has_candidates;
+  uint8_t output_candidates;
+  uint8_t sort_indices;
 } ccv_nnc_mfa_scaled_dot_product_arg_partition_params_t;
 
 typedef struct {

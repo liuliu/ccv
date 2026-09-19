@@ -356,6 +356,9 @@ typedef struct {
 			int is_causal; /**< [scaled_dot_product_arg_partition.is_causal] Whether to apply DS4 compressed causal visibility. */
 			int compression_ratio; /**< [scaled_dot_product_arg_partition.compression_ratio] Token-to-compressed-row ratio for causal visibility. */
 			int query_offset; /**< [scaled_dot_product_arg_partition.query_offset] Absolute token offset of the first query row. */
+			int candidate_block_size; /**< [scaled_dot_product_arg_partition.candidate_block_size] Compressed keys per candidate block. Positive with candidate input / output. */
+			int candidate_kth; /**< [scaled_dot_product_arg_partition.candidate_kth] Candidate pool width P. Optional input 3 or output 1 is int32 [T, P] block ids, padded with -1. Input duplicates and invalid ids are ignored. Output ids are ascending and include the newest reachable block. A producer's row selection is unrestricted. Input and output pools are mutually exclusive. */
+			int sort_indices; /**< [scaled_dot_product_arg_partition.sort_indices] Sort selected valid row ids ascending, followed by -1. Zero preserves score order when C > kth; full-width selections enumerate eligible row ids ascending, including candidate-restricted readers. */
 		} scaled_dot_product_arg_partition;
 		struct {
 			float scale; /**< [sparse_indexed_attention.scale] The scale we multiple to the dot product of Q & K. */

@@ -6,6 +6,7 @@
 ScaledDotProductArgPartitionKernel::ScaledDotProductArgPartitionKernel(ScaledDotProductArgPartitionKernelDescriptor descriptor, MTL::Device *const device) {
   memoryPrecision = descriptor.memoryPrecision;
   kth = descriptor.kth;
+  scoreMode = descriptor.scoreMode;
   scoreBlockM = descriptor.scoreBlockM;
   scoreBlockN = descriptor.scoreBlockN;
   scoreSIMDGroups = descriptor.scoreSIMDGroups;
@@ -31,6 +32,14 @@ std::string ScaledDotProductArgPartitionKernel::createSource() const noexcept {
   source.SetValue("register_precision", memoryPrecision == GEMMOperandPrecision::BF16 ? "float" : memoryPrecision.name());
   source.SetValue("load_function", memoryPrecision == GEMMOperandPrecision::BF16 ? "load_bfloat" : "load");
   source.SetValue("kth", std::to_string(kth));
+  source.SetValue("CANDIDATE_INDICES_ARGUMENT", (scoreMode == 1 || scoreMode == 3) ? "  device const int* block_ids [[buffer(5)]],\n" : "");
+  const bool dense = scoreMode == 0 || scoreMode == 4;
+  const std::string topKVisible = dense ? "c < visible" : (scoreMode == 3 ? "c < visible && (uint(block_ids[t * (((C + candidate_block_size - 1) / candidate_block_size + 31) / 32) + (c / candidate_block_size) / 32]) & (1u << ((c / candidate_block_size) % 32))) != 0" : "scores[t * C + c] > -3.402823466e+38f");
+  source.SetValue("TOPK_VISIBLE", topKVisible);
+  source.SetValue("TOPK_SERIAL_FILTER", dense ? "" : "    if (!(" + topKVisible + ")) { continue; }\n");
+  source.SetValue("CANDIDATE_RUNTIME_FIELDS", scoreMode != 0 ? "  uint key_count;\n" : "");
+  source.SetValue("TOPK_LIMIT", dense || scoreMode == 3 ? "visible" : "C");
+  source.SetValue("TOPK_INDEX", scoreMode == 1 ? "block_ids[t * candidate_count + c / candidate_block_size] * int(candidate_block_size) + int(c % candidate_block_size)" : "int(c)");
   source.SetValue("score_block_m", std::to_string(scoreBlockM));
   source.SetValue("score_block_n", std::to_string(scoreBlockN));
   source.SetValue("score_block_d", "128");
@@ -70,8 +79,18 @@ struct SDPAPRuntimeParams {
   uint C;
   int query_offset;
   uint T;
-};
-
+{{CANDIDATE_RUNTIME_FIELDS}}};
+)";
+  if (scoreMode != 0) {
+    source += R"(
+constant uint candidate_block_size [[function_constant(8)]];
+constant uint candidate_count [[function_constant(9)]];
+inline uint candidate_visible(uint t, constant SDPAPRuntimeParams& p) {
+  return is_causal ? uint(clamp((p.query_offset + int(t) + 1) / int(compression_ratio), 0, int(p.key_count))) : p.key_count;
+}
+)";
+  }
+  source += R"(
 inline uint visible_count_for_token(uint t{{LOAD_C_PARAMETER}}) {
   if (!is_causal) {
     return C;
@@ -267,6 +286,67 @@ inline float edge_score_cell(
   return accum;
 }
 
+)";
+  if (scoreMode == 1) {
+    source += R"(
+kernel void index_score(
+  device const real* q [[buffer(0)]],
+  device const real* k [[buffer(1)]],
+  device const real* head_w [[buffer(2)]],
+  device float* scores [[buffer(3)]],
+  constant SDPAPRuntimeParams& runtime_params [[buffer(4)]],
+  device const int* block_ids [[buffer(5)]],
+  ushort lane [[thread_index_in_simdgroup]],
+  ushort sgid [[simdgroup_index_in_threadgroup]],
+  uint2 tgid [[threadgroup_position_in_grid]]
+) {
+  const uint t = tgid.y;
+  const uint c = tgid.x * 4 + sgid;
+  if (t >= runtime_params.T || c >= runtime_params.C) { return; }
+  const int block = block_ids[t * candidate_count + c / candidate_block_size];
+  const uint row = uint(max(block, 0)) * candidate_block_size + c % candidate_block_size;
+  const uint visible = candidate_visible(t, runtime_params);
+  float score = -3.402823466e+38f;
+  if (block >= 0 && row < visible) {
+    score = 0;
+    for (uint h = 0; h < H; ++h) {
+      float dot = 0;
+      for (uint d = lane; d < D; d += 32) {
+        dot += float(q[(t * H + h) * D + d]) * float(k[row * D + d]);
+      }
+      dot = simd_sum(dot);
+      score += max(dot, 0.0f) * float(head_w[t * H + h]) * scale;
+    }
+  }
+  if (lane == 0) { scores[t * runtime_params.C + c] = score; }
+}
+)";
+  } else if (scoreMode == 2) {
+    source += R"(
+kernel void index_score(
+  device const float* scores [[buffer(0)]],
+  device float* block_scores [[buffer(3)]],
+  constant SDPAPRuntimeParams& runtime_params [[buffer(4)]],
+  uint2 gid [[thread_position_in_grid]]
+) {
+  const uint block = gid.x;
+  const uint t = gid.y;
+  if (block >= runtime_params.C || t >= runtime_params.T) { return; }
+  const uint keys = runtime_params.key_count;
+  const uint visible = candidate_visible(t, runtime_params);
+  const uint start = block * candidate_block_size;
+  float score = -3.402823466e+38f;
+  for (uint c = start; c < min(start + candidate_block_size, visible); ++c) {
+    score = max(score, scores[t * keys + c]);
+  }
+  if (visible > 0 && block == (visible - 1) / candidate_block_size) {
+    score = INFINITY;
+  }
+  block_scores[t * runtime_params.C + block] = score;
+}
+)";
+  } else {
+    source += R"(
 kernel void index_score(
   device real* q [[buffer(0)]],
   device real* k [[buffer(1)]],
@@ -354,8 +434,11 @@ kernel void index_score(
   }
 }
 
+)";
+  }
+  source += R"(
 kernel void topk_serial(
-  device const float* scores [[buffer(0)]],
+{{CANDIDATE_INDICES_ARGUMENT}}  device const float* scores [[buffer(0)]],
   device int* selected [[buffer(1)]],
 {{TOPK_SERIAL_C_ARGUMENT}}  uint t [[thread_position_in_grid]]
 ) {
@@ -371,19 +454,19 @@ kernel void topk_serial(
   }
   const uint visible = {{VISIBLE_COUNT_FOR_TOKEN}};
   uint top_count = 0;
-  for (uint c = 0; c < visible; ++c) {
-    const float score = scores[t * C + c];
-    if (top_count == {{kth}} && !better_pair(score, int(c), top_scores[{{kth}} - 1], top_indices[{{kth}} - 1])) {
+  for (uint c = 0; c < {{TOPK_LIMIT}}; ++c) {
+{{TOPK_SERIAL_FILTER}}    const float score = scores[t * C + c];
+    if (top_count == {{kth}} && !better_pair(score, {{TOPK_INDEX}}, top_scores[{{kth}} - 1], top_indices[{{kth}} - 1])) {
       continue;
     }
     uint pos = top_count < {{kth}} ? top_count++ : {{kth}} - 1;
-    while (pos > 0 && better_pair(score, int(c), top_scores[pos - 1], top_indices[pos - 1])) {
+    while (pos > 0 && better_pair(score, {{TOPK_INDEX}}, top_scores[pos - 1], top_indices[pos - 1])) {
       top_scores[pos] = top_scores[pos - 1];
       top_indices[pos] = top_indices[pos - 1];
       --pos;
     }
     top_scores[pos] = score;
-    top_indices[pos] = int(c);
+    top_indices[pos] = {{TOPK_INDEX}};
   }
   const uint write_count = min(top_count, uint({{kth}}));
   for (uint i = 0; i < write_count; ++i) {
@@ -392,7 +475,7 @@ kernel void topk_serial(
 }
 
 kernel void topk_tile(
-  device const float* scores [[buffer(0)]],
+{{CANDIDATE_INDICES_ARGUMENT}}  device const float* scores [[buffer(0)]],
   device float* candidate_scores [[buffer(1)]],
   device int* candidate_indices [[buffer(2)]],
 {{TOPK_C_ARGUMENT}}  uint2 tgid [[threadgroup_position_in_grid]],
@@ -409,9 +492,9 @@ kernel void topk_tile(
   const uint visible = {{VISIBLE_COUNT_FOR_TOKEN}};
   for (uint i = tid; i < {{topk_sort_values}}; i += {{topk_threads}}) {
     const uint c = c_start + i;
-    if (c < C && c < visible) {
+    if (c < C && {{TOPK_VISIBLE}}) {
       tile_scores[i] = scores[t * C + c];
-      tile_indices[i] = int(c);
+      tile_indices[i] = {{TOPK_INDEX}};
     } else {
       tile_scores[i] = -3.402823466e+38f;
       tile_indices[i] = -1;
@@ -427,6 +510,39 @@ kernel void topk_tile(
   }
 }
 
+)";
+  if (scoreMode != 0 && kth > 512) {
+    source += R"(
+kernel void topk_merge(
+  device const float* candidate_scores [[buffer(0)]],
+  device const int* candidate_indices [[buffer(1)]],
+  device float* reduced_scores [[buffer(2)]],
+  device int* reduced_indices [[buffer(3)]],
+  constant uint& num_lists [[buffer(4)]],
+{{TOPK_MERGE_M_ARGUMENT}}  uint2 tgid [[threadgroup_position_in_grid]],
+  uint tid [[thread_index_in_threadgroup]]
+) {
+{{LOAD_M_VALUE}}  const uint first = tgid.x * 2;
+  const uint lists = min(num_lists - first, 2u);
+  const uint in_base = (tgid.y * num_lists + first) * {{kth}};
+  const uint out_base = (tgid.y * ((num_lists + 1) / 2) + tgid.x) * {{kth}};
+  threadgroup float s[2 * {{kth}}];
+  threadgroup int ids[2 * {{kth}}];
+  for (uint i = tid; i < lists * {{kth}}; i += 512) {
+    s[i] = candidate_scores[in_base + i];
+    ids[i] = candidate_indices[in_base + i];
+  }
+  threadgroup_barrier(mem_flags::mem_threadgroup);
+  for (uint i = tid; i < {{kth}}; i += 512) {
+    float score; int index;
+    merge_pair_at(s, ids, s + {{kth}}, ids + {{kth}}, {{kth}}, lists == 2 ? {{kth}} : 0, short(i), score, index);
+    reduced_scores[out_base + i] = score;
+    reduced_indices[out_base + i] = index;
+  }
+}
+)";
+  } else {
+    source += R"(
 kernel void topk_merge(
   device const float* candidate_scores [[buffer(0)]],
   device const int* candidate_indices [[buffer(1)]],
@@ -492,5 +608,119 @@ kernel void topk_merge(
   }
 }
 )";
+  }
+  if (scoreMode != 0) {
+    source += R"(
+kernel void index_ids(
+  device const int* input [[buffer(0)]],
+  device int* output [[buffer(1)]],
+  constant SDPAPRuntimeParams& runtime_params [[buffer(2)]],
+  constant uint2& options [[buffer(3)]],
+  uint t [[threadgroup_position_in_grid]],
+  uint tid [[thread_index_in_threadgroup]]
+) {
+  const uint length = options.x;
+  const uint mode = options.y; // 0: normalize, 1: sort, 2: enumerate rows, 3: bitset, 4: enumerate blocks, 5: enumerate restricted rows.
+  threadgroup int ids[2048];
+  if (mode == 5 && candidate_block_size > 0) { // C <= kth <= 1024: enumerate the pool's eligible rows.
+    const uint visible = candidate_visible(t, runtime_params);
+    const uint blocks = (visible + candidate_block_size - 1) / candidate_block_size;
+    // Produced full pools begin with every visible block in order. Check that
+    // prefix on the GPU so arbitrary external pools still take the filtering path.
+    bool complete = candidate_count >= blocks;
+    if (complete) {
+      for (uint i = tid; i < blocks; i += 256) { complete &= input[t * candidate_count + i] == int(i); }
+    }
+    const bool simd_complete = simd_all(complete);
+    if (tid % 32 == 0) { ids[tid / 32] = simd_complete; }
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+    complete = true;
+    for (uint i = 0; i < 8; ++i) { complete &= ids[i] != 0; }
+    if (complete) {
+      for (uint i = tid; i < length; i += 256) { output[t * length + i] = i < visible ? int(i) : -1; }
+      return;
+    }
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+    threadgroup atomic_uint* bits = reinterpret_cast<threadgroup atomic_uint*>(ids);
+    if (tid < 32) { atomic_store_explicit(bits + tid, 0, memory_order_relaxed); }
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+    for (uint i = tid; i < candidate_count; i += 256) {
+      const int id = input[t * candidate_count + i];
+      if (id >= 0 && uint(id) < blocks) {
+        atomic_fetch_or_explicit(bits + uint(id) / 32, 1u << (uint(id) % 32), memory_order_relaxed);
+      }
+    }
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+    uint count = 0;
+    for (uint word = 0; word < (blocks + 31) / 32; ++word) {
+      count += popcount(atomic_load_explicit(bits + word, memory_order_relaxed)) * candidate_block_size;
+    }
+    if (visible % candidate_block_size != 0 &&
+        (atomic_load_explicit(bits + (blocks - 1) / 32, memory_order_relaxed) & (1u << ((blocks - 1) % 32))) != 0) {
+      count -= candidate_block_size - visible % candidate_block_size;
+    }
+    for (uint row = tid; row < visible; row += 256) {
+      const uint block = row / candidate_block_size;
+      const uint word = block / 32;
+      const uint mask = 1u << (block % 32);
+      const uint value = atomic_load_explicit(bits + word, memory_order_relaxed);
+      if ((value & mask) != 0) {
+        uint preceding = popcount(value & (mask - 1));
+        for (uint i = 0; i < word; ++i) {
+          preceding += popcount(atomic_load_explicit(bits + i, memory_order_relaxed));
+        }
+        output[t * length + preceding * candidate_block_size + row % candidate_block_size] = int(row);
+      }
+    }
+    for (uint i = count + tid; i < length; i += 256) { output[t * length + i] = -1; }
+    return;
+  }
+  if (mode == 3 && candidate_block_size > 0) { // Dense-reader membership bitset; duplicates are idempotent.
+    const uint blocks = (runtime_params.key_count + candidate_block_size - 1) / candidate_block_size;
+    const uint words = (blocks + 31) / 32;
+    device atomic_uint* bits = reinterpret_cast<device atomic_uint*>(output) + t * words;
+    for (uint i = tid; i < words; i += 256) { atomic_store_explicit(bits + i, 0, memory_order_relaxed); }
+    threadgroup_barrier(mem_flags::mem_device);
+    for (uint i = tid; i < length; i += 256) {
+      const int id = input[t * length + i];
+      if (id >= 0 && uint(id) < blocks) { atomic_fetch_or_explicit(bits + uint(id) / 32, 1u << (uint(id) % 32), memory_order_relaxed); }
+    }
+    return;
+  }
+  if (mode == 2 || mode == 4) {
+    const uint visible = candidate_visible(t, runtime_params);
+    const uint count = mode == 4 && candidate_block_size > 0 ? (visible + candidate_block_size - 1) / candidate_block_size : visible;
+    for (uint i = tid; i < length; i += 256) { output[t * length + i] = i < count ? int(i) : -1; }
+    return;
+  }
+  uint width = 1;
+  while (width < length) { width *= 2; }
+  const uint blocks = candidate_block_size > 0 ? (runtime_params.key_count + candidate_block_size - 1) / candidate_block_size : 0;
+  for (uint i = tid; i < width; i += 256) {
+    const int id = i < length ? input[t * length + i] : -1;
+    ids[i] = id < 0 || (mode == 0 && uint(id) >= blocks) ? 2147483647 : id;
+  }
+  threadgroup_barrier(mem_flags::mem_threadgroup);
+  for (uint k = 2; k <= width; k *= 2) {
+    for (uint j = k / 2; j > 0; j /= 2) {
+      for (uint i = tid; i < width; i += 256) {
+        const uint other = i ^ j;
+        if (other > i) {
+          const int a = ids[i], b = ids[other];
+          const bool ascending = (i & k) == 0;
+          ids[i] = ascending ? min(a, b) : max(a, b);
+          ids[other] = ascending ? max(a, b) : min(a, b);
+        }
+      }
+      threadgroup_barrier(mem_flags::mem_threadgroup);
+    }
+  }
+  for (uint i = tid; i < length; i += 256) {
+    const int id = ids[i];
+    output[t * length + i] = id == 2147483647 || (mode == 0 && i > 0 && id == ids[i - 1]) ? -1 : id;
+  }
+}
+)";
+  }
   return source.ToString();
 }

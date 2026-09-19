@@ -43,10 +43,14 @@ static void _ccv_nnc_sdpap_insert_topk(const float score, const int idx, const i
 	top_indices[pos] = idx;
 }
 
+#define less_than(a, b, aux) ((a) < (b))
+static CCV_IMPLEMENT_QSORT(_ccv_nnc_sdpap_sort_ids, int, less_than)
+#undef less_than
+
 static int _ccv_nnc_scaled_dot_product_arg_partition_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
 {
-	assert(input_size == 3);
-	assert(output_size == 1);
+	assert(input_size == 3 || input_size == 4);
+	assert(output_size == 1 || output_size == 2);
 	const ccv_nnc_tensor_view_t* const q = (const ccv_nnc_tensor_view_t*)inputs[0];
 	const ccv_nnc_tensor_view_t* const k = (const ccv_nnc_tensor_view_t*)inputs[1];
 	const ccv_nnc_tensor_view_t* const head_w = (const ccv_nnc_tensor_view_t*)inputs[2];
@@ -83,47 +87,86 @@ static int _ccv_nnc_scaled_dot_product_arg_partition_forw(const ccv_nnc_cmd_t cm
 	assert(selected->info.dim[1] == kth);
 	assert(kth > 0);
 	assert(compression_ratio > 0);
-	if (C <= kth)
+	const int block_size = cmd.info.scaled_dot_product_arg_partition.candidate_block_size;
+	const int pool_size = cmd.info.scaled_dot_product_arg_partition.candidate_kth;
+	const ccv_nnc_tensor_view_t* const candidates = input_size == 4 ? (const ccv_nnc_tensor_view_t*)inputs[3] : 0;
+	ccv_nnc_tensor_view_t* const pool = output_size == 2 ? (ccv_nnc_tensor_view_t*)outputs[1] : 0;
+	if (candidates || pool)
 	{
-		int t, c;
-		for (t = 0; t < T; t++)
-		{
-			int* const selected_t = selected->data.i32 + t * kth;
-			const int visible = _ccv_nnc_sdpap_visible_count(C, t, is_causal, compression_ratio, query_offset);
-			for (c = 0; c < kth; c++)
-				selected_t[c] = c < visible ? c : -1;
-		}
-		return CCV_NNC_EXEC_SUCCESS;
+		assert(block_size > 0 && pool_size > 0);
+		assert(!candidates || !pool);
+		const ccv_nnc_tensor_view_t* const ids = candidates ? candidates : pool;
+		assert(CCV_IS_TENSOR_CONTIGUOUS(ids));
+		assert(ids->info.datatype == CCV_32S);
+		assert(ccv_nnc_tensor_nd(ids->info.dim) == 2 && ids->info.dim[0] == T && ids->info.dim[1] == pool_size);
 	}
-	float* const top_scores = (float*)ccv_nnc_stream_context_get_workspace(stream_context, sizeof(float) * kth + sizeof(int) * kth, CCV_TENSOR_CPU_MEMORY);
-	int* const top_indices = (int*)(top_scores + kth);
+	const int pool_work = candidates || pool ? pool_size : 0;
+	float* const top_scores = (float*)ccv_nnc_stream_context_get_workspace(stream_context, sizeof(float) * (kth + pool_work) + sizeof(int) * (kth + pool_work * 2), CCV_TENSOR_CPU_MEMORY);
+	float* const pool_scores = top_scores + kth;
+	int* const top_indices = (int*)(pool_scores + pool_work);
+	int* const pool_indices = top_indices + kth;
+	int* const input_ids = pool_indices + pool_work;
 	int t, h, d, c;
 	for (t = 0; t < T; t++)
 	{
 		int* const selected_t = selected->data.i32 + t * kth;
 		for (d = 0; d < kth; d++)
 			selected_t[d] = -1;
+		if (pool)
+			for (d = 0; d < pool_size; d++)
+				pool->data.i32[t * pool_size + d] = -1;
 		const int visible = _ccv_nnc_sdpap_visible_count(C, t, is_causal, compression_ratio, query_offset);
-		int top_count = 0;
+		int top_count = 0, pool_count = 0;
 		if (visible <= 0)
 			continue;
-		for (c = 0; c < visible; c++)
+		if (candidates)
 		{
-			float score = 0;
-			for (h = 0; h < H; h++)
-			{
-				const float* const q_ptr = q->data.f32 + (t * H + h) * D;
-				const float* const k_ptr = k->data.f32 + c * D;
-				float dot = 0;
-				for (d = 0; d < D; d++)
-					dot += q_ptr[d] * k_ptr[d];
-				if (dot > 0)
-					score += dot * head_w->data.f32[t * H + h] * scale;
-			}
-			_ccv_nnc_sdpap_insert_topk(score, c, kth, top_scores, top_indices, &top_count);
+			memcpy(input_ids, candidates->data.i32 + t * pool_size, sizeof(int) * pool_size);
+			_ccv_nnc_sdpap_sort_ids(input_ids, pool_size, 0);
 		}
-		for (c = 0; c < top_count; c++)
-			selected_t[c] = top_indices[c];
+		const int size = candidates || pool ? block_size : visible;
+		const int blocks = candidates ? pool_size : (visible + size - 1) / size;
+		int b;
+		for (b = 0; b < blocks; b++)
+		{
+			const int block = candidates ? input_ids[b] : b;
+			if (block < 0 || block > (visible - 1) / size || (candidates && b > 0 && block == input_ids[b - 1]))
+				continue;
+			float block_score = -FLT_MAX;
+			const int end = ccv_min((int64_t)(block + 1) * size, visible);
+			for (c = block * size; c < end; c++)
+			{
+				float score = 0;
+				// Full-width enumeration needs scores only when publishing block maxima.
+				if (C > kth || pool)
+					for (h = 0; h < H; h++)
+					{
+						const float* const q_ptr = q->data.f32 + (t * H + h) * D;
+						const float* const k_ptr = k->data.f32 + c * D;
+						float dot = 0;
+						for (d = 0; d < D; d++)
+							dot += q_ptr[d] * k_ptr[d];
+						if (dot > 0)
+							score += dot * head_w->data.f32[t * H + h] * scale;
+					}
+				block_score = ccv_max(block_score, score);
+				if (C <= kth)
+					selected_t[top_count++] = c;
+				else
+					_ccv_nnc_sdpap_insert_topk(score, c, kth, top_scores, top_indices, &top_count);
+			}
+			if (pool)
+				_ccv_nnc_sdpap_insert_topk(block == (visible - 1) / size ? INFINITY : block_score, block, pool_size, pool_scores, pool_indices, &pool_count);
+		}
+		if (C > kth)
+			memcpy(selected_t, top_indices, sizeof(int) * top_count);
+		if (C > kth && cmd.info.scaled_dot_product_arg_partition.sort_indices)
+			_ccv_nnc_sdpap_sort_ids(selected_t, top_count, 0);
+		if (pool)
+		{
+			_ccv_nnc_sdpap_sort_ids(pool_indices, pool_count, 0);
+			memcpy(pool->data.i32 + t * pool_size, pool_indices, sizeof(int) * pool_count);
+		}
 	}
 	return CCV_NNC_EXEC_SUCCESS;
 }

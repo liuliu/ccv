@@ -15,6 +15,9 @@ bool ScaledDotProductArgPartitionDescriptor::operator==(const ScaledDotProductAr
   H == rhs.H &&
   D == rhs.D &&
   kth == rhs.kth &&
+  scoreMode == rhs.scoreMode &&
+  candidateBlockSize == rhs.candidateBlockSize &&
+  candidateCount == rhs.candidateCount &&
   compressionRatio == rhs.compressionRatio &&
   (loadC || queryOffset == rhs.queryOffset) &&
   scale == rhs.scale &&
@@ -27,6 +30,8 @@ bool ScaledDotProductArgPartitionDescriptor::operator==(const ScaledDotProductAr
 std::size_t std::hash<ScaledDotProductArgPartitionDescriptor>::operator()(const ScaledDotProductArgPartitionDescriptor& hash) const noexcept {
   using namespace ccv::nnc::mfa::hash;
   std::size_t seed = 0;
+  combine_32(seed, hash.scoreMode);
+  combine_64(seed, pack_64(simd::uint2 { hash.candidateBlockSize, hash.candidateCount }));
   combine_32(seed, hash.loadM ? 1 : 0);
   combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.memoryPrecision.value, hash.loadM ? 0 : hash.T }));
   combine_64(seed, pack_64(simd::uint2 { hash.loadC ? 0 : hash.C, hash.H }));
@@ -55,6 +60,7 @@ std::pair<ScaledDotProductArgPartitionKernelDescriptor, PipelineValue<ScaledDotP
   ScaledDotProductArgPartitionKernelDescriptor kernelDesc;
   kernelDesc.memoryPrecision = memoryPrecision;
   kernelDesc.kth = kth;
+  kernelDesc.scoreMode = scoreMode;
   kernelDesc.scoreBlockM = scoreBlockM;
   kernelDesc.scoreBlockN = scoreBlockN;
   kernelDesc.scoreSIMDGroups = scoreSIMDGroups;
@@ -71,6 +77,10 @@ std::pair<ScaledDotProductArgPartitionKernelDescriptor, PipelineValue<ScaledDotP
     }
     constants->setConstantValue(&H, MTL::DataTypeUInt, NS::UInteger(2));
     constants->setConstantValue(&D, MTL::DataTypeUInt, NS::UInteger(3));
+    if (scoreMode != 0) {
+      constants->setConstantValue(&candidateBlockSize, MTL::DataTypeUInt, NS::UInteger(8));
+      constants->setConstantValue(&candidateCount, MTL::DataTypeUInt, NS::UInteger(9));
+    }
     constants->setConstantValue(&compressionRatio, MTL::DataTypeUInt, NS::UInteger(4));
     constants->setConstantValue(&isCausal, MTL::DataTypeBool, NS::UInteger(5));
     constants->setConstantValue(&scale, MTL::DataTypeFloat, NS::UInteger(6));
@@ -96,5 +106,8 @@ std::pair<ScaledDotProductArgPartitionKernelDescriptor, PipelineValue<ScaledDotP
   output->second = topKSerialPipeline;
   output->third = topKTilePipeline;
   output->fourth = topKMergePipeline;
+  if (scoreMode != 0) {
+    output->fifth = NS::TransferPtr(createPipeline(kernel->library.get(), "index_ids"));
+  }
   return std::make_pair(kernelDesc, output);
 }

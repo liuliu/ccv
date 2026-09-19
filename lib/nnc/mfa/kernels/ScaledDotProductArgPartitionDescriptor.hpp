@@ -18,6 +18,9 @@ struct ScaledDotProductArgPartitionDescriptor {
   uint32_t H = 0;
   uint32_t D = 0;
   uint32_t kth = 0;
+  uint32_t candidateBlockSize = 0;
+  uint32_t candidateCount = 0;
+  uint8_t scoreMode = 0; // 0: dense, 1: candidate rows, 2: block maxima, 3: block bitset, 4: dense with index utilities.
   uint32_t compressionRatio = 1;
   int32_t queryOffset = 0;
   float scale = 1;

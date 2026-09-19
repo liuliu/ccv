@@ -8,6 +8,7 @@
 struct ScaledDotProductArgPartitionKernel {
   GEMMOperandPrecision memoryPrecision;
   uint32_t kth;
+  uint8_t scoreMode = 0; // 0: dense, 1: candidate rows, 2: block maxima, 3: block bitset, 4: dense with index utilities.
   uint16_t scoreBlockM;
   uint16_t scoreBlockN;
   uint16_t scoreSIMDGroups;
