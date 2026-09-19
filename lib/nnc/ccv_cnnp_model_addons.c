@@ -663,8 +663,7 @@ static void _ccv_cnnp_reshape_build(ccv_cnnp_model_t* const super, ccv_nnc_symbo
 			if (self->format > 0)
 				params.format = self->format;
 			// tensor_symbol_alias_new flattens an alias to its root tensor. Preserve the
-			// parent view's starting position when this reshape keeps the same axes and
-			// strides; otherwise a chained reshape silently resets the offset to zero.
+			// parent view's starting position, expressing it in the new strides if needed.
 			const int* ofs = self->ofs;
 			int new_ofs[CCV_NNC_MAX_DIM_ALLOC];
 			if (new_nd == nd && memcmp(stride, old_stride, sizeof(old_stride)) == 0)
@@ -673,8 +672,20 @@ static void _ccv_cnnp_reshape_build(ccv_cnnp_model_t* const super, ccv_nnc_symbo
 					new_ofs[i] = old_ofs[i] + self->ofs[i];
 				ofs = new_ofs;
 			} else {
+				size_t offset = 0;
 				for (i = 0; i < nd; i++)
-					{ assert(old_ofs[i] == 0); }
+					offset += (size_t)old_ofs[i] * old_stride[i];
+				memcpy(new_ofs, self->ofs, sizeof(new_ofs));
+				for (i = 0; i < new_nd; i++)
+				{
+					assert(stride[i] > 0);
+					assert(offset / stride[i] <= INT_MAX - self->ofs[i]);
+					new_ofs[i] += (int)(offset / stride[i]);
+					offset %= stride[i];
+				}
+				// The caller must copy explicitly if the new strides cannot represent the offset.
+				assert(offset == 0);
+				ofs = new_ofs;
 			}
 			outputs[0] = ccv_nnc_tensor_symbol_alias_new(graph, inputs[0], ofs, stride, params, 0);
 		} else {

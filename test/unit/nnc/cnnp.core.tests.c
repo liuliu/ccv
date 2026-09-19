@@ -1329,6 +1329,69 @@ TEST_CASE("cnnp chained same-stride reshape preserves the parent alias offset")
 	ccv_cnnp_model_free(model);
 }
 
+TEST_CASE("cnnp chained reshape preserves parent offset across rank changes")
+{
+	int input_nd;
+	for (input_nd = 2; input_nd <= 3; input_nd++)
+	{
+		const ccv_cnnp_model_io_t input = ccv_cnnp_input();
+		const ccv_cnnp_model_io_t tail = ccv_cnnp_model_apply(
+			ccv_cnnp_reshape(CCV_TENSOR_FORMAT_NHWC,
+				input_nd == 2 ? DIM_ALLOC(5, 128) : DIM_ALLOC(5, 4, 32),
+				input_nd == 2 ? DIM_ALLOC(3, 0) : DIM_ALLOC(3, 0, 0),
+				input_nd == 2 ? DIM_ALLOC(128, 1) : DIM_ALLOC(128, 32, 1), 0), MODEL_IO_LIST(input));
+		const ccv_cnnp_model_io_t flat = ccv_cnnp_model_apply(
+			ccv_cnnp_reshape(CCV_TENSOR_FORMAT_NHWC, DIM_ALLOC(5, 128), DIM_ALLOC(), DIM_ALLOC(), 0), MODEL_IO_LIST(tail));
+		ccv_cnnp_model_t* const expand = ccv_cnnp_reshape(CCV_TENSOR_FORMAT_NHWC, DIM_ALLOC(1, 5, 4, 32), DIM_ALLOC(), DIM_ALLOC(), 0);
+		const ccv_cnnp_model_io_t expanded = ccv_cnnp_model_apply(expand, MODEL_IO_LIST(flat));
+		const ccv_cnnp_model_io_t middle = ccv_cnnp_model_apply(
+			ccv_cnnp_reshape(CCV_TENSOR_FORMAT_NHWC, DIM_ALLOC(1, 3, 4, 32),
+				DIM_ALLOC(0, 1, 0, 0), DIM_ALLOC(640, 128, 32, 1), 0), MODEL_IO_LIST(expanded));
+		const ccv_cnnp_model_io_t output = ccv_cnnp_model_apply(ccv_cnnp_copy(0), MODEL_IO_LIST(middle));
+		ccv_cnnp_model_t* const model = ccv_cnnp_model_new(MODEL_IO_LIST(input), MODEL_IO_LIST(output), 0, 0);
+		const ccv_nnc_tensor_param_t input_params = input_nd == 2 ? CPU_TENSOR_NHWC(32F, 9, 128) : CPU_TENSOR_NHWC(32F, 9, 4, 32);
+		ccv_cnnp_model_compile(model, TENSOR_PARAM_LIST(input_params), CMD_NOOP(), CMD_NOOP());
+		const ccv_nnc_tensor_symbol_t alias_to = ccv_nnc_tensor_symbol_alias_to(model->graph, expand->outputs[0]);
+		REQUIRE_EQ(alias_to.d, model->inputs[0].d, "rank changes should remain aliases of the original tensor");
+		ccv_nnc_tensor_t* const x = ccv_nnc_tensor_new(0, input_params, 0);
+		ccv_nnc_tensor_t* const y = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, 3, 4, 32), 0);
+		int i;
+		for (i = 0; i < 9 * 128; i++)
+			x->data.f32[i] = i;
+		ccv_cnnp_model_evaluate(model, (ccv_cnnp_evaluate_param_t){}, TENSOR_LIST(x), TENSOR_LIST(y), 0, 0);
+		REQUIRE_ARRAY_EQ(float, y->data.f32, x->data.f32 + 4 * 128, 3 * 128,
+			"rank changes and a further slice should retain the original row offset");
+		ccv_nnc_tensor_free(y);
+		ccv_nnc_tensor_free(x);
+		ccv_cnnp_model_free(model);
+	}
+}
+
+TEST_CASE("cnnp chained reshape supports an explicit copy before changing strides")
+{
+	const ccv_cnnp_model_io_t input = ccv_cnnp_input();
+	const ccv_cnnp_model_io_t tail = ccv_cnnp_model_apply(
+		ccv_cnnp_reshape(CCV_TENSOR_FORMAT_NHWC, DIM_ALLOC(32), DIM_ALLOC(1), DIM_ALLOC(1), 0), MODEL_IO_LIST(input));
+	const ccv_cnnp_model_io_t copied = ccv_cnnp_model_apply(ccv_cnnp_copy(0), MODEL_IO_LIST(tail));
+	const ccv_cnnp_model_io_t view = ccv_cnnp_model_apply(
+		ccv_cnnp_reshape(CCV_TENSOR_FORMAT_NHWC, DIM_ALLOC(2, 3), DIM_ALLOC(), DIM_ALLOC(6, 2), 0), MODEL_IO_LIST(copied));
+	const ccv_cnnp_model_io_t output = ccv_cnnp_model_apply(ccv_cnnp_copy(0), MODEL_IO_LIST(view));
+	ccv_cnnp_model_t* const model = ccv_cnnp_model_new(MODEL_IO_LIST(input), MODEL_IO_LIST(output), 0, 0);
+	const ccv_nnc_tensor_param_t input_params = CPU_TENSOR_NHWC(32F, 40);
+	ccv_cnnp_model_compile(model, TENSOR_PARAM_LIST(input_params), CMD_NOOP(), CMD_NOOP());
+	ccv_nnc_tensor_t* const x = ccv_nnc_tensor_new(0, input_params, 0);
+	ccv_nnc_tensor_t* const y = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 3), 0);
+	int i;
+	for (i = 0; i < 40; i++)
+		x->data.f32[i] = i;
+	ccv_cnnp_model_evaluate(model, (ccv_cnnp_evaluate_param_t){}, TENSOR_LIST(x), TENSOR_LIST(y), 0, 0);
+	REQUIRE_ARRAY_EQ(float, y->data.f32, ((float[]){1, 3, 5, 7, 9, 11}), 6,
+		"odd starting offsets require a copy before reshaping with even strides");
+	ccv_nnc_tensor_free(y);
+	ccv_nnc_tensor_free(x);
+	ccv_cnnp_model_free(model);
+}
+
 TEST_CASE("cnnp reshape propagates an empty input through a new alias")
 {
 	const ccv_cnnp_model_io_t input = ccv_cnnp_input();
