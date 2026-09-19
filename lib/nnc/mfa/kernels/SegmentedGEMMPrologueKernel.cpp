@@ -108,7 +108,7 @@ kernel void segmented_gemm_prologue(device {{MEMORY_NAME_A}} *A [[buffer(0)]],
   cmd.set_compute_pipeline_state(args->pipeline1);
   cmd.set_threadgroup_memory_length(threadgroup_memory_allocation, 0);
   cmd.set_kernel_buffer(A + offset * K, 0);
-  cmd.set_kernel_buffer(B + idx * (N * K), 1);
+  cmd.set_kernel_buffer(B + (ulong)idx * N * K, 1);
 )";
   if (splitK > 1) {
     source += R"(

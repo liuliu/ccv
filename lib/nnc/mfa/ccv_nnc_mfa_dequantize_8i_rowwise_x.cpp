@@ -115,7 +115,9 @@ void ccv_nnc_mfa_encode_dequantize_8i_rowwise_x_selected(ccv_nnc_mfa_context_t* 
 	CCV_NNC_MFA_PRECONDITION(params.bincount <= UINT32_MAX);
 	CCV_NNC_MFA_PRECONDITION(params.rows_per_expert == 0 || params.expert_count <= UINT32_MAX / params.rows_per_expert);
 	const uint64_t row_count = params.expert_count * params.rows_per_expert;
-	CCV_NNC_MFA_PRECONDITION(params.row_length == 0 || row_count <= UINT32_MAX / params.row_length);
+	// Selected dispatches index one expert at a time. The bank destination uses
+	// a 64-bit base while offsets within each expert remain 32-bit.
+	CCV_NNC_MFA_PRECONDITION(params.row_length == 0 || params.rows_per_expert <= UINT32_MAX / params.row_length);
 	CCV_NNC_MFA_PRECONDITION(row_count <= UINT32_MAX / descriptor.scaleSize);
 	descriptor.rowLength = (uint32_t)params.row_length;
 	descriptor.rowsPerExpert = (uint32_t)params.rows_per_expert;

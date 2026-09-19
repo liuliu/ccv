@@ -91,7 +91,8 @@ std::size_t std::hash<Dequantize8iRowwiseXFPDescriptor>::operator()(const Dequan
 	using namespace ccv::nnc::mfa::hash;
 	std::size_t seed = 0;
 	seed = combine_64(seed, pack_64(simd::uint2 { hash.format, (uint32_t)hash.memoryPrecision.value }));
-	seed = combine_64(seed, pack_64(simd::uint2 { hash.rowLength, hash.length }));
+	seed = combine_32(seed, hash.rowLength);
+	seed = combine_64(seed, hash.length);
 	return seed;
 }
 

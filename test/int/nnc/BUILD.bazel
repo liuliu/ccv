@@ -279,3 +279,13 @@ cc_binary(
 		"//lib:nnc"
 	]
 )
+
+cc_binary(
+	name = "packed_expert_addressing.tests",
+	srcs = ["packed_expert_addressing.tests.c"],
+	copts = ccv_default_copts(),
+	deps = [
+		"//test:case",
+		"//lib:nnc"
+	]
+)

@@ -825,8 +825,8 @@ kernel void dequantize_8i_rowwise_x_selected(
     const uint row = x / groups_per_row;
     const uint group = x - row * groups_per_row;
     const uint col_base = group * group_size;
-    const uint destination_row = expert * rows_per_expert + row;
-    decode_store_group(source, (ulong)expert * groups_per_expert + x, destination, destination_row * row_length + col_base, col_base);
+    device uchar* expert_destination = destination + (ulong)expert * rows_per_expert * row_length;
+    decode_store_group(source, (ulong)expert * groups_per_expert + x, expert_destination, row * row_length + col_base, col_base);
   }
   if (x < scale_bytes_per_expert) {
     output_scales[expert * scale_bytes_per_expert + x] =

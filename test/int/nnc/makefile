@@ -9,7 +9,7 @@ ifeq ($(shell uname 2>/dev/null || echo Unknown),Darwin)
 	LDFLAGS += -Wl,-U,___test_case_setup,-U,___test_case_teardown
 endif
 
-TARGETS += signed_sqrt.tests scaled_dot_product_arg_partition.tests
+TARGETS += signed_sqrt.tests scaled_dot_product_arg_partition.tests packed_expert_addressing.tests
 
 TARGET_SRCS := $(patsubst %,%.c,$(TARGETS))
 

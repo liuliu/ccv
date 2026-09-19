@@ -26,7 +26,7 @@ struct Dequantize8iRowwiseXFPDescriptor {
 	uint32_t format;
 	GEMMOperandPrecision memoryPrecision;
 	uint32_t rowLength;
-	uint32_t length;
+	uint64_t length;
 
 	bool operator==(const Dequantize8iRowwiseXFPDescriptor& rhs) const;
 

@@ -44,7 +44,7 @@ void ccv_nnc_mfa_encode_dequantize_8i_rowwise_x_fp(ccv_nnc_mfa_context_t* contex
 	descriptor.format = params.format;
 	descriptor.memoryPrecision = memory_precision_for_data_type(params.data_type);
 	descriptor.rowLength = (uint32_t)params.row_length;
-	descriptor.length = (uint32_t)params.length;
+	descriptor.length = params.length;
 	encoder->setBuffer(tensors[0], tensor_offsets[0] + (size_t)descriptor.inputScaleOffset(), NS::UInteger(2));
 
 	auto pool = NS::AutoreleasePool::alloc()->init();
