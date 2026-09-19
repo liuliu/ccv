@@ -665,4 +665,144 @@ TEST_CASE("MPS segmented SwiGLU executes grouped IQ2_XXS prefill")
 	_segmented_swiglu_mps_rowwise_case(CCV_NNC_QX_8I_ROWWISE_IQ2_XXS, 0, 1, 10, "IQ2_XXS grouped prefill", __case_result__);
 }
 
+TEST_CASE("MPS segmented SwiGLU handles small rowwise batches across formats")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SEGMENTED_SWIGLU_FORWARD, CCV_NNC_BACKEND_MPS));
+	const int formats[] = {
+		0, CCV_NNC_QX_8I_ROWWISE_IQ2_XXS, CCV_NNC_QX_8I_ROWWISE_IQ2_XS,
+		CCV_NNC_QX_8I_ROWWISE_IQ3_XXS, CCV_NNC_QX_8I_ROWWISE_Q2_K,
+		CCV_NNC_QX_8I_ROWWISE_Q3_K, CCV_NNC_QX_8I_ROWWISE_Q4_K,
+		CCV_NNC_QX_8I_ROWWISE_Q5_K, CCV_NNC_QX_8I_ROWWISE_Q6_K,
+		CCV_NNC_QX_8I_ROWWISE_IQ2_S, CCV_NNC_QX_8I_ROWWISE_IQ3_S,
+	};
+	const int row_counts[] = { 3, 17, 18, 19 };
+	const int segments = 6, experts = 8, n = 256, k = 256;
+	const size_t weight_count = (size_t)experts * n * k;
+	const float clamp = 10;
+	for (int f = 0; f < sizeof(formats) / sizeof(formats[0]); f++)
+	{
+		const int format = formats[f];
+		ccv_nnc_tensor_t* const hgate = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, experts, n, k), 0);
+		ccv_nnc_tensor_t* const hup = ccv_nnc_tensor_new(0, hgate->info, 0);
+		dsfmt_t dsfmt;
+		dsfmt_init_gen_rand(&dsfmt, 42);
+		for (size_t i = 0; i < weight_count; i++)
+		{
+			hgate->data.f32[i] = (float)(dsfmt_genrand_open_close(&dsfmt) - 0.5) / 8;
+			hup->data.f32[i] = (float)(dsfmt_genrand_open_close(&dsfmt) - 0.5) / 8;
+		}
+		const ccv_nnc_tensor_param_t packed_info = format ?
+			ccv_nnc_tensor_8i_rowwise_x(hgate->info, format) : ccv_nnc_tensor_8i_rowwise(hgate->info);
+		const size_t packed_size = ccv_nnc_tensor_data_size_without_padding(packed_info);
+		ccv_nnc_tensor_t* const hgate_q = ccv_nnc_tensor_new(0, packed_info, 0);
+		ccv_nnc_tensor_t* const hup_q = ccv_nnc_tensor_new(0, packed_info, 0);
+		ccv_nnc_tensor_t* const weights[] = { hgate, hup };
+		ccv_nnc_tensor_t* const packed[] = { hgate_q, hup_q };
+		for (int projection = 0; projection < 2; projection++)
+		{
+			const size_t size = format ?
+				ccv_nnc_quantize_8i_rowwise_x(weights[projection]->data.u8, CCV_32F, CCV_TENSOR_CPU_MEMORY,
+					weight_count, k, format, 0, 0, packed[projection]->data.u8, packed_size) :
+				ccv_nnc_quantize_8i_rowwise(weights[projection]->data.u8, CCV_32F, CCV_TENSOR_CPU_MEMORY,
+					weight_count, k, 0, 0, packed[projection]->data.u8, packed_size);
+			REQUIRE_EQ(size, packed_size, "weights should quantize to the declared size");
+			if (format)
+				ccv_nnc_dequantize_8i_rowwise_x(packed[projection]->data.u8, CCV_32F, CCV_TENSOR_CPU_MEMORY,
+					packed_size, k, format, weights[projection]->data.u8, weight_count);
+			else
+				ccv_nnc_dequantize_8i_rowwise(packed[projection]->data.u8, CCV_32F, CCV_TENSOR_CPU_MEMORY,
+					packed_size, k, weights[projection]->data.u8, weight_count);
+		}
+		ccv_nnc_tensor_param_t gpu_info = packed_info;
+		gpu_info.type = CCV_TENSOR_GPU_MEMORY;
+		ccv_nnc_tensor_t* const gate = ccv_nnc_tensor_new(0, gpu_info, 0);
+		ccv_nnc_tensor_t* const up = ccv_nnc_tensor_new(0, gpu_info, 0);
+		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(hgate_q, hup_q), TENSOR_LIST(gate, up), 0);
+		for (int step = 0; step < sizeof(row_counts) / sizeof(row_counts[0]); step++)
+		{
+			const int rows = row_counts[step];
+			ccv_nnc_tensor_t* const ha = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, k), 0);
+			ccv_nnc_tensor_t* const ha_ref = ccv_nnc_tensor_new(0, ha->info, 0);
+			ccv_nnc_tensor_t* const hi = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, segments), 0);
+			ccv_nnc_tensor_t* const hc = ccv_nnc_tensor_new(0, hi->info, 0);
+			ccv_nnc_tensor_t* const hr = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows), 0);
+			ccv_nnc_tensor_t* const expected = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, n), 0);
+			ccv_nnc_tensor_t* const actual = ccv_nnc_tensor_new(0, expected->info, 0);
+			const int selected[] = { 7, 1, 5, 2, 6, 3 };
+			const int counts[] = { 0, 2, 0, rows - 2, 0, 0 };
+			memcpy(hi->data.i32, selected, sizeof(selected));
+			memcpy(hc->data.i32, counts, sizeof(counts));
+			for (int i = 0; i < rows * k; i++)
+				ha->data.f32[i] = (float)(dsfmt_genrand_open_close(&dsfmt) - 0.5);
+			// Both direct projections and the matrix fallback must handle FP32 magnitudes.
+			ha->data.f32[0] = 1e8f;
+			ha->data.f32[k] = -1e8f;
+			memcpy(ha_ref->data.f32, ha->data.f32, (size_t)rows * k * sizeof(float));
+			for (int row = 0; row < rows; row++)
+			{
+				hr->data.f32[row] = (float)(row + 1) / (rows + 1);
+				// At 19 rows, the existing matrix path still quantizes activations.
+				if (rows == 19)
+				{
+					float max_abs = 0;
+					for (int j = 0; j < k; j++)
+						max_abs = ccv_max(max_abs, fabsf(ha->data.f32[row * k + j]));
+					const float scale = max_abs > 0 ? max_abs / 127.f : 1.f / 127;
+					const float inv_scale = max_abs > 0 ? 127.f / max_abs : 127;
+					for (int j = 0; j < k; j++)
+						ha_ref->data.f32[row * k + j] = scale * ccv_clamp((int)lrintf(ha->data.f32[row * k + j] * inv_scale), -127, 127);
+				}
+			}
+			ccv_nnc_cmd_t command = CMD_SEGMENTED_SWIGLU_FORWARD(clamp);
+			command.backend = CCV_NNC_BACKEND_CPU_REF;
+			REQUIRE_EQ(ccv_nnc_cmd_exec(command, ccv_nnc_no_hint, 0,
+				TENSOR_LIST(ha_ref, hi, hc, hgate, hup, hr), TENSOR_LIST(expected), 0), CCV_NNC_EXEC_SUCCESS, "CPU reference should execute");
+			ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, rows, k), 0);
+			ccv_nnc_tensor_t* const indices = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32S, segments), 0);
+			ccv_nnc_tensor_t* const counts_gpu = ccv_nnc_tensor_new(0, indices->info, 0);
+			ccv_nnc_tensor_t* const route = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, rows), 0);
+			ccv_nnc_tensor_t* const output = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, rows, n), 0);
+			ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0,
+				TENSOR_LIST(ha, hi, hc, hr), TENSOR_LIST(a, indices, counts_gpu, route), 0);
+			command.backend = CCV_NNC_BACKEND_MPS;
+			const uint64_t old_flags = ccv_nnc_flags();
+			ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA);
+			ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS);
+			const int status = ccv_nnc_cmd_exec(command, ccv_nnc_no_hint, 0,
+				TENSOR_LIST(a, indices, counts_gpu, gate, up, route), TENSOR_LIST(output), 0);
+			if (old_flags & CCV_NNC_DISABLE_MFA) ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA);
+			if (!(old_flags & CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS)) ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS);
+			REQUIRE_EQ(status, CCV_NNC_EXEC_SUCCESS, "small rowwise batch should execute: format=%d rows=%d", format, rows);
+			ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(output), TENSOR_LIST(actual), 0);
+			for (int row = 0; row < rows; row++)
+			{
+				double squared_error = 0, squared_reference = 0;
+				for (int j = 0; j < n; j++)
+				{
+					const float value = actual->data.f32[row * n + j];
+					const float reference = expected->data.f32[row * n + j];
+					REQUIRE(isfinite(value), "output should be finite: format=%d rows=%d row=%d", format, rows, row);
+					const double difference = value - reference;
+					squared_error += difference * difference;
+					squared_reference += (double)reference * reference;
+				}
+				const double relative_l2 = sqrt(squared_error / ccv_max(squared_reference, 1e-20));
+				// Affine packed decoders subtract large FP32 sums on the two outlier
+				// rows. Keep the tighter bound for ordinary activations.
+				const double tolerance = row < 2 ? 5e-3 : 1e-4;
+				REQUIRE(relative_l2 < tolerance, "row should match CPU reference: format=%d rows=%d row=%d relative L2=%g", format, rows, row, relative_l2);
+			}
+			ccv_nnc_tensor_t* const tensors[] = { ha, ha_ref, hi, hc, hr, expected, actual, a, indices, counts_gpu, route, output };
+			for (int i = 0; i < sizeof(tensors) / sizeof(tensors[0]); i++)
+				ccv_nnc_tensor_free(tensors[i]);
+		}
+		ccv_nnc_tensor_free(gate);
+		ccv_nnc_tensor_free(up);
+		ccv_nnc_tensor_free(hgate_q);
+		ccv_nnc_tensor_free(hup_q);
+		ccv_nnc_tensor_free(hgate);
+		ccv_nnc_tensor_free(hup);
+	}
+}
+
 #include "case_main.h"

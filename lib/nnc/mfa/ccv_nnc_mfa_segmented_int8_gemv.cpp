@@ -46,7 +46,6 @@ void ccv_nnc_mfa_encode_segmented_int8_gemv(
     (!params.fused_bias && num_tensors == 5));
   CCV_NNC_MFA_PRECONDITION(params.M > 0 && params.N > 0 && params.K > 0);
   CCV_NNC_MFA_PRECONDITION(params.expert_count > 0 && params.bincount > 0);
-  CCV_NNC_MFA_PRECONDITION(params.M == params.bincount);
   CCV_NNC_MFA_PRECONDITION((params.K % 4) == 0);
   CCV_NNC_MFA_PRECONDITION(
     params.format == 0 ||

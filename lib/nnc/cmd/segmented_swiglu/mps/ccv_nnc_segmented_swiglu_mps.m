@@ -81,8 +81,10 @@ static int _ccv_nnc_segmented_swiglu_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc
 	const int rowwise_shape_supported = gate_format == 0 ? (K % 4) == 0 : (K % 256) == 0 && (N % 256) == 0;
 	const uint64_t mtl_datatype = _ccv_nnc_segmented_swiglu_mtl_datatype(a->info.datatype);
 	ccv_nnc_mfa_context_t* const context = ccv_nnc_default_mfa_context();
-	const int direct_decode =
-		input_shape_supported && M == bincount && M > 0 && N > 0 && K > 0 && expert_count > 0 &&
+	// Small batches avoid expanding expert weights for matrix multiply.
+	const int direct_small_batch =
+		input_shape_supported && (uint64_t)M <= (uint64_t)bincount * 3 &&
+		M > 0 && N > 0 && K > 0 && expert_count > 0 &&
 		gate_rowwise && up_rowwise && gate_format == up_format && rowwise_shape_supported &&
 		gate_w->info.datatype == up_w->info.datatype &&
 		((gate_w->info.datatype & 0xff) << 12) == a->info.datatype &&
@@ -101,7 +103,7 @@ static int _ccv_nnc_segmented_swiglu_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc
 		CCV_IS_TENSOR_CONTIGUOUS(up_w) && CCV_IS_TENSOR_CONTIGUOUS(route_weight) &&
 		CCV_IS_TENSOR_CONTIGUOUS(output) && ccv_nnc_mfa_context_supported(context) &&
 		!(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA);
-	if (direct_decode)
+	if (direct_small_batch)
 	{
 		if (gate_format == CCV_NNC_QX_8I_ROWWISE_IQ2_XXS ||
 			gate_format == CCV_NNC_QX_8I_ROWWISE_IQ2_XS ||
