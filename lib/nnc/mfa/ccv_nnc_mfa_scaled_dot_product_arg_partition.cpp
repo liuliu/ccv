@@ -163,7 +163,9 @@ static void _ccv_nnc_mfa_encode_candid_aware_sdpap(ccv_nnc_mfa_context_t* contex
         ccv_nnc_mfa_log_message("SDPAP: dense scores with sorted indices.");
     }
     auto pool = NS::AutoreleasePool::alloc()->init();
-    const auto position = _ccv_nnc_mfa_candid_aware_sdpap_pipeline(context, params, scoreMode, width, params.kth, totalT);
+    // Enumeration passes its output width to index_ids at runtime. Keep the
+    // unused ranking specialization fixed so growing widths reuse the pipeline.
+    const auto position = _ccv_nnc_mfa_candid_aware_sdpap_pipeline(context, params, scoreMode, width, enumerateRows ? 1 : params.kth, totalT);
     SDPAPCandidatePipeline block = {};
     if (selectBlocks)
       block = _ccv_nnc_mfa_candid_aware_sdpap_pipeline(context, params, 2, blocks, params.candidate_count, totalT);

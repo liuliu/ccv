@@ -181,6 +181,31 @@ TEST_CASE("candidate indexer produces causal pools and restricts readers across 
 	if (old_flags & CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS) ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS); else ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS);
 }
 
+TEST_CASE("candidate indexer enumeration handles growing and shrinking output widths")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SCALED_DOT_PRODUCT_ARG_PARTITION_FORWARD, CCV_NNC_BACKEND_MPS));
+	const int sizes[] = { 1, 2, 7, 8, 9, 31, 32, 33, 127, 128, 129, 511, 512, 513, 1023, 1024, 17 };
+	const uint64_t old_flags = ccv_nnc_flags();
+	int mode, i, status = 0;
+	ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA);
+	for (mode = 0; mode < 8 && !status; mode++)
+	{
+		if (mode & 1) ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS); else ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS);
+		if (mode & 2) ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M); else ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M);
+		for (i = 0; i < sizeof(sizes) / sizeof(sizes[0]) && !status; i++)
+		{
+			const int C = sizes[i];
+			status = candidate_compare(1, C, 32, C, 8, 2048, 2, C * 2 - 1, CCV_16F, 0, CCV_TENSOR_FORMAT_NHWC, mode / 4);
+			if (!status)
+				status = candidate_compare(3, C, 3, C + (C < 1024), 1, 2048, 1, C - 3, CCV_32F, 1, CCV_TENSOR_FORMAT_NCHW, mode / 4);
+		}
+	}
+	if (old_flags & CCV_NNC_DISABLE_MFA) ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA); else ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA);
+	if (old_flags & CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS) ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS); else ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS);
+	if (old_flags & CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M) ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M); else ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M);
+	REQUIRE_EQ(status, 0, "source and reader enumeration must use the current runtime width, causal visibility and padding with either sort setting");
+}
+
 TEST_CASE("candidate indexer MFA matches random CPU ranks for independent source and reader scores")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SCALED_DOT_PRODUCT_ARG_PARTITION_FORWARD, CCV_NNC_BACKEND_MPS));
