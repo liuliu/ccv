@@ -818,6 +818,10 @@ static void _ccv_nnc_moe_load_gpu_plan(MFAMoEWeightsStreamingState* const state,
 
 static int _ccv_nnc_moe_weights_streaming_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
 {
+	if (input_size != 6 || output_size != 6 || !outputs[0])
+		return CCV_NNC_EXEC_INVALID;
+	if (outputs[0]->info.dim[0] == 0)
+		return CCV_NNC_EXEC_SUCCESS;
 	if (!_ccv_nnc_moe_validate(cmd, inputs, input_size, outputs, output_size))
 		return CCV_NNC_EXEC_INVALID;
 	MFAMoEWeightsStreamingState* const state = _ccv_nnc_moe_state_for_inputs(

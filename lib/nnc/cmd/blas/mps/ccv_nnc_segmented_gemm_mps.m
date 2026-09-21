@@ -108,12 +108,14 @@ static void _ccv_nnc_mfa_encode_qx_decode(ccv_nnc_mfa_context_t* const context, 
 static int _ccv_nnc_segmented_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
 {
 	assert(input_size >= 4);
+	assert(output_size == 1);
+	if (outputs[0]->info.dim[0] == 0)
+		return CCV_NNC_EXEC_SUCCESS;
 	const ccv_nnc_tensor_view_t* a = (const ccv_nnc_tensor_view_t*)inputs[0];
 	const ccv_nnc_tensor_view_t* indices = (const ccv_nnc_tensor_view_t*)inputs[1];
 	const ccv_nnc_tensor_view_t* counts = (const ccv_nnc_tensor_view_t*)inputs[2];
 	const ccv_nnc_tensor_view_t* w = (const ccv_nnc_tensor_view_t*)inputs[3];
 	const ccv_nnc_tensor_view_t* bias = input_size > 4 ? (const ccv_nnc_tensor_view_t*)inputs[4] : 0;
-	assert(output_size == 1);
 	ccv_nnc_tensor_view_t* b = (ccv_nnc_tensor_view_t*)outputs[0];
 	ccv_nnc_mps_moe_weights_view_t weight_view = {};
 	const int weight_resolved = ccv_nnc_mps_moe_weights_resolve(inputs[3], &weight_view);

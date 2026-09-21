@@ -20,6 +20,12 @@ static void _ccv_nnc_scatter_add_tensor_auto_forw(const ccv_nnc_cmd_param_t cmd,
 {
 	assert(input_size >= 2);
 	assert(output_size == 1);
+	if (inputs[0].dim[0] == 0)
+	{
+		outputs[0] = inputs[0];
+		memset(outputs[0].dim, 0, sizeof(outputs[0].dim));
+		return;
+	}
 	outputs[0] = inputs[0];
 	if (cmd.scatter_add.bincount > 0)
 		outputs[0].dim[0] = cmd.scatter_add.bincount;

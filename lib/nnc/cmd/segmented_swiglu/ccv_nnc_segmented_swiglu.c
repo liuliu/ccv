@@ -16,6 +16,12 @@ static void _ccv_nnc_segmented_swiglu_tensor_auto_forw(const ccv_nnc_cmd_param_t
 {
 	assert(input_size == 6);
 	assert(output_size == 1);
+	if (inputs[0].dim[0] == 0)
+	{
+		outputs[0] = inputs[0];
+		memset(outputs[0].dim, 0, sizeof(outputs[0].dim));
+		return;
+	}
 	outputs[0] = inputs[0];
 	const int route_weight_nd = ccv_nnc_tensor_nd(inputs[5].dim);
 	const int weight_nd = ccv_nnc_tensor_nd(inputs[3].dim);

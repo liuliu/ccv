@@ -67,6 +67,8 @@ static int _ccv_nnc_hyper_connection_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc
 {
 	if (!((input_size == 3 && output_size == 3) || (input_size == 4 && (output_size == 1 || output_size == 3))))
 		return CCV_NNC_EXEC_INVALID;
+	if (outputs[0]->info.dim[0] == 0)
+		return CCV_NNC_EXEC_SUCCESS;
 	const int hc = cmd.info.hyper_connection.count;
 	if (hc <= 0 || hc > 16)
 		return CCV_NNC_EXEC_INVALID;

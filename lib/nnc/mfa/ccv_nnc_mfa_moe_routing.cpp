@@ -49,7 +49,7 @@ void ccv_nnc_mfa_encode_moe_routing(ccv_nnc_mfa_context_t* context, ccv_nnc_mfa_
 	auto pipeline_value = context->kernel_cache.findKernel<MoERoutingKernel, MoERoutingDescriptor, MoERoutingKernelDescriptor>(descriptor, context->device.get(), DeviceProperties());
 	pool->drain();
 	encoder->setComputePipelineState(pipeline_value->pipeline.get());
-	encoder->setThreadgroupMemoryLength(NS::UInteger(params.expert_count * sizeof(float)), 0);
+	encoder->setThreadgroupMemoryLength((NS::UInteger(params.expert_count * sizeof(float)) + 15) & ~NS::UInteger(15), 0);
 	encoder->useResource(tensors[0], MTL::ResourceUsageRead);
 	encoder->useResource(tensors[1], MTL::ResourceUsageRead);
 	encoder->useResource(tensors[2], MTL::ResourceUsageRead);

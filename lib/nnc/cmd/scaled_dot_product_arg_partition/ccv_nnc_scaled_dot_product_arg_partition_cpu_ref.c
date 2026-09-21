@@ -51,6 +51,8 @@ static int _ccv_nnc_scaled_dot_product_arg_partition_forw(const ccv_nnc_cmd_t cm
 {
 	assert(input_size == 3 || input_size == 4);
 	assert(output_size == 1 || output_size == 2);
+	if (outputs[0]->info.dim[0] == 0)
+		return CCV_NNC_EXEC_SUCCESS;
 	const ccv_nnc_tensor_view_t* const q = (const ccv_nnc_tensor_view_t*)inputs[0];
 	const ccv_nnc_tensor_view_t* const k = (const ccv_nnc_tensor_view_t*)inputs[1];
 	const ccv_nnc_tensor_view_t* const head_w = (const ccv_nnc_tensor_view_t*)inputs[2];

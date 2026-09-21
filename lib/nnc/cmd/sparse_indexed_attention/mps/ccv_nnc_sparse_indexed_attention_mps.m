@@ -27,6 +27,8 @@ static int _ccv_nnc_sparse_indexed_attention_forw(const ccv_nnc_cmd_t cmd, const
 {
 	assert(input_size == 6 || input_size == 7);
 	assert(output_size == 1);
+	if (outputs[0]->info.dim[0] == 0)
+		return CCV_NNC_EXEC_SUCCESS;
 	const int attention_sinks = cmd.info.sparse_indexed_attention.attention_sinks;
 	const int is_causal = cmd.info.sparse_indexed_attention.is_causal;
 	const int sliding_window = cmd.info.sparse_indexed_attention.sliding_window;

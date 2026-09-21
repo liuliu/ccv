@@ -25,6 +25,12 @@ static void _ccv_nnc_sparse_indexed_attention_tensor_auto_forw(const ccv_nnc_cmd
 {
 	assert(input_size == 6 || input_size == 7);
 	assert(output_size == 1);
+	if (inputs[0].dim[0] == 0)
+	{
+		outputs[0] = inputs[0];
+		memset(outputs[0].dim, 0, sizeof(outputs[0].dim));
+		return;
+	}
 	// Match SDPA: Q / output are [N, R, Hq, D], and K / V are [N, C, Hk, D].
 	assert(ccv_nnc_tensor_nd(inputs[0].dim) == 4);
 	assert(ccv_nnc_tensor_nd(inputs[1].dim) == 4);

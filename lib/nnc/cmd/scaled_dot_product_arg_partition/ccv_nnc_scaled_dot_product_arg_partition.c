@@ -23,6 +23,17 @@ static void _ccv_nnc_scaled_dot_product_arg_partition_tensor_auto_forw(const ccv
 {
 	assert(input_size == 3 || input_size == 4);
 	assert(output_size == 1 || output_size == 2);
+	if (inputs[0].dim[0] == 0)
+	{
+		int i;
+		for (i = 0; i < output_size; i++)
+		{
+			outputs[i] = inputs[0];
+			outputs[i].datatype = CCV_32S;
+			memset(outputs[i].dim, 0, sizeof(outputs[i].dim));
+		}
+		return;
+	}
 	assert(cmd.scaled_dot_product_arg_partition.kth > 0);
 	const int q_nd = ccv_nnc_tensor_nd(inputs[0].dim);
 	assert(q_nd == 3);

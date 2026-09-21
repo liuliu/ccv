@@ -14,6 +14,8 @@ static int _ccv_nnc_segmented_swiglu_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc
 {
 	assert(input_size == 6);
 	assert(output_size == 1);
+	if (outputs[0]->info.dim[0] == 0)
+		return CCV_NNC_EXEC_SUCCESS;
 	const ccv_nnc_tensor_t* const a = inputs[0];
 	const ccv_nnc_tensor_t* const indices = inputs[1];
 	const ccv_nnc_tensor_t* const counts = inputs[2];

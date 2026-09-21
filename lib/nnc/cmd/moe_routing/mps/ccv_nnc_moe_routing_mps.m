@@ -69,6 +69,8 @@ static int _ccv_nnc_moe_routing_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint
 {
 	if (input_size != 3 || output_size != 5)
 		return CCV_NNC_EXEC_INVALID;
+	if (outputs[0]->info.dim[0] == 0)
+		return CCV_NNC_EXEC_SUCCESS;
 	const ccv_nnc_tensor_view_t* const logits = (const ccv_nnc_tensor_view_t*)inputs[0];
 	const ccv_nnc_tensor_view_t* const route = (const ccv_nnc_tensor_view_t*)inputs[1];
 	const ccv_nnc_tensor_view_t* const activation = (const ccv_nnc_tensor_view_t*)inputs[2];

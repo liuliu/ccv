@@ -27,6 +27,16 @@ static void _ccv_nnc_hyper_connection_tensor_auto_forw(const ccv_nnc_cmd_param_t
 		return;
 	}
 	const int hc = cmd.hyper_connection.count;
+	if (inputs[0].dim[0] == 0)
+	{
+		int i;
+		for (i = 0; i < output_size; i++)
+		{
+			outputs[i] = inputs[output_size == 1 ? 1 : (input_size == 4 && i == 2 ? 3 : 0)];
+			memset(outputs[i].dim, 0, sizeof(outputs[i].dim));
+		}
+		return;
+	}
 	if (hc <= 0 || hc > 16)
 	{
 		assert(0 && "hyper connection count must be between 1 and 16");

@@ -17,6 +17,17 @@ static void _ccv_nnc_moe_routing_tensor_auto_forw(const ccv_nnc_cmd_param_t cmd,
 {
 	assert(input_size == 3);
 	assert(output_size == 5);
+	if (inputs[0].dim[0] == 0)
+	{
+		int i;
+		for (i = 0; i < 5; i++)
+		{
+			outputs[i] = inputs[i == 0 ? 2 : 0];
+			outputs[i].datatype = i == 0 ? inputs[2].datatype : (i == 1 ? CCV_32F : CCV_32S);
+			memset(outputs[i].dim, 0, sizeof(outputs[i].dim));
+		}
+		return;
+	}
 	const int kth = cmd.moe_routing.kth;
 	assert(kth > 0);
 	assert(cmd.moe_routing.weight_scale > 0);

@@ -14,6 +14,8 @@ static int _ccv_nnc_swiglu_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hi
 {
 	assert(input_size == 3);
 	assert(output_size == 1);
+	if (outputs[0]->info.dim[0] == 0)
+		return CCV_NNC_EXEC_SUCCESS;
 	const ccv_nnc_tensor_t* const a = inputs[0];
 	const ccv_nnc_tensor_t* const gate_w = inputs[1];
 	const ccv_nnc_tensor_t* const up_w = inputs[2];

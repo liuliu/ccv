@@ -29,6 +29,8 @@ static void _ccv_nnc_moe_weights_streaming_tensor_auto_forw(const ccv_nnc_cmd_pa
 		const int base_datatype = CCV_GET_DATA_TYPE(inputs[i].datatype) == CCV_QX ?
 			(inputs[i].datatype & 0xff) : ((inputs[i].datatype >> 12) & 0xff);
 		outputs[i].datatype = CCV_QX | CCV_NNC_QX_EPHERMAL_STAGING | base_datatype;
+		if (inputs[0].dim[0] == 0)
+			memset(outputs[i].dim, 0, sizeof(outputs[i].dim));
 	}
 }
 

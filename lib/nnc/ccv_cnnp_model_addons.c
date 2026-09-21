@@ -5428,8 +5428,9 @@ static void _ccv_cnnp_scatter_add_build(ccv_cnnp_model_t* const super, ccv_nnc_s
 	PRINT(CCV_CLI_VERBOSE, "[cnnp_scatter_add_build] - bincount: %d, count_per_output: %d\n", self->bincount, self->count_per_output);
 	ccv_nnc_tensor_param_t params = ccv_nnc_tensor_symbol_params(graph, inputs[0]);
 	assert(output_size == 1);
-	assert(self->bincount > 0);
-	params.dim[0] = self->bincount;
+	assert(self->bincount >= 0 && (self->bincount > 0 || params.dim[0] == 0));
+	if (params.dim[0] != 0)
+		params.dim[0] = self->bincount;
 	outputs[0] = ccv_nnc_tensor_symbol_new(graph, params, 0);
 	ccv_nnc_graph_exec_symbol_new(graph, CMD_SCATTER_ADD_FORWARD(self->bincount, self->count_per_output), inputs, input_size, outputs, output_size, "scatter_add");
 }
@@ -5443,7 +5444,7 @@ static const ccv_cnnp_model_vtab_t ccv_cnnp_scatter_add_isa = {
 
 ccv_cnnp_model_t* ccv_cnnp_scatter_add(const int bincount, const int count_per_output, const char* const name)
 {
-	assert(bincount > 0);
+	assert(bincount >= 0);
 	assert(count_per_output >= 0);
 	ccv_cnnp_model_scatter_add_t* const model_scatter_add = (ccv_cnnp_model_scatter_add_t*)cccalloc(1, sizeof(ccv_cnnp_model_scatter_add_t));
 	model_scatter_add->super.isa = &ccv_cnnp_scatter_add_isa;
@@ -5494,9 +5495,12 @@ static void _ccv_cnnp_segmented_dense_build(ccv_cnnp_model_t* const super, ccv_n
 	} else {
 		weights_params = params;
 		memset(weights_params.dim, 0, sizeof(weights_params.dim));
-		weights_params.dim[0] = self->segments;
-		weights_params.dim[1] = self->count;
-		weights_params.dim[2] = params.dim[ccv_nnc_tensor_nd(params.dim) - 1];
+		if (params.dim[0] != 0)
+		{
+			weights_params.dim[0] = self->segments;
+			weights_params.dim[1] = self->count;
+			weights_params.dim[2] = params.dim[ccv_nnc_tensor_nd(params.dim) - 1];
+		}
 		if (!self->weights.graph)
 			self->weights = ccv_nnc_tensor_symbol_new(graph, weights_params, "weights");
 		assert(self->weights.graph == graph);
@@ -5620,11 +5624,13 @@ static void _ccv_cnnp_swiglu_build(ccv_cnnp_model_t* const super, ccv_nnc_symbol
 	assert(output_size == 1);
 	const ccv_nnc_tensor_param_t params = ccv_nnc_tensor_symbol_params(graph, inputs[0]);
 	const int params_nd = ccv_nnc_tensor_nd(params.dim);
-	assert(params_nd >= 1);
 	ccv_nnc_tensor_param_t weights_params = params;
 	memset(weights_params.dim, 0, sizeof(weights_params.dim));
-	weights_params.dim[0] = self->count;
-	weights_params.dim[1] = params.dim[params_nd - 1];
+	if (params_nd > 0)
+	{
+		weights_params.dim[0] = self->count;
+		weights_params.dim[1] = params.dim[params_nd - 1];
+	}
 	if (!self->gate_weights.graph)
 		self->gate_weights = ccv_nnc_tensor_symbol_new(graph, weights_params, "gate.weight");
 	if (!self->up_weights.graph)
@@ -5722,12 +5728,14 @@ static void _ccv_cnnp_segmented_swiglu_build(ccv_cnnp_model_t* const super, ccv_
 		up_weights = inputs[4];
 	} else {
 		const int params_nd = ccv_nnc_tensor_nd(params.dim);
-		assert(params_nd >= 1);
 		ccv_nnc_tensor_param_t weights_params = params;
 		memset(weights_params.dim, 0, sizeof(weights_params.dim));
-		weights_params.dim[0] = self->segments;
-		weights_params.dim[1] = self->count;
-		weights_params.dim[2] = params.dim[params_nd - 1];
+		if (params_nd > 0)
+		{
+			weights_params.dim[0] = self->segments;
+			weights_params.dim[1] = self->count;
+			weights_params.dim[2] = params.dim[params_nd - 1];
+		}
 		if (!self->gate_weights.graph)
 			self->gate_weights = ccv_nnc_tensor_symbol_new(graph, weights_params, "gate.weight");
 		if (!self->up_weights.graph)
