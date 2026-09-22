@@ -107,6 +107,104 @@ MTL::Size NAInt8AttentionKernel::threadgroupsPerGrid(uint32_t batchDimension, ui
   return MTL::Size(int64_t(1) << (row_bits + head_bits), 1, batchDimension);
 }
 
+uint16_t NAInt8AttentionKernel::vMeanThreadgroupSize() const noexcept {
+  return std::max<uint16_t>(32 * vMeanVectorsPerTile(), vMeanThreads);
+}
+
+uint16_t NAInt8AttentionKernel::vMeanVectorsPerTile() const noexcept {
+  CCV_NNC_MFA_PRECONDITION(vMeanThreads >= 32 && vMeanThreads <= 1024 &&
+      (vMeanThreads & (vMeanThreads - 1)) == 0);
+  // Keep enough threadgroups for small head counts while coalescing adjacent
+  // vectors when there is sufficient parallel work. These are all cache keys.
+  const uint32_t vectors = (headDimension % 4) == 0 ? headDimension / 4 : headDimension;
+  const uint16_t maxVectors = std::min<uint16_t>(8, 1024 / vMeanThreads);
+  uint16_t tile = 1;
+  while (tile < maxVectors && uint32_t(Hk) * vectors >= 128 * tile * 2)
+    tile *= 2;
+  return tile;
+}
+
+MTL::Size NAInt8AttentionKernel::vMeanThreadgroupsPerGrid(uint32_t batchDimension) const noexcept {
+  const uint32_t vectors = (headDimension % 4) == 0 ? headDimension / 4 : headDimension;
+  const uint32_t meanTiles = (vectors + vMeanVectorsPerTile() - 1) / vMeanVectorsPerTile();
+  return MTL::Size(uint64_t(1) << (ceilLog2(meanTiles) + ceilLog2(Hk)), 1, batchDimension);
+}
+
+void NAInt8AttentionKernel::createVMean(CodeWriter& source) const noexcept {
+  const bool vectorized = (headDimension % 4) == 0;
+  source.SetValue("V_MEAN_VECTORS", std::to_string(vectorized ? headDimension / 4 : headDimension));
+  source.SetValue("V_MEAN_TILE", std::to_string(vMeanVectorsPerTile()));
+  source.SetValue("V_MEAN_DISPATCH_THREADS", std::to_string(vMeanThreadgroupSize()));
+  source.SetValue("V_MEAN_ALIASES", vectorized ? R"(
+  device const io_vec4 *src4 = reinterpret_cast<device const io_vec4 *>(src);
+  device v_mean_vec4 *mean4 = reinterpret_cast<device v_mean_vec4 *>(mean);)" : "");
+  source.SetValue("V_MEAN_LOAD", vectorized ?
+      "const uint index = " + source.GetValue("V_MEAN_SRC_INDEX_VEC") + ";\n        local_sum += float4(src4[index / 4]);" :
+      "const uint dim = vec_dim;\n        const uint index = " + source.GetValue("V_MEAN_SRC_INDEX") + ";\n        local_sum.x += (float)src[index];");
+  source.SetValue("V_MEAN_STORE", vectorized ?
+      "mean4[(batch * QUANTIZE_KV_HEADS + head) * " + source.GetValue("V_MEAN_VECTORS") + " + vec_dim] = reduced * (1.0f / float(" + source.GetValue("V_SEQUENCE_DIVISOR") + "));" :
+      "mean[(batch * QUANTIZE_KV_HEADS + head) * " + source.GetValue("HEAD_DIMENSION") + " + vec_dim] = reduced.x * (1.0f / float(" + source.GetValue("V_SEQUENCE_DIVISOR") + "));");
+  source += R"(
+kernel void compute_v_mean(
+{{RUNTIME_ARGUMENT}}    device const {{IO_MEMORY_NAME}} *src [[buffer(0)]],
+    device {{V_MEAN_MEMORY_NAME}} *mean [[buffer(1)]],
+    uint tid [[thread_index_in_threadgroup]],
+    ushort lane_id [[thread_index_in_simdgroup]],
+    uint3 tgid [[threadgroup_position_in_grid]]{{QUANTIZE_VARLEN_BUFFER}}
+  ) {
+{{QUANTIZE_RUNTIME_CONSTANTS}}{{V_MEAN_ALIASES}}
+  const uint mean_tiles = ({{V_MEAN_VECTORS}} + {{V_MEAN_TILE}} - 1) / {{V_MEAN_TILE}};
+  const uint2 morton = morton_decode_rectangular_2d(tgid.x,
+      ceil_log2_u32(mean_tiles), ceil_log2_u32(QUANTIZE_KV_HEADS));
+  const uint head = morton.y, batch = tgid.z;
+  if (morton.x >= mean_tiles || head >= QUANTIZE_KV_HEADS)
+    return;{{V_VARLEN_SEQUENCE_SETUP}}
+  // Adjacent vectors keep input reads coalesced. Transpose the partials in
+  // threadgroup memory to preserve the original accumulation and shuffle order.
+  // A fixed allocation keeps the memory bound independent of H and D.
+  threadgroup float4 partials[1024];
+  const uint vec_dim = morton.x * {{V_MEAN_TILE}} + tid % {{V_MEAN_TILE}};
+  const uint rows_per_part = {{V_MEAN_DISPATCH_THREADS}} / {{V_MEAN_TILE}};
+  for (uint part = 0; part < QUANTIZE_V_MEAN_THREADS / rows_per_part; ++part) {
+    const uint row = tid / {{V_MEAN_TILE}} + part * rows_per_part;
+    float4 local_sum = float4(0.0f);
+    if (vec_dim < {{V_MEAN_VECTORS}}) {
+      for (uint column = row; column < {{V_SEQUENCE_LENGTH}}; column += QUANTIZE_V_MEAN_THREADS) {
+        {{V_MEAN_LOAD}}
+      }
+    }
+    partials[(tid % {{V_MEAN_TILE}}) * QUANTIZE_V_MEAN_THREADS + row] = local_sum;
+  }
+  threadgroup_barrier(mem_flags::mem_threadgroup);
+  const uint row = tid % QUANTIZE_V_MEAN_THREADS;
+  const uint sgid = row / 32;
+  for (uint vec = tid / QUANTIZE_V_MEAN_THREADS; vec < {{V_MEAN_TILE}}; vec += {{V_MEAN_DISPATCH_THREADS}} / QUANTIZE_V_MEAN_THREADS) {
+    float4 local_sum = partials[vec * QUANTIZE_V_MEAN_THREADS + row];
+    for (uint offset = 16; offset > 0; offset /= 2)
+      for (uint component = 0; component < 4; ++component)
+        local_sum[component] += simd_shuffle_xor(local_sum[component], offset);
+    // All SIMD groups must finish reading before reusing the tile for sums.
+    // This keeps shared memory at 16 KiB (32 KiB under shader validation).
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+    if (lane_id == 0)
+      partials[vec * QUANTIZE_V_MEAN_THREADS + sgid] = local_sum;
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+    if (sgid == 0) {
+      float4 reduced = lane_id < QUANTIZE_V_MEAN_SIMDGROUPS ?
+          partials[vec * QUANTIZE_V_MEAN_THREADS + lane_id] : float4(0.0f);
+      for (uint offset = 16; offset > 0; offset /= 2)
+        for (uint component = 0; component < 4; ++component)
+          reduced[component] += simd_shuffle_xor(reduced[component], offset);
+      const uint vec_dim = morton.x * {{V_MEAN_TILE}} + vec;
+      if (lane_id == 0 && vec_dim < {{V_MEAN_VECTORS}}) {
+        {{V_MEAN_STORE}}
+      }
+    }
+  }
+}
+)";
+}
+
 std::string NAInt8AttentionKernel::createSource() const noexcept {
   CodeWriter source;
   const bool vectorizeQuantize = (headDimension % 4) == 0;
@@ -519,85 +617,9 @@ inline uint ceil_log2_u32(uint x) {
   source.SetValue("V_QUANTIZE_INDEX", isVarlen ?
       "((sequence_start + row) * QUANTIZE_KV_HEADS + head) * " + headDimensionString + " + dim" :
       "batch * QUANTIZE_V_BATCH_STRIDE + ((row * QUANTIZE_KV_HEADS + head) * " + headDimensionString + " + dim)");
+  createVMean(source);
   if (vectorizeQuantize) {
-      source += R"(
-kernel void compute_v_mean(
-{{RUNTIME_ARGUMENT}}    device const {{IO_MEMORY_NAME}} *src [[buffer(0)]],
-    device {{V_MEAN_MEMORY_NAME}} *mean [[buffer(1)]],
-    uint tid [[thread_index_in_threadgroup]],
-    ushort sgid [[simdgroup_index_in_threadgroup]],
-    ushort lane_id [[thread_index_in_simdgroup]],
-    uint3 tgid [[threadgroup_position_in_grid]]{{QUANTIZE_VARLEN_BUFFER}}
-  ) {
-{{QUANTIZE_RUNTIME_CONSTANTS}}  threadgroup float4 scratch[QUANTIZE_V_MEAN_SIMDGROUPS];
-  device const io_vec4 *src4 = reinterpret_cast<device const io_vec4 *>(src);
-  device v_mean_vec4 *mean4 = reinterpret_cast<device v_mean_vec4 *>(mean);
-  const uint mean_tiles = {{HEAD_DIMENSION}} / 4;
-  const uint vec_bits = ceil_log2_u32(mean_tiles);
-  const uint head_bits = ceil_log2_u32(QUANTIZE_KV_HEADS);
-  const uint2 morton = morton_decode_rectangular_2d(tgid.x, vec_bits, head_bits);
-  const uint vec_dim = morton.x;
-  const uint head = morton.y;
-  const uint batch = tgid.z;
-  if (vec_dim >= mean_tiles || head >= QUANTIZE_KV_HEADS)
-    return;{{V_VARLEN_SEQUENCE_SETUP}}
-  float4 local_sum = float4(0.0f);
-  for (uint column = tid; column < {{V_SEQUENCE_LENGTH}}; column += QUANTIZE_V_MEAN_THREADS) {
-    const uint index = {{V_MEAN_SRC_INDEX_VEC}};
-    local_sum += float4(src4[index / 4]);
-  }
-  local_sum[0] += simd_shuffle_xor(local_sum[0], 16);
-  local_sum[1] += simd_shuffle_xor(local_sum[1], 16);
-  local_sum[2] += simd_shuffle_xor(local_sum[2], 16);
-  local_sum[3] += simd_shuffle_xor(local_sum[3], 16);
-  local_sum[0] += simd_shuffle_xor(local_sum[0], 8);
-  local_sum[1] += simd_shuffle_xor(local_sum[1], 8);
-  local_sum[2] += simd_shuffle_xor(local_sum[2], 8);
-  local_sum[3] += simd_shuffle_xor(local_sum[3], 8);
-  local_sum[0] += simd_shuffle_xor(local_sum[0], 4);
-  local_sum[1] += simd_shuffle_xor(local_sum[1], 4);
-  local_sum[2] += simd_shuffle_xor(local_sum[2], 4);
-  local_sum[3] += simd_shuffle_xor(local_sum[3], 4);
-  local_sum[0] += simd_shuffle_xor(local_sum[0], 2);
-  local_sum[1] += simd_shuffle_xor(local_sum[1], 2);
-  local_sum[2] += simd_shuffle_xor(local_sum[2], 2);
-  local_sum[3] += simd_shuffle_xor(local_sum[3], 2);
-  local_sum[0] += simd_shuffle_xor(local_sum[0], 1);
-  local_sum[1] += simd_shuffle_xor(local_sum[1], 1);
-  local_sum[2] += simd_shuffle_xor(local_sum[2], 1);
-  local_sum[3] += simd_shuffle_xor(local_sum[3], 1);
-  if (lane_id == 0)
-    scratch[sgid] = local_sum;
-  threadgroup_barrier(mem_flags::mem_threadgroup);
-  if (sgid == 0) {
-    float4 reduced = lane_id < QUANTIZE_V_MEAN_SIMDGROUPS ? scratch[lane_id] : float4(0.0f);
-    reduced[0] += simd_shuffle_xor(reduced[0], 16);
-    reduced[1] += simd_shuffle_xor(reduced[1], 16);
-    reduced[2] += simd_shuffle_xor(reduced[2], 16);
-    reduced[3] += simd_shuffle_xor(reduced[3], 16);
-    reduced[0] += simd_shuffle_xor(reduced[0], 8);
-    reduced[1] += simd_shuffle_xor(reduced[1], 8);
-    reduced[2] += simd_shuffle_xor(reduced[2], 8);
-    reduced[3] += simd_shuffle_xor(reduced[3], 8);
-    reduced[0] += simd_shuffle_xor(reduced[0], 4);
-    reduced[1] += simd_shuffle_xor(reduced[1], 4);
-    reduced[2] += simd_shuffle_xor(reduced[2], 4);
-    reduced[3] += simd_shuffle_xor(reduced[3], 4);
-    reduced[0] += simd_shuffle_xor(reduced[0], 2);
-    reduced[1] += simd_shuffle_xor(reduced[1], 2);
-    reduced[2] += simd_shuffle_xor(reduced[2], 2);
-    reduced[3] += simd_shuffle_xor(reduced[3], 2);
-    reduced[0] += simd_shuffle_xor(reduced[0], 1);
-    reduced[1] += simd_shuffle_xor(reduced[1], 1);
-    reduced[2] += simd_shuffle_xor(reduced[2], 1);
-    reduced[3] += simd_shuffle_xor(reduced[3], 1);
-    if (lane_id == 0) {
-      mean4[((batch * QUANTIZE_KV_HEADS + head) * {{HEAD_DIMENSION}} + vec_dim * 4) / 4] =
-          reduced * (1.0f / float({{V_SEQUENCE_DIVISOR}}));
-    }
-  }
-}
-
+    source += R"(
 kernel void quantize_v(
 {{RUNTIME_ARGUMENT}}    device const {{IO_MEMORY_NAME}} *src [[buffer(0)]],
     device int8_t *dst [[buffer(1)]],
@@ -647,50 +669,7 @@ kernel void quantize_v(
 
 )";
   } else {
-      source += R"(
-kernel void compute_v_mean(
-{{RUNTIME_ARGUMENT}}    device const {{IO_MEMORY_NAME}} *src [[buffer(0)]],
-    device {{V_MEAN_MEMORY_NAME}} *mean [[buffer(1)]],
-    uint tid [[thread_index_in_threadgroup]],
-    ushort sgid [[simdgroup_index_in_threadgroup]],
-    ushort lane_id [[thread_index_in_simdgroup]],
-    uint3 tgid [[threadgroup_position_in_grid]]{{QUANTIZE_VARLEN_BUFFER}}
-  ) {
-{{QUANTIZE_RUNTIME_CONSTANTS}}  threadgroup float scratch[QUANTIZE_V_MEAN_SIMDGROUPS];
-  const uint dim_bits = ceil_log2_u32({{HEAD_DIMENSION}});
-  const uint head_bits = ceil_log2_u32(QUANTIZE_KV_HEADS);
-  const uint2 morton = morton_decode_rectangular_2d(tgid.x, dim_bits, head_bits);
-  const uint dim = morton.x;
-  const uint head = morton.y;
-  const uint batch = tgid.z;
-  if (dim >= {{HEAD_DIMENSION}} || head >= QUANTIZE_KV_HEADS)
-    return;{{V_VARLEN_SEQUENCE_SETUP}}
-  float local_sum = 0.0f;
-  for (uint column = tid; column < {{V_SEQUENCE_LENGTH}}; column += QUANTIZE_V_MEAN_THREADS) {
-    const uint index = {{V_MEAN_SRC_INDEX}};
-    local_sum += (float)src[index];
-  }
-  local_sum += simd_shuffle_xor(local_sum, 16);
-  local_sum += simd_shuffle_xor(local_sum, 8);
-  local_sum += simd_shuffle_xor(local_sum, 4);
-  local_sum += simd_shuffle_xor(local_sum, 2);
-  local_sum += simd_shuffle_xor(local_sum, 1);
-  if (lane_id == 0)
-    scratch[sgid] = local_sum;
-  threadgroup_barrier(mem_flags::mem_threadgroup);
-  if (sgid == 0) {
-    float reduced = lane_id < QUANTIZE_V_MEAN_SIMDGROUPS ? scratch[lane_id] : 0.0f;
-    reduced += simd_shuffle_xor(reduced, 16);
-    reduced += simd_shuffle_xor(reduced, 8);
-    reduced += simd_shuffle_xor(reduced, 4);
-    reduced += simd_shuffle_xor(reduced, 2);
-    reduced += simd_shuffle_xor(reduced, 1);
-    if (lane_id == 0)
-      mean[(batch * QUANTIZE_KV_HEADS + head) * {{HEAD_DIMENSION}} + dim] =
-          reduced * (1.0f / float({{V_SEQUENCE_DIVISOR}}));
-  }
-}
-
+    source += R"(
 kernel void quantize_v(
 {{RUNTIME_ARGUMENT}}    device const {{IO_MEMORY_NAME}} *src [[buffer(0)]],
     device int8_t *dst [[buffer(1)]],

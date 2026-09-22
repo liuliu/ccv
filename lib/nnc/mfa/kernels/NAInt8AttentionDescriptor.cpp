@@ -266,6 +266,8 @@ std::pair<NAInt8AttentionKernelDescriptor, PipelineValue<NAInt8AttentionKernel> 
     third = NS::TransferPtr(createPipeline(kernel, quantizeConstants.get(), "quantize_k"));
     fourth = NS::TransferPtr(createPipeline(kernel, quantizeConstants.get(), "quantize_v"));
     fifth = NS::TransferPtr(createPipeline(kernel, quantizeConstants.get(), "compute_v_mean"));
+    CCV_NNC_MFA_PRECONDITION(fifth->staticThreadgroupMemoryLength() <= device->maxThreadgroupMemoryLength());
+    CCV_NNC_MFA_PRECONDITION(kernel->vMeanThreadgroupSize() <= fifth->maxTotalThreadsPerThreadgroup());
     if (masked) {
       sixth = NS::TransferPtr(createPipeline(kernel, attentionConstants.get(), "generate_int8_attention_block_mask"));
     }

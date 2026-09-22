@@ -48,11 +48,16 @@ struct NAInt8AttentionKernel {
 
   NAInt8AttentionKernel(NAInt8AttentionKernelDescriptor descriptor, MTL::Device *const device);
 
+  uint16_t vMeanThreadgroupSize() const noexcept;
+  MTL::Size vMeanThreadgroupsPerGrid(uint32_t batchDimension) const noexcept;
+
   uint32_t threadgroupMemoryAllocation() const noexcept;
   uint16_t threadgroupSize(MTL::ComputePipelineState *const pipelineState) const noexcept;
   MTL::Size threadgroupsPerGrid(uint32_t batchDimension, uint32_t rowDimension) const noexcept;
 
 private:
+  uint16_t vMeanVectorsPerTile() const noexcept;
+  void createVMean(CodeWriter& source) const noexcept;
   std::string createSource() const noexcept;
   void createConstants(CodeWriter& source) const noexcept;
   std::string createRuntimeConstants(bool quantize) const noexcept;

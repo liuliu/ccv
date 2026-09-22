@@ -1,0 +1,119 @@
+MTL_DEBUG_LAYER=1 MTL_SHADER_VALIDATION=1 MTL_SHADER_VALIDATION_REPORT_TO_STDERR=1 MTL_SHADER_VALIDATION_ABORT_ON_FAULT=1
+Forward filter: scaled dot product attention with quantized
+Varlen filter: varlen NA
+All three sections exited 0.
+
+== forward ==
+[1/8] [RUN] scaled dot product attention with quantized NA mps ...2026-09-22 15:33:18.746 mpsblas.tests[42368:5040770] Metal API Validation Enabled
+2026-09-22 15:33:18.746 mpsblas.tests[42368:5040770] Metal GPU Validation Enabled
+
+[1/8] [PASS] scaled dot product attention with quantized NA mps
+[2/8] [RUN] scaled dot product attention with quantized NA mps and zero mask ...
+[2/8] [PASS] scaled dot product attention with quantized NA mps and zero mask
+[3/8] [RUN] scaled dot product attention with quantized NA mps and numeric mask ...
+[3/8] [PASS] scaled dot product attention with quantized NA mps and numeric mask
+[4/8] [RUN] scaled dot product attention with quantized causal NA mps ...
+[4/8] [PASS] scaled dot product attention with quantized causal NA mps
+[5/8] [RUN] scaled dot product attention with quantized NA mps batched ...
+[5/8] [PASS] scaled dot product attention with quantized NA mps batched
+[6/8] [RUN] scaled dot product attention with quantized NA mps for non-multiple-of-64 sequence ...
+[6/8] [PASS] scaled dot product attention with quantized NA mps for non-multiple-of-64 sequence
+[7/8] [RUN] scaled dot product attention with quantized NA mps across every key tail ...
+[7/8] [PASS] scaled dot product attention with quantized NA mps across every key tail
+[8/8] [RUN] scaled dot product attention with quantized NA mps across V-mean reduction sizes ...
+[8/8] [PASS] scaled dot product attention with quantized NA mps across V-mean reduction sizes
+all test case(s) passed, congratulations!
+
+== varlen ==
+[1/1] [RUN] scaled dot product attention with varlen NA mps ...2026-09-22 15:33:34.396 mpsblas.tests[42374:5040975] Metal API Validation Enabled
+2026-09-22 15:33:34.396 mpsblas.tests[42374:5040975] Metal GPU Validation Enabled
+
+[1/1] [PASS] scaled dot product attention with varlen NA mps
+all test case(s) passed, congratulations!
+
+== probes ==
+$ /private/tmp/na_int8_v_mean_bench_final 257 3 2 2 80 16F 1 17
+2026-09-22 15:33:36.670 na_int8_v_mean_bench_final[42378:5041007] Metal API Validation Enabled
+2026-09-22 15:33:36.670 na_int8_v_mean_bench_final[42378:5041007] Metal GPU Validation Enabled
+device=Apple M5 Max shape=[2,257,3,80] precision=16F full=1 R=17 rounds=2 production_threads=256 production_tg_bytes=32768 device_tg_cap=32768
+warmup=0 old_ms=0.07975 production_ms=0.06650 speedup=1.19925
+warmup=1 old_ms=0.06567 production_ms=0.06588 speedup=0.99684
+warmup=2 old_ms=0.06575 production_ms=0.06600 speedup=0.99621
+warmup=3 old_ms=0.06571 production_ms=0.06633 speedup=0.99058
+round=0 old_ms=0.06558 production_ms=0.06600 speedup=0.99369
+round=1 old_ms=0.06562 production_ms=0.06625 speedup=0.99057
+RESULT old_ms=0.06560 production_ms=0.06613 paired_speedup=0.99213 byte_equal=1
+$ /private/tmp/na_int8_v_mean_bench_final 32769 56 1 2 80 16F 0 17
+2026-09-22 15:33:37.247 na_int8_v_mean_bench_final[42380:5041034] Metal API Validation Enabled
+2026-09-22 15:33:37.247 na_int8_v_mean_bench_final[42380:5041034] Metal GPU Validation Enabled
+device=Apple M5 Max shape=[1,32769,56,80] precision=16F full=0 R=17 rounds=2 production_threads=256 production_tg_bytes=32768 device_tg_cap=32768
+warmup=0 old_ms=1.79150 production_ms=0.94071 speedup=1.90442
+warmup=1 old_ms=1.92883 production_ms=0.98550 speedup=1.95721
+warmup=2 old_ms=1.58887 production_ms=0.73450 speedup=2.16321
+warmup=3 old_ms=1.76325 production_ms=0.94221 speedup=1.87140
+round=0 old_ms=1.83596 production_ms=0.97717 speedup=1.87886
+round=1 old_ms=1.86588 production_ms=0.99200 speedup=1.88092
+RESULT old_ms=1.85092 production_ms=0.98458 paired_speedup=1.87989 byte_equal=1
+$ /private/tmp/na_int8_v_mean_bench_final 20480 56 1 2 40 16BF 0 17
+2026-09-22 15:33:40.733 na_int8_v_mean_bench_final[42383:5041064] Metal API Validation Enabled
+2026-09-22 15:33:40.733 na_int8_v_mean_bench_final[42383:5041064] Metal GPU Validation Enabled
+device=Apple M5 Max shape=[1,20480,56,40] precision=16BF full=0 R=17 rounds=2 production_threads=256 production_tg_bytes=32768 device_tg_cap=32768
+warmup=0 old_ms=0.43125 production_ms=0.31825 speedup=1.35507
+warmup=1 old_ms=0.37554 production_ms=0.33004 speedup=1.13786
+warmup=2 old_ms=0.39375 production_ms=0.35250 speedup=1.11702
+warmup=3 old_ms=0.39612 production_ms=0.33354 speedup=1.18763
+round=0 old_ms=0.36325 production_ms=0.31500 speedup=1.15317
+round=1 old_ms=0.38837 production_ms=0.33050 speedup=1.17511
+RESULT old_ms=0.37581 production_ms=0.32275 paired_speedup=1.16414 byte_equal=1
+$ /private/tmp/na_int8_v_mean_bench_final 20481 3 2 2 192 32F 1 5
+2026-09-22 15:33:42.129 na_int8_v_mean_bench_final[42387:5041089] Metal API Validation Enabled
+2026-09-22 15:33:42.130 na_int8_v_mean_bench_final[42387:5041089] Metal GPU Validation Enabled
+device=Apple M5 Max shape=[2,20481,3,192] precision=32F full=1 R=5 rounds=2 production_threads=128 production_tg_bytes=32768 device_tg_cap=32768
+warmup=0 old_ms=3.56054 production_ms=3.44963 speedup=1.03215
+warmup=1 old_ms=3.44721 production_ms=3.51558 speedup=0.98055
+warmup=2 old_ms=3.50796 production_ms=3.43821 speedup=1.02029
+warmup=3 old_ms=3.46029 production_ms=3.50596 speedup=0.98697
+round=0 old_ms=3.53638 production_ms=3.44450 speedup=1.02667
+round=1 old_ms=3.46858 production_ms=3.54404 speedup=0.97871
+RESULT old_ms=3.50248 production_ms=3.49427 paired_speedup=1.00269 byte_equal=1
+$ /private/tmp/na_int8_v_mean_bench_final 20501 3 2 2 130 16F 0 5
+2026-09-22 15:33:43.257 na_int8_v_mean_bench_final[42389:5041108] Metal API Validation Enabled
+2026-09-22 15:33:43.257 na_int8_v_mean_bench_final[42389:5041108] Metal GPU Validation Enabled
+device=Apple M5 Max shape=[2,20501,3,130] precision=16F full=0 R=5 rounds=2 production_threads=128 production_tg_bytes=32768 device_tg_cap=32768
+warmup=0 old_ms=0.46400 production_ms=0.32296 speedup=1.43672
+warmup=1 old_ms=0.45121 production_ms=0.31163 speedup=1.44792
+warmup=2 old_ms=0.39438 production_ms=0.31058 speedup=1.26979
+warmup=3 old_ms=0.38871 production_ms=0.35500 speedup=1.09495
+round=0 old_ms=0.39913 production_ms=0.33825 speedup=1.17997
+round=1 old_ms=0.39838 production_ms=0.32125 speedup=1.24008
+RESULT old_ms=0.39875 production_ms=0.32975 paired_speedup=1.21002 byte_equal=1
+
+Broader quantized filter: the first 8 forward tests passed, then backward API validation stopped on the pre-existing dynamic allocation:
+length(65536) must be <= 32768.
+NAInt8AttentionKernel::threadgroupMemoryAllocation() is byte-identical to HEAD before this change.
+For D128 backward key/value: 128 * 16 * 16 * 2 = 65536 bytes.
+
+== compatible backward probe ==
+$ MTL_DEBUG_LAYER=1 MTL_SHADER_VALIDATION=1 MTL_SHADER_VALIDATION_REPORT_TO_STDERR=1 MTL_SHADER_VALIDATION_ABORT_ON_FAULT=1 ./na_int8_attention_backward_probe 128 128 64 1 56 56 1 2
+2026-09-22 15:39:53.919 na_int8_attention_backward_probe[42693:5046036] Metal API Validation Enabled
+2026-09-22 15:39:53.919 na_int8_attention_backward_probe[42693:5046036] Metal GPU Validation Enabled
+shape B=1 R=128 C=128 Hq=56 Hk=56 D=64 warmup=1 timed=2 lowPrecisionIntermediates=true
+forward-kernel blockR=16 blockC=64 blockD=32 simdgroups=4
+backward-kernel queryBlockR=16 queryBlockC=64 queryBlockD=64 querySimdgroups=4 keyvalueBlockR=16 keyvalueBlockC=16 keyvalueBlockD=64 keyvalueSimdgroups=4
+forward_total avg_ms=0.0624 median_ms=0.0625 min_ms=0.0623 max_ms=0.0625
+backward_prepare avg_ms=0.0434 median_ms=0.0435 min_ms=0.0434 max_ms=0.0435
+backward_query avg_ms=0.0608 median_ms=0.0610 min_ms=0.0606 max_ms=0.0610
+backward_keyvalue avg_ms=0.0846 median_ms=0.0849 min_ms=0.0843 max_ms=0.0849
+backward_total avg_ms=0.1772 median_ms=0.1784 min_ms=0.1760 max_ms=0.1784
+ratio avg=2.8401 median=2.8540
+EXIT=0
+
+== complete normal MPS suites ==
+$ make -C test/int/nnc debug -j4
+EXIT=0
+$ (cd test/int/nnc && ./mpsblas.tests)
+284/284; all test case(s) passed, congratulations!
+EXIT=0
+$ (cd test/int/nnc && ./mpsdnn.tests)
+126/126; all test case(s) passed, congratulations!
+EXIT=0

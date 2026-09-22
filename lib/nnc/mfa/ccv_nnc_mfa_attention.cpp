@@ -18,20 +18,6 @@ using namespace ccv::nnc;
 #include "kernels/NAInt8AttentionKernelDescriptor.hpp"
 #include "kernels/NAInt8AttentionDescriptor.hpp"
 
-static uint32_t ccv_nnc_mfa_ceil_log2_u32(uint32_t x)
-{
-  if (x <= 1) {
-    return 0;
-  }
-  --x;
-  uint32_t bits = 0;
-  while (x > 0) {
-    x >>= 1;
-    ++bits;
-  }
-  return bits;
-}
-
 // MARK: - C
 
 void ccv_nnc_mfa_prepare_attention(mfa::context* context, ccv_nnc_mfa_attention_params_t params)
@@ -346,13 +332,9 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
         if (hash.is_varlen) {
           encoder->setBuffer(tensors[7], tensor_offsets[7], 17);
         }
-        const uint32_t meanTiles = (hash.D % 4) == 0 ? (hash.D / 4) : hash.D;
-        const uint32_t meanTileBits = ccv_nnc_mfa_ceil_log2_u32(meanTiles);
-        const uint32_t headBits = ccv_nnc_mfa_ceil_log2_u32(hash.Hk);
-        const uint32_t mortonCodes = 1u << (meanTileBits + headBits);
         encoder->dispatchThreadgroups(
-            MTL::Size(mortonCodes, 1, batchDimension),
-            MTL::Size(kernel->vMeanThreads, 1, 1));
+            kernel->vMeanThreadgroupsPerGrid(batchDimension),
+            MTL::Size(kernel->vMeanThreadgroupSize(), 1, 1));
         command_batch->finishCommand(encoder);
       }
       {
@@ -969,13 +951,9 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
           encoder->useResource(scratch, MTL::ResourceUsageRead | MTL::ResourceUsageWrite);
           encoder->setBuffer(tensors[2], tensor_offsets[2], 0);
           encoder->setBuffer(scratch, vMeanOffset, 1);
-          const uint32_t meanTiles = (hash.D % 4) == 0 ? (hash.D / 4) : hash.D;
-          const uint32_t meanTileBits = ccv_nnc_mfa_ceil_log2_u32(meanTiles);
-          const uint32_t headBits = ccv_nnc_mfa_ceil_log2_u32(hash.Hk);
-          const uint32_t mortonCodes = 1u << (meanTileBits + headBits);
           encoder->dispatchThreadgroups(
-              MTL::Size(mortonCodes, 1, batchDimension),
-              MTL::Size(forwardKernel->vMeanThreads, 1, 1));
+              forwardKernel->vMeanThreadgroupsPerGrid(batchDimension),
+              MTL::Size(forwardKernel->vMeanThreadgroupSize(), 1, 1));
           command_batch->finishCommand(encoder);
         }
         {

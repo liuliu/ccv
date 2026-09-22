@@ -1,0 +1,892 @@
+Apple M5 Max; macOS 26.6.2 (25G83); Xcode 26.6 (17F113)
+Final implementation: fixed 16 KiB shared memory, shape-dependent tile width.
+Only completed successful cases are included below.
+
+$ /private/tmp/na_int8_v_mean_bench 128 56 1 20 128 16F 0 128
+device=Apple M5 Max shape=[1,128,56,128] precision=16F full=0 R=128 rounds=20 production_threads=256 production_tg_bytes=16384 device_tg_cap=32768
+warmup=0 old_ms=0.01213 production_ms=0.00762 speedup=1.59016
+warmup=1 old_ms=0.00875 production_ms=0.00733 speedup=1.19318
+warmup=2 old_ms=0.00900 production_ms=0.00725 speedup=1.24138
+warmup=3 old_ms=0.00933 production_ms=0.00733 speedup=1.27272
+round=0 old_ms=0.00892 production_ms=0.00725 speedup=1.22988
+round=1 old_ms=0.00879 production_ms=0.00733 speedup=1.19886
+round=2 old_ms=0.00883 production_ms=0.00746 speedup=1.18436
+round=3 old_ms=0.00908 production_ms=0.00754 speedup=1.20442
+round=4 old_ms=0.00887 production_ms=0.00725 speedup=1.22414
+round=5 old_ms=0.00912 production_ms=0.00737 speedup=1.23729
+round=6 old_ms=0.00904 production_ms=0.00733 speedup=1.23295
+round=7 old_ms=0.12917 production_ms=0.15058 speedup=0.85778
+round=8 old_ms=0.00888 production_ms=0.00733 speedup=1.21023
+round=9 old_ms=0.00900 production_ms=0.00725 speedup=1.24138
+round=10 old_ms=0.00887 production_ms=0.00754 speedup=1.17679
+round=11 old_ms=0.00904 production_ms=0.00725 speedup=1.24713
+round=12 old_ms=0.00900 production_ms=0.00750 speedup=1.20000
+round=13 old_ms=0.00946 production_ms=0.00746 speedup=1.26815
+round=14 old_ms=0.00913 production_ms=0.00725 speedup=1.25862
+round=15 old_ms=0.00888 production_ms=0.00762 speedup=1.16394
+round=16 old_ms=0.00892 production_ms=0.00725 speedup=1.22988
+round=17 old_ms=0.00908 production_ms=0.00725 speedup=1.25287
+round=18 old_ms=0.00900 production_ms=0.00737 speedup=1.22034
+round=19 old_ms=0.00888 production_ms=0.00733 speedup=1.21023
+RESULT old_ms=0.00900 production_ms=0.00733 paired_speedup=1.22224 byte_equal=1
+EXIT=0
+
+
+$ /private/tmp/na_int8_v_mean_bench 1024 56 1 20 128 16F 0 1024
+device=Apple M5 Max shape=[1,1024,56,128] precision=16F full=0 R=1024 rounds=20 production_threads=256 production_tg_bytes=16384 device_tg_cap=32768
+warmup=0 old_ms=0.06975 production_ms=0.02308 speedup=3.02166
+warmup=1 old_ms=0.04571 production_ms=0.02375 speedup=1.92456
+warmup=2 old_ms=0.04550 production_ms=0.02321 speedup=1.96050
+warmup=3 old_ms=0.04546 production_ms=0.02342 speedup=1.94128
+round=0 old_ms=0.04487 production_ms=0.02292 speedup=1.95818
+round=1 old_ms=0.04488 production_ms=0.02321 speedup=1.93357
+round=2 old_ms=0.04554 production_ms=0.02292 speedup=1.98727
+round=3 old_ms=0.04562 production_ms=0.02325 speedup=1.96237
+round=4 old_ms=0.04492 production_ms=0.02300 speedup=1.95290
+round=5 old_ms=0.04396 production_ms=0.02317 speedup=1.89748
+round=6 old_ms=0.04533 production_ms=0.02292 speedup=1.97818
+round=7 old_ms=0.04588 production_ms=0.02258 speedup=2.03137
+round=8 old_ms=0.04458 production_ms=0.02358 speedup=1.89046
+round=9 old_ms=0.04575 production_ms=0.02317 speedup=1.97482
+round=10 old_ms=0.04429 production_ms=0.02287 speedup=1.93625
+round=11 old_ms=0.04562 production_ms=0.02300 speedup=1.98370
+round=12 old_ms=0.04438 production_ms=0.02304 speedup=1.92586
+round=13 old_ms=0.04525 production_ms=0.02342 speedup=1.93238
+round=14 old_ms=0.04454 production_ms=0.02287 speedup=1.94718
+round=15 old_ms=0.04525 production_ms=0.02300 speedup=1.96739
+round=16 old_ms=0.04521 production_ms=0.02279 speedup=1.98355
+round=17 old_ms=0.04725 production_ms=0.02300 speedup=2.05435
+round=18 old_ms=0.33954 production_ms=0.02500 speedup=13.58167
+round=19 old_ms=0.04562 production_ms=0.02296 speedup=1.98730
+RESULT old_ms=0.04525 production_ms=0.02300 paired_speedup=1.96488 byte_equal=1
+EXIT=0
+
+
+$ /private/tmp/na_int8_v_mean_bench 4096 56 1 20 128 16F 0 4096
+device=Apple M5 Max shape=[1,4096,56,128] precision=16F full=0 R=4096 rounds=20 production_threads=256 production_tg_bytes=16384 device_tg_cap=32768
+warmup=0 old_ms=0.23163 production_ms=0.13100 speedup=1.76813
+warmup=1 old_ms=0.17288 production_ms=0.12938 speedup=1.33623
+warmup=2 old_ms=0.17575 production_ms=0.12713 speedup=1.38250
+warmup=3 old_ms=0.19900 production_ms=0.13096 speedup=1.51957
+round=0 old_ms=0.17792 production_ms=0.12663 speedup=1.40507
+round=1 old_ms=0.20450 production_ms=0.12987 speedup=1.57459
+round=2 old_ms=0.17867 production_ms=0.12654 speedup=1.41192
+round=3 old_ms=0.19950 production_ms=0.13308 speedup=1.49906
+round=4 old_ms=0.17650 production_ms=0.12654 speedup=1.39480
+round=5 old_ms=0.69017 production_ms=0.15537 speedup=4.44194
+round=6 old_ms=0.22400 production_ms=0.13113 speedup=1.70829
+round=7 old_ms=0.18513 production_ms=0.13183 speedup=1.40424
+round=8 old_ms=0.20237 production_ms=0.12646 speedup=1.60033
+round=9 old_ms=0.17400 production_ms=0.13750 speedup=1.26545
+round=10 old_ms=0.18075 production_ms=0.12663 speedup=1.42744
+round=11 old_ms=0.17246 production_ms=0.13092 speedup=1.31731
+round=12 old_ms=0.18250 production_ms=0.12575 speedup=1.45129
+round=13 old_ms=0.18017 production_ms=0.13242 speedup=1.36060
+round=14 old_ms=0.21071 production_ms=0.12567 speedup=1.67672
+round=15 old_ms=0.17975 production_ms=0.13188 speedup=1.36303
+round=16 old_ms=0.17867 production_ms=0.13054 speedup=1.36866
+round=17 old_ms=0.20975 production_ms=0.16850 speedup=1.24481
+round=18 old_ms=0.18025 production_ms=0.12679 speedup=1.42162
+round=19 old_ms=0.20050 production_ms=0.13000 speedup=1.54231
+RESULT old_ms=0.18163 production_ms=0.13027 paired_speedup=1.41677 byte_equal=1
+EXIT=0
+
+
+$ /private/tmp/na_int8_v_mean_bench 16384 56 1 20 128 16F 0 16384
+device=Apple M5 Max shape=[1,16384,56,128] precision=16F full=0 R=16384 rounds=20 production_threads=256 production_tg_bytes=16384 device_tg_cap=32768
+warmup=0 old_ms=1.15238 production_ms=0.58512 speedup=1.96945
+warmup=1 old_ms=1.12571 production_ms=0.62596 speedup=1.79838
+warmup=2 old_ms=1.08654 production_ms=0.58521 speedup=1.85668
+warmup=3 old_ms=1.06571 production_ms=0.59804 speedup=1.78200
+round=0 old_ms=1.19550 production_ms=0.65725 speedup=1.81894
+round=1 old_ms=1.01033 production_ms=0.61383 speedup=1.64594
+round=2 old_ms=1.28012 production_ms=0.58625 speedup=2.18358
+round=3 old_ms=0.79638 production_ms=0.58567 speedup=1.35978
+round=4 old_ms=1.04825 production_ms=0.62438 speedup=1.67888
+round=5 old_ms=0.93575 production_ms=0.74200 speedup=1.26112
+round=6 old_ms=0.92275 production_ms=0.60904 speedup=1.51509
+round=7 old_ms=0.80050 production_ms=0.58717 speedup=1.36333
+round=8 old_ms=0.82537 production_ms=0.63358 speedup=1.30271
+round=9 old_ms=0.91087 production_ms=0.61512 speedup=1.48080
+round=10 old_ms=0.85446 production_ms=0.59125 speedup=1.44517
+round=11 old_ms=1.20483 production_ms=0.62029 speedup=1.94237
+round=12 old_ms=0.82971 production_ms=0.59321 speedup=1.39868
+round=13 old_ms=1.06358 production_ms=0.62750 speedup=1.69495
+round=14 old_ms=1.24800 production_ms=0.59608 speedup=2.09367
+round=15 old_ms=1.08238 production_ms=0.61438 speedup=1.76175
+round=16 old_ms=0.78875 production_ms=0.58825 speedup=1.34084
+round=17 old_ms=1.00938 production_ms=0.58763 speedup=1.71772
+round=18 old_ms=0.80050 production_ms=0.59225 speedup=1.35163
+round=19 old_ms=1.20600 production_ms=0.61375 speedup=1.96497
+RESULT old_ms=0.97256 production_ms=0.61140 paired_speedup=1.58051 byte_equal=1
+EXIT=0
+
+
+$ /private/tmp/na_int8_v_mean_bench 20480 56 1 20 128 16F 0 20480
+device=Apple M5 Max shape=[1,20480,56,128] precision=16F full=0 R=20480 rounds=20 production_threads=256 production_tg_bytes=16384 device_tg_cap=32768
+warmup=0 old_ms=1.78767 production_ms=0.73825 speedup=2.42149
+warmup=1 old_ms=1.60646 production_ms=0.74000 speedup=2.17089
+warmup=2 old_ms=1.81054 production_ms=0.78350 speedup=2.31084
+warmup=3 old_ms=1.89679 production_ms=0.75867 speedup=2.50016
+round=0 old_ms=1.71829 production_ms=0.75775 speedup=2.26762
+round=1 old_ms=1.87800 production_ms=0.73229 speedup=2.56455
+round=2 old_ms=1.91550 production_ms=0.74021 speedup=2.58779
+round=3 old_ms=1.39433 production_ms=0.77896 speedup=1.79000
+round=4 old_ms=1.66562 production_ms=0.75608 speedup=2.20296
+round=5 old_ms=1.54725 production_ms=0.73996 speedup=2.09100
+round=6 old_ms=1.83054 production_ms=0.78633 speedup=2.32795
+round=7 old_ms=1.81696 production_ms=0.74217 speedup=2.44818
+round=8 old_ms=1.78571 production_ms=0.73633 speedup=2.42514
+round=9 old_ms=1.30863 production_ms=0.73388 speedup=1.78317
+round=10 old_ms=1.82125 production_ms=0.75425 speedup=2.41465
+round=11 old_ms=1.62950 production_ms=0.74925 speedup=2.17484
+round=12 old_ms=1.71496 production_ms=0.77363 speedup=2.21678
+round=13 old_ms=1.60200 production_ms=0.76350 speedup=2.09823
+round=14 old_ms=1.74067 production_ms=0.73096 speedup=2.38135
+round=15 old_ms=1.65254 production_ms=0.79138 speedup=2.08819
+round=16 old_ms=1.86738 production_ms=0.77125 speedup=2.42123
+round=17 old_ms=1.69687 production_ms=0.77400 speedup=2.19235
+round=18 old_ms=1.83100 production_ms=0.73604 speedup=2.48763
+round=19 old_ms=1.54446 production_ms=0.73788 speedup=2.09312
+RESULT old_ms=1.71663 production_ms=0.75175 paired_speedup=2.24220 byte_equal=1
+EXIT=0
+
+
+$ /private/tmp/na_int8_v_mean_bench 20481 56 1 20 128 16F 0 20481
+device=Apple M5 Max shape=[1,20481,56,128] precision=16F full=0 R=20481 rounds=20 production_threads=256 production_tg_bytes=16384 device_tg_cap=32768
+warmup=0 old_ms=1.84288 production_ms=0.60500 speedup=3.04607
+warmup=1 old_ms=1.77592 production_ms=0.59392 speedup=2.99018
+warmup=2 old_ms=1.70888 production_ms=0.60358 speedup=2.83122
+warmup=3 old_ms=1.61929 production_ms=0.60183 speedup=2.69060
+round=0 old_ms=1.68713 production_ms=0.59825 speedup=2.82010
+round=1 old_ms=1.50971 production_ms=0.70275 speedup=2.14829
+round=2 old_ms=1.71263 production_ms=0.57675 speedup=2.96944
+round=3 old_ms=1.66704 production_ms=0.61700 speedup=2.70185
+round=4 old_ms=1.48987 production_ms=0.60825 speedup=2.44945
+round=5 old_ms=1.59054 production_ms=0.62000 speedup=2.56539
+round=6 old_ms=1.94354 production_ms=0.58412 speedup=3.32727
+round=7 old_ms=1.75738 production_ms=0.62100 speedup=2.82991
+round=8 old_ms=1.42775 production_ms=0.60588 speedup=2.35651
+round=9 old_ms=1.69354 production_ms=0.58650 speedup=2.88754
+round=10 old_ms=1.67712 production_ms=0.58671 speedup=2.85853
+round=11 old_ms=1.69475 production_ms=0.59862 speedup=2.83107
+round=12 old_ms=1.77825 production_ms=0.59975 speedup=2.96499
+round=13 old_ms=1.70188 production_ms=0.61538 speedup=2.76559
+round=14 old_ms=1.51838 production_ms=0.65600 speedup=2.31460
+round=15 old_ms=1.69388 production_ms=0.60217 speedup=2.81297
+round=16 old_ms=1.78842 production_ms=0.60900 speedup=2.93664
+round=17 old_ms=1.44104 production_ms=0.61496 speedup=2.34332
+round=18 old_ms=1.66212 production_ms=0.60508 speedup=2.74694
+round=19 old_ms=1.72662 production_ms=0.60175 speedup=2.86934
+RESULT old_ms=1.69033 production_ms=0.60548 paired_speedup=2.81653 byte_equal=1
+EXIT=0
+
+
+$ /private/tmp/na_int8_v_mean_bench 32768 56 1 20 128 16F 0 32768
+device=Apple M5 Max shape=[1,32768,56,128] precision=16F full=0 R=32768 rounds=20 production_threads=256 production_tg_bytes=16384 device_tg_cap=32768
+warmup=0 old_ms=3.39821 production_ms=0.94896 speedup=3.58099
+warmup=1 old_ms=2.80733 production_ms=1.16683 speedup=2.40594
+warmup=2 old_ms=3.67363 production_ms=0.94888 speedup=3.87156
+warmup=3 old_ms=3.61525 production_ms=0.93108 speedup=3.88284
+round=0 old_ms=3.49046 production_ms=0.98554 speedup=3.54166
+round=1 old_ms=3.00371 production_ms=0.95246 speedup=3.15364
+round=2 old_ms=2.94667 production_ms=1.14896 speedup=2.56464
+round=3 old_ms=3.15575 production_ms=0.95392 speedup=3.30820
+round=4 old_ms=2.95346 production_ms=0.98083 speedup=3.01117
+round=5 old_ms=3.03842 production_ms=0.96625 speedup=3.14455
+round=6 old_ms=2.81000 production_ms=1.07829 speedup=2.60597
+round=7 old_ms=3.31108 production_ms=0.92083 speedup=3.59575
+round=8 old_ms=2.96187 production_ms=0.96050 speedup=3.08368
+round=9 old_ms=3.45350 production_ms=0.93292 speedup=3.70183
+round=10 old_ms=3.00208 production_ms=1.00542 speedup=2.98591
+round=11 old_ms=3.24858 production_ms=0.96533 speedup=3.36525
+round=12 old_ms=3.46450 production_ms=0.96000 speedup=3.60885
+round=13 old_ms=2.82000 production_ms=0.95037 speedup=2.96725
+round=14 old_ms=2.98650 production_ms=0.93712 speedup=3.18687
+round=15 old_ms=3.08612 production_ms=0.94454 speedup=3.26733
+round=16 old_ms=3.04650 production_ms=0.94179 speedup=3.23479
+round=17 old_ms=2.92513 production_ms=0.96800 speedup=3.02182
+round=18 old_ms=3.07487 production_ms=0.94225 speedup=3.26333
+round=19 old_ms=3.24692 production_ms=0.92417 speedup=3.51335
+RESULT old_ms=3.04246 production_ms=0.95696 paired_speedup=3.21083 byte_equal=1
+EXIT=0
+
+
+$ /private/tmp/na_int8_v_mean_bench 65536 56 1 20 128 16F 0 65536
+device=Apple M5 Max shape=[1,65536,56,128] precision=16F full=0 R=65536 rounds=20 production_threads=256 production_tg_bytes=16384 device_tg_cap=32768
+warmup=0 old_ms=6.08925 production_ms=1.91138 speedup=3.18580
+warmup=1 old_ms=8.35542 production_ms=1.89333 speedup=4.41307
+warmup=2 old_ms=5.88750 production_ms=1.96812 speedup=2.99143
+warmup=3 old_ms=6.52625 production_ms=2.16087 speedup=3.02019
+round=0 old_ms=6.35496 production_ms=1.92087 speedup=3.30837
+round=1 old_ms=5.63796 production_ms=1.88779 speedup=2.98654
+round=2 old_ms=5.90117 production_ms=1.94062 speedup=3.04086
+round=3 old_ms=6.87533 production_ms=1.91150 speedup=3.59683
+round=4 old_ms=7.26833 production_ms=1.91937 speedup=3.78682
+round=5 old_ms=6.20950 production_ms=1.95000 speedup=3.18436
+round=6 old_ms=7.13125 production_ms=1.88963 speedup=3.77390
+round=7 old_ms=6.48300 production_ms=1.98925 speedup=3.25902
+round=8 old_ms=6.28788 production_ms=1.97100 speedup=3.19020
+round=9 old_ms=5.97808 production_ms=1.94342 speedup=3.07607
+round=10 old_ms=6.32500 production_ms=1.95333 speedup=3.23805
+round=11 old_ms=7.05433 production_ms=1.96796 speedup=3.58459
+round=12 old_ms=5.98796 production_ms=1.88142 speedup=3.18269
+round=13 old_ms=5.94158 production_ms=1.87750 speedup=3.16462
+round=14 old_ms=7.46513 production_ms=1.95938 speedup=3.80995
+round=15 old_ms=7.46283 production_ms=1.98467 speedup=3.76025
+round=16 old_ms=6.41125 production_ms=1.95738 speedup=3.27543
+round=17 old_ms=8.26200 production_ms=1.94821 speedup=4.24082
+round=18 old_ms=5.70688 production_ms=1.97796 speedup=2.88524
+round=19 old_ms=6.57162 production_ms=2.45996 speedup=2.67144
+RESULT old_ms=6.38310 production_ms=1.94910 paired_speedup=3.24854 byte_equal=1
+EXIT=0
+
+
+$ /private/tmp/na_int8_v_mean_bench 103982 56 1 20 128 16F 0 103982
+device=Apple M5 Max shape=[1,103982,56,128] precision=16F full=0 R=103982 rounds=20 production_threads=256 production_tg_bytes=16384 device_tg_cap=32768
+warmup=0 old_ms=13.06292 production_ms=3.14700 speedup=4.15091
+warmup=1 old_ms=10.49683 production_ms=3.70612 speedup=2.83229
+warmup=2 old_ms=16.50525 production_ms=3.42775 speedup=4.81518
+warmup=3 old_ms=10.30125 production_ms=3.32908 speedup=3.09432
+round=0 old_ms=12.72750 production_ms=3.22917 speedup=3.94142
+round=1 old_ms=12.45950 production_ms=3.57950 speedup=3.48079
+round=2 old_ms=13.40375 production_ms=3.32925 speedup=4.02606
+round=3 old_ms=11.64862 production_ms=3.35688 speedup=3.47008
+round=4 old_ms=11.30796 production_ms=3.18879 speedup=3.54616
+round=5 old_ms=12.22729 production_ms=3.15212 speedup=3.87906
+round=6 old_ms=11.10225 production_ms=3.23063 speedup=3.43656
+round=7 old_ms=12.31775 production_ms=3.31408 speedup=3.71679
+round=8 old_ms=14.16042 production_ms=3.44317 speedup=4.11261
+round=9 old_ms=11.45179 production_ms=3.09121 speedup=3.70463
+round=10 old_ms=14.72892 production_ms=3.61996 speedup=4.06881
+round=11 old_ms=10.60446 production_ms=3.17175 speedup=3.34341
+round=12 old_ms=10.06158 production_ms=3.66875 speedup=2.74251
+round=13 old_ms=11.53754 production_ms=3.25300 speedup=3.54674
+round=14 old_ms=10.73363 production_ms=3.31800 speedup=3.23497
+round=15 old_ms=11.72987 production_ms=3.76258 speedup=3.11751
+round=16 old_ms=14.29408 production_ms=3.37725 speedup=4.23246
+round=17 old_ms=11.92150 production_ms=3.24163 speedup=3.67763
+round=18 old_ms=15.35004 production_ms=3.56083 speedup=4.31080
+round=19 old_ms=10.30625 production_ms=3.33262 speedup=3.09253
+RESULT old_ms=11.82569 production_ms=3.32363 paired_speedup=3.61218 byte_equal=1
+EXIT=0
+
+
+$ /private/tmp/na_int8_v_mean_bench 32768 1 1 20 128 16F 0 32768
+device=Apple M5 Max shape=[1,32768,1,128] precision=16F full=0 R=32768 rounds=20 production_threads=128 production_tg_bytes=16384 device_tg_cap=32768
+warmup=0 old_ms=0.10138 production_ms=0.05996 speedup=1.69076
+warmup=1 old_ms=0.06063 production_ms=0.06062 speedup=1.00000
+warmup=2 old_ms=0.06012 production_ms=0.06058 speedup=0.99243
+warmup=3 old_ms=0.05987 production_ms=0.06037 speedup=0.99172
+round=0 old_ms=0.05979 production_ms=0.06021 speedup=0.99308
+round=1 old_ms=0.05992 production_ms=0.06025 speedup=0.99447
+round=2 old_ms=0.06004 production_ms=0.06037 speedup=0.99448
+round=3 old_ms=0.06000 production_ms=0.06033 speedup=0.99448
+round=4 old_ms=0.06000 production_ms=0.06000 speedup=1.00000
+round=5 old_ms=0.05996 production_ms=0.06008 speedup=0.99792
+round=6 old_ms=0.05954 production_ms=0.05992 speedup=0.99374
+round=7 old_ms=0.06017 production_ms=0.06021 speedup=0.99931
+round=8 old_ms=0.05987 production_ms=0.06050 speedup=0.98967
+round=9 old_ms=0.05996 production_ms=0.06038 speedup=0.99310
+round=10 old_ms=0.06000 production_ms=0.05992 speedup=1.00139
+round=11 old_ms=0.05987 production_ms=0.06012 speedup=0.99584
+round=12 old_ms=0.06058 production_ms=0.06000 speedup=1.00972
+round=13 old_ms=0.05979 production_ms=0.06029 speedup=0.99171
+round=14 old_ms=0.05975 production_ms=0.06029 speedup=0.99102
+round=15 old_ms=0.05963 production_ms=0.06025 speedup=0.98963
+round=16 old_ms=0.05979 production_ms=0.05987 speedup=0.99861
+round=17 old_ms=0.06000 production_ms=0.06025 speedup=0.99585
+round=18 old_ms=0.05971 production_ms=0.06021 speedup=0.99169
+round=19 old_ms=0.08138 production_ms=0.06029 speedup=1.34969
+RESULT old_ms=0.05994 production_ms=0.06023 paired_speedup=0.99448 byte_equal=1
+EXIT=0
+
+
+$ /private/tmp/na_int8_v_mean_bench 32768 3 2 20 128 16F 0 32768
+device=Apple M5 Max shape=[2,32768,3,128] precision=16F full=0 R=32768 rounds=20 production_threads=128 production_tg_bytes=16384 device_tg_cap=32768
+warmup=0 old_ms=0.27504 production_ms=0.20917 speedup=1.31494
+warmup=1 old_ms=0.21125 production_ms=0.21650 speedup=0.97575
+warmup=2 old_ms=0.21296 production_ms=0.21158 speedup=1.00650
+warmup=3 old_ms=0.22300 production_ms=0.21438 speedup=1.04023
+round=0 old_ms=0.21008 production_ms=0.21321 speedup=0.98534
+round=1 old_ms=0.20971 production_ms=0.22025 speedup=0.95214
+round=2 old_ms=0.20062 production_ms=0.20763 speedup=0.96629
+round=3 old_ms=0.19513 production_ms=0.21463 speedup=0.90914
+round=4 old_ms=0.20975 production_ms=0.23037 speedup=0.91047
+round=5 old_ms=0.21113 production_ms=0.21138 speedup=0.99882
+round=6 old_ms=0.22204 production_ms=0.21300 speedup=1.04245
+round=7 old_ms=0.22296 production_ms=0.21567 speedup=1.03381
+round=8 old_ms=0.19971 production_ms=0.20750 speedup=0.96245
+round=9 old_ms=0.21525 production_ms=0.22992 speedup=0.93621
+round=10 old_ms=0.21950 production_ms=0.20758 speedup=1.05741
+round=11 old_ms=0.21317 production_ms=0.21225 speedup=1.00432
+round=12 old_ms=0.21054 production_ms=0.21675 speedup=0.97136
+round=13 old_ms=0.20700 production_ms=0.21838 speedup=0.94791
+round=14 old_ms=0.21575 production_ms=0.20867 speedup=1.03395
+round=15 old_ms=0.36313 production_ms=0.21767 speedup=1.66826
+round=16 old_ms=0.25263 production_ms=0.28387 speedup=0.88992
+round=17 old_ms=0.19679 production_ms=0.22575 speedup=0.87172
+round=18 old_ms=0.20962 production_ms=0.22188 speedup=0.94479
+round=19 old_ms=0.20875 production_ms=0.21625 speedup=0.96532
+RESULT old_ms=0.21031 production_ms=0.21596 paired_speedup=0.96580 byte_equal=1
+EXIT=0
+
+
+$ /private/tmp/na_int8_v_mean_bench 32768 8 1 20 128 16F 0 32768
+device=Apple M5 Max shape=[1,32768,8,128] precision=16F full=0 R=32768 rounds=20 production_threads=128 production_tg_bytes=16384 device_tg_cap=32768
+warmup=0 old_ms=0.30929 production_ms=0.21950 speedup=1.40907
+warmup=1 old_ms=0.25546 production_ms=0.22275 speedup=1.14684
+warmup=2 old_ms=0.27938 production_ms=0.25533 speedup=1.09416
+warmup=3 old_ms=0.24317 production_ms=0.22071 speedup=1.10176
+round=0 old_ms=0.26112 production_ms=0.21250 speedup=1.22882
+round=1 old_ms=0.26308 production_ms=0.22263 speedup=1.18173
+round=2 old_ms=0.25458 production_ms=0.20637 speedup=1.23360
+round=3 old_ms=0.24317 production_ms=0.23333 speedup=1.04214
+round=4 old_ms=0.25133 production_ms=0.20696 speedup=1.21442
+round=5 old_ms=0.24362 production_ms=0.21758 speedup=1.11969
+round=6 old_ms=0.25175 production_ms=0.20758 speedup=1.21277
+round=7 old_ms=0.24883 production_ms=0.22037 speedup=1.12914
+round=8 old_ms=0.25363 production_ms=0.20813 speedup=1.21862
+round=9 old_ms=0.24779 production_ms=0.21875 speedup=1.13276
+round=10 old_ms=0.25700 production_ms=0.21262 speedup=1.20870
+round=11 old_ms=0.42337 production_ms=0.32038 speedup=1.32150
+round=12 old_ms=0.39763 production_ms=0.25038 speedup=1.58812
+round=13 old_ms=0.24967 production_ms=0.22725 speedup=1.09864
+round=14 old_ms=0.27029 production_ms=0.20663 speedup=1.30813
+round=15 old_ms=0.25942 production_ms=0.21696 speedup=1.19570
+round=16 old_ms=0.25204 production_ms=0.20650 speedup=1.22054
+round=17 old_ms=0.25021 production_ms=0.23325 speedup=1.07270
+round=18 old_ms=0.27425 production_ms=0.29996 speedup=0.91429
+round=19 old_ms=0.24863 production_ms=0.24075 speedup=1.03271
+RESULT old_ms=0.25283 production_ms=0.21817 paired_speedup=1.20220 byte_equal=1
+EXIT=0
+
+
+$ /private/tmp/na_int8_v_mean_bench 32768 56 1 20 64 16F 0 32768
+device=Apple M5 Max shape=[1,32768,56,64] precision=16F full=0 R=32768 rounds=20 production_threads=128 production_tg_bytes=16384 device_tg_cap=32768
+warmup=0 old_ms=1.26292 production_ms=0.76492 speedup=1.65105
+warmup=1 old_ms=1.11817 production_ms=0.52625 speedup=2.12478
+warmup=2 old_ms=1.20175 production_ms=0.52562 speedup=2.28633
+warmup=3 old_ms=1.28575 production_ms=0.56604 speedup=2.27148
+round=0 old_ms=1.17512 production_ms=0.53021 speedup=2.21635
+round=1 old_ms=1.11912 production_ms=0.52071 speedup=2.14924
+round=2 old_ms=1.15508 production_ms=0.52575 speedup=2.19702
+round=3 old_ms=1.23500 production_ms=0.55217 speedup=2.23664
+round=4 old_ms=1.13088 production_ms=0.83754 speedup=1.35023
+round=5 old_ms=1.11654 production_ms=0.53150 speedup=2.10074
+round=6 old_ms=1.17063 production_ms=0.52587 speedup=2.22605
+round=7 old_ms=1.38200 production_ms=0.54837 speedup=2.52017
+round=8 old_ms=1.24562 production_ms=0.52362 speedup=2.37885
+round=9 old_ms=1.14937 production_ms=0.51850 speedup=2.21673
+round=10 old_ms=1.10933 production_ms=0.52254 speedup=2.12296
+round=11 old_ms=1.17308 production_ms=0.54275 speedup=2.16137
+round=12 old_ms=1.15612 production_ms=0.62775 speedup=1.84170
+round=13 old_ms=1.22075 production_ms=0.70096 speedup=1.74154
+round=14 old_ms=1.21438 production_ms=0.52438 speedup=2.31585
+round=15 old_ms=1.23171 production_ms=0.54192 speedup=2.27287
+round=16 old_ms=1.20308 production_ms=0.52008 speedup=2.31325
+round=17 old_ms=1.11975 production_ms=0.51913 speedup=2.15699
+round=18 old_ms=1.21104 production_ms=0.52533 speedup=2.30528
+round=19 old_ms=1.21675 production_ms=0.54358 speedup=2.23839
+RESULT old_ms=1.17410 production_ms=0.52804 paired_speedup=2.21654 byte_equal=1
+EXIT=0
+
+
+$ /private/tmp/na_int8_v_mean_bench 32768 56 1 20 80 16F 0 32768
+device=Apple M5 Max shape=[1,32768,56,80] precision=16F full=0 R=32768 rounds=20 production_threads=256 production_tg_bytes=16384 device_tg_cap=32768
+warmup=0 old_ms=1.91471 production_ms=0.84692 speedup=2.26080
+warmup=1 old_ms=2.28213 production_ms=0.85904 speedup=2.65659
+warmup=2 old_ms=1.97321 production_ms=1.05725 speedup=1.86636
+warmup=3 old_ms=2.06621 production_ms=0.90187 speedup=2.29101
+round=0 old_ms=2.08800 production_ms=0.87371 speedup=2.38981
+round=1 old_ms=1.83562 production_ms=0.87079 speedup=2.10800
+round=2 old_ms=1.82025 production_ms=0.85738 speedup=2.12305
+round=3 old_ms=2.26092 production_ms=0.85312 speedup=2.65016
+round=4 old_ms=2.23429 production_ms=0.88504 speedup=2.52450
+round=5 old_ms=1.91304 production_ms=0.87342 speedup=2.19030
+round=6 old_ms=2.08912 production_ms=0.85975 speedup=2.42992
+round=7 old_ms=1.92812 production_ms=0.86121 speedup=2.23886
+round=8 old_ms=1.82683 production_ms=0.94017 speedup=1.94310
+round=9 old_ms=1.91750 production_ms=0.99417 speedup=1.92875
+round=10 old_ms=1.78508 production_ms=0.85350 speedup=2.09149
+round=11 old_ms=2.00075 production_ms=0.85242 speedup=2.34715
+round=12 old_ms=2.09337 production_ms=0.86513 speedup=2.41974
+round=13 old_ms=1.82433 production_ms=0.86350 speedup=2.11272
+round=14 old_ms=1.97629 production_ms=1.08700 speedup=1.81812
+round=15 old_ms=1.75925 production_ms=0.88738 speedup=1.98253
+round=16 old_ms=1.87029 production_ms=0.88563 speedup=2.11183
+round=17 old_ms=2.00204 production_ms=0.85892 speedup=2.33089
+round=18 old_ms=1.93012 production_ms=0.86362 speedup=2.23491
+round=19 old_ms=1.95204 production_ms=0.85688 speedup=2.27809
+RESULT old_ms=1.92912 production_ms=0.86438 paired_speedup=2.21260 byte_equal=1
+EXIT=0
+
+
+$ /private/tmp/na_int8_v_mean_bench 32768 56 1 20 192 16F 0 32768
+device=Apple M5 Max shape=[1,32768,56,192] precision=16F full=0 R=32768 rounds=20 production_threads=256 production_tg_bytes=16384 device_tg_cap=32768
+warmup=0 old_ms=6.33658 production_ms=1.63000 speedup=3.88747
+warmup=1 old_ms=5.69875 production_ms=1.71625 speedup=3.32047
+warmup=2 old_ms=6.41788 production_ms=1.62787 speedup=3.94249
+warmup=3 old_ms=6.18125 production_ms=1.69975 speedup=3.63656
+round=0 old_ms=5.99362 production_ms=1.61850 speedup=3.70320
+round=1 old_ms=5.97287 production_ms=1.69200 speedup=3.53007
+round=2 old_ms=6.08067 production_ms=1.62812 speedup=3.73477
+round=3 old_ms=5.47821 production_ms=1.71200 speedup=3.19989
+round=4 old_ms=6.49521 production_ms=1.64950 speedup=3.93768
+round=5 old_ms=6.43425 production_ms=1.69400 speedup=3.79826
+round=6 old_ms=5.93125 production_ms=1.64775 speedup=3.59961
+round=7 old_ms=6.13417 production_ms=1.70150 speedup=3.60515
+round=8 old_ms=5.91092 production_ms=1.59275 speedup=3.71114
+round=9 old_ms=6.18288 production_ms=1.67108 speedup=3.69992
+round=10 old_ms=6.08925 production_ms=1.59413 speedup=3.81981
+round=11 old_ms=6.14575 production_ms=1.65638 speedup=3.71036
+round=12 old_ms=6.12213 production_ms=1.60117 speedup=3.82354
+round=13 old_ms=5.82312 production_ms=1.68458 speedup=3.45672
+round=14 old_ms=6.06625 production_ms=1.60996 speedup=3.76795
+round=15 old_ms=6.46954 production_ms=1.67392 speedup=3.86491
+round=16 old_ms=5.68375 production_ms=1.64825 speedup=3.44835
+round=17 old_ms=6.50271 production_ms=1.70258 speedup=3.81932
+round=18 old_ms=4.48550 production_ms=1.63937 speedup=2.73610
+round=19 old_ms=6.18487 production_ms=1.62733 speedup=3.80062
+RESULT old_ms=6.08496 production_ms=1.64888 paired_speedup=3.71075 byte_equal=1
+EXIT=0
+
+
+$ /private/tmp/na_int8_v_mean_bench 32768 56 1 20 256 16F 0 32768
+device=Apple M5 Max shape=[1,32768,56,256] precision=16F full=0 R=32768 rounds=20 production_threads=256 production_tg_bytes=16384 device_tg_cap=32768
+warmup=0 old_ms=10.78896 production_ms=2.11300 speedup=5.10599
+warmup=1 old_ms=9.73725 production_ms=2.06737 speedup=4.70996
+warmup=2 old_ms=10.54075 production_ms=2.04579 speedup=5.15241
+warmup=3 old_ms=9.91908 production_ms=2.10683 speedup=4.70805
+round=0 old_ms=8.01129 production_ms=2.24337 speedup=3.57109
+round=1 old_ms=9.19725 production_ms=2.16750 speedup=4.24325
+round=2 old_ms=10.47033 production_ms=2.01613 speedup=5.19330
+round=3 old_ms=8.75087 production_ms=2.43213 speedup=3.59804
+round=4 old_ms=9.56750 production_ms=2.12650 speedup=4.49918
+round=5 old_ms=8.86683 production_ms=2.37337 speedup=3.73596
+round=6 old_ms=9.79588 production_ms=2.02650 speedup=4.83389
+round=7 old_ms=9.63717 production_ms=2.05263 speedup=4.69504
+round=8 old_ms=10.23717 production_ms=2.05908 speedup=4.97171
+round=9 old_ms=10.14337 production_ms=2.01917 speedup=5.02355
+round=10 old_ms=7.80075 production_ms=2.14342 speedup=3.63940
+round=11 old_ms=8.70262 production_ms=2.03683 speedup=4.27263
+round=12 old_ms=9.80221 production_ms=2.22808 speedup=4.39939
+round=13 old_ms=8.14858 production_ms=2.04450 speedup=3.98561
+round=14 old_ms=7.68063 production_ms=2.03775 speedup=3.76917
+round=15 old_ms=10.85154 production_ms=2.09833 speedup=5.17151
+round=16 old_ms=9.56325 production_ms=2.12833 speedup=4.49330
+round=17 old_ms=8.79012 production_ms=2.09062 speedup=4.20454
+round=18 old_ms=9.59712 production_ms=2.11075 speedup=4.54678
+round=19 old_ms=10.11075 production_ms=2.07425 speedup=4.87441
+RESULT old_ms=9.56538 production_ms=2.09448 paired_speedup=4.44635 byte_equal=1
+EXIT=0
+
+
+$ /private/tmp/na_int8_v_mean_bench 32768 56 1 20 128 16BF 0 32768
+device=Apple M5 Max shape=[1,32768,56,128] precision=16BF full=0 R=32768 rounds=20 production_threads=256 production_tg_bytes=16384 device_tg_cap=32768
+warmup=0 old_ms=3.26325 production_ms=0.93183 speedup=3.50197
+warmup=1 old_ms=3.01525 production_ms=0.96100 speedup=3.13762
+warmup=2 old_ms=2.97671 production_ms=0.92475 speedup=3.21893
+warmup=3 old_ms=3.41987 production_ms=0.91438 speedup=3.74012
+round=0 old_ms=3.02096 production_ms=0.92433 speedup=3.26826
+round=1 old_ms=2.94717 production_ms=0.92787 speedup=3.17625
+round=2 old_ms=3.20913 production_ms=0.96912 speedup=3.31136
+round=3 old_ms=3.23250 production_ms=0.97079 speedup=3.32976
+round=4 old_ms=3.53633 production_ms=0.94000 speedup=3.76206
+round=5 old_ms=2.76879 production_ms=0.96125 speedup=2.88041
+round=6 old_ms=2.66325 production_ms=0.97408 speedup=2.73411
+round=7 old_ms=2.97325 production_ms=1.18563 speedup=2.50775
+round=8 old_ms=3.42550 production_ms=0.96017 speedup=3.56761
+round=9 old_ms=2.45629 production_ms=0.96300 speedup=2.55067
+round=10 old_ms=2.77500 production_ms=0.92400 speedup=3.00325
+round=11 old_ms=4.25192 production_ms=1.16025 speedup=3.66466
+round=12 old_ms=2.68533 production_ms=0.94613 speedup=2.83824
+round=13 old_ms=2.73187 production_ms=0.96196 speedup=2.83991
+round=14 old_ms=3.13233 production_ms=1.14138 speedup=2.74435
+round=15 old_ms=3.37800 production_ms=0.91821 speedup=3.67890
+round=16 old_ms=2.90442 production_ms=0.93242 speedup=3.11493
+round=17 old_ms=3.24538 production_ms=1.05904 speedup=3.06445
+round=18 old_ms=2.99925 production_ms=0.92012 speedup=3.25961
+round=19 old_ms=2.94650 production_ms=0.92771 speedup=3.17611
+RESULT old_ms=2.98625 production_ms=0.96071 paired_speedup=3.14552 byte_equal=1
+EXIT=0
+
+
+$ /private/tmp/na_int8_v_mean_bench 32768 56 1 20 128 32F 0 32768
+device=Apple M5 Max shape=[1,32768,56,128] precision=32F full=0 R=32768 rounds=20 production_threads=256 production_tg_bytes=16384 device_tg_cap=32768
+warmup=0 old_ms=3.93287 production_ms=1.78575 speedup=2.20237
+warmup=1 old_ms=4.37125 production_ms=1.94000 speedup=2.25322
+warmup=2 old_ms=3.79425 production_ms=1.78412 speedup=2.12667
+warmup=3 old_ms=3.69717 production_ms=1.79779 speedup=2.05650
+round=0 old_ms=5.15408 production_ms=1.76542 speedup=2.91947
+round=1 old_ms=3.71729 production_ms=1.80379 speedup=2.06082
+round=2 old_ms=4.19667 production_ms=1.87488 speedup=2.23837
+round=3 old_ms=3.59617 production_ms=1.74733 speedup=2.05809
+round=4 old_ms=4.65262 production_ms=1.77237 speedup=2.62508
+round=5 old_ms=3.91725 production_ms=2.00812 speedup=1.95070
+round=6 old_ms=3.57138 production_ms=1.87008 speedup=1.90974
+round=7 old_ms=3.83162 production_ms=1.79408 speedup=2.13570
+round=8 old_ms=3.77225 production_ms=1.87375 speedup=2.01321
+round=9 old_ms=3.85800 production_ms=1.79650 speedup=2.14751
+round=10 old_ms=3.48962 production_ms=2.02375 speedup=1.72434
+round=11 old_ms=3.81692 production_ms=1.76662 speedup=2.16057
+round=12 old_ms=4.47208 production_ms=1.76512 speedup=2.53358
+round=13 old_ms=4.22375 production_ms=1.77804 speedup=2.37551
+round=14 old_ms=4.03100 production_ms=1.79608 speedup=2.24433
+round=15 old_ms=3.84821 production_ms=1.81196 speedup=2.12378
+round=16 old_ms=3.37200 production_ms=2.01208 speedup=1.67587
+round=17 old_ms=3.85900 production_ms=1.82221 speedup=2.11776
+round=18 old_ms=3.74650 production_ms=1.91329 speedup=1.95814
+round=19 old_ms=3.88750 production_ms=1.78558 speedup=2.17716
+RESULT old_ms=3.85310 production_ms=1.80015 paired_speedup=2.12974 byte_equal=1
+EXIT=0
+
+
+$ /private/tmp/na_int8_v_mean_bench 257 3 2 20 8 16F 0 257
+device=Apple M5 Max shape=[2,257,3,8] precision=16F full=0 R=257 rounds=20 production_threads=256 production_tg_bytes=16384 device_tg_cap=32768
+warmup=0 old_ms=0.00488 production_ms=0.00300 speedup=1.62501
+warmup=1 old_ms=0.00283 production_ms=0.00283 speedup=1.00001
+warmup=2 old_ms=0.00275 production_ms=0.00287 speedup=0.95653
+warmup=3 old_ms=0.00275 production_ms=0.00283 speedup=0.97058
+round=0 old_ms=0.00271 production_ms=0.00287 speedup=0.94204
+round=1 old_ms=0.00275 production_ms=0.00287 speedup=0.95653
+round=2 old_ms=0.00267 production_ms=0.00287 speedup=0.92754
+round=3 old_ms=0.00275 production_ms=0.00333 speedup=0.82500
+round=4 old_ms=0.00275 production_ms=0.00300 speedup=0.91668
+round=5 old_ms=0.00262 production_ms=0.00275 speedup=0.95453
+round=6 old_ms=0.00288 production_ms=0.00275 speedup=1.04547
+round=7 old_ms=0.00279 production_ms=0.00287 speedup=0.97102
+round=8 old_ms=0.00275 production_ms=0.00296 speedup=0.92957
+round=9 old_ms=0.00642 production_ms=0.00287 speedup=2.23189
+round=10 old_ms=0.00275 production_ms=0.00287 speedup=0.95652
+round=11 old_ms=0.00267 production_ms=0.00275 speedup=0.96970
+round=12 old_ms=0.00275 production_ms=0.00283 speedup=0.97058
+round=13 old_ms=0.00283 production_ms=0.00287 speedup=0.98551
+round=14 old_ms=0.00275 production_ms=0.00287 speedup=0.95653
+round=15 old_ms=0.00275 production_ms=0.00296 speedup=0.92958
+round=16 old_ms=0.00254 production_ms=0.00267 speedup=0.95312
+round=17 old_ms=0.00275 production_ms=0.00287 speedup=0.95652
+round=18 old_ms=0.00267 production_ms=0.00287 speedup=0.92754
+round=19 old_ms=0.00275 production_ms=0.00283 speedup=0.97059
+RESULT old_ms=0.00275 production_ms=0.00287 paired_speedup=0.95652 byte_equal=1
+EXIT=0
+
+
+$ /private/tmp/na_int8_v_mean_bench 257 3 2 20 80 16BF 0 257
+device=Apple M5 Max shape=[2,257,3,80] precision=16BF full=0 R=257 rounds=20 production_threads=256 production_tg_bytes=16384 device_tg_cap=32768
+warmup=0 old_ms=0.00500 production_ms=0.00375 speedup=1.33334
+warmup=1 old_ms=0.00350 production_ms=0.00362 speedup=0.96552
+warmup=2 old_ms=0.00362 production_ms=0.00375 speedup=0.96667
+warmup=3 old_ms=0.00408 production_ms=0.00350 speedup=1.16667
+round=0 old_ms=0.00346 production_ms=0.00383 speedup=0.90218
+round=1 old_ms=0.00350 production_ms=0.00358 speedup=0.97674
+round=2 old_ms=0.00354 production_ms=0.00388 speedup=0.91398
+round=3 old_ms=0.00337 production_ms=0.00350 speedup=0.96429
+round=4 old_ms=0.00337 production_ms=0.00367 speedup=0.92045
+round=5 old_ms=0.00367 production_ms=0.00362 speedup=1.01150
+round=6 old_ms=0.00346 production_ms=0.00375 speedup=0.92222
+round=7 old_ms=0.00354 production_ms=0.00375 speedup=0.94445
+round=8 old_ms=0.00350 production_ms=0.00371 speedup=0.94381
+round=9 old_ms=0.01192 production_ms=0.00375 speedup=3.17778
+round=10 old_ms=0.03304 production_ms=0.00375 speedup=8.81111
+round=11 old_ms=0.00358 production_ms=0.00383 speedup=0.93478
+round=12 old_ms=0.00362 production_ms=0.00375 speedup=0.96667
+round=13 old_ms=0.00392 production_ms=0.00362 speedup=1.08046
+round=14 old_ms=0.00342 production_ms=0.00354 speedup=0.96471
+round=15 old_ms=0.00350 production_ms=0.00375 speedup=0.93333
+round=16 old_ms=0.00350 production_ms=0.00371 speedup=0.94382
+round=17 old_ms=0.00350 production_ms=0.00379 speedup=0.92307
+round=18 old_ms=0.00350 production_ms=0.00362 speedup=0.96552
+round=19 old_ms=0.00350 production_ms=0.00367 speedup=0.95455
+RESULT old_ms=0.00350 production_ms=0.00373 paired_speedup=0.94950 byte_equal=1
+EXIT=0
+
+
+$ /private/tmp/na_int8_v_mean_bench 257 3 2 20 192 32F 0 257
+device=Apple M5 Max shape=[2,257,3,192] precision=32F full=0 R=257 rounds=20 production_threads=256 production_tg_bytes=16384 device_tg_cap=32768
+warmup=0 old_ms=0.00883 production_ms=0.00550 speedup=1.60607
+warmup=1 old_ms=0.00475 production_ms=0.00550 speedup=0.86364
+warmup=2 old_ms=0.00500 production_ms=0.00550 speedup=0.90909
+warmup=3 old_ms=0.00517 production_ms=0.00538 speedup=0.96124
+round=0 old_ms=0.00496 production_ms=0.00537 speedup=0.92248
+round=1 old_ms=0.00475 production_ms=0.00537 speedup=0.88372
+round=2 old_ms=0.00488 production_ms=0.00525 speedup=0.92857
+round=3 old_ms=0.00488 production_ms=0.00550 speedup=0.88636
+round=4 old_ms=0.00471 production_ms=0.00525 speedup=0.89683
+round=5 old_ms=0.00475 production_ms=0.00525 speedup=0.90476
+round=6 old_ms=0.00496 production_ms=0.00612 speedup=0.80953
+round=7 old_ms=0.02621 production_ms=0.02738 speedup=0.95738
+round=8 old_ms=0.00487 production_ms=0.00525 speedup=0.92857
+round=9 old_ms=0.00496 production_ms=0.00542 speedup=0.91539
+round=10 old_ms=0.00479 production_ms=0.00533 speedup=0.89843
+round=11 old_ms=0.00475 production_ms=0.00517 speedup=0.91935
+round=12 old_ms=0.00462 production_ms=0.00537 speedup=0.86046
+round=13 old_ms=0.00533 production_ms=0.00542 speedup=0.98462
+round=14 old_ms=0.00475 production_ms=0.00533 speedup=0.89063
+round=15 old_ms=0.00479 production_ms=0.00537 speedup=0.89148
+round=16 old_ms=0.00488 production_ms=0.00517 speedup=0.94355
+round=17 old_ms=0.00483 production_ms=0.00533 speedup=0.90625
+round=18 old_ms=0.00475 production_ms=0.00550 speedup=0.86364
+round=19 old_ms=0.00471 production_ms=0.00533 speedup=0.88281
+RESULT old_ms=0.00481 production_ms=0.00535 paired_speedup=0.90160 byte_equal=1
+EXIT=0
+
+
+$ /private/tmp/na_int8_v_mean_bench 128 56 1 20 128 16F 1 128
+device=Apple M5 Max shape=[1,128,56,128] precision=16F full=1 R=128 rounds=20 production_threads=256 production_tg_bytes=16384 device_tg_cap=32768
+warmup=0 old_ms=0.04613 production_ms=0.03692 speedup=1.24944
+warmup=1 old_ms=0.03800 production_ms=0.03692 speedup=1.02935
+warmup=2 old_ms=0.03775 production_ms=0.03725 speedup=1.01342
+warmup=3 old_ms=0.03787 production_ms=0.03700 speedup=1.02365
+round=0 old_ms=0.03787 production_ms=0.03675 speedup=1.03061
+round=1 old_ms=0.03800 production_ms=0.03650 speedup=1.04110
+round=2 old_ms=0.03775 production_ms=0.03687 speedup=1.02373
+round=3 old_ms=0.03767 production_ms=0.03654 speedup=1.03079
+round=4 old_ms=0.03788 production_ms=0.03700 speedup=1.02365
+round=5 old_ms=0.03758 production_ms=0.03688 speedup=1.01921
+round=6 old_ms=0.03775 production_ms=0.03654 speedup=1.03307
+round=7 old_ms=0.03771 production_ms=0.03654 speedup=1.03193
+round=8 old_ms=0.03775 production_ms=0.03667 speedup=1.02954
+round=9 old_ms=0.19913 production_ms=0.04108 speedup=4.84686
+round=10 old_ms=0.03800 production_ms=0.03687 speedup=1.03051
+round=11 old_ms=0.03771 production_ms=0.03629 speedup=1.03904
+round=12 old_ms=0.03779 production_ms=0.03713 speedup=1.01796
+round=13 old_ms=0.03817 production_ms=0.03658 speedup=1.04328
+round=14 old_ms=0.03775 production_ms=0.03696 speedup=1.02142
+round=15 old_ms=0.03750 production_ms=0.03679 speedup=1.01925
+round=16 old_ms=0.03800 production_ms=0.03654 speedup=1.03991
+round=17 old_ms=0.03737 production_ms=0.03683 speedup=1.01471
+round=18 old_ms=0.03775 production_ms=0.03675 speedup=1.02721
+round=19 old_ms=0.03800 production_ms=0.03675 speedup=1.03401
+RESULT old_ms=0.03775 production_ms=0.03675 paired_speedup=1.03056 byte_equal=1
+EXIT=0
+
+
+$ /private/tmp/na_int8_v_mean_bench 1024 56 1 20 128 16F 1 1024
+device=Apple M5 Max shape=[1,1024,56,128] precision=16F full=1 R=1024 rounds=20 production_threads=256 production_tg_bytes=16384 device_tg_cap=32768
+warmup=0 old_ms=0.64900 production_ms=0.75150 speedup=0.86361
+warmup=1 old_ms=0.67987 production_ms=0.71812 speedup=0.94674
+warmup=2 old_ms=0.71283 production_ms=0.68500 speedup=1.04063
+warmup=3 old_ms=0.69937 production_ms=0.68583 speedup=1.01974
+round=0 old_ms=0.72825 production_ms=0.70558 speedup=1.03212
+round=1 old_ms=0.70937 production_ms=0.72654 speedup=0.97637
+round=2 old_ms=0.70900 production_ms=0.69550 speedup=1.01941
+round=3 old_ms=0.69496 production_ms=0.72675 speedup=0.95625
+round=4 old_ms=0.68875 production_ms=0.71062 speedup=0.96922
+round=5 old_ms=1.04983 production_ms=0.67488 speedup=1.55560
+round=6 old_ms=0.67362 production_ms=0.70838 speedup=0.95094
+round=7 old_ms=0.72200 production_ms=0.73983 speedup=0.97590
+round=8 old_ms=0.71612 production_ms=0.70467 speedup=1.01626
+round=9 old_ms=0.68904 production_ms=0.66475 speedup=1.03654
+round=10 old_ms=0.67579 production_ms=0.71725 speedup=0.94220
+round=11 old_ms=0.74137 production_ms=0.71350 speedup=1.03907
+round=12 old_ms=0.70129 production_ms=0.65925 speedup=1.06377
+round=13 old_ms=0.74587 production_ms=0.68488 speedup=1.08907
+round=14 old_ms=0.72863 production_ms=0.70875 speedup=1.02804
+round=15 old_ms=0.73438 production_ms=1.00467 speedup=0.73096
+round=16 old_ms=0.75033 production_ms=0.69375 speedup=1.08156
+round=17 old_ms=0.69087 production_ms=0.69375 speedup=0.99586
+round=18 old_ms=0.73038 production_ms=0.71325 speedup=1.02401
+round=19 old_ms=0.70754 production_ms=0.70775 speedup=0.99971
+RESULT old_ms=0.71275 production_ms=0.70806 paired_speedup=1.01784 byte_equal=1
+EXIT=0
+
+
+$ /private/tmp/na_int8_v_mean_bench 4096 56 1 20 128 16F 1 4096
+device=Apple M5 Max shape=[1,4096,56,128] precision=16F full=1 R=4096 rounds=20 production_threads=256 production_tg_bytes=16384 device_tg_cap=32768
+warmup=0 old_ms=7.51279 production_ms=7.61342 speedup=0.98678
+warmup=1 old_ms=7.64675 production_ms=7.43100 speedup=1.02903
+warmup=2 old_ms=7.46954 production_ms=7.47971 speedup=0.99864
+warmup=3 old_ms=7.46867 production_ms=7.49188 speedup=0.99690
+round=0 old_ms=7.72492 production_ms=7.52450 speedup=1.02664
+round=1 old_ms=7.45213 production_ms=7.68596 speedup=0.96958
+round=2 old_ms=7.87808 production_ms=7.52925 speedup=1.04633
+round=3 old_ms=7.58958 production_ms=8.05467 speedup=0.94226
+round=4 old_ms=8.29625 production_ms=7.52021 speedup=1.10319
+round=5 old_ms=7.55950 production_ms=7.87917 speedup=0.95943
+round=6 old_ms=7.61825 production_ms=7.36863 speedup=1.03388
+round=7 old_ms=7.63838 production_ms=7.56954 speedup=1.00909
+round=8 old_ms=7.44738 production_ms=7.95987 speedup=0.93561
+round=9 old_ms=7.63917 production_ms=7.43346 speedup=1.02767
+round=10 old_ms=7.55812 production_ms=7.61050 speedup=0.99312
+round=11 old_ms=7.79888 production_ms=7.70837 speedup=1.01174
+round=12 old_ms=7.58488 production_ms=7.64650 speedup=0.99194
+round=13 old_ms=7.72037 production_ms=7.41117 speedup=1.04172
+round=14 old_ms=7.69837 production_ms=7.57775 speedup=1.01592
+round=15 old_ms=7.58658 production_ms=7.51112 speedup=1.01005
+round=16 old_ms=7.57338 production_ms=7.42675 speedup=1.01974
+round=17 old_ms=7.51375 production_ms=7.70137 speedup=0.97564
+round=18 old_ms=7.64587 production_ms=7.42783 speedup=1.02935
+round=19 old_ms=7.56604 production_ms=7.73783 speedup=0.97780
+RESULT old_ms=7.60392 production_ms=7.57365 paired_speedup=1.01089 byte_equal=1
+EXIT=0
+
+
+$ /private/tmp/na_int8_v_mean_bench 32768 56 1 20 128 16F 1 32768
+device=Apple M5 Max shape=[1,32768,56,128] precision=16F full=1 R=32768 rounds=20 production_threads=256 production_tg_bytes=16384 device_tg_cap=32768
+warmup=0 old_ms=480.46275 production_ms=479.77646 speedup=1.00143
+warmup=1 old_ms=481.28896 production_ms=477.12346 speedup=1.00873
+warmup=2 old_ms=486.42075 production_ms=489.18625 speedup=0.99435
+warmup=3 old_ms=559.47396 production_ms=552.15600 speedup=1.01325
+round=0 old_ms=572.29908 production_ms=602.55179 speedup=0.94979
+round=1 old_ms=614.26783 production_ms=565.63312 speedup=1.08598
+round=2 old_ms=597.19196 production_ms=607.46475 speedup=0.98309
+round=3 old_ms=617.95637 production_ms=613.87104 speedup=1.00666
+round=4 old_ms=616.29504 production_ms=626.61912 speedup=0.98352
+round=5 old_ms=625.38946 production_ms=622.14025 speedup=1.00522
+round=6 old_ms=613.27175 production_ms=668.21900 speedup=0.91777
+round=7 old_ms=649.78262 production_ms=652.13050 speedup=0.99640
+round=8 old_ms=640.07175 production_ms=632.63796 speedup=1.01175
+round=9 old_ms=701.14608 production_ms=690.93825 speedup=1.01477
+round=10 old_ms=684.76788 production_ms=667.41629 speedup=1.02600
+round=11 old_ms=649.89188 production_ms=658.88712 speedup=0.98635
+round=12 old_ms=663.85312 production_ms=680.50417 speedup=0.97553
+round=13 old_ms=721.13983 production_ms=650.02750 speedup=1.10940
+round=14 old_ms=692.01979 production_ms=676.41788 speedup=1.02307
+round=15 old_ms=654.57083 production_ms=674.73179 speedup=0.97012
+round=16 old_ms=724.62362 production_ms=699.70700 speedup=1.03561
+round=17 old_ms=632.17879 production_ms=686.60554 speedup=0.92073
+round=18 old_ms=703.06533 production_ms=715.61738 speedup=0.98246
+round=19 old_ms=698.79183 production_ms=697.40617 speedup=1.00199
+RESULT old_ms=649.83725 production_ms=663.15171 paired_speedup=0.99919 byte_equal=1
+EXIT=0
+
+
+$ /private/tmp/na_int8_v_mean_bench 65536 56 1 20 128 16F 1 65536
+device=Apple M5 Max shape=[1,65536,56,128] precision=16F full=1 R=65536 rounds=20 production_threads=256 production_tg_bytes=16384 device_tg_cap=32768
+warmup=0 old_ms=2202.52379 production_ms=2377.95500 speedup=0.92623
+warmup=1 old_ms=2541.21000 production_ms=2487.05187 speedup=1.02178
+warmup=2 old_ms=3212.08525 production_ms=3116.14950 speedup=1.03079
+warmup=3 old_ms=3060.93650 production_ms=3249.46012 speedup=0.94198
+round=0 old_ms=3296.64279 production_ms=3138.86313 speedup=1.05027
+round=1 old_ms=3266.17017 production_ms=3200.69112 speedup=1.02046
+round=2 old_ms=3286.85167 production_ms=3356.72763 speedup=0.97918
+round=3 old_ms=3416.02175 production_ms=3348.69496 speedup=1.02011
+round=4 old_ms=3484.34337 production_ms=3496.37908 speedup=0.99656
+round=5 old_ms=3898.80088 production_ms=3551.83079 speedup=1.09769
+round=6 old_ms=3808.14150 production_ms=3740.10675 speedup=1.01819
+round=7 old_ms=3964.64346 production_ms=3905.05412 speedup=1.01526
+round=8 old_ms=3909.61325 production_ms=4392.51679 speedup=0.89006
+round=9 old_ms=4406.23933 production_ms=4403.37437 speedup=1.00065
+round=10 old_ms=4318.42246 production_ms=4358.89150 speedup=0.99072
+round=11 old_ms=4458.17288 production_ms=4426.09617 speedup=1.00725
+round=12 old_ms=4426.44550 production_ms=4594.62933 speedup=0.96340
+round=13 old_ms=4549.32642 production_ms=4498.78025 speedup=1.01124
+round=14 old_ms=4599.59550 production_ms=4581.22492 speedup=1.00401
+round=15 old_ms=4903.13513 production_ms=4478.75863 speedup=1.09475
+round=16 old_ms=4645.05846 production_ms=4721.42800 speedup=0.98382
+round=17 old_ms=4445.69271 production_ms=4586.57717 speedup=0.96928
+round=18 old_ms=4642.35454 production_ms=4530.45258 speedup=1.02470
+round=19 old_ms=4451.26633 production_ms=4479.30846 speedup=0.99374
+RESULT old_ms=4362.33090 production_ms=4397.94558 paired_speedup=1.00563 byte_equal=1
+EXIT=0
+
+
+$ /private/tmp/na_int8_v_mean_bench 32768 56 1 20 128 16F 1 17
+device=Apple M5 Max shape=[1,32768,56,128] precision=16F full=1 R=17 rounds=20 production_threads=256 production_tg_bytes=16384 device_tg_cap=32768
+warmup=0 old_ms=7.96850 production_ms=5.37287 speedup=1.48310
+warmup=1 old_ms=7.55779 production_ms=5.90637 speedup=1.27960
+warmup=2 old_ms=7.84237 production_ms=5.61213 speedup=1.39740
+warmup=3 old_ms=7.99962 production_ms=5.40633 speedup=1.47968
+round=0 old_ms=7.59462 production_ms=5.91129 speedup=1.28477
+round=1 old_ms=8.00063 production_ms=5.62346 speedup=1.42272
+round=2 old_ms=7.27658 production_ms=5.43283 speedup=1.33937
+round=3 old_ms=7.36912 production_ms=5.87854 speedup=1.25356
+round=4 old_ms=7.88025 production_ms=5.51717 speedup=1.42831
+round=5 old_ms=7.74550 production_ms=5.41492 speedup=1.43040
+round=6 old_ms=7.08471 production_ms=5.58608 speedup=1.26828
+round=7 old_ms=7.37846 production_ms=5.52175 speedup=1.33625
+round=8 old_ms=7.39012 production_ms=5.47687 speedup=1.34933
+round=9 old_ms=7.94688 production_ms=5.47188 speedup=1.45231
+round=10 old_ms=7.49650 production_ms=5.95729 speedup=1.25837
+round=11 old_ms=7.96113 production_ms=5.56358 speedup=1.43093
+round=12 old_ms=7.61475 production_ms=5.47671 speedup=1.39039
+round=13 old_ms=7.87454 production_ms=5.98862 speedup=1.31492
+round=14 old_ms=7.51725 production_ms=5.66700 speedup=1.32650
+round=15 old_ms=8.48538 production_ms=5.43425 speedup=1.56146
+round=16 old_ms=8.22104 production_ms=6.32883 speedup=1.29898
+round=17 old_ms=7.83812 production_ms=5.38942 speedup=1.45435
+round=18 old_ms=7.83375 production_ms=5.45554 speedup=1.43593
+round=19 old_ms=7.94350 production_ms=5.73933 speedup=1.38405
+RESULT old_ms=7.78963 production_ms=5.54267 paired_speedup=1.36669 byte_equal=1
+EXIT=0
+
+
+$ /private/tmp/na_int8_v_mean_bench 32768 3 2 20 80 16F 1 17
+device=Apple M5 Max shape=[2,32768,3,80] precision=16F full=1 R=17 rounds=20 production_threads=128 production_tg_bytes=16384 device_tg_cap=32768
+warmup=0 old_ms=1.79588 production_ms=1.59458 speedup=1.12623
+warmup=1 old_ms=1.62379 production_ms=1.63325 speedup=0.99421
+warmup=2 old_ms=1.60200 production_ms=1.60208 speedup=0.99995
+warmup=3 old_ms=1.61600 production_ms=1.61992 speedup=0.99758
+round=0 old_ms=1.61287 production_ms=1.75242 speedup=0.92037
+round=1 old_ms=1.62142 production_ms=1.59938 speedup=1.01378
+round=2 old_ms=1.61629 production_ms=1.60804 speedup=1.00513
+round=3 old_ms=1.62088 production_ms=1.59933 speedup=1.01347
+round=4 old_ms=1.61650 production_ms=1.60504 speedup=1.00714
+round=5 old_ms=1.78917 production_ms=1.60508 speedup=1.11469
+round=6 old_ms=1.61546 production_ms=1.62300 speedup=0.99535
+round=7 old_ms=1.60313 production_ms=1.60675 speedup=0.99774
+round=8 old_ms=1.62233 production_ms=1.61979 speedup=1.00157
+round=9 old_ms=1.60575 production_ms=1.60058 speedup=1.00323
+round=10 old_ms=1.76192 production_ms=1.61063 speedup=1.09393
+round=11 old_ms=1.59850 production_ms=1.61679 speedup=0.98869
+round=12 old_ms=1.61358 production_ms=1.61725 speedup=0.99773
+round=13 old_ms=1.60033 production_ms=1.61942 speedup=0.98822
+round=14 old_ms=1.60754 production_ms=1.60538 speedup=1.00135
+round=15 old_ms=1.61850 production_ms=2.04913 speedup=0.78985
+round=16 old_ms=1.60050 production_ms=1.60713 speedup=0.99588
+round=17 old_ms=1.63404 production_ms=1.62037 speedup=1.00843
+round=18 old_ms=1.60800 production_ms=1.61000 speedup=0.99876
+round=19 old_ms=1.86792 production_ms=1.61329 speedup=1.15783
+RESULT old_ms=1.61587 production_ms=1.61031 paired_speedup=1.00146 byte_equal=1
+EXIT=0
+
+
+$ /private/tmp/na_int8_v_mean_bench 32768 8 1 20 128 32F 1 4096
+device=Apple M5 Max shape=[1,32768,8,128] precision=32F full=1 R=4096 rounds=20 production_threads=128 production_tg_bytes=16384 device_tg_cap=32768
+warmup=0 old_ms=9.67037 production_ms=10.47383 speedup=0.92329
+warmup=1 old_ms=9.93213 production_ms=9.94650 speedup=0.99855
+warmup=2 old_ms=9.91875 production_ms=9.91725 speedup=1.00015
+warmup=3 old_ms=10.16662 production_ms=9.52171 speedup=1.06773
+round=0 old_ms=9.67421 production_ms=10.51729 speedup=0.91984
+round=1 old_ms=9.76633 production_ms=10.18867 speedup=0.95855
+round=2 old_ms=10.36346 production_ms=9.91467 speedup=1.04527
+round=3 old_ms=10.16475 production_ms=9.57363 speedup=1.06175
+round=4 old_ms=9.72488 production_ms=9.90354 speedup=0.98196
+round=5 old_ms=9.85337 production_ms=9.81175 speedup=1.00424
+round=6 old_ms=10.06125 production_ms=9.70975 speedup=1.03620
+round=7 old_ms=10.09708 production_ms=10.13417 speedup=0.99634
+round=8 old_ms=9.97729 production_ms=10.23013 speedup=0.97529
+round=9 old_ms=10.68617 production_ms=10.07729 speedup=1.06042
+round=10 old_ms=10.79404 production_ms=10.10179 speedup=1.06853
+round=11 old_ms=10.72625 production_ms=11.65767 speedup=0.92010
+round=12 old_ms=10.41471 production_ms=11.83400 speedup=0.88007
+round=13 old_ms=11.26563 production_ms=10.85162 speedup=1.03815
+round=14 old_ms=11.49717 production_ms=11.05975 speedup=1.03955
+round=15 old_ms=11.81200 production_ms=11.34275 speedup=1.04137
+round=16 old_ms=11.52867 production_ms=11.06696 speedup=1.04172
+round=17 old_ms=11.80783 production_ms=11.03050 speedup=1.07047
+round=18 old_ms=11.67637 production_ms=11.26846 speedup=1.03620
+round=19 old_ms=12.21825 production_ms=12.00729 speedup=1.01757
+RESULT old_ms=10.55044 production_ms=10.37371 paired_speedup=1.03620 byte_equal=1
+EXIT=0
+
+
+$ /private/tmp/na_int8_v_mean_bench 103982 56 1 10 128 16F 1 103982
+device=Apple M5 Max shape=[1,103982,56,128] precision=16F full=1 R=103982 rounds=10 production_threads=256 production_tg_bytes=16384 device_tg_cap=32768
+warmup=0 old_ms=9433.08925 production_ms=11267.07471 speedup=0.83723
+warmup=1 old_ms=11097.95113 production_ms=11122.84488 speedup=0.99776
+warmup=2 old_ms=10897.94637 production_ms=10760.15213 speedup=1.01281
+warmup=3 old_ms=10418.29992 production_ms=10537.85417 speedup=0.98865
+round=0 old_ms=10386.02521 production_ms=10426.87363 speedup=0.99608
+round=1 old_ms=10002.68442 production_ms=10160.87925 speedup=0.98443
+round=2 old_ms=10001.32950 production_ms=9915.99900 speedup=1.00861
+round=3 old_ms=9667.56296 production_ms=10129.48029 speedup=0.95440
+round=4 old_ms=9562.38325 production_ms=9714.78288 speedup=0.98431
+round=5 old_ms=9538.80612 production_ms=9644.53692 speedup=0.98904
+round=6 old_ms=9554.21308 production_ms=9443.73312 speedup=1.01170
+round=7 old_ms=9364.97513 production_ms=9483.18500 speedup=0.98753
+round=8 old_ms=9422.36100 production_ms=9704.93437 speedup=0.97088
+round=9 old_ms=9438.04117 production_ms=9302.97479 speedup=1.01452
+RESULT old_ms=9558.29817 production_ms=9709.85862 paired_speedup=0.98829 byte_equal=1
+EXIT=0

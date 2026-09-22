@@ -175,8 +175,8 @@ void upload_buffer(
     MTL::Buffer* destination,
     size_t size)
 {
-  auto command_buffer = NS::TransferPtr(command_queue->commandBuffer());
-  auto blit = NS::TransferPtr(command_buffer->blitCommandEncoder());
+  auto command_buffer = NS::RetainPtr(command_queue->commandBuffer());
+  auto blit = NS::RetainPtr(command_buffer->blitCommandEncoder());
   blit->copyFromBuffer(source, 0, destination, 0, size);
   blit->endEncoding();
   command_buffer->commit();
@@ -193,17 +193,6 @@ size_t reserve(size_t* total, size_t size)
   const size_t offset = *total;
   *total = align_up(*total + size);
   return offset;
-}
-
-uint32_t ceil_log2_u32(uint32_t x)
-{
-  uint32_t bits = 0;
-  uint32_t value = 1;
-  while (value < x) {
-    value <<= 1;
-    ++bits;
-  }
-  return bits;
 }
 
 simd::ushort3 create_forward_block_dimensions(const AttentionCase& attention)
@@ -372,6 +361,7 @@ QuantizePipelines create_quantize_pipelines(MTL::Device* device, const Attention
       create_scale(attention),
       false,
       false,
+      false,
       false);
   bundle.kernel = std::make_unique<NAInt8AttentionKernel>(kernel_descriptor, device);
   auto quantize_constants = create_quantize_constants(attention, bundle.q_tiles, bundle.kv_tiles);
@@ -403,6 +393,7 @@ ForwardPipeline create_forward_pipeline(MTL::Device* device, const AttentionCase
       create_low_precision_intermediates(),
       AttentionKernelType::forward,
       create_scale(attention),
+      false,
       false,
       false,
       false);
@@ -443,6 +434,7 @@ BackwardPipelines create_backward_pipelines(
       create_scale(attention),
       false,
       false,
+      false,
       false);
   const NAInt8AttentionKernelDescriptor keyvalue_descriptor(
       keyvalue_block_dimensions,
@@ -459,6 +451,7 @@ BackwardPipelines create_backward_pipelines(
       create_low_precision_intermediates(),
       AttentionKernelType::backwardKeyValue,
       create_scale(attention),
+      false,
       false,
       false,
       false);
@@ -525,13 +518,9 @@ void encode_compute_v_mean(
   encoder->setComputePipelineState(pipelines.v_mean_pipeline.get());
   encoder->setBuffer(v_buffer, v_offset, 0);
   encoder->setBuffer(scratch, v_mean_offset, 1);
-  const uint32_t mean_tiles = (attention.D % 4) == 0 ? (attention.D / 4) : attention.D;
-  const uint32_t mean_tile_bits = ceil_log2_u32(mean_tiles);
-  const uint32_t head_bits = ceil_log2_u32(attention.Hk);
-  const uint32_t morton_codes = 1u << (mean_tile_bits + head_bits);
   encoder->dispatchThreadgroups(
-      MTL::Size(morton_codes, 1, attention.batch),
-      MTL::Size(pipelines.v_mean_threads, 1, 1));
+      pipelines.kernel->vMeanThreadgroupsPerGrid(attention.batch),
+      MTL::Size(pipelines.kernel->vMeanThreadgroupSize(), 1, 1));
 }
 
 void encode_quantize_v(
@@ -566,9 +555,9 @@ double run_forward_total_once(
     MTL::Buffer* o_buffer,
     MTL::Buffer* l_buffer)
 {
-  auto command_buffer = NS::TransferPtr(command_queue->commandBuffer());
+  auto command_buffer = NS::RetainPtr(command_queue->commandBuffer());
   {
-    auto encoder = NS::TransferPtr(command_buffer->computeCommandEncoder());
+    auto encoder = NS::RetainPtr(command_buffer->computeCommandEncoder());
     encode_quantize(
         encoder.get(), quantize_pipelines.q_pipeline.get(),
         q_buffer, 0, scratch, layout.q_int8, layout.q_scale,
@@ -576,7 +565,7 @@ double run_forward_total_once(
     encoder->endEncoding();
   }
   {
-    auto encoder = NS::TransferPtr(command_buffer->computeCommandEncoder());
+    auto encoder = NS::RetainPtr(command_buffer->computeCommandEncoder());
     encode_quantize(
         encoder.get(), quantize_pipelines.k_pipeline.get(),
         k_buffer, 0, scratch, layout.k_int8, layout.k_scale,
@@ -584,17 +573,17 @@ double run_forward_total_once(
     encoder->endEncoding();
   }
   {
-    auto encoder = NS::TransferPtr(command_buffer->computeCommandEncoder());
+    auto encoder = NS::RetainPtr(command_buffer->computeCommandEncoder());
     encode_compute_v_mean(encoder.get(), attention, quantize_pipelines, v_buffer, 0, scratch, layout.v_mean);
     encoder->endEncoding();
   }
   {
-    auto encoder = NS::TransferPtr(command_buffer->computeCommandEncoder());
+    auto encoder = NS::RetainPtr(command_buffer->computeCommandEncoder());
     encode_quantize_v(encoder.get(), attention, quantize_pipelines, v_buffer, 0, scratch, layout);
     encoder->endEncoding();
   }
   {
-    auto encoder = NS::TransferPtr(command_buffer->computeCommandEncoder());
+    auto encoder = NS::RetainPtr(command_buffer->computeCommandEncoder());
     encoder->setComputePipelineState(forward_pipeline.pipeline.get());
     encoder->setThreadgroupMemoryLength(forward_pipeline.kernel->threadgroupMemoryAllocation(), 0);
     encoder->setBuffer(scratch, layout.q_int8, 0);
@@ -629,9 +618,9 @@ double run_prepare_backward_once(
     MTL::Buffer* o_buffer,
     MTL::Buffer* scratch)
 {
-  auto command_buffer = NS::TransferPtr(command_queue->commandBuffer());
+  auto command_buffer = NS::RetainPtr(command_queue->commandBuffer());
   {
-    auto encoder = NS::TransferPtr(command_buffer->computeCommandEncoder());
+    auto encoder = NS::RetainPtr(command_buffer->computeCommandEncoder());
     encode_quantize(
         encoder.get(), quantize_pipelines.q_pipeline.get(),
         q_buffer, 0, scratch, layout.q_int8, layout.q_scale,
@@ -639,7 +628,7 @@ double run_prepare_backward_once(
     encoder->endEncoding();
   }
   {
-    auto encoder = NS::TransferPtr(command_buffer->computeCommandEncoder());
+    auto encoder = NS::RetainPtr(command_buffer->computeCommandEncoder());
     encode_quantize(
         encoder.get(), quantize_pipelines.k_pipeline.get(),
         k_buffer, 0, scratch, layout.k_int8, layout.k_scale,
@@ -647,17 +636,17 @@ double run_prepare_backward_once(
     encoder->endEncoding();
   }
   {
-    auto encoder = NS::TransferPtr(command_buffer->computeCommandEncoder());
+    auto encoder = NS::RetainPtr(command_buffer->computeCommandEncoder());
     encode_compute_v_mean(encoder.get(), attention, quantize_pipelines, v_buffer, 0, scratch, layout.v_mean);
     encoder->endEncoding();
   }
   {
-    auto encoder = NS::TransferPtr(command_buffer->computeCommandEncoder());
+    auto encoder = NS::RetainPtr(command_buffer->computeCommandEncoder());
     encode_quantize_v(encoder.get(), attention, quantize_pipelines, v_buffer, 0, scratch, layout);
     encoder->endEncoding();
   }
   {
-    auto encoder = NS::TransferPtr(command_buffer->computeCommandEncoder());
+    auto encoder = NS::RetainPtr(command_buffer->computeCommandEncoder());
     encode_quantize(
         encoder.get(), quantize_pipelines.q_pipeline.get(),
         dO_buffer, 0, scratch, layout.dO_int8, layout.dO_scale,
@@ -665,7 +654,7 @@ double run_prepare_backward_once(
     encoder->endEncoding();
   }
   {
-    auto encoder = NS::TransferPtr(command_buffer->computeCommandEncoder());
+    auto encoder = NS::RetainPtr(command_buffer->computeCommandEncoder());
     encoder->setComputePipelineState(backward_pipelines.compute_d_pipeline.get());
     encoder->setBuffer(o_buffer, 0, 3);
     encoder->setBuffer(scratch, layout.d, 5);
@@ -690,8 +679,8 @@ double run_backward_query_only_once(
     MTL::Buffer* l_buffer,
     MTL::Buffer* dQ_buffer)
 {
-  auto command_buffer = NS::TransferPtr(command_queue->commandBuffer());
-  auto encoder = NS::TransferPtr(command_buffer->computeCommandEncoder());
+  auto command_buffer = NS::RetainPtr(command_queue->commandBuffer());
+  auto encoder = NS::RetainPtr(command_buffer->computeCommandEncoder());
   encoder->setComputePipelineState(backward_pipelines.query_pipeline.get());
   encoder->setThreadgroupMemoryLength(backward_pipelines.query_kernel->threadgroupMemoryAllocation(), 0);
   encoder->setBuffer(scratch, layout.q_int8, 0);
@@ -724,8 +713,8 @@ double run_backward_keyvalue_only_once(
     MTL::Buffer* dK_buffer,
     MTL::Buffer* dV_buffer)
 {
-  auto command_buffer = NS::TransferPtr(command_queue->commandBuffer());
-  auto encoder = NS::TransferPtr(command_buffer->computeCommandEncoder());
+  auto command_buffer = NS::RetainPtr(command_queue->commandBuffer());
+  auto encoder = NS::RetainPtr(command_buffer->computeCommandEncoder());
   encoder->setComputePipelineState(backward_pipelines.keyvalue_pipeline.get());
   encoder->setThreadgroupMemoryLength(backward_pipelines.keyvalue_kernel->threadgroupMemoryAllocation(), 0);
   encoder->setBuffer(scratch, layout.q_int8, 0);
@@ -766,9 +755,9 @@ double run_backward_total_once(
     MTL::Buffer* dK_buffer,
     MTL::Buffer* dV_buffer)
 {
-  auto command_buffer = NS::TransferPtr(command_queue->commandBuffer());
+  auto command_buffer = NS::RetainPtr(command_queue->commandBuffer());
   {
-    auto encoder = NS::TransferPtr(command_buffer->computeCommandEncoder());
+    auto encoder = NS::RetainPtr(command_buffer->computeCommandEncoder());
     encode_quantize(
         encoder.get(), quantize_pipelines.q_pipeline.get(),
         q_buffer, 0, scratch, layout.q_int8, layout.q_scale,
@@ -776,7 +765,7 @@ double run_backward_total_once(
     encoder->endEncoding();
   }
   {
-    auto encoder = NS::TransferPtr(command_buffer->computeCommandEncoder());
+    auto encoder = NS::RetainPtr(command_buffer->computeCommandEncoder());
     encode_quantize(
         encoder.get(), quantize_pipelines.k_pipeline.get(),
         k_buffer, 0, scratch, layout.k_int8, layout.k_scale,
@@ -784,17 +773,17 @@ double run_backward_total_once(
     encoder->endEncoding();
   }
   {
-    auto encoder = NS::TransferPtr(command_buffer->computeCommandEncoder());
+    auto encoder = NS::RetainPtr(command_buffer->computeCommandEncoder());
     encode_compute_v_mean(encoder.get(), attention, quantize_pipelines, v_buffer, 0, scratch, layout.v_mean);
     encoder->endEncoding();
   }
   {
-    auto encoder = NS::TransferPtr(command_buffer->computeCommandEncoder());
+    auto encoder = NS::RetainPtr(command_buffer->computeCommandEncoder());
     encode_quantize_v(encoder.get(), attention, quantize_pipelines, v_buffer, 0, scratch, layout);
     encoder->endEncoding();
   }
   {
-    auto encoder = NS::TransferPtr(command_buffer->computeCommandEncoder());
+    auto encoder = NS::RetainPtr(command_buffer->computeCommandEncoder());
     encode_quantize(
         encoder.get(), quantize_pipelines.q_pipeline.get(),
         dO_buffer, 0, scratch, layout.dO_int8, layout.dO_scale,
@@ -802,7 +791,7 @@ double run_backward_total_once(
     encoder->endEncoding();
   }
   {
-    auto encoder = NS::TransferPtr(command_buffer->computeCommandEncoder());
+    auto encoder = NS::RetainPtr(command_buffer->computeCommandEncoder());
     encoder->setComputePipelineState(backward_pipelines.compute_d_pipeline.get());
     encoder->setBuffer(o_buffer, 0, 3);
     encoder->setBuffer(scratch, layout.d, 5);
@@ -814,7 +803,7 @@ double run_backward_total_once(
     encoder->endEncoding();
   }
   {
-    auto encoder = NS::TransferPtr(command_buffer->computeCommandEncoder());
+    auto encoder = NS::RetainPtr(command_buffer->computeCommandEncoder());
     encoder->setComputePipelineState(backward_pipelines.query_pipeline.get());
     encoder->setThreadgroupMemoryLength(backward_pipelines.query_kernel->threadgroupMemoryAllocation(), 0);
     encoder->setBuffer(scratch, layout.q_int8, 0);
@@ -834,7 +823,7 @@ double run_backward_total_once(
     encoder->endEncoding();
   }
   {
-    auto encoder = NS::TransferPtr(command_buffer->computeCommandEncoder());
+    auto encoder = NS::RetainPtr(command_buffer->computeCommandEncoder());
     encoder->setComputePipelineState(backward_pipelines.keyvalue_pipeline.get());
     encoder->setThreadgroupMemoryLength(backward_pipelines.keyvalue_kernel->threadgroupMemoryAllocation(), 0);
     encoder->setBuffer(scratch, layout.q_int8, 0);
@@ -926,17 +915,15 @@ int main(int argc, char** argv)
     return 2;
   }
 
-  auto* pool = NS::AutoreleasePool::alloc()->init();
+  auto pool = NS::TransferPtr(NS::AutoreleasePool::alloc()->init());
   auto device = NS::TransferPtr(MTL::CreateSystemDefaultDevice());
   if (!device) {
     std::cerr << "Metal device unavailable.\n";
-    pool->drain();
     return 1;
   }
   auto command_queue = NS::TransferPtr(device->newCommandQueue());
   if (!command_queue) {
     std::cerr << "Metal command queue unavailable.\n";
-    pool->drain();
     return 1;
   }
 
@@ -996,7 +983,6 @@ int main(int argc, char** argv)
       q_buffer.get(), k_buffer.get(), v_buffer.get(), scratch.get(), o_buffer.get(), l_buffer.get());
   if (!(setup_forward_seconds > 0)) {
     std::cerr << "forward setup failed\n";
-    pool->drain();
     return 1;
   }
   const double setup_prepare_seconds = run_prepare_backward_once(
@@ -1004,7 +990,6 @@ int main(int argc, char** argv)
       q_buffer.get(), k_buffer.get(), v_buffer.get(), dO_buffer.get(), o_buffer.get(), scratch.get());
   if (!(setup_prepare_seconds > 0)) {
     std::cerr << "backward prepare setup failed\n";
-    pool->drain();
     return 1;
   }
 
@@ -1018,7 +1003,6 @@ int main(int argc, char** argv)
           },
           &forward_stats)) {
     std::cerr << "forward benchmark failed\n";
-    pool->drain();
     return 1;
   }
 
@@ -1032,7 +1016,6 @@ int main(int argc, char** argv)
           },
           &prepare_stats)) {
     std::cerr << "prepare benchmark failed\n";
-    pool->drain();
     return 1;
   }
 
@@ -1046,7 +1029,6 @@ int main(int argc, char** argv)
           },
           &query_stats)) {
     std::cerr << "query benchmark failed\n";
-    pool->drain();
     return 1;
   }
 
@@ -1060,7 +1042,6 @@ int main(int argc, char** argv)
           },
           &keyvalue_stats)) {
     std::cerr << "keyvalue benchmark failed\n";
-    pool->drain();
     return 1;
   }
 
@@ -1075,7 +1056,6 @@ int main(int argc, char** argv)
           },
           &backward_stats)) {
     std::cerr << "backward benchmark failed\n";
-    pool->drain();
     return 1;
   }
 
@@ -1117,6 +1097,5 @@ int main(int argc, char** argv)
             << " median=" << backward_stats.median_seconds / forward_stats.median_seconds
             << '\n';
 
-  pool->drain();
   return 0;
 }
