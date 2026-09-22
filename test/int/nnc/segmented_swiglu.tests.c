@@ -805,4 +805,121 @@ TEST_CASE("MPS segmented SwiGLU handles small rowwise batches across formats")
 	}
 }
 
+TEST_CASE("MPS segmented SwiGLU preserves route weights with 257 experts")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SEGMENTED_SWIGLU_FORWARD, CCV_NNC_BACKEND_MPS));
+	// This shape exposed intermittent zero outputs with Metal shader validation.
+	// 256 experts passed; 257 failed even though all selected IDs are below 228.
+	const int rows = 228, experts = 257, n = 2304, k = 5120;
+	ccv_nnc_tensor_t* const ha = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, k), 0);
+	ccv_nnc_tensor_t* const hi = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, rows), 0);
+	ccv_nnc_tensor_t* const hc = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, rows), 0);
+	ccv_nnc_tensor_t* const hr = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows), 0);
+	ccv_nnc_tensor_t* const actual = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, n), 0);
+	for (int i = 0; i < rows * k; i++)
+		ha->data.f32[i] = 1.f / k;
+	for (int i = 0; i < rows; i++)
+	{
+		hi->data.i32[i] = i;
+		hc->data.i32[i] = 1;
+		hr->data.f32[i] = 0.25f;
+	}
+	ccv_nnc_tensor_param_t q = ccv_nnc_tensor_8i_rowwise_x(CPU_TENSOR_NHWC(32F, experts, n, k), CCV_NNC_QX_8I_ROWWISE_IQ2_XXS);
+	ccv_nnc_tensor_t* const hg = ccv_nnc_tensor_new(0, q, 0);
+	ccv_nnc_tensor_t* const hu = ccv_nnc_tensor_new(0, q, 0);
+	const size_t payload = (size_t)experts * n * (k / 32) * 8;
+	// Construct valid packed blocks directly to avoid quantizing a dense bank.
+	// Each expert repeats the same rows: one expert's payload is a multiple of
+	// this 256-code pattern. CPU-dequantizing one expert therefore covers them all.
+	for (size_t i = 0; i < payload; i += 8)
+	{
+		for (int j = 0; j < 4; j++)
+		{
+			hg->data.u8[i + j] = (i / 8 + j * 17) % 256;
+			hu->data.u8[i + j] = (i / 8 + j * 23 + 9) % 256;
+		}
+		for (int j = 4; j < 7; j++)
+			hg->data.u8[i + j] = hu->data.u8[i + j] = 0;
+		hg->data.u8[i + 7] = 0x20;
+		hu->data.u8[i + 7] = 0x30;
+	}
+	float* const gs = (float*)(hg->data.u8 + payload);
+	float* const us = (float*)(hu->data.u8 + payload);
+	for (int i = 0; i < experts * n; i++)
+	{
+		gs[i] = 1.f / 16;
+		us[i] = 1.f / 32;
+	}
+	ccv_nnc_tensor_t* const gd = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, n, k), 0);
+	ccv_nnc_tensor_t* const ud = ccv_nnc_tensor_new(0, gd->info, 0);
+	const ccv_nnc_tensor_param_t one_q = ccv_nnc_tensor_8i_rowwise_x(CPU_TENSOR_NHWC(32F, 1, n, k), CCV_NNC_QX_8I_ROWWISE_IQ2_XXS);
+	ccv_nnc_tensor_t* const one = ccv_nnc_tensor_new(0, one_q, 0);
+	const size_t one_payload = (size_t)n * (k / 32) * 8;
+	const size_t one_size = ccv_nnc_tensor_data_size_without_padding(one_q);
+	memcpy(one->data.u8, hg->data.u8, one_payload);
+	memcpy(one->data.u8 + one_payload, gs, n * sizeof(float));
+	ccv_nnc_dequantize_8i_rowwise_x(one->data.u8, CCV_32F, CCV_TENSOR_CPU_MEMORY, one_size, k, CCV_NNC_QX_8I_ROWWISE_IQ2_XXS, gd->data.u8, (size_t)n * k);
+	memcpy(one->data.u8, hu->data.u8, one_payload);
+	memcpy(one->data.u8 + one_payload, us, n * sizeof(float));
+	ccv_nnc_dequantize_8i_rowwise_x(one->data.u8, CCV_32F, CCV_TENSOR_CPU_MEMORY, one_size, k, CCV_NNC_QX_8I_ROWWISE_IQ2_XXS, ud->data.u8, (size_t)n * k);
+	float* const expected = (float*)ccmalloc(n * sizeof(float));
+	for (int col = 0; col < n; col++)
+	{
+		double gate = 0, up = 0;
+		for (int inner = 0; inner < k; inner++)
+		{
+			gate += gd->data.f32[col * k + inner] / k;
+			up += ud->data.f32[col * k + inner] / k;
+		}
+		gate = ccv_min(gate, 10);
+		up = ccv_min(ccv_max(up, -10), 10);
+		expected[col] = 0.25 * up * gate / (1 + exp(-gate));
+	}
+	ccv_nnc_tensor_free(one);
+	ccv_nnc_tensor_free(gd);
+	ccv_nnc_tensor_free(ud);
+	q.type = CCV_TENSOR_GPU_MEMORY;
+	ccv_nnc_tensor_t* const gate = ccv_nnc_tensor_new(0, q, 0);
+	ccv_nnc_tensor_t* const up = ccv_nnc_tensor_new(0, q, 0);
+	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, rows, k), 0);
+	ccv_nnc_tensor_t* const indices = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32S, rows), 0);
+	ccv_nnc_tensor_t* const counts = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32S, rows), 0);
+	ccv_nnc_tensor_t* const route = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, rows), 0);
+	ccv_nnc_tensor_t* const output = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, rows, n), 0);
+	ccv_nnc_stream_context_t* const stream = ccv_nnc_stream_context_new(CCV_STREAM_CONTEXT_GPU);
+	REQUIRE_EQ(ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0,
+		TENSOR_LIST(ha, hi, hc, hr, hg, hu), TENSOR_LIST(a, indices, counts, route, gate, up), stream), CCV_NNC_EXEC_SUCCESS, "copy test inputs");
+	ccv_nnc_stream_context_wait(stream);
+	ccv_nnc_cmd_t command = CMD_SEGMENTED_SWIGLU_FORWARD(10);
+	command.backend = CCV_NNC_BACKEND_MPS;
+	for (int run = 0; run < 16; run++)
+	{
+		// Distinguish zeroed results from skipped stores or stale output storage.
+		for (int i = 0; i < rows * n; i++)
+			actual->data.f32[i] = run % 2 ? 123.f : NAN;
+		REQUIRE_EQ(ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0,
+			TENSOR_LIST(actual), TENSOR_LIST(output), stream), CCV_NNC_EXEC_SUCCESS, "poison output");
+		const uint64_t old_flags = ccv_nnc_flags();
+		ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA);
+		const int status = ccv_nnc_cmd_exec(command, ccv_nnc_no_hint, 0,
+			TENSOR_LIST(a, indices, counts, gate, up, route), TENSOR_LIST(output), stream);
+		if (old_flags & CCV_NNC_DISABLE_MFA)
+			ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA);
+		REQUIRE_EQ(status, CCV_NNC_EXEC_SUCCESS, "execute packed SwiGLU");
+		REQUIRE_EQ(ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0,
+			TENSOR_LIST(output), TENSOR_LIST(actual), stream), CCV_NNC_EXEC_SUCCESS, "read completed output");
+		ccv_nnc_stream_context_wait(stream);
+		for (int i = 0; i < rows * n; i++)
+		{
+			REQUIRE(isfinite(actual->data.f32[i]), "finite result at run=%d index=%d", run, i);
+			REQUIRE_EQ_WITH_TOLERANCE(actual->data.f32[i], expected[i % n], 1e-5, "route weight preserved at run=%d index=%d", run, i);
+		}
+	}
+	ccv_nnc_stream_context_free(stream);
+	ccv_nnc_tensor_t* const tensors[] = { ha, hi, hc, hr, hg, hu, actual, a, indices, counts, gate, up, route, output };
+	for (int i = 0; i < sizeof(tensors) / sizeof(tensors[0]); i++)
+		ccv_nnc_tensor_free(tensors[i]);
+	ccfree(expected);
+}
+
 #include "case_main.h"

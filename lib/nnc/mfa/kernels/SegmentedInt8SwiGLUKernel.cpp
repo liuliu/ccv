@@ -399,6 +399,13 @@ kernel void segmented_int8_swiglu(
   if (expert < 0 || expert >= (int)expert_count)
     return;
 
+  // Keep this load before the projections: loading after the SIMD reductions
+  // produced intermittent zero outputs with Metal shader validation in the
+  // IQ2_XXS 257-expert case. Preserve this workaround across packed formats;
+  // see "MPS segmented SwiGLU preserves route weights with 257 experts" in
+  // test/int/nnc/segmented_swiglu.tests.c.
+  const float route_weight = (float)route_weights[route];
+
   gate_weights += (ulong)expert * weight_expert_stride;
   up_weights += (ulong)expert * weight_expert_stride;
   gate_scales += (ulong)expert * nrows;
@@ -431,7 +438,6 @@ kernel void segmented_int8_swiglu(
 
   const float gate_row_sum0 = simd_sum(gate_sum0);
   const float up_row_sum0 = simd_sum(up_sum0);
-  const float route_weight = (float)route_weights[route];
   if (lane == 0) {
     float gate0 = gate_row_sum0 * (float)gate_scales[row_base + 0];
     float up0 = up_row_sum0 * (float)up_scales[row_base + 0];
@@ -526,6 +532,13 @@ kernel void segmented_int8_swiglu(
   if (expert < 0 || expert >= (int)expert_count)
     return;
 
+  // Keep this load before the projections: loading after the SIMD reductions
+  // produced intermittent zero outputs with Metal shader validation in the
+  // IQ2_XXS 257-expert case. Preserve this workaround across packed formats;
+  // see "MPS segmented SwiGLU preserves route weights with 257 experts" in
+  // test/int/nnc/segmented_swiglu.tests.c.
+  const float route_weight = (float)route_weights[route];
+
   gate_weights += (ulong)expert * weight_expert_stride;
   up_weights += (ulong)expert * weight_expert_stride;
   gate_scales += (ulong)expert * nrows;
@@ -558,7 +571,6 @@ kernel void segmented_int8_swiglu(
 
   const float gate_row_sum0 = simd_sum(gate_sum0);
   const float up_row_sum0 = simd_sum(up_sum0);
-  const float route_weight = (float)route_weights[route];
   if (lane == 0) {
     float gate0 = gate_row_sum0 * (float)gate_scales[row_base + 0];
     float up0 = up_row_sum0 * (float)up_scales[row_base + 0];
@@ -653,6 +665,13 @@ kernel void segmented_int8_swiglu(
   if (expert < 0 || expert >= (int)expert_count)
     return;
 
+  // Keep this load before the projections: loading after the SIMD reductions
+  // produced intermittent zero outputs with Metal shader validation in the
+  // IQ2_XXS 257-expert case. Preserve this workaround across packed formats;
+  // see "MPS segmented SwiGLU preserves route weights with 257 experts" in
+  // test/int/nnc/segmented_swiglu.tests.c.
+  const float route_weight = (float)route_weights[route];
+
   gate_weights += (ulong)expert * weight_expert_stride;
   up_weights += (ulong)expert * weight_expert_stride;
   gate_scales += (ulong)expert * nrows;
@@ -684,7 +703,6 @@ kernel void segmented_int8_swiglu(
 
   const float gate_row_sum0 = simd_sum(gate_sum0);
   const float up_row_sum0 = simd_sum(up_sum0);
-  const float route_weight = (float)route_weights[route];
   if (lane == 0) {
     float gate0 = gate_row_sum0 * (float)gate_scales[row_base + 0];
     float up0 = up_row_sum0 * (float)up_scales[row_base + 0];
@@ -873,6 +891,13 @@ kernel void segmented_int8_swiglu(
   if (expert < 0 || expert >= (int)expert_count)
     return;
 
+  // Keep this load before the projections: loading after the SIMD reductions
+  // produced intermittent zero outputs with Metal shader validation in the
+  // IQ2_XXS 257-expert case. Preserve this workaround across packed formats;
+  // see "MPS segmented SwiGLU preserves route weights with 257 experts" in
+  // test/int/nnc/segmented_swiglu.tests.c.
+  const float route_weight = (float)route_weights[route];
+
   gate_weights += (ulong)expert * weight_expert_stride;
   up_weights += (ulong)expert * weight_expert_stride;
   gate_scales += (ulong)expert * nrows;
@@ -901,7 +926,6 @@ kernel void segmented_int8_swiglu(
 
   const float gate_row_sum0 = simd_sum(gate_sum0);
   const float up_row_sum0 = simd_sum(up_sum0);
-  const float route_weight = (float)route_weights[route];
   if (lane == 0) {
     float gate0 = gate_row_sum0 * (float)gate_scales[row_base + 0];
     float up0 = up_row_sum0 * (float)up_scales[row_base + 0];
