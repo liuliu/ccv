@@ -306,7 +306,7 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 		const uint32_t w_8i_rowwise_x_flags = w_qx_subtype == CCV_NNC_QX_8I_ROWWISE_X ? (uint32_t)w->info.reserved : 0;
 		const int activation_hadamard_256 = !!(w_8i_rowwise_x_flags & CCV_NNC_QX_8I_ROWWISE_HADAMARD_256);
 		const uint32_t w_8i_rowwise_x_format = w_8i_rowwise_x_flags & CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK;
-		if (activation_hadamard_256 && (w_rows <= 0 || w_rows % 256 != 0 || w_rows > 65536))
+		if (activation_hadamard_256 && (w->info.dim[w_nd - 1] <= 0 || w->info.dim[w_nd - 1] % 256 != 0))
 			return CCV_NNC_EXEC_INVALID;
 		const int is_same_dtype =
 			(a_datatype == w_datatype) &&
@@ -394,6 +394,7 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 		const int is_downcast = ((cmd.info.blas.flags & CCV_NNC_GEMM_16F) && (a_datatype == CCV_16F || a_datatype == CCV_16BF));
 		const int use_ane_rowwise_gemm =
 			w_qx_8i_rowwise &&
+			(!activation_hadamard_256 || w_rows <= 65536) &&
 			(a_datatype == CCV_16F || a_datatype == CCV_16BF || a_datatype == CCV_32F) &&
 			(!bias || bias_batch_size == 1) &&
 			(CCV_GET_DATA_TYPE(a->info.datatype) != CCV_QX) &&
@@ -423,6 +424,7 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 			ccv_nnc_tensor_count(b->info) <= UINT32_MAX;
 		const int use_scaled_gemm =
 			w_qx_8i_rowwise &&
+			(!activation_hadamard_256 || w_rows <= 65536) &&
 			(CCV_GET_DATA_TYPE(a->info.datatype) != CCV_QX) &&
 			(CCV_GET_DATA_TYPE(b->info.datatype) != CCV_QX) &&
 			(!bias || CCV_GET_DATA_TYPE(bias->info.datatype) != CCV_QX) &&
@@ -455,9 +457,6 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 			(!bias || bias_batch_size == 1) &&
 			ccv_nnc_mfa_context_supported(context) &&
 			!(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA);
-		// Dense fallback / scaled GEMV do not implement the input rotation.
-		if (activation_hadamard_256 && !use_ane_rowwise_gemm && (!use_scaled_gemm || !use_neural_accelerators))
-			return CCV_NNC_EXEC_INVALID;
 		// Generic MFA decodes row-wise weights before applying the interleaved strides.
 		const int is_interleaved_batched_mfa_gemm =
 			is_interleaved_batched_dense_gemm ||
@@ -560,10 +559,9 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 			}
 		}
 
-		// ANE may decline a shape or fail to compile. Never decode rotated weights
-		// into an ordinary dense fallback.
-		if (activation_hadamard_256 && (!use_scaled_gemm || !use_neural_accelerators))
-			return CCV_NNC_EXEC_INVALID;
+		// If ANE declines, dense fallback reconstructs logical weights by fusing
+		// inverse H256 into packed-to-float decoding. Scaled GEMM instead keeps
+		// the rotated INT8 weights and transforms the activations.
 
 		if (use_scaled_gemm)
 		{
@@ -856,7 +854,9 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 				command_buffer = ccv_nnc_stream_context_start_mps_command_buffer(stream_context);
 
 			// If all conditions are met, use MPSMatrixMultiplication. Note that the bias only supported for Float32 and this has to be added because MPSGraph on Float32 won't do the computation properly on Intel.
-			if (is_contiguous && is_same_dtype && is_same_batch && !(ccv_nnc_flags() & CCV_NNC_DISABLE_MIXED_MPS_GEMM) && (!bias || bias->info.datatype == CCV_32F))
+			// MPSMatrixMultiplication does not support BF16. A single bias vector
+			// limits MPSMatrixNeuron to one matrix; use MPSGraph for batched bias.
+			if (is_contiguous && is_same_dtype && is_same_batch && a_datatype != CCV_16BF && !(ccv_nnc_flags() & CCV_NNC_DISABLE_MIXED_MPS_GEMM) && (!bias || (bias->info.datatype == CCV_32F && b_batch_size == 1)))
 			{
 				id<MTLBuffer> a_buffer = (id<MTLBuffer>)a_data;
 				MPSMatrix* leftMatrix = [[MPSMatrix alloc] initWithBuffer:a_buffer offset:a_dataof descriptor:[MPSMatrixDescriptor matrixDescriptorWithRows:(is_transpose_a ? a_cols : a_rows) columns:(is_transpose_a ? a_rows : a_cols) matrices:b_batch_size rowBytes:CCV_GET_DATA_TYPE_SIZE(a_datatype) * (is_transpose_a ? a_cols_inc : a_rows_inc) matrixBytes:CCV_GET_DATA_TYPE_SIZE(a_datatype) * a_batch_inc dataType:ccv_nnc_mps_datatype(a->info.datatype)]];

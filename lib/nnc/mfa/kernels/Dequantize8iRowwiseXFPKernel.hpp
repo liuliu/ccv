@@ -16,7 +16,7 @@ struct Dequantize8iRowwiseXFPKernel {
 
 	Dequantize8iRowwiseXFPKernel(Dequantize8iRowwiseXFPKernelDescriptor descriptor, MTL::Device* const device);
 
-	MTL::Size gridSize(uint32_t length) const noexcept;
+	MTL::Size gridSize(uint32_t groups, uint32_t groupSize) const noexcept;
 
 private:
 	std::string createSource() const noexcept;

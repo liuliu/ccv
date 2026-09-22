@@ -70,24 +70,28 @@ Dequantize8iRowwiseXFPKernel::Dequantize8iRowwiseXFPKernel(Dequantize8iRowwiseXF
 	CCV_NNC_MFA_CHECK_ERROR(error);
 }
 
-MTL::Size Dequantize8iRowwiseXFPKernel::gridSize(uint32_t length) const noexcept
+MTL::Size Dequantize8iRowwiseXFPKernel::gridSize(uint32_t groups, uint32_t groupSize) const noexcept
 {
-	return MTL::Size((length + 255) / 256, 1, 1);
+	// Each SIMD group recovers one H256 block; ordinary decode uses one
+	// thread per packed group. Derive dispatch from the current descriptor.
+	const uint32_t groupsPerThreadgroup = (format & CCV_NNC_QX_8I_ROWWISE_HADAMARD_256) ? 8 * (256 / groupSize) : 256;
+	return MTL::Size((groups + groupsPerThreadgroup - 1) / groupsPerThreadgroup, 1, 1);
 }
 
 std::string Dequantize8iRowwiseXFPKernel::createSource() const noexcept
 {
+	const uint32_t codec = format & CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK;
 	std::string shader = createConstants() + "\n";
-	if (format == CCV_NNC_QX_8I_ROWWISE_IQ2_XXS) {
+	if (codec == CCV_NNC_QX_8I_ROWWISE_IQ2_XXS) {
 		append_compact_grid(shader, "iq2xxs_grid", ccv_nnc_8i_rowwise_packed_iq2xxs_grid, 256, [](const uint16_t value) { return (uint32_t)value; });
 		append_compact_grid(shader, "iq2xxs_ksigns", ccv_nnc_8i_rowwise_packed_iq2xxs_ksigns, 128, [](const uint8_t value) { return (uint32_t)value; });
-	} else if (format == CCV_NNC_QX_8I_ROWWISE_IQ2_S)
+	} else if (codec == CCV_NNC_QX_8I_ROWWISE_IQ2_S)
 		append_compact_grid(shader, "iq2s_grid", ccv_nnc_8i_rowwise_packed_iq2s_grid, 1024, compact_iq2_grid_entry);
-	else if (format == CCV_NNC_QX_8I_ROWWISE_IQ2_XS)
+	else if (codec == CCV_NNC_QX_8I_ROWWISE_IQ2_XS)
 		append_compact_grid(shader, "iq2xs_grid", ccv_nnc_8i_rowwise_packed_iq2xs_grid, 512, compact_iq2_grid_entry);
-	else if (format == CCV_NNC_QX_8I_ROWWISE_IQ3_S)
+	else if (codec == CCV_NNC_QX_8I_ROWWISE_IQ3_S)
 		append_compact_grid(shader, "iq3s_grid", ccv_nnc_8i_rowwise_packed_iq3s_grid, 512, compact_iq3s_grid_entry);
-	else if (format == CCV_NNC_QX_8I_ROWWISE_IQ3_XXS)
+	else if (codec == CCV_NNC_QX_8I_ROWWISE_IQ3_XXS)
 		append_compact_grid(shader, "iq3xxs_grid", ccv_nnc_8i_rowwise_packed_iq3xxs_grid, 256, compact_iq3xxs_grid_entry);
 
 	shader += R"(
@@ -95,7 +99,7 @@ std::string Dequantize8iRowwiseXFPKernel::createSource() const noexcept
 using namespace metal;
 )";
 
-	if (format == CCV_NNC_QX_8I_ROWWISE_Q6_K) {
+	if (codec == CCV_NNC_QX_8I_ROWWISE_Q6_K) {
 		shader += R"(
 inline ulong packed52_payload(device const uchar* data, const ulong group_index)
 {
@@ -113,7 +117,7 @@ inline ulong packed52_payload(device const uchar* data, const ulong group_index)
   return value >> shift;
 }
 )";
-	} else if (format == CCV_NNC_QX_8I_ROWWISE_Q2_K || format == CCV_NNC_QX_8I_ROWWISE_IQ2_S) {
+	} else if (codec == CCV_NNC_QX_8I_ROWWISE_Q2_K || codec == CCV_NNC_QX_8I_ROWWISE_IQ2_S) {
 			shader += R"(
 inline ulong packed42_payload(device const uchar* data, const ulong group_index)
 {
@@ -130,7 +134,7 @@ inline ulong packed42_payload(device const uchar* data, const ulong group_index)
   return value >> shift;
 }
 )";
-	} else if (format == CCV_NNC_QX_8I_ROWWISE_IQ2_XS) {
+	} else if (codec == CCV_NNC_QX_8I_ROWWISE_IQ2_XS) {
 		shader += R"(
 inline uint packed21_payload(device const uchar* data, const ulong group_index)
 {
@@ -145,7 +149,7 @@ inline uint packed21_payload(device const uchar* data, const ulong group_index)
   return value >> shift;
 }
 )";
-	} else if (format == CCV_NNC_QX_8I_ROWWISE_IQ3_XXS) {
+	} else if (codec == CCV_NNC_QX_8I_ROWWISE_IQ3_XXS) {
 		shader += R"(
 inline uint packed28_payload(device const uchar* data, const ulong group_index)
 {
@@ -162,7 +166,7 @@ inline uint packed28_payload(device const uchar* data, const ulong group_index)
 )";
 	}
 
-	if (format == CCV_NNC_QX_8I_ROWWISE_IQ2_XXS || format == CCV_NNC_QX_8I_ROWWISE_IQ2_S || format == CCV_NNC_QX_8I_ROWWISE_IQ2_XS) {
+	if (codec == CCV_NNC_QX_8I_ROWWISE_IQ2_XXS || codec == CCV_NNC_QX_8I_ROWWISE_IQ2_S || codec == CCV_NNC_QX_8I_ROWWISE_IQ2_XS) {
 		shader += R"(
 inline int iq2_value(constant uint* grid, const uint index, const uint lane)
 {
@@ -170,7 +174,7 @@ inline int iq2_value(constant uint* grid, const uint index, const uint lane)
 }
 )";
 	}
-	if (format == CCV_NNC_QX_8I_ROWWISE_IQ3_S) {
+	if (codec == CCV_NNC_QX_8I_ROWWISE_IQ3_S) {
 		shader += R"(
 inline int iq3s_value(const uint index, const uint lane)
 {
@@ -178,7 +182,7 @@ inline int iq3s_value(const uint index, const uint lane)
 }
 )";
 	}
-	if (format == CCV_NNC_QX_8I_ROWWISE_IQ3_XXS) {
+	if (codec == CCV_NNC_QX_8I_ROWWISE_IQ3_XXS) {
 		shader += R"(
 inline int iq3xxs_value(const uint index, const uint lane)
 {
@@ -187,7 +191,7 @@ inline int iq3xxs_value(const uint index, const uint lane)
 )";
 	}
 
-	switch (format) {
+	switch (codec) {
 			case CCV_NNC_QX_8I_ROWWISE_Q5_K:
 				shader += R"(
 inline void decode_group(device const uchar* source, const ulong group_index, thread int* q8)
@@ -398,36 +402,50 @@ inline void decode_group(device const uchar* source, const ulong group_index, th
 			break;
 	}
 
-	shader += R"(
-inline void store_q8_scalar(device const real* scales, device uchar* destination, const ulong destination_offset, const uint col_base, thread int* q8)
+	if (format & CCV_NNC_QX_8I_ROWWISE_HADAMARD_256) {
+		shader += R"(
+// H256 is symmetric and self-inverse. Recover logical weights directly
+// from decoded integers, with one rounding after the transform and row scale.
+// One SIMD group handles 256 values; no intermediate device buffer is needed.
+kernel void dequantize_8i_rowwise_x_fp(
+  device const uchar* source [[buffer(0)]],
+  device real* destination [[buffer(1)]],
+  device const real* scales [[buffer(2)]],
+  uint tgid [[threadgroup_position_in_grid]],
+  ushort sgid [[simdgroup_index_in_threadgroup]],
+  ushort lane [[thread_index_in_simdgroup]])
 {
-  device real* destination_d = reinterpret_cast<device real*>(destination);
-  const uint row = destination_offset / row_length;
-  const real scale = scales[row];
-  for (uint j = 0; j < group_size; ++j) {
-    const uint col = col_base + j;
-    if (col < row_length)
-      destination_d[destination_offset + j] = (real)q8[j] * scale;
+  const uint block = tgid * 8 + sgid;
+  const uint groups_per_block = 256 / group_size;
+  if (block >= total_groups / groups_per_block)
+    return;
+  const uint row = block / (row_length / 256);
+  float4 x[2];
+  #pragma clang loop unroll(full)
+  for (uint j = 0; j < 2; ++j) {
+    const uint col = j * 128 + lane * 4;
+    int q8[32];
+    decode_group(source, block * groups_per_block + col / group_size, q8);
+    const uint offset = col % group_size;
+    float4 v = float4(q8[offset], q8[offset + 1], q8[offset + 2], q8[offset + 3]);
+    v = (v.x + v.y + v.z + v.w) - 2.0f * v.wzyx;
+    #pragma clang loop unroll(full)
+    for (ushort stride = 1; stride <= 4; stride *= 4) {
+      const float4 peer = simd_shuffle_xor(v, stride);
+      v = (v + peer) + simd_shuffle_xor(v - peer, ushort(stride * 2));
+    }
+    x[j] = v;
   }
+  const float4 sum = x[0] + x[1];
+  const float4 diff = simd_shuffle_xor(x[0] - x[1], 16);
+  const float scale = float(scales[row]) * (1.0f / 16.0f);
+  const ulong offset = (ulong)block * 256 + lane * 4;
+  *reinterpret_cast<device vec<real, 4>*>(destination + offset) = vec<real, 4>((sum + diff) * scale);
+  *reinterpret_cast<device vec<real, 4>*>(destination + offset + 128) = vec<real, 4>((sum - diff) * scale);
 }
-
 )";
-	shader += R"(
-inline void decode_store_group(device const uchar* source, const ulong group_index, device const real* scales, device uchar* destination, const ulong destination_offset, const uint col_base)
-{
-)";
-	if (format == CCV_NNC_QX_8I_ROWWISE_IQ2_XXS)
-		shader += "  int q8[32] = {0};\n";
-	else
-		shader += "  int q8[16] = {0};\n";
-	shader += R"(
-  decode_group(source, group_index, q8);
-  store_q8_scalar(scales, destination, destination_offset, col_base, q8);
-}
-
-)";
-
-	shader += R"(
+	} else {
+		shader += R"(
 kernel void dequantize_8i_rowwise_x_fp(
   device const uchar* source [[buffer(0)]],
   device uchar* destination [[buffer(1)]],
@@ -442,9 +460,23 @@ kernel void dequantize_8i_rowwise_x_fp(
   const uint row = x / groups_per_row;
   const uint group = x - row * groups_per_row;
   const uint col_base = group * group_size;
-  decode_store_group(source, x, scales, destination, (ulong)row * row_length + col_base, col_base);
+  const ulong destination_offset = (ulong)row * row_length + col_base;
+)";
+		if (codec == CCV_NNC_QX_8I_ROWWISE_IQ2_XXS)
+			shader += "  int q8[32] = {0};\n";
+		else
+			shader += "  int q8[16] = {0};\n";
+		shader += R"(
+  decode_group(source, x, q8);
+  device real* destination_d = reinterpret_cast<device real*>(destination);
+  const real scale = scales[row];
+  for (uint j = 0; j < group_size; ++j) {
+    if (col_base + j < row_length)
+      destination_d[destination_offset + j] = (real)q8[j] * scale;
+  }
 }
 )";
+	}
 	return shader;
 }
 

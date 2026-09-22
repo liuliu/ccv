@@ -26,7 +26,7 @@ uint32_t Dequantize8iRowwiseXFPDescriptor::rowCount() const noexcept {
 }
 
 uint32_t Dequantize8iRowwiseXFPDescriptor::groupSize() const noexcept {
-	switch (format) {
+	switch (format & CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK) {
 		case CCV_NNC_QX_8I_ROWWISE_Q5_K:
 		case CCV_NNC_QX_8I_ROWWISE_Q4_K:
 		case CCV_NNC_QX_8I_ROWWISE_Q3_K:
@@ -52,7 +52,7 @@ uint32_t Dequantize8iRowwiseXFPDescriptor::groupsPerRow() const noexcept {
 }
 
 uint32_t Dequantize8iRowwiseXFPDescriptor::groupBits() const noexcept {
-	switch (format) {
+	switch (format & CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK) {
 		case CCV_NNC_QX_8I_ROWWISE_Q5_K:
 			return 88;
 		case CCV_NNC_QX_8I_ROWWISE_Q4_K:
@@ -97,6 +97,9 @@ std::size_t std::hash<Dequantize8iRowwiseXFPDescriptor>::operator()(const Dequan
 }
 
 std::pair<Dequantize8iRowwiseXFPKernelDescriptor, PipelineValue<Dequantize8iRowwiseXFPKernel>*> Dequantize8iRowwiseXFPDescriptor::findKernel(MTL::Device* const device, const DeviceProperties& dprops, NS::Array* const binaryArchivesToRead, MTL::BinaryArchive* const binaryArchiveToWrite, const std::string& pathToWrite, std::unordered_map<Dequantize8iRowwiseXFPKernelDescriptor, std::unique_ptr<Dequantize8iRowwiseXFPKernel>> *const libraryCache) const noexcept {
+	CCV_NNC_MFA_PRECONDITION((format & ~(CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK | CCV_NNC_QX_8I_ROWWISE_HADAMARD_256)) == 0);
+	CCV_NNC_MFA_PRECONDITION(rowLength > 0 && length % rowLength == 0);
+	CCV_NNC_MFA_PRECONDITION(!(format & CCV_NNC_QX_8I_ROWWISE_HADAMARD_256) || rowLength % 256 == 0);
 	(void)dprops;
 	(void)binaryArchivesToRead;
 	(void)binaryArchiveToWrite;

@@ -1688,6 +1688,7 @@ void ccv_nnc_dequantize_8i_rowwise_x(const void* input, const int datatype, cons
 	assert(memory_type == CCV_TENSOR_CPU_MEMORY || memory_type == CCV_TENSOR_GPU_MEMORY);
 	assert(row_length > 0);
 	assert(output_length % row_length == 0);
+	assert(!(format & CCV_NNC_QX_8I_ROWWISE_HADAMARD_256) || row_length % 256 == 0);
 	if (memory_type != CCV_TENSOR_CPU_MEMORY)
 	{
 #ifdef HAVE_CUDA
@@ -1709,17 +1710,41 @@ void ccv_nnc_dequantize_8i_rowwise_x(const void* input, const int datatype, cons
 	const uint8_t* const scales = u8 + scale_offset;
 	parallel_for(i, (int)row_count) {
 		const double scale = _ccv_nnc_8i_rowwise_packed_load_scale(scales, datatype, i);
-		size_t g;
-		for (g = 0; g < groups_per_row; g++)
+		if (format & CCV_NNC_QX_8I_ROWWISE_HADAMARD_256)
 		{
-			int q8[32] = {0};
-			_ccv_nnc_8i_rowwise_packed_decode_group(u8, (size_t)i * groups_per_row + g, format, q8);
-			size_t j;
-			for (j = 0; j < group_size; j++)
+			// Transform decoded integers before scaling / rounding to the destination
+			// precision. H256 is its own inverse and acts on independent blocks.
+			double block[256];
+			size_t base;
+			for (base = 0; base < row_length; base += 256)
 			{
-				const size_t col = g * group_size + j;
-				if (col < row_length)
-					_ccv_nnc_8i_rowwise_packed_write_value(output, datatype, (size_t)i * row_length + col, scale * q8[j]);
+				size_t g;
+				for (g = 0; g < 256 / group_size; g++)
+				{
+					int q8[32] = {0};
+					_ccv_nnc_8i_rowwise_packed_decode_group(u8, (size_t)i * groups_per_row + base / group_size + g, format & CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK, q8);
+					size_t j;
+					for (j = 0; j < group_size; j++)
+						block[g * group_size + j] = q8[j];
+				}
+				_ccv_nnc_8i_rowwise_hadamard_256(block, 256);
+				size_t j;
+				for (j = 0; j < 256; j++)
+					_ccv_nnc_8i_rowwise_packed_write_value(output, datatype, (size_t)i * row_length + base + j, scale * block[j]);
+			}
+		} else {
+			size_t g;
+			for (g = 0; g < groups_per_row; g++)
+			{
+				int q8[32] = {0};
+				_ccv_nnc_8i_rowwise_packed_decode_group(u8, (size_t)i * groups_per_row + g, format, q8);
+				size_t j;
+				for (j = 0; j < group_size; j++)
+				{
+					const size_t col = g * group_size + j;
+					if (col < row_length)
+						_ccv_nnc_8i_rowwise_packed_write_value(output, datatype, (size_t)i * row_length + col, scale * q8[j]);
+				}
 			}
 		}
 	} parallel_endfor

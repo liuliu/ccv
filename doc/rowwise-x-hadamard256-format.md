@@ -73,11 +73,12 @@ Existing per-slice calibration semantics remain unchanged.
 - MPS GEMM extracts the modifier and routes supported flagged weights through
   ANE or NAInt8MatMul activation staging, including the NA small-M path. Raw
   packed-to-INT8 decode receives only the base codec and preserves rotated values.
-- Runtime limits still apply: K <= 65536, supported dtype/layout, and supported
-  batching. ANE supports FP16/BF16/FP32, shared weights across batches, and
-  optional shared bias on Apple9 or newer. The NA path requires NA hardware.
-  Unsupported flagged GEMM returns `CCV_NNC_EXEC_INVALID`; scaled-GEMV/dense
-  fallback are not silently used, including when ANE declines a shape.
+- ANE and NA activation quantization require K <= 65536 and their supported
+  dtype/layout/batching. ANE supports FP16/BF16/FP32, shared weights across
+  batches, and optional shared bias on Apple9 or newer. The NA path requires
+  NA hardware. If neither path applies (or ANE declines), MPS GEMM reconstructs
+  logical floating-point weights and uses ordinary MFA GEMM/GEMV or MPS.
+  Packed scaled-GEMV remains disabled for H256.
 - ANE uses one activation-preparation dispatch for K <= 8192. Rotated values
   stay in registers through row reduction and quantization, then write directly
   into the transposed ANE surface. Eight rows share two alternating 8 KiB
@@ -97,12 +98,21 @@ Existing per-slice calibration semantics remain unchanged.
   [ordinary quantization benchmarks](ane-quantization-fusion-benchmark.md), and
   [historical ANE measurements](ane-hadamard256-benchmark.md).
 - Tile selection and split-K selection are unchanged.
-- Other consumers have not gained rotation support. Existing MFA codec
-  preconditions reject full flagged IDs rather than masking them globally.
-- Logical dense-weight dequantization/fallback remains deferred. Explicitly
-  passing just the base codec to dense dequantization
-  decodes stored **rotated** coefficients; it does not recover logical weights.
-  Logical recovery would require `dequant(payload) R_K^T`.
+- CPU and MPS floating-point dequantization accept the full flagged format and
+  recover logical weights: `W_decoded = dequant(payload) R_K^T`. H256 is
+  symmetric and self-inverse. The CPU reuses a 256-value local block; the Metal
+  decoder transforms decoded integers in SIMD registers and folds `1/16` into
+  the row scale before its only output rounding. Metal uses one dispatch and
+  writes directly into the dense buffer already required by fallback, with no
+  additional device scratch or activation transform.
+- Dense fallback has no 65536 row-length limit. Rotation follows the stored
+  last dimension, including when GEMM uses untransposed weights. Transposed
+  activations, batched weights and bias follow ordinary dense GEMM semantics.
+  MPSGraph handles BF16 and batched bias when falling back beyond MFA.
+- Passing just the base codec to dequantization still decodes stored **rotated**
+  coefficients. Packed-to-INT8 decoders retain this behavior for ANE/NA, whose
+  activation paths perform the matching rotation. Other operators and CUDA
+  have not gained H256 support from this fallback change.
 
 Tests compare all ten codecs and all four source precisions byte-for-byte against
 an independent dense rotation followed by ordinary quantization; cover invalid
@@ -111,6 +121,12 @@ MPS tests compare against independent dense activation rotation, runtime INT8
 quantization and CPU GEMM, using IQ2_XXS/Q6_K, small M, dynamic M, batching, bias,
 and N=73. The activation probe also covers FP16/BF16/FP32, cache separation,
 strides and K up to 65536.
+
+Fallback tests cover independent dense inverse rotation for all ten codecs and
+FP16/BF16/FP32/FP64 CPU decode, CPU/Metal parity across codecs and changing cached
+shapes, and ordinary MFA plus MPS GEMM with GEMV-sized inputs, both transpose
+orientations, batched weights, bias, and K=65792. These paths retain the offline
+weight-quantization benefit; they do not dynamically quantize activations.
 
 Current ANE validation is recorded in the
 [optimization follow-up](ane-hadamard256-optimization.md#validation-and-reproduction).

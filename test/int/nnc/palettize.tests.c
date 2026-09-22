@@ -45,7 +45,7 @@ static double _test_8i_rowwise_x_format(const int format, const ccv_nnc_tensor_p
 	return mse;
 }
 
-TEST_CASE("H256 rowwise-x quantization matches independent dense rotation for every codec and precision")
+TEST_CASE("H256 rowwise-x quantization and dequantization match independent dense rotations for every codec and precision")
 {
 	enum { rows = 3, cols = 512, count = rows * cols };
 	float values[count], rotated[count], imatrix[count];
@@ -111,6 +111,56 @@ TEST_CASE("H256 rowwise-x quantization matches independent dense rotation for ev
 			REQUIRE_EQ(ccv_nnc_quantize_8i_rowwise_x(source->data.u8, datatypes[d], CCV_TENSOR_CPU_MEMORY, count, cols, format, importance, importance_count, actual->data.u8, size), size, "flagged weights quantize");
 			REQUIRE_EQ(ccv_nnc_quantize_8i_rowwise_x(reference->data.u8, datatypes[d], CCV_TENSOR_CPU_MEMORY, count, cols, codec, importance, importance_count, expected->data.u8, size), size, "independently rotated weights quantize");
 			REQUIRE_EQ(memcmp(actual->data.u8, expected->data.u8, size), 0, "H256 must run before scale fitting and packing, codec=%d datatype=%d", codec, datatypes[d]);
+			// Decode the same payload to double with its stored row scales. This
+			// avoids an intermediate FP16/BF16 rounding in the independent inverse.
+			const size_t payload = size - rows * CCV_GET_DATA_TYPE_SIZE(datatypes[d]);
+			const size_t double_size = payload + rows * sizeof(double);
+			uint8_t* const double_packed = (uint8_t*)ccmalloc(double_size);
+			memcpy(double_packed, actual->data.u8, payload);
+			for (i = 0; i < rows; i++)
+			{
+				float scale;
+				if (datatypes[d] == CCV_16F)
+					ccv_half_precision_to_float((uint16_t*)(actual->data.u8 + payload) + i, &scale, 1);
+				else if (datatypes[d] == CCV_16BF)
+					ccv_bfloat_to_float((uint16_t*)(actual->data.u8 + payload) + i, &scale, 1);
+				else if (datatypes[d] == CCV_32F)
+					scale = ((float*)(actual->data.u8 + payload))[i];
+				((double*)(double_packed + payload))[i] = datatypes[d] == CCV_64F ? ((double*)(actual->data.u8 + payload))[i] : scale;
+			}
+			double decoded[count], inverse[count];
+			ccv_nnc_dequantize_8i_rowwise_x(double_packed, CCV_64F, CCV_TENSOR_CPU_MEMORY, double_size, cols, codec, decoded, count);
+			for (i = 0; i < count; i += 256)
+				for (j = 0; j < 256; j++)
+				{
+					double sum = 0;
+					for (k = 0; k < 256; k++)
+					{
+						int sign = 1;
+						for (shift = 0; shift < 8; shift += 2)
+							if (((j >> shift) & 3) + ((k >> shift) & 3) == 3)
+								sign = -sign;
+						sum += sign * decoded[i + k];
+					}
+					inverse[i + j] = sum / 16;
+				}
+			ccv_nnc_tensor_t* const logical = ccv_nnc_tensor_new(0, params, 0);
+			ccv_nnc_dequantize_8i_rowwise_x(actual->data.u8, datatypes[d], CCV_TENSOR_CPU_MEMORY, size, cols, format, logical->data.u8, count);
+			float logical_f32[count];
+			if (datatypes[d] == CCV_16F)
+				ccv_half_precision_to_float(logical->data.f16, logical_f32, count);
+			else if (datatypes[d] == CCV_16BF)
+				ccv_bfloat_to_float(logical->data.f16, logical_f32, count);
+			else if (datatypes[d] == CCV_32F)
+				memcpy(logical_f32, logical->data.f32, sizeof(logical_f32));
+			for (i = 0; i < count; i++)
+			{
+				const double value = datatypes[d] == CCV_64F ? logical->data.f64[i] : logical_f32[i];
+				const double tolerance = datatypes[d] == CCV_16F ? 1e-3 : datatypes[d] == CCV_16BF ? 8e-3 : datatypes[d] == CCV_32F ? 1e-6 : 1e-12;
+				REQUIRE(fabs(value - inverse[i]) <= tolerance * ccv_max(1., fabs(inverse[i])), "logical dequantization matches independent inverse: codec=%d datatype=%d index=%d", codec, datatypes[d], i);
+			}
+			ccv_nnc_tensor_free(logical);
+			ccfree(double_packed);
 			ccv_nnc_tensor_free(actual);
 			ccv_nnc_tensor_free(expected);
 		}

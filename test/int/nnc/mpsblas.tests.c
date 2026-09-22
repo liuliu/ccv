@@ -2057,6 +2057,110 @@ static int _mps_segmented_scaled_gemm_validate(const int datatype, const int use
 	return _mps_segmented_scaled_gemm_validate_format(datatype, use_bias, force_fallback, 0, max_abs_ref, max_rel_ref);
 }
 
+TEST_CASE("mps H256 rowwise-x dequantization matches CPU across codecs precisions and cached shapes")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_DATA_TRANSFER_FORWARD, CCV_NNC_BACKEND_MPS));
+	const int datatypes[] = {CCV_32F, CCV_16F, CCV_16BF};
+	int d, codec, shape;
+	for (d = 0; d < 3; d++)
+		for (codec = CCV_NNC_QX_8I_ROWWISE_Q4_K; codec <= CCV_NNC_QX_8I_ROWWISE_Q6_K; codec++)
+			for (shape = 0; shape < 3; shape++)
+			{
+				// Ordinary / H256 / larger H256 descriptors share the base codec,
+				// but must not reuse a shader or dispatch from the wrong variant.
+				const int format = codec | (shape ? CCV_NNC_QX_8I_ROWWISE_HADAMARD_256 : 0);
+				double max_abs = 0;
+				const int status = _mps_dequantize_8i_rowwise_x_compare(datatypes[d], format, shape == 2 ? 29 : 13, shape == 2 ? 768 : 256, d == 0 ? 1e-6 : d == 1 ? 1e-3 : 1e-2, &max_abs);
+				REQUIRE_EQ(status, 0, "logical dequantization matches CPU: codec=%d dtype=%d shape=%d max_abs=%g", codec, datatypes[d], shape, max_abs);
+			}
+	// Dense fallback is not limited by the activation quantizer's K <= 65536.
+	double max_abs = 0;
+	REQUIRE_EQ(_mps_dequantize_8i_rowwise_x_compare(CCV_32F, CCV_NNC_QX_8I_ROWWISE_Q6_K | CCV_NNC_QX_8I_ROWWISE_HADAMARD_256, 1, 65792, 1e-6, &max_abs), 0, "wide logical weight decode matches CPU");
+}
+
+TEST_CASE("mps H256 rowwise-x GEMM dense fallback preserves logical weights")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_MPS));
+	const int datatypes[] = {CCV_32F, CCV_16F, CCV_16BF};
+	const int codecs[] = {CCV_NNC_QX_8I_ROWWISE_Q6_K, CCV_NNC_QX_8I_ROWWISE_Q4_K, CCV_NNC_QX_8I_ROWWISE_IQ2_XXS};
+	dsfmt_t dsfmt;
+	dsfmt_init_gen_rand(&dsfmt, 257);
+	int d, shape, path;
+	for (d = 0; d < 3; d++)
+		for (shape = 0; shape < 6; shape++)
+		{
+			// Cover GEMV, ordinary GEMM, transposed activations, batched weights,
+			// untransposed weights (whose stored row length is N, not K),
+			// and K beyond the activation quantizer limit.
+			const int m = shape == 0 || shape == 5 ? 1 : 37;
+			const int batches = shape == 3 ? 2 : 1;
+			const int n = shape == 4 ? 256 : shape == 5 ? 3 : 73;
+			const int k = shape == 4 ? 513 : shape == 5 ? 65792 : 512;
+			const int transpose_a = shape == 2;
+			const int transpose_w = shape != 4;
+			const int datatype = datatypes[d];
+			ccv_nnc_tensor_param_t a_params = CPU_TENSOR_NHWC(32F, batches, transpose_a ? k : m, transpose_a ? m : k);
+			ccv_nnc_tensor_param_t w_params = CPU_TENSOR_NHWC(32F, batches, transpose_w ? n : k, transpose_w ? k : n);
+			ccv_nnc_tensor_t* const ha = ccv_nnc_tensor_new(0, a_params, 0);
+			ccv_nnc_tensor_t* const hw = ccv_nnc_tensor_new(0, w_params, 0);
+			ccv_nnc_tensor_t* const hbias = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, n), 0);
+			ccv_nnc_tensor_t* const href = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, batches, m, n), 0);
+			ccv_nnc_tensor_t* const actual = ccv_nnc_tensor_new(0, href->info, 0);
+			a_params.datatype = w_params.datatype = datatype;
+			ccv_nnc_tensor_t* const input = ccv_nnc_tensor_new(0, a_params, 0);
+			ccv_nnc_tensor_t* const weights = ccv_nnc_tensor_new(0, w_params, 0);
+			ccv_nnc_tensor_param_t bias_params = hbias->info;
+			bias_params.datatype = datatype;
+			ccv_nnc_tensor_t* const input_bias = ccv_nnc_tensor_new(0, bias_params, 0);
+			const int format = codecs[shape == 5 ? 0 : shape % 3] | CCV_NNC_QX_8I_ROWWISE_HADAMARD_256;
+			ccv_nnc_tensor_t* const hq = ccv_nnc_tensor_new(0, ccv_nnc_tensor_8i_rowwise_x(w_params, format), 0);
+			ccv_nnc_tensor_param_t q_params = hq->info;
+			q_params.type = a_params.type = bias_params.type = CCV_TENSOR_GPU_MEMORY;
+			ccv_nnc_tensor_t* const q = ccv_nnc_tensor_new(0, q_params, 0);
+			ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, a_params, 0);
+			ccv_nnc_tensor_t* const bias = ccv_nnc_tensor_new(0, bias_params, 0);
+			ccv_nnc_tensor_param_t b_params = href->info;
+			b_params.datatype = datatype;
+			ccv_nnc_tensor_t* const result = ccv_nnc_tensor_new(0, b_params, 0);
+			b_params.type = CCV_TENSOR_GPU_MEMORY;
+			ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, b_params, 0);
+			int i;
+			for (i = 0; i < batches * m * k; i++)
+				ha->data.f32[i] = (dsfmt_genrand_open_close(&dsfmt) - 0.5) / 4;
+			for (i = 0; i < batches * n * k; i++)
+				hw->data.f32[i] = (dsfmt_genrand_open_close(&dsfmt) - 0.5) / 4;
+			for (i = 0; i < n; i++)
+				hbias->data.f32[i] = (i % 11 - 5) / 128.f;
+			ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha, hw, hbias), TENSOR_LIST(input, weights, input_bias), 0);
+			const size_t size = ccv_nnc_tensor_data_size_without_padding(hq->info);
+			const int row_length = transpose_w ? k : n;
+			REQUIRE_EQ(ccv_nnc_quantize_8i_rowwise_x(weights->data.u8, datatype, CCV_TENSOR_CPU_MEMORY, batches * n * k, row_length, format, 0, 0, hq->data.u8, size), size, "H256 weights quantize");
+			ccv_nnc_dequantize_8i_rowwise_x(hq->data.u8, datatype, CCV_TENSOR_CPU_MEMORY, size, row_length, format, weights->data.u8, batches * n * k);
+			ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(input, weights, input_bias), TENSOR_LIST(ha, hw, hbias), 0);
+			ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(input, hq, input_bias), TENSOR_LIST(a, q, bias), 0);
+			const ccv_nnc_cmd_t cmd = CMD_GEMM_FORWARD(TRANSPOSE(transpose_a ? 1 : 0, transpose_a ? 2 : 0), TRANSPOSE(transpose_w ? 1 : 0, transpose_w ? 2 : 0));
+			REQUIRE_EQ(ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(ha, hw, shape == 0 ? 0 : hbias), TENSOR_LIST(href), 0), CCV_NNC_EXEC_SUCCESS, "CPU logical weight GEMM succeeds");
+			for (path = 0; path < 2; path++)
+			{
+				const uint64_t old_flags = ccv_nnc_flags();
+				const uint64_t fallback_flags = CCV_NNC_DISABLE_MFA_ANE | CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS | (path ? CCV_NNC_DISABLE_MFA : 0);
+				ccv_nnc_enable_flag(fallback_flags);
+				const int status = ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(a, q, shape == 0 ? 0 : bias), TENSOR_LIST(b), 0);
+				ccv_nnc_disable_flag(fallback_flags & ~old_flags);
+				REQUIRE_EQ(status, CCV_NNC_EXEC_SUCCESS, "dense fallback succeeds: dtype=%d shape=%d path=%d", datatype, shape, path);
+				ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(b), TENSOR_LIST(result), 0);
+				ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(result), TENSOR_LIST(actual), 0);
+				for (i = 0; i < batches * m * n; i++)
+					REQUIRE(fabsf(actual->data.f32[i] - href->data.f32[i]) < (datatype == CCV_16BF ? (shape == 5 ? 8e-3 : 4e-3) : datatype == CCV_16F ? 1e-3 : 1e-5), "logical weight GEMM: dtype=%d shape=%d path=%d i=%d actual=%g expected=%g", datatype, shape, path, i, actual->data.f32[i], href->data.f32[i]);
+			}
+			ccv_nnc_tensor_free(ha); ccv_nnc_tensor_free(hw); ccv_nnc_tensor_free(hbias);
+			ccv_nnc_tensor_free(href); ccv_nnc_tensor_free(actual); ccv_nnc_tensor_free(input);
+			ccv_nnc_tensor_free(weights); ccv_nnc_tensor_free(input_bias); ccv_nnc_tensor_free(hq);
+			ccv_nnc_tensor_free(q); ccv_nnc_tensor_free(a); ccv_nnc_tensor_free(bias);
+			ccv_nnc_tensor_free(result); ccv_nnc_tensor_free(b);
+		}
+}
+
 TEST_CASE("mps H256 rowwise-x GEMM rejects malformed K metadata")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_MPS));
@@ -2153,7 +2257,7 @@ TEST_CASE("mps H256 rowwise-x GEMM uses rotated activations and ordinary output"
 			const int fallback_status = ccv_nnc_cmd_exec(CMD_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(0, 1)), ccv_nnc_no_hint, 0, TENSOR_LIST(a, q, bias), TENSOR_LIST(b), 0);
 			if (!(old_flags & CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS))
 				ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS);
-			REQUIRE_EQ(fallback_status, CCV_NNC_EXEC_INVALID, "unsupported fallback rejects rotated weights");
+			REQUIRE_EQ(fallback_status, CCV_NNC_EXEC_SUCCESS, "dense fallback accepts rotated weights");
 			ccv_nnc_tensor_free(ha); ccv_nnc_tensor_free(hw); ccv_nnc_tensor_free(hbias);
 			ccv_nnc_tensor_free(href); ccv_nnc_tensor_free(actual); ccv_nnc_tensor_free(hq);
 			ccv_nnc_tensor_free(q); ccv_nnc_tensor_free(a); ccv_nnc_tensor_free(bias); ccv_nnc_tensor_free(b);
