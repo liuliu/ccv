@@ -79,7 +79,8 @@ of the isolated mean/resource checks.
 
 ## Production five-launch validation
 
-`SOL_FUSION=4` compares the saved five-launch prototype to organized production.
+`SOL_FUSION=4` compares the saved five-launch prototype (head-packed scratch)
+to current production (token/head-order scratch).
 Every execution, including warmups, is checked for finite outputs. Production
 comparisons also check relative error every round. Verification supports
 `SOL_REPEATS`, `SOL_SEED`, and `SOL_LONG_TAIL` (T=32769/H=2 only).
@@ -107,3 +108,44 @@ reported no non-finite outputs. Paired speedups against the prototype ranged
 from 0.99612x to 1.01879x over 32k/65k/104k, with bit-identical final outputs.
 At 32k, native-relative paired speedups were 1.0506x all-exact and 3.0721x sparse.
 See the parent implementation notes for the full table and timing limitations.
+
+
+## Token-order scratch correction
+
+Current production quantizes into `[N,T_padded,H,128]` and reads Q/K/V tiles
+with token stride `H*128`. It preserves token/head order; `T_padded` only adds
+zero-filled sequence-tail rows. No transpose is performed during quantization.
+For `SOL_FUSION=4 --verify`, the comparison also copies quantized scratch back
+and checks every Q/K/V byte at its expected token/head offset against the
+archived prototype, including batches and padding. `TOKEN_LAYOUT_PASS` records
+this check independently of final output parity.
+
+The `production-*.txt` logs above describe the former head-packed version;
+`token-order-*.txt` logs validate and benchmark the corrected layout. Commands
+and environments are recorded in each log. Native comparisons use the actual
+all-exact SOL path and include every preprocessing launch.
+
+
+Final token-order production also uses native-style rectangular Morton attention
+dispatch across query tiles and heads, with batches in grid.z. This changes work
+scheduling only. It retains the original four SIMD groups for Q64, cached Q,
+masking, PV arithmetic, and synchronization. The `token-order-final-*.txt` logs
+contain the repeated final validation and six-round native comparisons. Earlier
+`token-order-*.txt` logs refer to linear attention dispatch.
+
+The final six-round native-relative paired speedups were 1.0805x / 0.9452x /
+0.9997x dense and 3.1615x / 2.7447x / 2.8181x sparse at 32k / 65k / 104k.
+A twelve-round 65k confirmation balanced all six execution permutations and
+measured **1.0163x dense / 2.9464x sparse**; its log is
+`token-order-final-native-65536-balanced.txt`. This checks the initial 65k gap
+without changing the production kernel. Both measurements are retained to show
+run/order variation. Reproduce the balanced confirmation with:
+
+```sh
+make -C bin/mfa na_int8_sol_attention_bench
+bin/mfa/na_int8_sol_attention_bench 65536 56 12
+```
+
+Run timings without Metal validation; use the instrumented commands above for
+correctness. All final validation logs have `EXIT: 0`, including the direct
+scratch-layout checks and 80 repeated long-tail executions.

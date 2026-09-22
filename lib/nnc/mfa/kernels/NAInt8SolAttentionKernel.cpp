@@ -35,8 +35,14 @@ MTL::Size NAInt8SolAttentionKernel::threadgroupsPerGrid(const NAInt8SolAttention
     case NAInt8SolAttentionStage::Quantize: grid.width = (descriptor.T + 63) / 64; break;
     case NAInt8SolAttentionStage::Pool: grid.width = JP; break;
     case NAInt8SolAttentionStage::PrepareSummaries: grid.width = JP / 64 + 1; break;
-    case NAInt8SolAttentionStage::Route:
-    case NAInt8SolAttentionStage::Attention: break;
+    case NAInt8SolAttentionStage::Route: break;
+    case NAInt8SolAttentionStage::Attention: {
+      // Match native attention scheduling without rearranging token/head data.
+      uint64_t paddedQueries = 1, paddedHeads = 1;
+      while (paddedQueries < QJ) paddedQueries *= 2;
+      while (paddedHeads < descriptor.H) paddedHeads *= 2;
+      return MTL::Size(paddedQueries * paddedHeads, 1, descriptor.N);
+    }
   }
   return grid;
 }
@@ -45,6 +51,7 @@ std::string NAInt8SolAttentionKernel::createSource() const noexcept {
   CodeWriter source;
   source.SetValue("BLOCK_SIZE", std::to_string(blockSize));
   createConstants(source);
+  createMortonUtilities(source);
   createVMean(source);
   createQuantize(source);
   if (blockSize != 64)
@@ -97,7 +104,7 @@ MTL::Size NAInt8SolAttentionKernel::vMeanThreadgroupsPerGrid(uint32_t N, uint32_
   return MTL::Size(uint64_t(paddedHeads) * (32 / vMeanVectorsPerTile(T, H)), 1, N);
 }
 
-void NAInt8SolAttentionKernel::createVMean(CodeWriter& source) const noexcept {
+void NAInt8SolAttentionKernel::createMortonUtilities(CodeWriter& source) const noexcept {
   source += R"(
 inline uint compact_morton_even_bits(uint x) {
   x &= 0x55555555u;
@@ -137,6 +144,11 @@ inline uint2 morton_decode_rectangular_2d(uint code,
   return tile;
 }
 
+)";
+}
+
+void NAInt8SolAttentionKernel::createVMean(CodeWriter& source) const noexcept {
+  source += R"(
 kernel void sol_v_mean(device const packed_half4* V [[buffer(2)]], device float4* mean [[buffer(15)]],
   uint tid [[thread_index_in_threadgroup]], uint lane [[thread_index_in_simdgroup]],
   uint3 group [[threadgroup_position_in_grid]]) {
@@ -246,7 +258,8 @@ kernel void sol_quantize(device const half* Q [[buffer(0)]], device const half* 
   }
   for (uint r = 0; r < 64; ++r) {
     const uint t = j * 64 + r;
-    const ulong dst = (ulong(nh) * TP + t) * 128 + tid;
+    // Preserve token/head order in INT8 scratch; only the sequence tail is padded.
+    const ulong dst = ((ulong(n) * TP + t) * SOL_H + h) * 128 + tid;
     const ulong src = ((ulong(n) * SOL_T + t) * SOL_H + h) * 128 + tid;
     QI[dst] = t < SOL_T ? int8_t(clamp(rint(float(Q[src]) * inverse_scales[r / 16]), -127.0f, 127.0f)) : 0;
     KI[dst] = t < SOL_T ? int8_t(clamp(rint(float(K[src]) * inverse_scales[4]), -127.0f, 127.0f)) : 0;
@@ -404,11 +417,15 @@ kernel void sol_attention(device half* O_buf [[buffer(3)]],
   device const float* KCS [[buffer(18)]], device const float* VCS [[buffer(19)]],
   device const uint* route_bits [[buffer(20)]],
   constant Params& p [[buffer(21)]],
-  uint2 group [[threadgroup_position_in_grid]], uint sg [[simdgroup_index_in_threadgroup]]) {
+  uint3 group [[threadgroup_position_in_grid]], uint sg [[simdgroup_index_in_threadgroup]]) {
   const uint query_groups = (SOL_T + SOL_QB - 1) / SOL_QB;
-  if (group.x >= query_groups || group.y >= SOL_N * SOL_H) return;
-  const uint J = (SOL_T + {{BLOCK_SIZE}} - 1) / {{BLOCK_SIZE}}, nh = group.y;
-  const uint n = nh / SOL_H, h = nh % SOL_H, row = group.x * SOL_QB + sg * 16;
+  const uint2 tile = morton_decode_rectangular_2d(group.x,
+      query_groups <= 1 ? 0 : 32 - clz(query_groups - 1),
+      SOL_H <= 1 ? 0 : 32 - clz(SOL_H - 1));
+  if (tile.x >= query_groups || tile.y >= SOL_H || group.z >= SOL_N) return;
+  const uint n = group.z, h = tile.y, nh = n * SOL_H + h;
+  const uint J = (SOL_T + {{BLOCK_SIZE}} - 1) / {{BLOCK_SIZE}};
+  const uint row = tile.x * SOL_QB + sg * 16;
   // Padded SIMD groups must participate in the exact-pass threadgroup barriers.
   // Their Q tiles are zero padded and all output accesses are row guarded.
   const uint qb = row / SOL_QB, QJ = (SOL_T + SOL_QB - 1) / SOL_QB;
@@ -417,9 +434,9 @@ kernel void sol_attention(device half* O_buf [[buffer(3)]],
   routes += (ulong(nh) * QJ + qb) * J;
   const float g = p.scale * 1.4426950408889634f;
 
-  auto QI = tensor<device int8_t, dextents<int32_t, 2>, tensor_inline>(QI_buf + ulong(nh) * TP * 128, dextents<int32_t, 2>(128, TP));
-  auto KI = tensor<device int8_t, dextents<int32_t, 2>, tensor_inline>(KI_buf + ulong(nh) * TP * 128, dextents<int32_t, 2>(128, TP));
-  auto VI = tensor<device int8_t, dextents<int32_t, 2>, tensor_inline>(VI_buf + ulong(nh) * TP * 128, dextents<int32_t, 2>(128, TP));
+  auto QI = tensor<device int8_t, dextents<int32_t, 2>, tensor_inline>(QI_buf + ulong(n) * TP * SOL_H * 128, dextents<int32_t, 2>(SOL_H * 128, TP));
+  auto KI = tensor<device int8_t, dextents<int32_t, 2>, tensor_inline>(KI_buf + ulong(n) * TP * SOL_H * 128, dextents<int32_t, 2>(SOL_H * 128, TP));
+  auto VI = tensor<device int8_t, dextents<int32_t, 2>, tensor_inline>(VI_buf + ulong(n) * TP * SOL_H * 128, dextents<int32_t, 2>(SOL_H * 128, TP));
   auto KCI = tensor<device int8_t, dextents<int32_t, 2>, tensor_inline>(KCI_buf + ulong(nh) * JP * 128, dextents<int32_t, 2>(128, JP));
   auto VCH = tensor<device half, dextents<int32_t, 2>, tensor_inline>(VCH_buf + ulong(nh) * JP * 128, dextents<int32_t, 2>(128, JP));
   constexpr uint qkD = 32;
@@ -439,9 +456,9 @@ kernel void sol_attention(device half* O_buf [[buffer(3)]],
   auto O1 = pv.get_destination_cooperative_tensor<decltype(P), key_value_tile_t, float>();
   auto O2 = pv.get_destination_cooperative_tensor<decltype(P), key_value_tile_t, float>();
   auto O3 = pv.get_destination_cooperative_tensor<decltype(P), key_value_tile_t, float>();
-  auto mq8 = QI.slice<qkD, 16>(0, row);
-  auto mk8 = KI.slice<qkD, {{BLOCK_SIZE}}>(0, 0);
-  auto mv8 = VI.slice<32, {{BLOCK_SIZE}}>(0, 0);
+  auto mq8 = QI.slice<qkD, 16>(h * 128, row);
+  auto mk8 = KI.slice<qkD, {{BLOCK_SIZE}}>(h * 128, 0);
+  auto mv8 = VI.slice<32, {{BLOCK_SIZE}}>(h * 128, 0);
   auto S8 = qk.get_destination_cooperative_tensor<decltype(mq8), decltype(mk8), int>();
   constexpr auto pv8_desc = matmul2d_descriptor(16, 32, {{BLOCK_SIZE}}, false, false, true, matmul2d_descriptor::mode::multiply);
   matmul2d<pv8_desc, execution_simdgroups<1>> pv8;
@@ -451,8 +468,8 @@ kernel void sol_attention(device half* O_buf [[buffer(3)]],
   auto CQ1 = qk.get_left_input_cooperative_tensor<int8_t, int8_t, int>();
   auto CQ2 = qk.get_left_input_cooperative_tensor<int8_t, int8_t, int>();
   auto CQ3 = qk.get_left_input_cooperative_tensor<int8_t, int8_t, int>();
-  CQ0.load(QI.slice<32, 16>(0, row)); CQ1.load(QI.slice<32, 16>(32, row));
-  CQ2.load(QI.slice<32, 16>(64, row)); CQ3.load(QI.slice<32, 16>(96, row));
+  CQ0.load(QI.slice<32, 16>(h * 128, row)); CQ1.load(QI.slice<32, 16>(h * 128 + 32, row));
+  CQ2.load(QI.slice<32, 16>(h * 128 + 64, row)); CQ3.load(QI.slice<32, 16>(h * 128 + 96, row));
   #pragma clang loop unroll(full)
   for (ushort i = 0; i < M.get_capacity(); ++i) if (M.is_valid_element(i)) { M[i] = -INFINITY; L[i] = 0; }
   #pragma clang loop unroll(full)
@@ -487,6 +504,7 @@ kernel void sol_attention(device half* O_buf [[buffer(3)]],
 
 void NAInt8SolAttentionKernel::loopAttention(CodeWriter& source, bool summary) const noexcept {
   source.SetValue("KEY_TENSOR", summary ? "KCI" : "KI");
+  source.SetValue("KEY_HEAD_OFFSET", summary ? "0" : "h * 128");
   source.SetValue("KEY_SCALE", summary ? "KCS[nh * (JP / 64) + c / 64]" : "KS[nh * TP / 64 + c / 64]");
   source.SetValue("VALID_KEY", summary ? "column < J && !routes[column]" : "column < SOL_T");
   if (summary) {
@@ -514,8 +532,8 @@ void NAInt8SolAttentionKernel::loopAttention(CodeWriter& source, bool summary) c
   source += R"(
     #pragma clang loop unroll(full)
     for (ushort i = 0; i < S8.get_capacity(); ++i) if (S8.is_valid_element(i)) S8[i] = 0;
-    auto k0 = {{KEY_TENSOR}}.slice<32, {{BLOCK_SIZE}}>(0, c); auto k1 = {{KEY_TENSOR}}.slice<32, {{BLOCK_SIZE}}>(32, c);
-    auto k2 = {{KEY_TENSOR}}.slice<32, {{BLOCK_SIZE}}>(64, c); auto k3 = {{KEY_TENSOR}}.slice<32, {{BLOCK_SIZE}}>(96, c);
+    auto k0 = {{KEY_TENSOR}}.slice<32, {{BLOCK_SIZE}}>({{KEY_HEAD_OFFSET}} + 0, c); auto k1 = {{KEY_TENSOR}}.slice<32, {{BLOCK_SIZE}}>({{KEY_HEAD_OFFSET}} + 32, c);
+    auto k2 = {{KEY_TENSOR}}.slice<32, {{BLOCK_SIZE}}>({{KEY_HEAD_OFFSET}} + 64, c); auto k3 = {{KEY_TENSOR}}.slice<32, {{BLOCK_SIZE}}>({{KEY_HEAD_OFFSET}} + 96, c);
     qk.run(CQ0, k0, S8); qk.run(CQ1, k1, S8);
     qk.run(CQ2, k2, S8); qk.run(CQ3, k3, S8);
     const float scale = QS[nh * TP / 16 + row / 16] * {{KEY_SCALE}} * g;
@@ -605,8 +623,8 @@ void NAInt8SolAttentionKernel::accumulateAttention(CodeWriter& source, bool summ
       #pragma clang loop unroll(full)
       for (ushort i = 0; i < S.get_capacity(); ++i) if (S.is_valid_element(i)) P8[i] = int8_t(clamp(rint(S[i] * 127.0f), 0.0f, 127.0f));
       const float scale = VS[nh * TP / 64 + c / 64] / 127.0f;
-      auto v0 = VI.slice<32, {{BLOCK_SIZE}}>(0, c); auto v1 = VI.slice<32, {{BLOCK_SIZE}}>(32, c);
-      auto v2 = VI.slice<32, {{BLOCK_SIZE}}>(64, c); auto v3 = VI.slice<32, {{BLOCK_SIZE}}>(96, c);
+      auto v0 = VI.slice<32, {{BLOCK_SIZE}}>(h * 128, c); auto v1 = VI.slice<32, {{BLOCK_SIZE}}>(h * 128 + 32, c);
+      auto v2 = VI.slice<32, {{BLOCK_SIZE}}>(h * 128 + 64, c); auto v3 = VI.slice<32, {{BLOCK_SIZE}}>(h * 128 + 96, c);
       // Rescale immediately before accumulating each PV result. Explicit FMA
       // preserves the rounded rescale as its addend instead of reassociating it.
 )";

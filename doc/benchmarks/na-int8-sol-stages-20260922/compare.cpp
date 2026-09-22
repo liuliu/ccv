@@ -127,6 +127,41 @@ int main(int argc, char** argv)
         }
         printf("\n");
       }
+      if (fusion == 4 && verify && !record && !replay) {
+        // Verify the actual scratch layout, not just output equivalence: the
+        // archived prototype is [N,H,TP,D], production must be [N,TP,H,D].
+        const size_t J = (p.T + p.block_size - 1) / p.block_size;
+        const size_t JP = (J + 63) / 64 * 64, TP = (p.T + 63) / 64 * 64;
+        const size_t QJ = (p.T + p.query_block_size - 1) / p.query_block_size;
+        const size_t NH = p.N * p.H;
+        const size_t routes = NH * QJ * 128 * 4 + NH * JP * 128 * 6 + NH * 128 * 8;
+        const size_t qi = (routes + NH * QJ * J + 255) / 256 * 256;
+        const size_t tokenBytes = NH * TP * 128;
+        auto packedCopy = NS::TransferPtr(device->newBuffer(tokenBytes * 3, MTL::ResourceStorageModeShared));
+        auto tokenCopy = NS::TransferPtr(device->newBuffer(tokenBytes * 3, MTL::ResourceStorageModeShared));
+        if (!packedCopy || !tokenCopy) return 2;
+        auto copyCommand = queue->commandBuffer();
+        auto blit = copyCommand->blitCommandEncoder();
+        blit->copyFromBuffer(contexts[0]->scratch.get(), qi, packedCopy.get(), 0, tokenBytes * 3);
+        blit->copyFromBuffer(contexts[1]->scratch.get(), qi, tokenCopy.get(), 0, tokenBytes * 3);
+        blit->endEncoding(); copyCommand->commit(); copyCommand->waitUntilCompleted();
+        if (copyCommand->status() == MTL::CommandBufferStatusError) return 1;
+        const auto packed = (const int8_t*)packedCopy->contents();
+        const auto tokenOrder = (const int8_t*)tokenCopy->contents();
+        for (size_t tensor = 0; tensor < 3; ++tensor)
+          for (size_t n = 0; n < p.N; ++n)
+            for (size_t t = 0; t < TP; ++t)
+              for (size_t h = 0; h < p.H; ++h)
+                for (size_t d = 0; d < 128; ++d) {
+                  const size_t oldIndex = tensor * tokenBytes + ((n * p.H + h) * TP + t) * 128 + d;
+                  const size_t newIndex = tensor * tokenBytes + ((n * TP + t) * p.H + h) * 128 + d;
+                  if (packed[oldIndex] != tokenOrder[newIndex] || (t >= p.T && tokenOrder[newIndex] != 0)) {
+                    fprintf(stderr, "TOKEN_LAYOUT_MISMATCH tensor=%zu n=%zu t=%zu h=%zu d=%zu\n", tensor, n, t, h, d);
+                    return 1;
+                  }
+                }
+        printf("TOKEN_LAYOUT_PASS N=%u T=%u H=%u padded_T=%zu\n", p.N, p.T, p.H, TP);
+      }
       if (record) {
         FILE* file = fopen(fixture.c_str(), "wb");
         if (!file || fwrite((char*)buffers[3]->contents() + 256, 1, bytes, file) != bytes) return 2;

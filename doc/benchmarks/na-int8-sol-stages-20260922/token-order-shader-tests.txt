@@ -1,0 +1,15 @@
+Command: /Users/liu/workspace/ccv/test/int/nnc/sol_attention.tests
+Environment: {'MTL_DEBUG_LAYER': '1', 'MTL_SHADER_VALIDATION': '1', 'MTL_SHADER_VALIDATION_REPORT_TO_STDERR': '1', 'MTL_SHADER_VALIDATION_ABORT_ON_FAULT': '1'}
+[1/4] [RUN] int8 Sol attention matches CPU for pooling, signed scales, tails and batches ...2026-09-22 17:57:41.545 sol_attention.tests[10744:5313797] Metal API Validation Enabled
+2026-09-22 17:57:41.546 sol_attention.tests[10744:5313797] Metal GPU Validation Enabled
+
+[1/4] [PASS] int8 Sol attention matches CPU for pooling, signed scales, tails and batches
+[2/4] [RUN] int8 Sol all-exact and runtime bypass match native attention across cache shapes ...
+[2/4] [PASS] int8 Sol all-exact and runtime bypass match native attention across cache shapes
+[3/4] [RUN] int8 Sol zero logits preserve multiplicity with large centered values ...
+[3/4] [PASS] int8 Sol zero logits preserve multiplicity with large centered values
+[4/4] [RUN] int8 Sol contiguous offset views and dense attention switching ...
+[4/4] [PASS] int8 Sol contiguous offset views and dense attention switching
+all test case(s) passed, congratulations!
+
+EXIT: 0

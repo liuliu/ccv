@@ -72,9 +72,15 @@ in barriers, and output writes are guarded by the actual row count.
 
 `createSource` composes stage generators through CodeWriter. `loopAttention`
 emits separate summary/exact traversals; `accumulateAttention` generates their
-precision-specific PV operations and four output slices. The kernel interface
-provides dispatch geometry from the current descriptor, and pipeline creation
+precision-specific PV operations and four output slices. Attention uses native-style
+rectangular Morton ordering over query tiles and heads; this schedules work over
+the existing token/head data, without rearranging it. Morton helpers are shared
+with V-mean. The kernel interface provides dispatch geometry from the current descriptor, and pipeline creation
 checks both thread count and static threadgroup memory against device limits.
+
+Quantized Q/K/V scratch preserves `[N, T_padded, H, 128]` order, where
+`T_padded` rounds the sequence length up to 64 for zero-filled tail tiles.
+Quantization preserves the token/head axis order of the inputs.
 
 Scratch includes INT8 Q/K/V, pooled tensors, routing maps, and scales. There is
 no intermediate token-sized FP32 numerator or softmax-state buffer. The routing
@@ -123,7 +129,7 @@ make na_int8_sol_attention_bench
 
 The benchmark runs current native NAInt8Attention, actual all-exact Sol, and
 B64/Q64/tau0.5/radius1 sparse Sol on identical inputs. It excludes three warmup
-rounds, alternates execution order, and reports median GPU command times for
+rounds, cycles through all six execution orders, and reports median GPU command times for
 complete attention operators including preprocessing. Speedups are medians
 of within-round ratios. It also reports the measured exact-block fraction,
 all-exact/protected-output errors, and allocated scratch. Routing inspection
@@ -363,6 +369,9 @@ speedup to the small mean reduction. See `mean-final-32768.txt`.
 
 ## Production five-launch integration, 2026-09-22
 
+The measurements in this subsection used the former `[N,H,T_padded,128]`
+quantized scratch layout. The token-order correction below supersedes it.
+
 The encoder now selects the five-launch organization for B64 (six for B16/B32).
 Summary preparation includes independent statistics jobs. Summary and exact
 attention share register state, removing the global FP32 numerator and max/sum
@@ -423,3 +432,93 @@ relative L2 errors were 1.84e-5 / 1.82e-5, below the 1e-4 check. Every warmup
 and measured output was finite. See `production-native-32768.txt`.
 These remain synthetic shape measurements on M5 Max; the original captures
 were cleaned up, so this does not establish model-output quality.
+
+
+## Token/head-order scratch correction, 2026-09-22
+
+The full-token INT8 Q/K/V buffers now preserve input token/head order:
+`[N,T_padded,H,128]`. Quantization writes each token/head at that location;
+attention selects a head's 128 channels with row stride `H*128`. The only
+padding is zero-filled sequence-tail rows to the next multiple of 64. The
+former `[N,H,T_padded,128]` rearrangement is removed. The five-launch B64
+organization, cached Q tiles, and PV/rescale arithmetic are retained.
+
+Validation passed after the correction:
+
+- Debug build and all four SOL integration tests with Metal API and shader
+  validation, including CPU-reference and native all-exact/bypass comparisons.
+- Resource caps for 43 production pipeline specializations.
+- Direct Q/K/V scratch-byte verification of the token/head indexing and padded
+  zeros for all 16 dense/sparse verification cases, including batches and tails.
+- Three repeated comparisons per case, both with and without shader validation;
+  additional instrumented runs covered scalar-aligned offsets, negative scales,
+  and zero logits with large finite V. Every execution passed finite/tolerance
+  checks and final outputs matched the archived head-packed prototype bitwise.
+- 80 instrumented dense/sparse executions at T32769 across two seeds, with no
+  non-finite outputs or comparison failures.
+
+Reproduction commands and results are in `token-order-*.txt` alongside the
+historical experiments. The old scratch layout exists only in archived
+comparison kernels reconstructed in temporary directories.
+
+
+### Matching native attention scheduling
+
+The initial token-order version retained linear attention dispatch. Its native
+paired speedups were 1.0171x / 0.8937x / 0.9560x for dense attention at
+32,768 / 65,536 / 103,982 tokens. This exposed a gap at the larger shapes.
+
+The retained tuning change matches native's rectangular Morton traversal of
+query tiles and heads. The host derives padded grid dimensions from the current
+N/T/H/query-block descriptor; the shader decodes a tile and rejects padded grid
+coordinates uniformly before any threadgroup barriers. Padded query SIMD groups
+within valid tiles still participate in the traversal barriers. Batch is grid.z.
+Q/K/V remain in token/head order, and the five-launch organization and attention
+arithmetic are unchanged. Shared Morton helpers serve both V-mean and attention.
+
+Exploratory three-round checks of score/probability storage reuse, native-style
+Q reloading, removal of the extra exact-loop SIMD barrier, smaller threadgroups,
+grouped output rescaling, wider QK chunks, and tail-only masking did not establish
+dense parity at 65k. None of those changes is retained. The Morton scheduling
+trial reached 1.0005x dense and 2.8245x sparse versus native at 65k.
+
+The integrated version passed the complete validation list above again, including
+all 80 instrumented long-tail stress executions and direct scratch-layout checks.
+Final comparison outputs were bit-identical to the archived head-packed prototype;
+every execution passed finite/tolerance checks. Final logs use the
+`token-order-final-` prefix; the earlier `token-order-` logs document the initial
+linear-dispatch correction.
+
+
+The benchmark now balances all six permutations of native, all-exact SOL, and
+sparse SOL. Each variant occupies every execution position equally; ordered
+predecessor pairs are also balanced across a six-round cycle. The original
+reversed-order method always left all-exact SOL in the middle. The final initial
+six-round logs retain that older method; the 65k confirmation uses twelve
+measured rounds with the balanced method and identifies it in its header.
+
+Final native-relative six-round results on Apple M5 Max, synthetic uniform
+seed-42 inputs, N=1/H=56/D=128, pooling/query block 64, radius=1, tau=0.5,
+scale=1, with validation disabled and all preprocessing included:
+
+| Tokens | Native median ms | All-exact SOL median ms | Sparse SOL median ms | Paired dense speedup | Paired sparse speedup |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| 32,768 | 671.186 | 630.803 | 219.650 | 1.0805x | 3.1615x |
+| 65,536 | 2863.532 | 2957.786 | 1052.186 | 0.9452x | 2.7447x |
+| 103,982 | 10911.860 | 10837.850 | 3697.729 | 0.9997x | 2.8181x |
+
+Speedups are medians of within-round native/SOL ratios, so they need not equal
+the ratio of the displayed timing medians. The protected prefix is 470 tokens
+at 32k/65k and 1262 at 104k. Exact-block fractions are 0.333888 / 0.321285 /
+0.326659. All-exact/protected relative L2 errors are below 2.2e-5 at all shapes;
+every warmup and measured output passed finite checks. These synthetic results
+do not establish model-output quality; the original captures were cleaned up.
+
+The twelve-round balanced-order 65k confirmation measured native / all-exact SOL /
+sparse SOL medians of **2830.508 / 2777.382 / 967.894 ms**, with paired speedups
+of **1.0163x dense and 2.9464x sparse**. All outputs were finite; exact/protected
+relative L2 remained 2.1667e-5 / 2.1541e-5. See
+`token-order-final-native-65536-balanced.txt`. Together with the earlier 0.9452x
+six-round result, this supports approximate dense parity with several-percent
+run/order variation, rather than a guaranteed speedup. No additional kernel
+tuning was retained after this confirmation.

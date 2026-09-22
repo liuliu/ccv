@@ -1,0 +1,103 @@
+Command: /private/tmp/sol-token-order/compare --verify
+Environment: {'MTL_DEBUG_LAYER': '1', 'MTL_SHADER_VALIDATION': '1', 'MTL_SHADER_VALIDATION_REPORT_TO_STDERR': '1', 'MTL_SHADER_VALIDATION_ABORT_ON_FAULT': '1', 'SOL_FUSION': '4', 'SOL_REPEATS': '3'}
+2026-09-22 18:00:14.621 compare[21231:5339555] Metal API Validation Enabled
+2026-09-22 18:00:14.622 compare[21231:5339555] Metal GPU Validation Enabled
+COMPARE device=Apple M5 Max fusion=4 (0: 8 vs 7 launches; 1: 7 vs 5; 2: 7 vs 4; 3: 7 vs 5 vs 4; 4: prototype 5 vs production 5)
+SHAPE N=2 T=257 H=3 B=64 Q=64 dense=0 rounds=3 begin=17 end=250 scale=1
+round=0 baseline_ms=0.25950 variant1_ms=0.21838 speedup1=1.18832
+round=1 baseline_ms=0.21121 variant1_ms=0.20925 speedup1=1.00936
+round=2 baseline_ms=0.20387 variant1_ms=0.21175 speedup1=0.96281
+TOKEN_LAYOUT_PASS N=2 T=257 H=3 padded_T=320
+RESULT variant=1 baseline_ms=0.21121 new_ms=0.21175 paired_speedup=1.00936 differences=0 relative_l2=0 max_abs=0 baseline_scratch=2097152 new_scratch=2097152
+SHAPE N=2 T=257 H=3 B=64 Q=64 dense=1 rounds=3 begin=17 end=250 scale=1
+round=0 baseline_ms=0.21442 variant1_ms=0.21554 speedup1=0.99478
+round=1 baseline_ms=0.20900 variant1_ms=0.20333 speedup1=1.02787
+round=2 baseline_ms=0.20550 variant1_ms=0.21287 speedup1=0.96536
+TOKEN_LAYOUT_PASS N=2 T=257 H=3 padded_T=320
+RESULT variant=1 baseline_ms=0.20900 new_ms=0.21287 paired_speedup=0.99478 differences=0 relative_l2=0 max_abs=0 baseline_scratch=2097152 new_scratch=2097152
+SHAPE N=1 T=197 H=3 B=32 Q=16 dense=0 rounds=3 begin=17 end=190 scale=1
+round=0 baseline_ms=0.24563 variant1_ms=0.22175 speedup1=1.10767
+round=1 baseline_ms=0.21804 variant1_ms=0.20642 speedup1=1.05632
+round=2 baseline_ms=0.21233 variant1_ms=0.29637 speedup1=0.71643
+TOKEN_LAYOUT_PASS N=1 T=197 H=3 padded_T=256
+RESULT variant=1 baseline_ms=0.21804 new_ms=0.22175 paired_speedup=1.05632 differences=0 relative_l2=0 max_abs=0 baseline_scratch=2097152 new_scratch=2097152
+SHAPE N=1 T=197 H=3 B=32 Q=16 dense=1 rounds=3 begin=17 end=190 scale=1
+round=0 baseline_ms=0.22054 variant1_ms=0.21762 speedup1=1.01340
+round=1 baseline_ms=0.21679 variant1_ms=0.20708 speedup1=1.04688
+round=2 baseline_ms=0.20725 variant1_ms=0.24262 speedup1=0.85420
+TOKEN_LAYOUT_PASS N=1 T=197 H=3 padded_T=256
+RESULT variant=1 baseline_ms=0.21679 new_ms=0.21762 paired_speedup=1.01340 differences=0 relative_l2=0 max_abs=0 baseline_scratch=2097152 new_scratch=2097152
+SHAPE N=1 T=133 H=2 B=16 Q=16 dense=0 rounds=3 begin=17 end=126 scale=1
+round=0 baseline_ms=0.24271 variant1_ms=0.23979 speedup1=1.01216
+round=1 baseline_ms=0.26079 variant1_ms=0.22829 speedup1=1.14236
+round=2 baseline_ms=0.23617 variant1_ms=0.23112 speedup1=1.02181
+TOKEN_LAYOUT_PASS N=1 T=133 H=2 padded_T=192
+RESULT variant=1 baseline_ms=0.24271 new_ms=0.23112 paired_speedup=1.02181 differences=0 relative_l2=0 max_abs=0 baseline_scratch=2097152 new_scratch=2097152
+SHAPE N=1 T=133 H=2 B=16 Q=16 dense=1 rounds=3 begin=17 end=126 scale=1
+round=0 baseline_ms=0.23950 variant1_ms=0.23379 speedup1=1.02442
+round=1 baseline_ms=0.23200 variant1_ms=0.22688 speedup1=1.02259
+round=2 baseline_ms=0.23733 variant1_ms=0.22904 speedup1=1.03620
+TOKEN_LAYOUT_PASS N=1 T=133 H=2 padded_T=192
+RESULT variant=1 baseline_ms=0.23733 new_ms=0.22904 paired_speedup=1.02442 differences=0 relative_l2=0 max_abs=0 baseline_scratch=2097152 new_scratch=2097152
+SHAPE N=1 T=20501 H=2 B=64 Q=64 dense=0 rounds=3 begin=17 end=20494 scale=1
+round=0 baseline_ms=10.94288 variant1_ms=9.28196 speedup1=1.17894
+round=1 baseline_ms=10.97346 variant1_ms=9.52713 speedup1=1.15181
+round=2 baseline_ms=10.57175 variant1_ms=8.87763 speedup1=1.19083
+TOKEN_LAYOUT_PASS N=1 T=20501 H=2 padded_T=20544
+RESULT variant=1 baseline_ms=10.94288 new_ms=9.28196 paired_speedup=1.17894 differences=0 relative_l2=0 max_abs=0 baseline_scratch=33554432 new_scratch=33554432
+SHAPE N=1 T=20501 H=2 B=64 Q=64 dense=1 rounds=3 begin=17 end=20494 scale=1
+round=0 baseline_ms=27.34667 variant1_ms=25.85921 speedup1=1.05752
+round=1 baseline_ms=28.63100 variant1_ms=25.19392 speedup1=1.13643
+round=2 baseline_ms=29.25879 variant1_ms=26.85088 speedup1=1.08968
+TOKEN_LAYOUT_PASS N=1 T=20501 H=2 padded_T=20544
+RESULT variant=1 baseline_ms=28.63100 new_ms=25.85921 paired_speedup=1.08968 differences=0 relative_l2=0 max_abs=0 baseline_scratch=33554432 new_scratch=33554432
+SHAPE N=1 T=32769 H=2 B=64 Q=64 dense=0 rounds=3 begin=17 end=32762 scale=1
+round=0 baseline_ms=16.97733 variant1_ms=15.87588 speedup1=1.06938
+round=1 baseline_ms=15.59675 variant1_ms=15.80558 speedup1=0.98679
+round=2 baseline_ms=18.75175 variant1_ms=15.35483 speedup1=1.22123
+TOKEN_LAYOUT_PASS N=1 T=32769 H=2 padded_T=32832
+RESULT variant=1 baseline_ms=16.97733 new_ms=15.80558 paired_speedup=1.06938 differences=0 relative_l2=0 max_abs=0 baseline_scratch=33554432 new_scratch=33554432
+SHAPE N=1 T=32769 H=2 B=64 Q=64 dense=1 rounds=3 begin=17 end=32762 scale=1
+round=0 baseline_ms=42.34663 variant1_ms=38.14350 speedup1=1.11019
+round=1 baseline_ms=46.58671 variant1_ms=38.68979 speedup1=1.20411
+round=2 baseline_ms=45.16275 variant1_ms=45.82075 speedup1=0.98564
+TOKEN_LAYOUT_PASS N=1 T=32769 H=2 padded_T=32832
+RESULT variant=1 baseline_ms=45.16275 new_ms=38.68979 paired_speedup=1.11019 differences=0 relative_l2=0 max_abs=0 baseline_scratch=33554432 new_scratch=33554432
+SHAPE N=2 T=193 H=3 B=64 Q=32 dense=0 rounds=3 begin=17 end=186 scale=1
+round=0 baseline_ms=0.27175 variant1_ms=0.46563 speedup1=0.58362
+round=1 baseline_ms=0.20188 variant1_ms=0.20283 speedup1=0.99528
+round=2 baseline_ms=0.20338 variant1_ms=0.22325 speedup1=0.91097
+TOKEN_LAYOUT_PASS N=2 T=193 H=3 padded_T=256
+RESULT variant=1 baseline_ms=0.20338 new_ms=0.22325 paired_speedup=0.91097 differences=0 relative_l2=0 max_abs=0 baseline_scratch=33554432 new_scratch=33554432
+SHAPE N=2 T=193 H=3 B=64 Q=32 dense=1 rounds=3 begin=17 end=186 scale=1
+round=0 baseline_ms=0.19854 variant1_ms=0.19875 speedup1=0.99895
+round=1 baseline_ms=0.19671 variant1_ms=0.19358 speedup1=1.01614
+round=2 baseline_ms=0.19637 variant1_ms=0.22092 speedup1=0.88891
+TOKEN_LAYOUT_PASS N=2 T=193 H=3 padded_T=256
+RESULT variant=1 baseline_ms=0.19671 new_ms=0.19875 paired_speedup=0.99895 differences=0 relative_l2=0 max_abs=0 baseline_scratch=33554432 new_scratch=33554432
+SHAPE N=1 T=129 H=3 B=64 Q=16 dense=0 rounds=3 begin=17 end=122 scale=1
+round=0 baseline_ms=0.19421 variant1_ms=0.19542 speedup1=0.99382
+round=1 baseline_ms=0.19337 variant1_ms=0.18100 speedup1=1.06837
+round=2 baseline_ms=0.18233 variant1_ms=0.18588 speedup1=0.98095
+TOKEN_LAYOUT_PASS N=1 T=129 H=3 padded_T=192
+RESULT variant=1 baseline_ms=0.19337 new_ms=0.18588 paired_speedup=0.99382 differences=0 relative_l2=0 max_abs=0 baseline_scratch=33554432 new_scratch=33554432
+SHAPE N=1 T=129 H=3 B=64 Q=16 dense=1 rounds=3 begin=17 end=122 scale=1
+round=0 baseline_ms=0.18438 variant1_ms=0.18204 speedup1=1.01282
+round=1 baseline_ms=0.18400 variant1_ms=0.18142 speedup1=1.01424
+round=2 baseline_ms=0.18275 variant1_ms=0.18412 speedup1=0.99253
+TOKEN_LAYOUT_PASS N=1 T=129 H=3 padded_T=192
+RESULT variant=1 baseline_ms=0.18400 new_ms=0.18204 paired_speedup=1.01282 differences=0 relative_l2=0 max_abs=0 baseline_scratch=33554432 new_scratch=33554432
+SHAPE N=1 T=20480 H=2 B=64 Q=64 dense=0 rounds=3 begin=17 end=20473 scale=1
+round=0 baseline_ms=9.92412 variant1_ms=9.07113 speedup1=1.09403
+round=1 baseline_ms=10.38000 variant1_ms=8.55475 speedup1=1.21336
+round=2 baseline_ms=10.02696 variant1_ms=8.47087 speedup1=1.18370
+TOKEN_LAYOUT_PASS N=1 T=20480 H=2 padded_T=20480
+RESULT variant=1 baseline_ms=10.02696 new_ms=8.55475 paired_speedup=1.18370 differences=0 relative_l2=0 max_abs=0 baseline_scratch=33554432 new_scratch=33554432
+SHAPE N=1 T=20480 H=2 B=64 Q=64 dense=1 rounds=3 begin=17 end=20473 scale=1
+round=0 baseline_ms=26.04287 variant1_ms=22.95975 speedup1=1.13428
+round=1 baseline_ms=27.78846 variant1_ms=22.88396 speedup1=1.21432
+round=2 baseline_ms=26.02525 variant1_ms=23.65696 speedup1=1.10011
+TOKEN_LAYOUT_PASS N=1 T=20480 H=2 padded_T=20480
+RESULT variant=1 baseline_ms=26.04287 new_ms=22.95975 paired_speedup=1.13428 differences=0 relative_l2=0 max_abs=0 baseline_scratch=33554432 new_scratch=33554432
+
+EXIT: 0

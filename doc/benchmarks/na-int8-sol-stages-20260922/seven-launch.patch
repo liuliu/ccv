@@ -64,18 +64,20 @@
 -  uint32_t threadgroupSize(const NAInt8SolAttentionDescriptor& descriptor) const noexcept;
 -  MTL::Size threadgroupsPerGrid(const NAInt8SolAttentionDescriptor& descriptor) const noexcept;
 -
-@@ -29 +26,2 @@
+@@ -26 +22,0 @@
+-  void createMortonUtilities(CodeWriter& source) const noexcept;
+@@ -30 +26,2 @@
 -  void createPrepareSummaries(CodeWriter& source) const noexcept;
 +  void createQuantizeSummaries(CodeWriter& source) const noexcept;
 +  void createStatistics(CodeWriter& source) const noexcept;
-@@ -31,3 +29 @@
+@@ -32,3 +29 @@
 -  void createAttention(CodeWriter& source) const noexcept;
 -  void loopAttention(CodeWriter& source, bool summary) const noexcept;
 -  void accumulateAttention(CodeWriter& source, bool summary) const noexcept;
 +  void createAttention(CodeWriter& source, bool approximate) const noexcept;
 --- a/kernels/NAInt8SolAttentionKernel.cpp
 +++ b/kernels/NAInt8SolAttentionKernel.cpp
-@@ -19,25 +18,0 @@
+@@ -19,31 +18,0 @@
 -uint32_t NAInt8SolAttentionKernel::threadgroupSize(const NAInt8SolAttentionDescriptor& descriptor) const noexcept {
 -  switch (descriptor.stage) {
 -    case NAInt8SolAttentionStage::VMean: return vMeanThreadgroupSize(descriptor.T, descriptor.H);
@@ -95,29 +97,45 @@
 -    case NAInt8SolAttentionStage::Quantize: grid.width = (descriptor.T + 63) / 64; break;
 -    case NAInt8SolAttentionStage::Pool: grid.width = JP; break;
 -    case NAInt8SolAttentionStage::PrepareSummaries: grid.width = JP / 64 + 1; break;
--    case NAInt8SolAttentionStage::Route:
--    case NAInt8SolAttentionStage::Attention: break;
+-    case NAInt8SolAttentionStage::Route: break;
+-    case NAInt8SolAttentionStage::Attention: {
+-      // Match native attention scheduling without rearranging token/head data.
+-      uint64_t paddedQueries = 1, paddedHeads = 1;
+-      while (paddedQueries < QJ) paddedQueries *= 2;
+-      while (paddedHeads < descriptor.H) paddedHeads *= 2;
+-      return MTL::Size(paddedQueries * paddedHeads, 1, descriptor.N);
+-    }
 -  }
 -  return grid;
 -}
 -
-@@ -50,3 +25,3 @@
+@@ -54 +22,0 @@
+-  createMortonUtilities(source);
+@@ -57,3 +25,3 @@
 -  if (blockSize != 64)
 -    createPool(source);
 -  createPrepareSummaries(source);
 +  createQuantizeSummaries(source);
 +  createPool(source);
 +  createStatistics(source);
-@@ -54 +29,2 @@
+@@ -61 +29,2 @@
 -  createAttention(source);
 +  createAttention(source, true);
 +  createAttention(source, false);
-@@ -77,0 +54 @@
+@@ -84,0 +54 @@
 +using summary_value_t = float;
-@@ -140 +117 @@
+@@ -107 +77 @@
+-void NAInt8SolAttentionKernel::createMortonUtilities(CodeWriter& source) const noexcept {
++void NAInt8SolAttentionKernel::createVMean(CodeWriter& source) const noexcept {
+@@ -147,6 +117 @@
+-)";
+-}
+-
+-void NAInt8SolAttentionKernel::createVMean(CodeWriter& source) const noexcept {
+-  source += R"(
 -kernel void sol_v_mean(device const packed_half4* V [[buffer(2)]], device float4* mean [[buffer(15)]],
 +kernel void sol_v_mean(device const packed_half4* V [[buffer(2)]], device float4* mean [[buffer(20)]],
-@@ -190,4 +167,4 @@
+@@ -202,4 +167,4 @@
 -  device const half* V [[buffer(2)]], device int8_t* QI [[buffer(9)]], device int8_t* KI [[buffer(10)]],
 -  device int8_t* VI [[buffer(11)]], device float* QS [[buffer(12)]], device float* KS [[buffer(13)]],
 -  device float* VS [[buffer(14)]], device const float* mean [[buffer(15)]], constant Params& p [[buffer(21)]],
@@ -126,12 +144,16 @@
 +  device int8_t* VI [[buffer(16)]], device float* QS [[buffer(17)]], device float* KS [[buffer(18)]],
 +  device float* VS [[buffer(19)]], device const float* mean [[buffer(20)]], constant Params& p [[buffer(10)]],
 +  device float* QC [[buffer(4)]], device half* KC [[buffer(5)]], device summary_value_t* VC [[buffer(6)]],
-@@ -264,2 +241,2 @@
+@@ -261,2 +226 @@
+-    // Preserve token/head order in INT8 scratch; only the sequence tail is padded.
+-    const ulong dst = ((ulong(n) * TP + t) * SOL_H + h) * 128 + tid;
++    const ulong dst = (ulong(nh) * TP + t) * 128 + tid;
+@@ -277,2 +241,2 @@
 -  device float* VC [[buffer(6)]], constant Params& p [[buffer(21)]],
 -  device const float* mean [[buffer(15)]],
 +  device summary_value_t* VC [[buffer(6)]], constant Params& p [[buffer(10)]],
 +  device const float* mean [[buffer(20)]],
-@@ -275,0 +253,7 @@
+@@ -288,0 +253,7 @@
 +  if (blockSize == 64) {
 +    source += R"(
 +  // Summaries are produced while reading the same values for quantization.
@@ -139,10 +161,10 @@
 +  return;
 +)";
 +  }
-@@ -289 +273 @@
+@@ -302 +273 @@
 -  VC[(ulong(nh) * JP + j) * 128 + d] = float(v / count
 +  VC[(ulong(nh) * JP + j) * 128 + d] = summary_value_t(v / count
-@@ -296,6 +280,6 @@
+@@ -309,6 +280,6 @@
 -void NAInt8SolAttentionKernel::createPrepareSummaries(CodeWriter& source) const noexcept {
 -  source += R"(
 -kernel void sol_prepare_summaries(device const half* KC [[buffer(5)]],
@@ -155,7 +177,7 @@
 +  device const summary_value_t* VC [[buffer(6)]], device int8_t* KCI [[buffer(23)]],
 +  device half* VCH [[buffer(24)]], device float* KCS [[buffer(25)]],
 +  device float* VCS [[buffer(26)]], constant Params& p [[buffer(10)]],
-@@ -307,13 +290,0 @@
+@@ -320,13 +290,0 @@
 -
 -  // Independent head-statistics jobs share this launch with summary jobs.
 -  if (group.x == JP / 64) {
@@ -169,7 +191,7 @@
 -    return;
 -  }
 -
-@@ -354,0 +326,17 @@
+@@ -367,0 +326,17 @@
 +void NAInt8SolAttentionKernel::createStatistics(CodeWriter& source) const noexcept {
 +  source += R"(
 +kernel void sol_stats(device const half* KC [[buffer(5)]],
@@ -187,12 +209,12 @@
 +)";
 +}
 +
-@@ -359,2 +347,2 @@
+@@ -372,2 +347,2 @@
 -  device uchar* routes [[buffer(8)]], constant Params& p [[buffer(21)]],
 -  device uint* route_bits [[buffer(20)]],
 +  device uchar* routes [[buffer(8)]], constant Params& p [[buffer(10)]],
 +  device uint* route_bits [[buffer(27)]],
-@@ -396,3 +384,4 @@
+@@ -409,3 +384,4 @@
 -void NAInt8SolAttentionKernel::createAttention(CodeWriter& source) const noexcept {
 -  source += R"(
 -kernel void sol_attention(device half* O_buf [[buffer(3)]],
@@ -200,7 +222,7 @@
 +  source.SetValue("ATTENTION_NAME", approximate ? "sol_approximate" : "sol_attention");
 +  source += R"(
 +kernel void {{ATTENTION_NAME}}(device half* O_buf [[buffer(3)]],
-@@ -400,7 +389,8 @@
+@@ -413,8 +389,9 @@
 -  device int8_t* QI_buf [[buffer(9)]], device int8_t* KI_buf [[buffer(10)]], device int8_t* VI_buf [[buffer(11)]],
 -  device const float* QS [[buffer(12)]], device const float* KS [[buffer(13)]], device const float* VS [[buffer(14)]],
 -  device const float* V_mean [[buffer(15)]],
@@ -208,6 +230,7 @@
 -  device const float* KCS [[buffer(18)]], device const float* VCS [[buffer(19)]],
 -  device const uint* route_bits [[buffer(20)]],
 -  constant Params& p [[buffer(21)]],
+-  uint3 group [[threadgroup_position_in_grid]], uint sg [[simdgroup_index_in_threadgroup]]) {
 +  device int8_t* QI_buf [[buffer(14)]], device int8_t* KI_buf [[buffer(15)]], device int8_t* VI_buf [[buffer(16)]],
 +  device const float* QS [[buffer(17)]], device const float* KS [[buffer(18)]], device const float* VS [[buffer(19)]],
 +  device const float* V_mean [[buffer(20)]],
@@ -216,17 +239,47 @@
 +  device const float* KCS [[buffer(25)]], device const float* VCS [[buffer(26)]],
 +  device const uint* route_bits [[buffer(27)]],
 +  constant Params& p [[buffer(10)]],
-@@ -413 +403 @@
++  uint2 group [[threadgroup_position_in_grid]], uint sg [[simdgroup_index_in_threadgroup]]) {
+@@ -422,7 +399,3 @@
+-  const uint2 tile = morton_decode_rectangular_2d(group.x,
+-      query_groups <= 1 ? 0 : 32 - clz(query_groups - 1),
+-      SOL_H <= 1 ? 0 : 32 - clz(SOL_H - 1));
+-  if (tile.x >= query_groups || tile.y >= SOL_H || group.z >= SOL_N) return;
+-  const uint n = group.z, h = tile.y, nh = n * SOL_H + h;
+-  const uint J = (SOL_T + {{BLOCK_SIZE}} - 1) / {{BLOCK_SIZE}};
+-  const uint row = tile.x * SOL_QB + sg * 16;
++  if (group.x >= query_groups || group.y >= SOL_N * SOL_H) return;
++  const uint J = (SOL_T + {{BLOCK_SIZE}} - 1) / {{BLOCK_SIZE}}, nh = group.y;
++  const uint n = nh / SOL_H, h = nh % SOL_H, row = group.x * SOL_QB + sg * 16;
+@@ -430 +403 @@
 -  // Their Q tiles are zero padded and all output accesses are row guarded.
 +  // Their Q tiles are zero padded and all state/output accesses are row guarded.
-@@ -416,0 +407 @@
+@@ -433,0 +407 @@
 +  state_output += ulong(n) * SOL_T * SOL_H * 128;
-@@ -419 +409,0 @@
+@@ -436,4 +410,3 @@
 -
-@@ -430 +420 @@
+-  auto QI = tensor<device int8_t, dextents<int32_t, 2>, tensor_inline>(QI_buf + ulong(n) * TP * SOL_H * 128, dextents<int32_t, 2>(SOL_H * 128, TP));
+-  auto KI = tensor<device int8_t, dextents<int32_t, 2>, tensor_inline>(KI_buf + ulong(n) * TP * SOL_H * 128, dextents<int32_t, 2>(SOL_H * 128, TP));
+-  auto VI = tensor<device int8_t, dextents<int32_t, 2>, tensor_inline>(VI_buf + ulong(n) * TP * SOL_H * 128, dextents<int32_t, 2>(SOL_H * 128, TP));
++  auto QI = tensor<device int8_t, dextents<int32_t, 2>, tensor_inline>(QI_buf + ulong(nh) * TP * 128, dextents<int32_t, 2>(128, TP));
++  auto KI = tensor<device int8_t, dextents<int32_t, 2>, tensor_inline>(KI_buf + ulong(nh) * TP * 128, dextents<int32_t, 2>(128, TP));
++  auto VI = tensor<device int8_t, dextents<int32_t, 2>, tensor_inline>(VI_buf + ulong(nh) * TP * 128, dextents<int32_t, 2>(128, TP));
+@@ -447 +420 @@
 -  // Keep one FP32 numerator and softmax state across summary and exact tokens.
 +  // FP32 state uses the same cooperative layout as the FP16 summary PV.
-@@ -461,5 +451,7 @@
+@@ -459,3 +432,3 @@
+-  auto mq8 = QI.slice<qkD, 16>(h * 128, row);
+-  auto mk8 = KI.slice<qkD, {{BLOCK_SIZE}}>(h * 128, 0);
+-  auto mv8 = VI.slice<32, {{BLOCK_SIZE}}>(h * 128, 0);
++  auto mq8 = QI.slice<qkD, 16>(0, row);
++  auto mk8 = KI.slice<qkD, {{BLOCK_SIZE}}>(0, 0);
++  auto mv8 = VI.slice<32, {{BLOCK_SIZE}}>(0, 0);
+@@ -471,2 +444,2 @@
+-  CQ0.load(QI.slice<32, 16>(h * 128, row)); CQ1.load(QI.slice<32, 16>(h * 128 + 32, row));
+-  CQ2.load(QI.slice<32, 16>(h * 128 + 64, row)); CQ3.load(QI.slice<32, 16>(h * 128 + 96, row));
++  CQ0.load(QI.slice<32, 16>(0, row)); CQ1.load(QI.slice<32, 16>(32, row));
++  CQ2.load(QI.slice<32, 16>(64, row)); CQ3.load(QI.slice<32, 16>(96, row));
+@@ -478,5 +451,7 @@
 -
 -  // Emit distinct loops so each traversal has compile-time tensor/precision choices.
 -  loopAttention(source, true);
@@ -239,9 +292,9 @@
 +    const uint r = row + M.get_multidimensional_index(i)[0];
 +    if (r < SOL_T) { const float2 ml = state_ml[ulong(nh) * SOL_T + r]; M[i] = ml.x; L[i] = ml.y; }
 +  }
-@@ -470 +461,0 @@
+@@ -487 +461,0 @@
 -      const float reciprocal = 1 / *L.map_iterator(O0.get_iterator(i));
-@@ -472,27 +463,16 @@
+@@ -489,28 +463,16 @@
 -)";
 -  for (uint32_t slice = 0; slice < 4; ++slice) {
 -    source.SetValue("SLICE", std::to_string(slice));
@@ -260,6 +313,7 @@
 -
 -void NAInt8SolAttentionKernel::loopAttention(CodeWriter& source, bool summary) const noexcept {
 -  source.SetValue("KEY_TENSOR", summary ? "KCI" : "KI");
+-  source.SetValue("KEY_HEAD_OFFSET", summary ? "0" : "h * 128");
 -  source.SetValue("KEY_SCALE", summary ? "KCS[nh * (JP / 64) + c / 64]" : "KS[nh * TP / 64 + c / 64]");
 -  source.SetValue("VALID_KEY", summary ? "column < J && !routes[column]" : "column < SOL_T");
 -  if (summary) {
@@ -285,7 +339,7 @@
 +  for (uint tile = 0; tile < summaries; ++tile) {
 +    constexpr bool summary = true;
 +    const uint block = 0;
-@@ -502,13 +482,14 @@
+@@ -520,13 +482,14 @@
 -  {
 -    const uint words = (J + 31) / 32;
 -    route_bits += (ulong(nh) * QJ + qb) * words;
@@ -313,9 +367,9 @@
 +  }
 +  source += R"(
 +    const uint c = summary ? tile * {{BLOCK_SIZE}} : block * {{BLOCK_SIZE}};
-@@ -517,5 +498,12 @@
--    auto k0 = {{KEY_TENSOR}}.slice<32, {{BLOCK_SIZE}}>(0, c); auto k1 = {{KEY_TENSOR}}.slice<32, {{BLOCK_SIZE}}>(32, c);
--    auto k2 = {{KEY_TENSOR}}.slice<32, {{BLOCK_SIZE}}>(64, c); auto k3 = {{KEY_TENSOR}}.slice<32, {{BLOCK_SIZE}}>(96, c);
+@@ -535,5 +498,12 @@
+-    auto k0 = {{KEY_TENSOR}}.slice<32, {{BLOCK_SIZE}}>({{KEY_HEAD_OFFSET}} + 0, c); auto k1 = {{KEY_TENSOR}}.slice<32, {{BLOCK_SIZE}}>({{KEY_HEAD_OFFSET}} + 32, c);
+-    auto k2 = {{KEY_TENSOR}}.slice<32, {{BLOCK_SIZE}}>({{KEY_HEAD_OFFSET}} + 64, c); auto k3 = {{KEY_TENSOR}}.slice<32, {{BLOCK_SIZE}}>({{KEY_HEAD_OFFSET}} + 96, c);
 -    qk.run(CQ0, k0, S8); qk.run(CQ1, k1, S8);
 -    qk.run(CQ2, k2, S8); qk.run(CQ3, k3, S8);
 -    const float scale = QS[nh * TP / 16 + row / 16] * {{KEY_SCALE}} * g;
@@ -331,17 +385,17 @@
 +      qk.run(CQ2, k2, S8); qk.run(CQ3, k3, S8);
 +    }
 +    const float scale = QS[nh * TP / 16 + row / 16] * (summary ? KCS[nh * (JP / 64) + c / 64] : KS[nh * TP / 64 + c / 64]) * g;
-@@ -528 +516,4 @@
+@@ -546 +516,4 @@
 -      S[i] = {{VALID_KEY}} ? S[i] : -INFINITY;
 +      if (summary) S[i] = column < J && !routes[column] ? S[i]
 +        : -INFINITY;
 +      else S[i] = column < SOL_T ? S[i]
 +        : -INFINITY;
-@@ -542,3 +532,0 @@
+@@ -560,3 +532,0 @@
 -)";
 -  if (summary) {
 -    source += R"(
-@@ -547,7 +535,5 @@
+@@ -565,7 +535,5 @@
 -      const uint column = c + S.get_multidimensional_index(i)[0];
 -      if (column < J) S[i] *= float(min(uint({{BLOCK_SIZE}}), SOL_T - column * {{BLOCK_SIZE}}));
 -)";
@@ -354,10 +408,10 @@
 +        if (column < J) S[i] *= float(min(uint({{BLOCK_SIZE}}), SOL_T - column * {{BLOCK_SIZE}}));
 +      }
 +    }
-@@ -559 +545 @@
+@@ -577 +545 @@
 -  if (summary) {
 +  if (approximate) {
-@@ -570,21 +555,0 @@
+@@ -588,21 +555,0 @@
 -)";
 -  accumulateAttention(source, summary);
 -  if (!summary) {
@@ -379,9 +433,9 @@
 -  source += "{";
 -  if (summary) {
 -    source += R"(
-@@ -592,0 +558 @@
+@@ -610,0 +558 @@
 +    if (summary) {
-@@ -602,3 +568,13 @@
+@@ -620,3 +568,13 @@
 -)";
 -  } else {
 -    source += R"(
@@ -398,7 +452,12 @@
 +      #pragma clang loop unroll(full)
 +      for (ushort i = 0; i < O3.get_capacity(); ++i) if (O3.is_valid_element(i)) O3[i] += temporary[i] * scale;
 +    } else {
-@@ -612,16 +588,4 @@
+@@ -626,2 +584,2 @@
+-      auto v0 = VI.slice<32, {{BLOCK_SIZE}}>(h * 128, c); auto v1 = VI.slice<32, {{BLOCK_SIZE}}>(h * 128 + 32, c);
+-      auto v2 = VI.slice<32, {{BLOCK_SIZE}}>(h * 128 + 64, c); auto v3 = VI.slice<32, {{BLOCK_SIZE}}>(h * 128 + 96, c);
++      auto v0 = VI.slice<32, {{BLOCK_SIZE}}>(0, c); auto v1 = VI.slice<32, {{BLOCK_SIZE}}>(32, c);
++      auto v2 = VI.slice<32, {{BLOCK_SIZE}}>(64, c); auto v3 = VI.slice<32, {{BLOCK_SIZE}}>(96, c);
+@@ -630,16 +588,4 @@
 -)";
 -  }
 -  for (uint32_t slice = 0; slice < 4; ++slice) {
@@ -419,7 +478,7 @@
 +      #pragma clang loop unroll(full)
 +      for (ushort i = 0; i < O0.get_capacity(); ++i) if (O0.is_valid_element(i)) {
 +        O0[i] = fma(float(O8[i]), scale, O0[i] * *correction.map_iterator(O0.get_iterator(i)));
-@@ -629,5 +593,78 @@
+@@ -647,5 +593,78 @@
 -)";
 -    }
 -  }

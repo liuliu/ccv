@@ -1,0 +1,104 @@
+Exploratory token-order SOL tuning, Apple M5 Max, 2026-09-22.
+Each run: T=65536 H=56 D=128 B64/Q64, three warmups, three measured rounds.
+All candidates preserve token/head-order Q/K/V scratch. All final output checks passed.
+Ratios compare each candidate to native within its run; absolute times across runs are not directly comparable.
+Only Morton attention dispatch was retained. Temporary exploratory variants are not production paths.
+
+Reuse INT32 scores for FP32 probabilities and INT8 PV inputs
+Command: /private/tmp/sol-token-alias/bench 65536 56 3
+device=Apple M5 Max input=synthetic-uniform-seed42 shape=[1,65536,56,128] B=64 Q=64 radius=1 tau=0.5 span=[470,65536) scale=1 rounds=3
+warmup=0 native_ms=2448.2525 exact_ms=4736.1530 sparse_ms=1562.7670 ratios=0.5169,1.5666
+warmup=1 native_ms=4583.1664 exact_ms=4797.2748 sparse_ms=1674.4534 ratios=0.9554,2.7371
+warmup=2 native_ms=4695.0835 exact_ms=4519.3808 sparse_ms=1523.9114 ratios=1.0389,3.0809
+round=0 native_ms=4373.7144 exact_ms=4597.9384 sparse_ms=1552.6487 ratios=0.9512,2.8169
+round=1 native_ms=4367.8504 exact_ms=4557.3975 sparse_ms=1523.9393 ratios=0.9584,2.8662
+round=2 native_ms=4060.4802 exact_ms=4581.6158 sparse_ms=1573.2430 ratios=0.8863,2.5810
+RESULT native_ms=4367.8504 exact_ms=4581.6158 sparse_ms=1552.6487 paired_exact_speedup=0.9512 paired_sparse_speedup=2.8169 exact_block_fraction=0.321285 exact_relative_l2=2.1666737e-05 protected_relative_l2=2.1540819e-05 sparse_relative_l2=1.0996263 scratch_bytes=1572236288
+
+Also reuse score storage for summary FP16 probabilities
+Command: /private/tmp/sol-token-full-alias/bench 65536 56 3
+device=Apple M5 Max input=synthetic-uniform-seed42 shape=[1,65536,56,128] B=64 Q=64 radius=1 tau=0.5 span=[470,65536) scale=1 rounds=3
+warmup=0 native_ms=2929.2491 exact_ms=4363.9923 sparse_ms=1668.1405 ratios=0.6712,1.7560
+warmup=1 native_ms=4055.9519 exact_ms=4897.1641 sparse_ms=1611.6765 ratios=0.8282,2.5166
+warmup=2 native_ms=3688.3561 exact_ms=3845.8215 sparse_ms=1245.6890 ratios=0.9591,2.9609
+round=0 native_ms=3404.9106 exact_ms=3932.2360 sparse_ms=1296.3785 ratios=0.8659,2.6265
+round=1 native_ms=3156.1130 exact_ms=3434.9884 sparse_ms=1264.8904 ratios=0.9188,2.4952
+round=2 native_ms=3421.6651 exact_ms=3646.6532 sparse_ms=1297.4783 ratios=0.9383,2.6372
+RESULT native_ms=3404.9106 exact_ms=3646.6532 sparse_ms=1296.3785 paired_exact_speedup=0.9188 paired_sparse_speedup=2.6265 exact_block_fraction=0.321285 exact_relative_l2=2.1666737e-05 protected_relative_l2=2.1540819e-05 sparse_relative_l2=1.0996263 scratch_bytes=1572236288
+
+Storage reuse plus native-style device Q loading
+Command: /private/tmp/sol-token-reload/bench 65536 56 3
+device=Apple M5 Max input=synthetic-uniform-seed42 shape=[1,65536,56,128] B=64 Q=64 radius=1 tau=0.5 span=[470,65536) scale=1 rounds=3
+warmup=0 native_ms=3157.8483 exact_ms=3645.6577 sparse_ms=1213.6228 ratios=0.8662,2.6020
+warmup=1 native_ms=3078.5756 exact_ms=3793.9840 sparse_ms=1248.9810 ratios=0.8114,2.4649
+warmup=2 native_ms=2924.5869 exact_ms=3589.7965 sparse_ms=1193.6674 ratios=0.8147,2.4501
+round=0 native_ms=3070.7408 exact_ms=3568.2755 sparse_ms=1352.5279 ratios=0.8606,2.2704
+round=1 native_ms=3051.8567 exact_ms=3408.9195 sparse_ms=1290.7022 ratios=0.8953,2.3645
+round=2 native_ms=3001.7670 exact_ms=3658.3847 sparse_ms=1242.9825 ratios=0.8205,2.4150
+RESULT native_ms=3051.8567 exact_ms=3568.2755 sparse_ms=1290.7022 paired_exact_speedup=0.8606 paired_sparse_speedup=2.3645 exact_block_fraction=0.321285 exact_relative_l2=2.1666737e-05 protected_relative_l2=2.1540819e-05 sparse_relative_l2=1.0996263 scratch_bytes=1572236288
+
+Remove the exact-loop SIMD-group barrier
+Command: /private/tmp/sol-token-no-barrier/bench 65536 56 3
+device=Apple M5 Max input=synthetic-uniform-seed42 shape=[1,65536,56,128] B=64 Q=64 radius=1 tau=0.5 span=[470,65536) scale=1 rounds=3
+warmup=0 native_ms=2154.3428 exact_ms=3199.4256 sparse_ms=1180.3343 ratios=0.6734,1.8252
+warmup=1 native_ms=3119.8616 exact_ms=3463.8367 sparse_ms=1179.0034 ratios=0.9007,2.6462
+warmup=2 native_ms=2940.6987 exact_ms=3250.7495 sparse_ms=1182.0472 ratios=0.9046,2.4878
+round=0 native_ms=2994.2705 exact_ms=3428.8069 sparse_ms=1165.8076 ratios=0.8733,2.5684
+round=1 native_ms=2936.7992 exact_ms=3286.8667 sparse_ms=1199.9665 ratios=0.8935,2.4474
+round=2 native_ms=3360.4878 exact_ms=3662.9253 sparse_ms=1283.6917 ratios=0.9174,2.6178
+RESULT native_ms=2994.2705 exact_ms=3428.8069 sparse_ms=1199.9665 paired_exact_speedup=0.8935 paired_sparse_speedup=2.5684 exact_block_fraction=0.321285 exact_relative_l2=2.1666737e-05 protected_relative_l2=2.1540819e-05 sparse_relative_l2=1.0996263 scratch_bytes=1572236288
+
+Two SIMD groups per attention threadgroup, same Q64 routing
+Command: /private/tmp/sol-token-two-group/bench 65536 56 3
+device=Apple M5 Max input=synthetic-uniform-seed42 shape=[1,65536,56,128] B=64 Q=64 radius=1 tau=0.5 span=[470,65536) scale=1 rounds=3
+warmup=0 native_ms=2782.7133 exact_ms=3545.4420 sparse_ms=1436.4290 ratios=0.7849,1.9372
+warmup=1 native_ms=2842.3458 exact_ms=3893.3566 sparse_ms=1327.3319 ratios=0.7301,2.1414
+warmup=2 native_ms=2805.6288 exact_ms=3622.5820 sparse_ms=1384.9872 ratios=0.7745,2.0257
+round=0 native_ms=3271.6570 exact_ms=3937.2079 sparse_ms=1322.1884 ratios=0.8310,2.4744
+round=1 native_ms=2748.5447 exact_ms=4170.6069 sparse_ms=1305.9758 ratios=0.6590,2.1046
+round=2 native_ms=3043.8632 exact_ms=3869.0224 sparse_ms=1430.8978 ratios=0.7867,2.1272
+RESULT native_ms=3043.8632 exact_ms=3937.2079 sparse_ms=1322.1884 paired_exact_speedup=0.7867 paired_sparse_speedup=2.1272 exact_block_fraction=0.321285 exact_relative_l2=2.1666737e-05 protected_relative_l2=2.1540819e-05 sparse_relative_l2=1.0996263 scratch_bytes=1572236288
+
+Group output rescaling before PV
+Command: /private/tmp/sol-token-rescale/bench 65536 56 3
+device=Apple M5 Max input=synthetic-uniform-seed42 shape=[1,65536,56,128] B=64 Q=64 radius=1 tau=0.5 span=[470,65536) scale=1 rounds=3
+warmup=0 native_ms=1961.8118 exact_ms=2883.9138 sparse_ms=1051.9660 ratios=0.6803,1.8649
+warmup=1 native_ms=2791.8194 exact_ms=2982.1679 sparse_ms=1055.1318 ratios=0.9362,2.6459
+warmup=2 native_ms=2676.5793 exact_ms=3191.7184 sparse_ms=1296.3100 ratios=0.8386,2.0648
+round=0 native_ms=2978.1091 exact_ms=3475.1809 sparse_ms=1266.1231 ratios=0.8570,2.3521
+round=1 native_ms=2927.0135 exact_ms=3351.1191 sparse_ms=1231.6786 ratios=0.8734,2.3764
+round=2 native_ms=3120.6395 exact_ms=3363.6125 sparse_ms=1284.0820 ratios=0.9278,2.4302
+RESULT native_ms=2978.1091 exact_ms=3363.6125 sparse_ms=1266.1231 paired_exact_speedup=0.8734 paired_sparse_speedup=2.3764 exact_block_fraction=0.321285 exact_relative_l2=2.1666737e-05 protected_relative_l2=2.1540819e-05 sparse_relative_l2=1.0996263 scratch_bytes=1572236288
+
+Two 64-channel QK products instead of four 32-channel products
+Command: /private/tmp/sol-token-qk64/bench 65536 56 3
+device=Apple M5 Max input=synthetic-uniform-seed42 shape=[1,65536,56,128] B=64 Q=64 radius=1 tau=0.5 span=[470,65536) scale=1 rounds=3
+warmup=0 native_ms=1941.0256 exact_ms=2765.9254 sparse_ms=943.7141 ratios=0.7018,2.0568
+warmup=1 native_ms=2687.8714 exact_ms=2915.8135 sparse_ms=977.3338 ratios=0.9218,2.7502
+warmup=2 native_ms=2441.4963 exact_ms=3217.2519 sparse_ms=1145.2584 ratios=0.7589,2.1318
+round=0 native_ms=3033.0378 exact_ms=3049.4430 sparse_ms=1161.1504 ratios=0.9946,2.6121
+round=1 native_ms=2644.8376 exact_ms=3128.5690 sparse_ms=1089.2729 ratios=0.8454,2.4281
+round=2 native_ms=2918.7069 exact_ms=3387.4509 sparse_ms=1033.4472 ratios=0.8616,2.8242
+RESULT native_ms=2918.7069 exact_ms=3128.5690 sparse_ms=1089.2729 paired_exact_speedup=0.8616 paired_sparse_speedup=2.6121 exact_block_fraction=0.321285 exact_relative_l2=2.1666737e-05 protected_relative_l2=2.1540819e-05 sparse_relative_l2=1.0996263 scratch_bytes=1572236288
+
+Mask only partial exact tiles, omit redundant exact infinity check
+Command: /private/tmp/sol-token-mask/bench 65536 56 3
+device=Apple M5 Max input=synthetic-uniform-seed42 shape=[1,65536,56,128] B=64 Q=64 radius=1 tau=0.5 span=[470,65536) scale=1 rounds=3
+warmup=0 native_ms=2020.3809 exact_ms=2655.6027 sparse_ms=1045.3943 ratios=0.7608,1.9326
+warmup=1 native_ms=2789.2524 exact_ms=3015.1765 sparse_ms=1035.3660 ratios=0.9251,2.6940
+warmup=2 native_ms=2801.1535 exact_ms=2963.7511 sparse_ms=1138.9347 ratios=0.9451,2.4595
+round=0 native_ms=2913.4781 exact_ms=3285.4545 sparse_ms=1179.0546 ratios=0.8868,2.4710
+round=1 native_ms=2679.2748 exact_ms=3159.5335 sparse_ms=1116.1311 ratios=0.8480,2.4005
+round=2 native_ms=3087.4536 exact_ms=3614.5691 sparse_ms=1256.1041 ratios=0.8542,2.4580
+RESULT native_ms=2913.4781 exact_ms=3285.4545 sparse_ms=1179.0546 paired_exact_speedup=0.8542 paired_sparse_speedup=2.4580 exact_block_fraction=0.321285 exact_relative_l2=2.1666737e-05 protected_relative_l2=2.1540819e-05 sparse_relative_l2=1.0996263 scratch_bytes=1572236288
+
+Native-style rectangular Morton attention scheduling
+Command: /private/tmp/sol-token-morton/bench 65536 56 3
+device=Apple M5 Max input=synthetic-uniform-seed42 shape=[1,65536,56,128] B=64 Q=64 radius=1 tau=0.5 span=[470,65536) scale=1 rounds=3
+warmup=0 native_ms=2022.6027 exact_ms=3001.1623 sparse_ms=1121.2965 ratios=0.6739,1.8038
+warmup=1 native_ms=2985.1810 exact_ms=3034.3791 sparse_ms=1071.2605 ratios=0.9838,2.7866
+warmup=2 native_ms=2937.0175 exact_ms=2868.3224 sparse_ms=996.9041 ratios=1.0239,2.9461
+round=0 native_ms=2907.8633 exact_ms=2906.4763 sparse_ms=1044.1625 ratios=1.0005,2.7849
+round=1 native_ms=2999.7364 exact_ms=2963.0294 sparse_ms=1062.0502 ratios=1.0124,2.8245
+round=2 native_ms=2986.8631 exact_ms=3040.8945 sparse_ms=1049.7115 ratios=0.9822,2.8454
+RESULT native_ms=2986.8631 exact_ms=2963.0294 sparse_ms=1049.7115 paired_exact_speedup=1.0005 paired_sparse_speedup=2.8245 exact_block_fraction=0.321285 exact_relative_l2=2.1666737e-05 protected_relative_l2=2.1540819e-05 sparse_relative_l2=1.0996263 scratch_bytes=1572236288

@@ -76,13 +76,16 @@ int main(int argc, char** argv)
   const size_t route_count = size_t(H) * J * J;
   auto route_copy = NS::TransferPtr(device->newBuffer(route_count, MTL::ResourceStorageModeShared));
   if (!route_copy) return 2;
+  printf("execution_order=all-six-permutations\n");
   std::array<std::vector<double>, 3> times;
   std::vector<double> exact_ratios, sparse_ratios;
   for (int round = -3; round < rounds; ++round) {
     double elapsed[3] = {};
-    // Alternate order to balance thermal and cache effects within each round.
+    // Balance positions and ordered predecessor pairs over each six-round cycle.
+    // Reversing only two orders would always leave all-exact SOL in the middle.
+    const int orders[6][3] = {{0, 1, 2}, {0, 2, 1}, {2, 1, 0}, {1, 0, 2}, {1, 2, 0}, {2, 0, 1}};
     for (int step = 0; step < 3; ++step) {
-      const int variant = ((round + 3) % 2 == 0) ? step : 2 - step;
+      const int variant = orders[(round + 6) % 6][step];
       auto iteration_pool = NS::TransferPtr(NS::AutoreleasePool::alloc()->init());
       auto cb = queue->commandBuffer();
       auto batch = ccv_nnc_start_command_batch_from_command_buffer(cb, 0);

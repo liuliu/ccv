@@ -1,0 +1,50 @@
+Command: /private/tmp/sol-token-order-final/resources
+Environment: {'MTL_DEBUG_LAYER': '1', 'MTL_SHADER_VALIDATION': '1', 'MTL_SHADER_VALIDATION_REPORT_TO_STDERR': '1', 'MTL_SHADER_VALIDATION_ABORT_ON_FAULT': '1'}
+2026-09-22 18:30:28.333 resources[59276:5522996] Metal API Validation Enabled
+2026-09-22 18:30:28.333 resources[59276:5522996] Metal GPU Validation Enabled
+PRODUCTION N=2 T=257 H=1 B=16 Q=16 stage=0 threads=256 memory=32768 cap=32768
+PRODUCTION N=2 T=257 H=1 B=16 Q=16 stage=1 threads=128 memory=192 cap=32768
+PRODUCTION N=2 T=257 H=1 B=16 Q=16 stage=2 threads=128 memory=0 cap=32768
+PRODUCTION N=2 T=257 H=1 B=16 Q=16 stage=3 threads=128 memory=64 cap=32768
+PRODUCTION N=2 T=257 H=1 B=16 Q=16 stage=4 threads=128 memory=0 cap=32768
+PRODUCTION N=2 T=257 H=1 B=16 Q=16 stage=5 threads=32 memory=0 cap=32768
+PRODUCTION N=2 T=20480 H=56 B=32 Q=16 stage=0 threads=256 memory=32768 cap=32768
+PRODUCTION N=2 T=20480 H=56 B=32 Q=16 stage=1 threads=128 memory=192 cap=32768
+PRODUCTION N=2 T=20480 H=56 B=32 Q=16 stage=2 threads=128 memory=0 cap=32768
+PRODUCTION N=2 T=20480 H=56 B=32 Q=16 stage=3 threads=128 memory=64 cap=32768
+PRODUCTION N=2 T=20480 H=56 B=32 Q=16 stage=4 threads=128 memory=0 cap=32768
+PRODUCTION N=2 T=20480 H=56 B=32 Q=16 stage=5 threads=32 memory=0 cap=32768
+PRODUCTION N=2 T=20481 H=64 B=32 Q=32 stage=0 threads=256 memory=32768 cap=32768
+PRODUCTION N=2 T=20481 H=64 B=32 Q=32 stage=1 threads=128 memory=192 cap=32768
+PRODUCTION N=2 T=20481 H=64 B=32 Q=32 stage=2 threads=128 memory=0 cap=32768
+PRODUCTION N=2 T=20481 H=64 B=32 Q=32 stage=3 threads=128 memory=64 cap=32768
+PRODUCTION N=2 T=20481 H=64 B=32 Q=32 stage=4 threads=128 memory=0 cap=32768
+PRODUCTION N=2 T=20481 H=64 B=32 Q=32 stage=5 threads=64 memory=0 cap=32768
+PRODUCTION N=1 T=32769 H=3 B=64 Q=16 stage=0 threads=128 memory=32768 cap=32768
+PRODUCTION N=1 T=32769 H=3 B=64 Q=16 stage=1 threads=128 memory=192 cap=32768
+PRODUCTION N=1 T=32769 H=3 B=64 Q=16 stage=3 threads=128 memory=64 cap=32768
+PRODUCTION N=1 T=32769 H=3 B=64 Q=16 stage=4 threads=128 memory=0 cap=32768
+PRODUCTION N=1 T=32769 H=3 B=64 Q=16 stage=5 threads=32 memory=0 cap=32768
+PRODUCTION N=1 T=32769 H=56 B=64 Q=32 stage=0 threads=256 memory=32768 cap=32768
+PRODUCTION N=1 T=32769 H=56 B=64 Q=32 stage=1 threads=128 memory=192 cap=32768
+PRODUCTION N=1 T=32769 H=56 B=64 Q=32 stage=3 threads=128 memory=64 cap=32768
+PRODUCTION N=1 T=32769 H=56 B=64 Q=32 stage=4 threads=128 memory=0 cap=32768
+PRODUCTION N=1 T=32769 H=56 B=64 Q=32 stage=5 threads=64 memory=0 cap=32768
+PRODUCTION N=1 T=32769 H=64 B=64 Q=64 stage=0 threads=256 memory=32768 cap=32768
+PRODUCTION N=1 T=32769 H=64 B=64 Q=64 stage=1 threads=128 memory=192 cap=32768
+PRODUCTION N=1 T=32769 H=64 B=64 Q=64 stage=3 threads=128 memory=64 cap=32768
+PRODUCTION N=1 T=32769 H=64 B=64 Q=64 stage=4 threads=128 memory=0 cap=32768
+PRODUCTION N=1 T=32769 H=64 B=64 Q=64 stage=5 threads=128 memory=0 cap=32768
+PRODUCTION N=1 T=65536 H=56 B=64 Q=64 stage=0 threads=256 memory=32768 cap=32768
+PRODUCTION N=1 T=65536 H=56 B=64 Q=64 stage=1 threads=128 memory=192 cap=32768
+PRODUCTION N=1 T=65536 H=56 B=64 Q=64 stage=3 threads=128 memory=64 cap=32768
+PRODUCTION N=1 T=65536 H=56 B=64 Q=64 stage=4 threads=128 memory=0 cap=32768
+PRODUCTION N=1 T=65536 H=56 B=64 Q=64 stage=5 threads=128 memory=0 cap=32768
+PRODUCTION N=1 T=103982 H=56 B=64 Q=64 stage=0 threads=256 memory=32768 cap=32768
+PRODUCTION N=1 T=103982 H=56 B=64 Q=64 stage=1 threads=128 memory=192 cap=32768
+PRODUCTION N=1 T=103982 H=56 B=64 Q=64 stage=3 threads=128 memory=64 cap=32768
+PRODUCTION N=1 T=103982 H=56 B=64 Q=64 stage=4 threads=128 memory=0 cap=32768
+PRODUCTION N=1 T=103982 H=56 B=64 Q=64 stage=5 threads=128 memory=0 cap=32768
+All resource caps passed.
+
+EXIT: 0

@@ -23,6 +23,7 @@ private:
 
   std::string createSource() const noexcept;
   void createConstants(CodeWriter& source) const noexcept;
+  void createMortonUtilities(CodeWriter& source) const noexcept;
   void createVMean(CodeWriter& source) const noexcept;
   void createQuantize(CodeWriter& source) const noexcept;
   void createPool(CodeWriter& source) const noexcept;

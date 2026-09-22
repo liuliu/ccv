@@ -1,0 +1,22 @@
+Command: bin/mfa/na_int8_sol_attention_bench 65536 56 12
+Validation disabled; all preprocessing included. All six execution permutations, twelve measured rounds.
+device=Apple M5 Max input=synthetic-uniform-seed42 shape=[1,65536,56,128] B=64 Q=64 radius=1 tau=0.5 span=[470,65536) scale=1 rounds=12
+execution_order=all-six-permutations
+warmup=0 native_ms=2138.9254 exact_ms=2172.4702 sparse_ms=883.0529 ratios=0.9846,2.4222
+warmup=1 native_ms=2658.3153 exact_ms=2449.5693 sparse_ms=954.7609 ratios=1.0852,2.7843
+warmup=2 native_ms=2765.7874 exact_ms=2789.0920 sparse_ms=1039.8705 ratios=0.9916,2.6597
+round=0 native_ms=2782.7195 exact_ms=2886.9955 sparse_ms=1036.7596 ratios=0.9639,2.6841
+round=1 native_ms=2968.6504 exact_ms=2751.2824 sparse_ms=954.3368 ratios=1.0790,3.1107
+round=2 native_ms=2871.3467 exact_ms=2680.6518 sparse_ms=989.0215 ratios=1.0711,2.9032
+round=3 native_ms=2753.9220 exact_ms=2876.3777 sparse_ms=928.6909 ratios=0.9574,2.9654
+round=4 native_ms=2822.7866 exact_ms=2826.5741 sparse_ms=958.6815 ratios=0.9987,2.9444
+round=5 native_ms=2755.7435 exact_ms=2798.9565 sparse_ms=974.2981 ratios=0.9846,2.8284
+round=6 native_ms=2721.7030 exact_ms=2796.2970 sparse_ms=902.6172 ratios=0.9733,3.0153
+round=7 native_ms=2943.1157 exact_ms=2779.4356 sparse_ms=943.0187 ratios=1.0589,3.1210
+round=8 native_ms=2857.1426 exact_ms=2701.8720 sparse_ms=969.0617 ratios=1.0575,2.9484
+round=9 native_ms=2741.6585 exact_ms=2761.0920 sparse_ms=1020.3099 ratios=0.9930,2.6871
+round=10 native_ms=2869.4279 exact_ms=2775.3273 sparse_ms=966.7252 ratios=1.0339,2.9682
+round=11 native_ms=2838.2294 exact_ms=2649.6185 sparse_ms=990.0439 ratios=1.0712,2.8668
+RESULT native_ms=2830.5080 exact_ms=2777.3815 sparse_ms=967.8935 paired_exact_speedup=1.0163 paired_sparse_speedup=2.9464 exact_block_fraction=0.321285 exact_relative_l2=2.1666737e-05 protected_relative_l2=2.1540819e-05 sparse_relative_l2=1.0996263 scratch_bytes=1572236288
+
+EXIT: 0

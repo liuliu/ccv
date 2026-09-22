@@ -2,6 +2,6 @@
   "ccv_nnc_mfa_sol_attention.cpp": "5353280dd2f0f610ce992ae02f5a5d9bd33efa87de9e4aaa9836febedaddbf5c",
   "kernels/NAInt8SolAttentionDescriptor.hpp": "1eb890bf87f523bd2f50e62f325bda8aec7e0305896eb822754054084043511d",
   "kernels/NAInt8SolAttentionDescriptor.cpp": "7a02513a805f2f40ef3f256623695a002d37831111f50b1eb69936198ea7ac26",
-  "kernels/NAInt8SolAttentionKernel.hpp": "0c00d4e3f9f2201cda1d095cf0591b0ad911e79fc118044e43fe3c16fbf29ca1",
-  "kernels/NAInt8SolAttentionKernel.cpp": "aa3e5e621f1c78b223c9a4ef8dfc07982491ed86ef6f74f60524a587192fa3de"
+  "kernels/NAInt8SolAttentionKernel.hpp": "710cba6f1a589c7171dc6424bfc782000d5e52b4348d37c35dd71372767930d5",
+  "kernels/NAInt8SolAttentionKernel.cpp": "056dc600c2f200331016fe49e8f50b9924e301becb890db1860502467768d42c"
 }
