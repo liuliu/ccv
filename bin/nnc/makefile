@@ -4,7 +4,7 @@ LDFLAGS := -L"../../lib" -lccv $(LDFLAGS)
 CFLAGS := -O3 -Wall -I"../../lib" $(CFLAGS)
 NVFLAGS := -O3 -I"../../lib" -lineinfo $(NVFLAGS)
 
-TARGETS = nnc-e2e-verify nnc-e2e-sym-verify nnc-sym cifar-10 imagenet coco imdb iwslt wmt csv imdb_lstm sdpa_bench sdpa_grad_bench routed_segmented_gemm_bench moe_routing_bench segmented_swiglu_bench interleaved_batched_gemm_bench mps_rowwise_gemm_bench na_int8_dynamic_quant_bench ane_rowwise_quant_transpose_bench ane_quant_fusion_probe # attention_kernel_gen gemm_kernel_gen square_attention_test laplacian_test adversarial_shape_test
+TARGETS = nnc-e2e-verify nnc-e2e-sym-verify nnc-sym cifar-10 imagenet coco imdb iwslt wmt csv imdb_lstm sdpa_bench sdpa_grad_bench routed_segmented_gemm_bench moe_routing_bench segmented_swiglu_bench interleaved_batched_gemm_bench mps_rowwise_gemm_bench na_int8_dynamic_quant_bench ane_rowwise_quant_transpose_bench ane_hadamard_bench ane_hadamard_quant_probe ane_quant_fusion_probe # attention_kernel_gen gemm_kernel_gen square_attention_test laplacian_test adversarial_shape_test
 
 FUZZ_TARGETS = csv_fuzz
 
@@ -56,6 +56,9 @@ na_int8_dynamic_quant_bench.o: na_int8_dynamic_quant_bench.cpp
 	$(CC) $< -o $@ -c $(CFLAGS) -std=c++17
 
 ane_rowwise_quant_transpose_bench.o: ane_rowwise_quant_transpose_bench.cpp
+	$(CC) $< -o $@ -c $(CFLAGS) -std=c++17
+
+ane_hadamard_quant_probe.o: ane_hadamard_quant_probe.cpp
 	$(CC) $< -o $@ -c $(CFLAGS) -std=c++17
 
 ane_quant_fusion_probe.o: ane_quant_fusion_probe.cpp

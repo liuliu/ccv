@@ -419,6 +419,7 @@ static PipelineValue<ANERowwiseTransformKernel>* find_transform_pipeline(
 {
   ANERowwiseTransformDescriptor descriptor;
   descriptor.memoryPrecision = io_precision(params.data_type);
+  descriptor.activationHadamard256 = params.activation_hadamard_256;
   descriptor.M = params.M;
   descriptor.paddedM = rowwise_padded_total_rows(params);
   descriptor.batchDimension = rowwise_batch_dimension(params);
@@ -467,8 +468,9 @@ static bool run_quantize_activation(
   const uint32_t program_N = ccv_nnc_mfa_ane_rowwise_coreml_program_N(program);
   const uint32_t program_K = ccv_nnc_mfa_ane_rowwise_coreml_program_K(program);
   const bool fused = program_K <= 8192;
-  const MTL::Size activation_prepare_grid_size = fused ? kernel->activationPrepareGridSize(program_M, program_K) : MTL::Size(program_M, 1, 1);
-  const MTL::Size activation_prepare_threadgroup_size = fused ? kernel->activationPrepareThreadgroupSize() : MTL::Size(256, 1, 1);
+  const bool row_prepare = kernel->activationHadamard256 || fused;
+  const MTL::Size activation_prepare_grid_size = row_prepare ? kernel->activationPrepareGridSize(program_M, program_K) : MTL::Size(program_M, 1, 1);
+  const MTL::Size activation_prepare_threadgroup_size = row_prepare ? kernel->activationPrepareThreadgroupSize(program_K) : MTL::Size(256, 1, 1);
 
   mtl_command_batch_t* const command_batch = ccv_nnc_stream_context_start_command_batch(stream_context);
   auto encoder = command_batch->startCommand();
@@ -784,6 +786,8 @@ int ccv_nnc_mfa_run_ane_rowwise_gemm(
   CCV_NNC_MFA_PRECONDITION(context != nullptr);
   CCV_NNC_MFA_PRECONDITION(tensors != nullptr);
   CCV_NNC_MFA_PRECONDITION(tensor_offsets != nullptr);
+  if (params.activation_hadamard_256 && (!params.K || params.K > 65536 || params.K % 256 != 0))
+    return 0;
   std::string error;
   ccv_nnc_mfa_ane_rowwise_coreml_cache_t* const cache = get_or_create_cache(context, &error);
   if (!cache) {

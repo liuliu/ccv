@@ -393,7 +393,6 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 			(is_interleaved_batched_dense_gemv && (w_rows % 4) == 0);
 		const int is_downcast = ((cmd.info.blas.flags & CCV_NNC_GEMM_16F) && (a_datatype == CCV_16F || a_datatype == CCV_16BF));
 		const int use_ane_rowwise_gemm =
-			!activation_hadamard_256 &&
 			w_qx_8i_rowwise &&
 			(a_datatype == CCV_16F || a_datatype == CCV_16BF || a_datatype == CCV_32F) &&
 			(!bias || bias_batch_size == 1) &&
@@ -456,8 +455,8 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 			(!bias || bias_batch_size == 1) &&
 			ccv_nnc_mfa_context_supported(context) &&
 			!(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA);
-		// Dense fallback / ANE / scaled GEMV do not implement the input rotation.
-		if (activation_hadamard_256 && (!use_scaled_gemm || !use_neural_accelerators))
+		// Dense fallback / scaled GEMV do not implement the input rotation.
+		if (activation_hadamard_256 && !use_ane_rowwise_gemm && (!use_scaled_gemm || !use_neural_accelerators))
 			return CCV_NNC_EXEC_INVALID;
 		// Generic MFA decodes row-wise weights before applying the interleaved strides.
 		const int is_interleaved_batched_mfa_gemm =
@@ -522,6 +521,7 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 				.K = (uint32_t)w_rows,
 				.data_type = mtl_data_type,
 				.fused_bias = bias ? 1 : 0,
+				.activation_hadamard_256 = activation_hadamard_256,
 				.batch_dimension = (uint32_t)C_batch_size,
 				.batch_stride_a = a_batch_size > 1 ? (uint32_t)ccv_max(a_batch_stride, b_rows * w_rows) : 0,
 				.batch_stride_c = b_batch_size > 1 ? (uint32_t)ccv_max(b_batch_stride, b_rows * b_cols) : 0,
@@ -559,6 +559,11 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 				return CCV_NNC_EXEC_SUCCESS;
 			}
 		}
+
+		// ANE may decline a shape or fail to compile. Never decode rotated weights
+		// into an ordinary dense fallback.
+		if (activation_hadamard_256 && (!use_scaled_gemm || !use_neural_accelerators))
+			return CCV_NNC_EXEC_INVALID;
 
 		if (use_scaled_gemm)
 		{

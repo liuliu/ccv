@@ -7,6 +7,7 @@ bool ANERowwiseTransformDescriptor::operator==(const ANERowwiseTransformDescript
 {
   return
       memoryPrecision == rhs.memoryPrecision &&
+      activationHadamard256 == rhs.activationHadamard256 &&
       M == rhs.M &&
       paddedM == rhs.paddedM &&
       batchDimension == rhs.batchDimension &&
@@ -25,6 +26,7 @@ std::size_t std::hash<ANERowwiseTransformDescriptor>::operator()(const ANERowwis
   std::size_t seed = 0;
   using namespace ccv::nnc::mfa::hash;
   combine_32(seed, (uint32_t)hash.memoryPrecision.value);
+  combine_32(seed, hash.activationHadamard256 ? 1 : 0);
   combine_32(seed, hash.M);
   combine_32(seed, hash.paddedM);
   combine_32(seed, hash.batchDimension);
@@ -48,6 +50,7 @@ std::pair<ANERowwiseTransformKernelDescriptor, PipelineValue<ANERowwiseTransform
     std::unordered_map<ANERowwiseTransformKernelDescriptor, std::unique_ptr<ANERowwiseTransformKernel>> *const libraryCache) const noexcept
 {
   (void)dprops;
+  CCV_NNC_MFA_PRECONDITION(!activationHadamard256 || (K > 0 && K <= 65536 && K % 256 == 0 && M > 0 && batchDimension > 0 && paddedM >= M * batchDimension && paddedM % 128 == 0));
 
   auto createKernel =
   [=](const ANERowwiseTransformKernelDescriptor& descriptor) -> ANERowwiseTransformKernel* {
@@ -86,12 +89,14 @@ std::pair<ANERowwiseTransformKernelDescriptor, PipelineValue<ANERowwiseTransform
 
   auto kernelDesc = ANERowwiseTransformKernelDescriptor(
       memoryPrecision,
-      device->supportsFamily(MTL::GPUFamily(1010)));
+      device->supportsFamily(MTL::GPUFamily(1010)),
+      activationHadamard256);
   auto kernel = createKernel(kernelDesc);
   // Retain narrow rows through quantization. Wider rows use a separate
-  // reduction and tiled transpose to avoid full-row register pressure.
-  auto prepareActivation = NS::TransferPtr(createPipeline(kernel, K <= 8192 ? "quantize_activation" : "compute_activation_scales"));
-  auto quantizeActivation = NS::TransferPtr(createPipeline(kernel, "quantize_transpose_activation"));
+  // reduction and tiled transpose; Hadamard recomputes each transformed tile
+  // to avoid full-row register pressure and an activation staging buffer.
+  auto prepareActivation = NS::TransferPtr(createPipeline(kernel, activationHadamard256 ? (K <= 8192 ? "quantize_hadamard_activation" : "compute_hadamard_activation_maxima") : (K <= 8192 ? "quantize_activation" : "compute_activation_scales")));
+  auto quantizeActivation = NS::TransferPtr(createPipeline(kernel, activationHadamard256 ? "quantize_transpose_hadamard_activation" : "quantize_transpose_activation"));
   auto dequantizeOutputTransposed = NS::TransferPtr(createPipeline(kernel, "dequantize_output_transposed"));
   auto dequantizeOutputTransposedBias = NS::TransferPtr(createPipeline(kernel, "dequantize_output_transposed_bias"));
   auto transposeQuantizedActivation = NS::TransferPtr(createPipeline(kernel, "transpose_quantized_activation"));

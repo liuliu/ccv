@@ -9,6 +9,7 @@ struct ANERowwiseTransformKernel;
 
 struct ANERowwiseTransformDescriptor {
   GEMMOperandPrecision memoryPrecision;
+  bool activationHadamard256 = false;
   uint32_t M;
   uint32_t paddedM;
   uint32_t batchDimension;

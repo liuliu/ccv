@@ -71,11 +71,31 @@ Existing per-slice calibration semantics remain unchanged.
   modifying output. These return-value checks remain active with `NDEBUG`.
   Tensor construction/sizing assert that flagged K is valid.
 - MPS GEMM extracts the modifier and routes supported flagged weights through
-  NAInt8MatMul activation staging, including its existing small-M path. Raw
+  ANE or NAInt8MatMul activation staging, including the NA small-M path. Raw
   packed-to-INT8 decode receives only the base codec and preserves rotated values.
-- Existing NA runtime limits still apply: K <= 65536, supported dtype/layout,
-  NA hardware, and supported batching. Unsupported flagged GEMM returns
-  `CCV_NNC_EXEC_INVALID`. ANE/scaled-GEMV/dense fallback are not silently used.
+- Runtime limits still apply: K <= 65536, supported dtype/layout, and supported
+  batching. ANE supports FP16/BF16/FP32, shared weights across batches, and
+  optional shared bias on Apple9 or newer. The NA path requires NA hardware.
+  Unsupported flagged GEMM returns `CCV_NNC_EXEC_INVALID`; scaled-GEMV/dense
+  fallback are not silently used, including when ANE declines a shape.
+- ANE uses one activation-preparation dispatch for K <= 8192. Rotated values
+  stay in registers through row reduction and quantization, then write directly
+  into the transposed ANE surface. Eight rows share two alternating 8 KiB
+  threadgroup tiles, packing eight adjacent rows per store. Three SIMD groups
+  per row avoid unused transform groups when K <= 6144 is divisible by 768
+  but not 1024; otherwise four SIMD groups handle each row.
+- Wider ANE rows use two dispatches: compute each row's transformed maximum,
+  then recompute H256 in 16-row by 256-feature tiles and quantize/transpose.
+  Only float maxima cross dispatches, in the existing scale buffer's reserved
+  capacity. There is no intermediate device activation buffer in either path.
+  Normalization by 1/16 is folded into the stored/reconstructed activation
+  scale; output dequantization still rounds that scale to the source precision.
+  Padding repeats the last valid row. Both shader-library and pipeline caches
+  distinguish H256; shape and strides remain function constants, and dispatch
+  geometry is derived at encode time.
+  See the [Hadamard optimization follow-up](ane-hadamard256-optimization.md),
+  [ordinary quantization benchmarks](ane-quantization-fusion-benchmark.md), and
+  [historical ANE measurements](ane-hadamard256-benchmark.md).
 - Tile selection and split-K selection are unchanged.
 - Other consumers have not gained rotation support. Existing MFA codec
   preconditions reject full flagged IDs rather than masking them globally.
@@ -92,7 +112,8 @@ quantization and CPU GEMM, using IQ2_XXS/Q6_K, small M, dynamic M, batching, bia
 and N=73. The activation probe also covers FP16/BF16/FP32, cache separation,
 strides and K up to 65536.
 
-Validation on this workspace: debug build passed; `palettize.tests` passed
-(12 passed, 29 backend-dependent skips); `mpsblas.tests` passed 283/283;
-`mpsdnn.tests` passed 126/126; the activation probe passed 21/21 cases.
-A separately compiled `NDEBUG` quantizer rejected K=384 without writing output.
+Current ANE validation is recorded in the
+[optimization follow-up](ane-hadamard256-optimization.md#validation-and-reproduction).
+Earlier format validation also passed `palettize.tests` (12 passed, 29
+backend-dependent skips). A separately compiled `NDEBUG` quantizer rejected
+K=384 without writing output.

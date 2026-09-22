@@ -7,6 +7,7 @@ typedef struct {
   uint32_t K;
   uint32_t data_type;
   uint32_t fused_bias;
+  uint32_t activation_hadamard_256;
   uint32_t batch_dimension;
   uint32_t batch_stride_a;
   uint32_t batch_stride_c;

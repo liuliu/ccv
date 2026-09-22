@@ -2077,6 +2077,8 @@ TEST_CASE("mps H256 rowwise-x GEMM uses rotated activations and ordinary output"
 #ifdef HAVE_MPS
 	extern uint8_t ccv_nnc_mfa_has_neural_accelerators(ccv_nnc_mfa_context_t* context);
 	GUARD_ELSE_RETURN(ccv_nnc_mfa_has_neural_accelerators(ccv_nnc_default_mfa_context()));
+	const uint64_t entry_flags = ccv_nnc_flags();
+	ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA_ANE);
 	enum { n = 73, k = 512 };
 	const int codecs[] = {CCV_NNC_QX_8I_ROWWISE_IQ2_XXS, CCV_NNC_QX_8I_ROWWISE_Q6_K};
 	dsfmt_t dsfmt;
@@ -2156,6 +2158,167 @@ TEST_CASE("mps H256 rowwise-x GEMM uses rotated activations and ordinary output"
 			ccv_nnc_tensor_free(href); ccv_nnc_tensor_free(actual); ccv_nnc_tensor_free(hq);
 			ccv_nnc_tensor_free(q); ccv_nnc_tensor_free(a); ccv_nnc_tensor_free(bias); ccv_nnc_tensor_free(b);
 		}
+	if (!(entry_flags & CCV_NNC_DISABLE_MFA_ANE))
+		ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA_ANE);
+#endif
+}
+
+
+TEST_CASE("mps H256 rowwise-x GEMM ANE fused activation quantization")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_MPS));
+#ifdef HAVE_MPS
+	extern uint8_t ccv_nnc_mfa_supports_int8_ane(ccv_nnc_mfa_context_t* context);
+	GUARD_ELSE_RETURN(ccv_nnc_mfa_supports_int8_ane(ccv_nnc_default_mfa_context()));
+	const uint64_t entry_flags = ccv_nnc_flags();
+	ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA_ANE);
+	ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA_GEMM);
+	ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS);
+	enum { n = 256 };
+	const int datatypes[] = {CCV_32F, CCV_16F, CCV_16BF};
+	const int codecs[] = {CCV_NNC_QX_8I_ROWWISE_IQ2_XXS, CCV_NNC_QX_8I_ROWWISE_Q6_K};
+	dsfmt_t dsfmt;
+	dsfmt_init_gen_rand(&dsfmt, 256);
+	int f, shape, d;
+	for (d = 0; d < 3; d++)
+		for (f = 0; f < 2; f++)
+			for (shape = 0; shape < 7; shape++)
+			{
+				// Q6_K additionally covers the single-pass boundary and wide-row
+				// recomputation, including batched scales, padded rows, and the
+				// three-SIMD-group layout for K=5376 with model-like M and ANE K splits.
+				if (shape >= 3 && f == 0)
+					continue;
+				const int k = shape < 3 ? 1024 : shape == 3 ? 8192 : shape == 4 ? 8448 : shape == 5 ? 14336 : 5376;
+				const int m = shape == 0 || shape == 3 ? 3 : shape < 3 ? 129 : shape == 6 ? 513 : 17;
+				const int datatype = datatypes[d];
+				const int batches = shape == 2 || shape == 4 ? 2 : 1;
+				ccv_nnc_tensor_t* const ha = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, batches, m, k), 0);
+				ccv_nnc_tensor_t* const hw = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, n, k), 0);
+				ccv_nnc_tensor_t* const hbias = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, n), 0);
+				ccv_nnc_tensor_t* const href = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, batches, m, n), 0);
+				ccv_nnc_tensor_t* const actual = ccv_nnc_tensor_new(0, href->info, 0);
+				ccv_nnc_tensor_param_t source_params = ha->info;
+				source_params.datatype = datatype;
+				ccv_nnc_tensor_t* const input = ccv_nnc_tensor_new(0, source_params, 0);
+				ccv_nnc_tensor_param_t weight_params = hw->info;
+				weight_params.datatype = datatype;
+				ccv_nnc_tensor_t* const weights = ccv_nnc_tensor_new(0, weight_params, 0);
+				ccv_nnc_tensor_param_t bias_params = hbias->info;
+				bias_params.datatype = datatype;
+				ccv_nnc_tensor_t* const input_bias = ccv_nnc_tensor_new(0, bias_params, 0);
+				const int format = codecs[f] | CCV_NNC_QX_8I_ROWWISE_HADAMARD_256;
+				ccv_nnc_tensor_t* const hq = ccv_nnc_tensor_new(0, ccv_nnc_tensor_8i_rowwise_x(weights->info, format), 0);
+				ccv_nnc_tensor_param_t q_params = hq->info;
+				q_params.type = CCV_TENSOR_GPU_MEMORY;
+				ccv_nnc_tensor_t* const q = ccv_nnc_tensor_new(0, q_params, 0);
+				source_params.type = bias_params.type = CCV_TENSOR_GPU_MEMORY;
+				ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, source_params, 0);
+				ccv_nnc_tensor_t* const bias = ccv_nnc_tensor_new(0, bias_params, 0);
+				ccv_nnc_tensor_param_t result_params = actual->info;
+				result_params.datatype = datatype;
+				ccv_nnc_tensor_t* const result = ccv_nnc_tensor_new(0, result_params, 0);
+				result_params.type = CCV_TENSOR_GPU_MEMORY;
+				ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, result_params, 0);
+				int i, j, l, shift;
+				for (i = 0; i < batches * m * k; i++)
+					ha->data.f32[i] = ((int)(dsfmt_genrand_open_close(&dsfmt) * 255) - 127) / 128.f;
+				for (i = 0; i < n * k; i++)
+					hw->data.f32[i] = ((int)(dsfmt_genrand_open_close(&dsfmt) * 255) - 127) / 128.f;
+				for (i = 0; i < n; i++)
+					hbias->data.f32[i] = (i % 11 - 5) / 128.f;
+				// Include a zero row and an activation outlier in every precision.
+				memset(ha->data.f32, 0, sizeof(float) * k);
+				ha->data.f32[k + 17] = 8;
+				ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha, hw, hbias), TENSOR_LIST(input, weights, input_bias), 0);
+				const size_t size = ccv_nnc_tensor_data_size_without_padding(hq->info);
+				REQUIRE_EQ(ccv_nnc_quantize_8i_rowwise_x(weights->data.u8, datatype, CCV_TENSOR_CPU_MEMORY, n * k, k, format, 0, 0, hq->data.u8, size), size, "offline H256 quantization succeeds");
+				// Explicit raw base-codec decode gives stored rotated weights.
+				ccv_nnc_dequantize_8i_rowwise_x(hq->data.u8, datatype, CCV_TENSOR_CPU_MEMORY, size, k, codecs[f], weights->data.u8, n * k);
+				ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(input, hq, input_bias), TENSOR_LIST(a, q, bias), 0);
+				ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(weights), TENSOR_LIST(hw), 0);
+				// Independent dense transform followed by the runtime absmax INT8 rule.
+				float rotated[k];
+				for (i = 0; i < batches * m; i++)
+				{
+					float max_abs = 0;
+					for (j = 0; j < k; j++)
+					{
+						double sum = 0;
+						for (l = 0; l < 256; l++)
+						{
+							int sign = 1;
+							for (shift = 0; shift < 8; shift += 2)
+								if (((j >> shift) & 3) + ((l >> shift) & 3) == 3)
+									sign = -sign;
+							sum += sign * ha->data.f32[i * k + (j / 256) * 256 + l];
+						}
+						rotated[j] = sum / 16;
+						max_abs = ccv_max(max_abs, fabsf(rotated[j]));
+					}
+					float scale = max_abs > 0 ? max_abs / 127.f : 1.f / 127.f;
+					const float inv_scale = max_abs > 0 ? 127.f / max_abs : 127.f;
+					if (datatype == CCV_16F) {
+						uint16_t h;
+						ccv_float_to_half_precision(&scale, &h, 1);
+						ccv_half_precision_to_float(&h, &scale, 1);
+					} else if (datatype == CCV_16BF) {
+						uint16_t h;
+						ccv_float_to_bfloat(&scale, &h, 1);
+						ccv_bfloat_to_float(&h, &scale, 1);
+					}
+					for (j = 0; j < k; j++)
+						ha->data.f32[i * k + j] = scale * ccv_clamp((int)lrintf(rotated[j] * inv_scale), -127, 127);
+				}
+				REQUIRE_EQ(ccv_nnc_cmd_exec(CMD_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(0, 1)), ccv_nnc_no_hint, 0, TENSOR_LIST(ha, hw, shape == 0 ? 0 : hbias), TENSOR_LIST(href), 0), CCV_NNC_EXEC_SUCCESS, "CPU reference succeeds");
+				const uint64_t old_flags = ccv_nnc_flags();
+				if (shape == 1)
+					ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M);
+				const int status = ccv_nnc_cmd_exec(CMD_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(0, 1)), ccv_nnc_no_hint, 0, TENSOR_LIST(a, q, shape == 0 ? 0 : bias), TENSOR_LIST(b), 0);
+				if (!(old_flags & CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M))
+					ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M);
+				REQUIRE_EQ(status, CCV_NNC_EXEC_SUCCESS, "flagged GEMM succeeds");
+				ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(b), TENSOR_LIST(result), 0);
+				ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(result), TENSOR_LIST(actual), 0);
+				double error_sq = 0, reference_sq = 0, max_abs = 0;
+				for (i = 0; i < batches * m * n; i++) {
+					const double diff = actual->data.f32[i] - href->data.f32[i];
+					error_sq += diff * diff;
+					reference_sq += (double)href->data.f32[i] * href->data.f32[i];
+					max_abs = ccv_max(max_abs, fabs(diff));
+				}
+				// ANE accumulates through its existing FP16 CoreML path. Signed random
+				// inputs have cancellation, so bound relative L2 error against CPU GEMM.
+				REQUIRE(sqrt(error_sq / reference_sq) < (datatype == CCV_16BF ? 1e-2 : 5e-3), "ANE H256 output matches CPU GEMM: dtype=%d codec=%d shape=%d relative_l2=%g max_abs=%g", datatype, codecs[f], shape, sqrt(error_sq / reference_sq), max_abs);
+
+				if (datatype == CCV_32F && (shape == 1 || shape == 6)) {
+					// Feed the independently rotated / quantized activation into ordinary
+					// ANE GEMM too. This isolates fusion from CoreML accumulation error
+					// and exercises both transform cache entries at the same shape.
+					ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha), TENSOR_LIST(a), 0);
+					q->info.reserved = codecs[f];
+					REQUIRE_EQ(ccv_nnc_cmd_exec(CMD_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(0, 1)), ccv_nnc_no_hint, 0, TENSOR_LIST(a, q, bias), TENSOR_LIST(b), 0), CCV_NNC_EXEC_SUCCESS, "ordinary ANE reference succeeds");
+					ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(b), TENSOR_LIST(result), 0);
+					error_sq = reference_sq = 0;
+					for (i = 0; i < batches * m * n; i++) {
+						const double diff = actual->data.f32[i] - result->data.f32[i];
+						error_sq += diff * diff;
+						reference_sq += (double)result->data.f32[i] * result->data.f32[i];
+					}
+					REQUIRE(sqrt(error_sq / reference_sq) < 1e-3, "fused and explicitly rotated ANE GEMM match: relative_l2=%g", sqrt(error_sq / reference_sq));
+				}
+
+				ccv_nnc_tensor_free(input); ccv_nnc_tensor_free(weights); ccv_nnc_tensor_free(input_bias); ccv_nnc_tensor_free(result);
+				ccv_nnc_tensor_free(ha); ccv_nnc_tensor_free(hw); ccv_nnc_tensor_free(hbias);
+				ccv_nnc_tensor_free(href); ccv_nnc_tensor_free(actual); ccv_nnc_tensor_free(hq);
+				ccv_nnc_tensor_free(q); ccv_nnc_tensor_free(a); ccv_nnc_tensor_free(bias); ccv_nnc_tensor_free(b);
+			}
+	if (entry_flags & CCV_NNC_DISABLE_MFA_ANE)
+		ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA_ANE);
+	if (!(entry_flags & CCV_NNC_DISABLE_MFA_GEMM))
+		ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA_GEMM);
+	if (!(entry_flags & CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS))
+		ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS);
 #endif
 }
 

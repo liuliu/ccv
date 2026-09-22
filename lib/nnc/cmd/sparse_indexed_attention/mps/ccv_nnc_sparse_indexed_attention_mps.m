@@ -126,8 +126,6 @@ static int _ccv_nnc_sparse_indexed_attention_forw(const ccv_nnc_cmd_t cmd, const
 		ccv_nnc_mfa_context_t* context = ccv_nnc_default_mfa_context();
 		if (!ccv_nnc_mfa_context_supported(context) || (ccv_nnc_flags() & CCV_NNC_DISABLE_MFA))
 			return CCV_NNC_EXEC_INVALID;
-		if (mtl_data_type == 121 && !ccv_nnc_mfa_neural_accelerators_support_bfloat(context))
-			return CCV_NNC_EXEC_INVALID;
 		const int kv_is_shared = mpgetbuffer((ccv_nnc_tensor_t*)dense_k) == mpgetbuffer((ccv_nnc_tensor_t*)dense_v) && dense_k->dataof == dense_v->dataof &&
 			mpgetbuffer((ccv_nnc_tensor_t*)sparse_k) == mpgetbuffer((ccv_nnc_tensor_t*)sparse_v) && sparse_k->dataof == sparse_v->dataof;
 		if (!kv_is_shared)
