@@ -134,11 +134,9 @@ TEST_CASE("int8 Sol all-exact and runtime bypass match native attention across c
 	}
 }
 
-TEST_CASE("int8 Sol zero logits preserve multiplicity with large centered values")
+TEST_CASE("Sol zero logits preserve multiplicity with large centered values")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SOL_ATTENTION_FORWARD, CCV_NNC_BACKEND_MPS));
-	extern uint8_t ccv_nnc_mfa_has_neural_accelerators(ccv_nnc_mfa_context_t* context);
-	GUARD_ELSE_RETURN(ccv_nnc_mfa_has_neural_accelerators(ccv_nnc_default_mfa_context()));
 	const int T = 517, H = 2, count = T * H * 128;
 	ccv_nnc_tensor_t* const host = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, T, H, 128), 0);
 	ccv_nnc_tensor_t* const staging = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, 1, T, H, 128), 0);
@@ -169,11 +167,9 @@ TEST_CASE("int8 Sol zero logits preserve multiplicity with large centered values
 	ccv_nnc_tensor_free(staging);
 }
 
-TEST_CASE("int8 Sol contiguous offset views and dense attention switching")
+TEST_CASE("Sol contiguous offset views and dense attention switching")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SOL_ATTENTION_FORWARD, CCV_NNC_BACKEND_MPS));
-	extern uint8_t ccv_nnc_mfa_has_neural_accelerators(ccv_nnc_mfa_context_t* context);
-	GUARD_ELSE_RETURN(ccv_nnc_mfa_has_neural_accelerators(ccv_nnc_default_mfa_context()));
 	const int T = 513, H = 2, count = (T + 2) * H * 128;
 	ccv_nnc_tensor_t* const host = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, T + 2, H, 128), 0);
 	ccv_nnc_tensor_t* const staging = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, 1, T + 2, H, 128), 0);
@@ -232,6 +228,168 @@ TEST_CASE("int8 Sol contiguous offset views and dense attention switching")
 	ccv_nnc_tensor_free(expected);
 	ccv_nnc_tensor_free(host);
 	ccv_nnc_tensor_free(staging);
+}
+
+TEST_CASE("non-NA Sol attention matches the FP32 CPU oracle across shapes, spans and scales")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SOL_ATTENTION_FORWARD, CCV_NNC_BACKEND_MPS));
+	const uint64_t old_flags = ccv_nnc_flags();
+	ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS);
+	// Increasing and decreasing shapes share the default MFA context, exercising
+	// pipeline constants and runtime dispatch independently of the library cache.
+	const struct { int n, t, h, begin, end, b, qb, radius; float scale, v_shift; } cases[] = {
+		{1, 257, 2, 0, 257, 64, 64, 1, 1, 0},
+		{2, 513, 2, 71, 491, 64, 64, 1, 1, 0},
+		{1, 193, 3, 0, 0, 64, 64, 1, 1, 0},
+		{1, 513, 2, 0, 513, 64, 64, 1, -1, 0},
+		{1, 321, 2, 0, 321, 64, 64, 1, 0, 0},
+		{1, 257, 2, 0, 257, 64, 64, 1, 1, 1000},
+		{1, 385, 2, 63, 350, 64, 16, 1, 1, 0},
+		{1, 257, 2, 0, 257, 32, 32, 1, 1, 0},
+		{1, 129, 2, 0, 129, 16, 16, 1, 1, 0},
+		{1, 513, 2, 71, 491, 64, 64, 9, 1, 0},
+		{1, 7, 2, 0, 7, 64, 64, 1, 1, 0},
+	};
+	dsfmt_t rng;
+	dsfmt_init_gen_rand(&rng, 314);
+	int c;
+	for (c = 0; c < sizeof(cases) / sizeof(cases[0]); c++)
+	{
+		const int n = cases[c].n, t = cases[c].t, h = cases[c].h, count = n * t * h * 128;
+		ccv_nnc_tensor_t* qkv[3];
+		ccv_nnc_tensor_t* cpu[3];
+		ccv_nnc_tensor_t* gpu[3];
+		int i, j;
+		for (i = 0; i < 3; i++)
+		{
+			qkv[i] = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, n, t, h, 128), 0);
+			gpu[i] = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, n, t, h, 128), 0);
+			cpu[i] = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, n, t, h, 128), 0);
+			for (j = 0; j < count; j++)
+				((_Float16*)qkv[i]->data.f16)[j] = (dsfmt_genrand_open_close(&rng) * 2 - 1) * (i == 0 ? 0.25 : 1) + (i == 2 ? cases[c].v_shift : 0);
+		}
+		ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, qkv, 3, cpu, 3, 0);
+		ccv_nnc_tensor_t* ref = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, n, t, h, 128), 0);
+		ccv_nnc_tensor_t* got = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, n, t, h, 128), 0);
+		ccv_nnc_tensor_t* out = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, n, t, h, 128), 0);
+		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, qkv, 3, gpu, 3, 0);
+		ccv_nnc_cmd_t cmd = CMD_SOL_ATTENTION_FORWARD(cases[c].scale, 0.5, cases[c].b, cases[c].begin, cases[c].end);
+		cmd.info.sol_attention.query_block_size = cases[c].qb;
+		cmd.info.sol_attention.local_block_radius = cases[c].radius;
+		// INT8 requests must fall back to floating point when NA is disabled.
+		cmd.info.sol_attention.flags = CCV_NNC_GEMM_16F | CCV_NNC_GEMM_8I;
+		cmd.backend = CCV_NNC_BACKEND_CPU_REF;
+		REQUIRE(ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, cpu, 3, &ref, 1, 0) == CCV_NNC_EXEC_SUCCESS, "CPU Sol should execute");
+		cmd.backend = CCV_NNC_BACKEND_MPS;
+		REQUIRE(ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, gpu, 3, &out, 1, 0) == CCV_NNC_EXEC_SUCCESS, "non-NA Sol should execute");
+		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, &out, 1, &got, 1, 0);
+		double energy = 0, error = 0;
+		for (j = 0; j < count; j++)
+		{
+			const float a = ref->data.f32[j], b = ((_Float16*)got->data.f16)[j];
+			REQUIRE(isfinite(b), "Sol output should be finite");
+			const float delta = a - b;
+			energy += (double)a * a;
+			error += (double)delta * delta;
+			REQUIRE(fabsf(delta) / fmaxf(1, fmaxf(fabsf(a), fabsf(b))) < 0.005, "Sol should match CPU including tails and protected interactions");
+		}
+		REQUIRE(sqrt(error / fmax(energy, 1e-30)) < 0.01, "Sol relative L2 should match CPU");
+		for (i = 0; i < 3; i++) { ccv_nnc_tensor_free(qkv[i]); ccv_nnc_tensor_free(cpu[i]); ccv_nnc_tensor_free(gpu[i]); }
+		ccv_nnc_tensor_free(ref); ccv_nnc_tensor_free(got); ccv_nnc_tensor_free(out);
+	}
+	if (!(old_flags & CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS))
+		ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS);
+}
+
+TEST_CASE("non-NA Sol runtime flag switches between dense and approximation")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SOL_ATTENTION_FORWARD, CCV_NNC_BACKEND_MPS));
+	const uint64_t old_flags = ccv_nnc_flags();
+	ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS);
+	ccv_nnc_tensor_t* input = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, 1, 257, 2, 128), 0);
+	ccv_nnc_tensor_t* qkv[3];
+	dsfmt_t rng; dsfmt_init_gen_rand(&rng, 14);
+	int i, j;
+	for (i = 0; i < 3; i++)
+	{
+		qkv[i] = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, 1, 257, 2, 128), 0);
+		for (j = 0; j < 257 * 2 * 128; j++) ((_Float16*)input->data.f16)[j] = (dsfmt_genrand_open_close(&rng) * 2 - 1) * (i == 0 ? .25 : 1);
+		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, &input, 1, &qkv[i], 1, 0);
+	}
+	ccv_nnc_tensor_t* is_dense_attention = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, 1), 0);
+	ccv_nnc_tensor_t* out = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, 1, 257, 2, 128), 0);
+	ccv_nnc_tensor_t* ref = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, 1, 257, 2, 128), 0);
+	ccv_nnc_tensor_t* reference = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, 1, 257, 2, 128), 0);
+	ccv_nnc_cmd_t sol = CMD_SOL_ATTENTION_FORWARD(1, .5, 64, 0, 257);
+	sol.info.sol_attention.flags = CCV_NNC_GEMM_16F;
+	ccv_nnc_cmd_t native = CMD_SCALED_DOT_PRODUCT_ATTENTION_FORWARD(1, 0);
+	native.info.scaled_dot_product_attention.flags = CCV_NNC_GEMM_16F | CCV_NNC_GEMM_8I;
+	ccv_nnc_tensor_t* inputs[] = {qkv[0], qkv[1], qkv[2], is_dense_attention};
+	for (i = 0; i < 3; i++)
+	{
+		is_dense_attention->data.i32[0] = i != 1;
+		REQUIRE(ccv_nnc_cmd_exec(sol, ccv_nnc_no_hint, 0, inputs, 4, &out, 1, 0) == CCV_NNC_EXEC_SUCCESS, "dense attention switch should execute");
+		ccv_nnc_cmd_exec(i == 1 ? sol : native, ccv_nnc_no_hint, 0, qkv, 3, &ref, 1, 0);
+		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(out, ref), TENSOR_LIST(input, reference), 0);
+		REQUIRE_ARRAY_EQ(uint16_t, input->data.f16, reference->data.f16, 257 * 2 * 128, "dense attention switch should select matching path");
+	}
+	for (i = 0; i < 3; i++) ccv_nnc_tensor_free(qkv[i]);
+	ccv_nnc_tensor_free(is_dense_attention); ccv_nnc_tensor_free(out); ccv_nnc_tensor_free(ref);
+	ccv_nnc_tensor_free(input); ccv_nnc_tensor_free(reference);
+	if (!(old_flags & CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS))
+		ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS);
+}
+
+TEST_CASE("non-NA Sol long zero-scale traversal stays uniform across the routing threshold")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SOL_ATTENTION_FORWARD, CCV_NNC_BACKEND_MPS));
+	const uint64_t old_flags = ccv_nnc_flags();
+	ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS);
+	dsfmt_t rng;
+	dsfmt_init_gen_rand(&rng, 529);
+	const int lengths[] = {32767, 32769};
+	for (int shape = 0; shape < 2; shape++)
+	{
+		const int T = lengths[shape], H = 2, count = T * H * 128;
+		ccv_nnc_tensor_t* const host = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, T, H, 128), 0);
+		ccv_nnc_tensor_t* const staging = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, 1, T, H, 128), 0);
+		ccv_nnc_tensor_t* const mean = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, 1, H, 128), 0);
+		ccv_nnc_tensor_t* gpu[4];
+		for (int i = 0; i < 4; i++)
+		{
+			gpu[i] = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, 1, T, H, 128), 0);
+			if (i < 3)
+			{
+				for (int j = 0; j < count; j++)
+					host->data.f32[j] = (dsfmt_genrand_open_close(&rng) * 2 - 1) * (i == 0 ? 0.25 : 3);
+				ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(host), TENSOR_LIST(staging), 0);
+				ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(staging), TENSOR_LIST(gpu[i]), 0);
+			}
+		}
+		// Zero scale makes attention the mean of V. Compute that independently
+		// on CPU from the actual FP16 inputs, without quadratic CPU attention.
+		ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(staging), TENSOR_LIST(host), 0);
+		ccv_nnc_cmd_exec(CMD_REDUCE_MEAN_FORWARD(1), ccv_nnc_no_hint, 0, TENSOR_LIST(host), TENSOR_LIST(mean), 0);
+		ccv_nnc_cmd_t cmd = CMD_SOL_ATTENTION_FORWARD(0, 0.5, 64, 0, T);
+		// Scale zero keeps all-exact queries in the mixed kernel. This traverses
+		// every route bit, including the last partial word and partial query tile.
+		cmd.info.sol_attention.local_block_radius = (T + 63) / 64;
+		REQUIRE_EQ(ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, gpu, 3, &gpu[3], 1, 0), CCV_NNC_EXEC_SUCCESS, "long zero-scale Sol should run");
+		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(gpu[3]), TENSOR_LIST(staging), 0);
+		ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(staging), TENSOR_LIST(host), 0);
+		for (int t = 0; t < T; t++)
+		{
+			for (int j = 0; j < H * 128; j++)
+				REQUIRE(isfinite(host->data.f32[t * H * 128 + j]), "long zero-scale Sol output must be finite");
+			REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, host->data.f32 + t * H * 128, mean->data.f32, H * 128, 1e-4, "zero-scale Sol should broadcast the CPU V mean");
+		}
+		for (int i = 0; i < 4; i++) ccv_nnc_tensor_free(gpu[i]);
+		ccv_nnc_tensor_free(host);
+		ccv_nnc_tensor_free(staging);
+		ccv_nnc_tensor_free(mean);
+	}
+	if (!(old_flags & CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS))
+		ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS);
 }
 
 #include "case_main.h"

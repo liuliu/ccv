@@ -477,5 +477,5 @@ scaled_dot_product_arg_partition_candidates_bench.o: scaled_dot_product_arg_part
 
 na_int8_sol_attention_bench: na_int8_sol_attention_bench.o libccv.a
 	$(CC) -o $@ na_int8_sol_attention_bench.o ../../lib/libccv.a $(MPSGRAPH_LDFLAGS)
-na_int8_sol_attention_bench.o: na_int8_sol_attention_bench.cpp
+na_int8_sol_attention_bench.o: na_int8_sol_attention_bench.cpp ../../lib/nnc/mfa/ccv_nnc_mfa_sol_attention.hpp
 	$(CC) $< -o $@ -c $(CFLAGS) -O3

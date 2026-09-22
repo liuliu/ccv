@@ -4,7 +4,9 @@
 INT8 algorithm from `ccv_sol_attention_final.patch` (SHA256
 `c04c5124fff46f0cdae735475b32da842539ee215d1e27080edc52dbe52679d4`).
 It targets contiguous FP16 `[N, T, H, 128]` tensors on MPS hardware with neural
-matrix accelerators. There is no FP16 Sol execution variant.
+matrix accelerators. When neural accelerators are unavailable or disabled, the
+MPS command selects the independent FP16 `SolAttentionKernel` instead, which
+reads K/V directly in their input layout.
 
 ## Command contract
 
@@ -29,15 +31,16 @@ ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0,
 - An optional fourth input is a CPU Int32 scalar, `is_dense_attention`. Nonzero
   calls the backend's shared dense SDPA function directly; zero or an omitted
   input executes Sol. The MPS dense path requests FP16/INT8 arithmetic; `flags`
-  supplies additional GEMM flags to that path. MPS Sol always uses INT8, even
-  when `flags` is zero.
+  supplies additional GEMM flags to that path. With neural accelerators enabled
+  and available, MPS Sol uses INT8 even when `flags` is zero; otherwise it uses
+  the FP16 SIMD implementation.
 - To exercise the actual all-exact Sol kernel, select Sol and set an empty
   eligible interval or a radius covering every KV block. Native bypass timings
   are not all-exact Sol timings.
 
-The MPS backend respects MFA/attention/neural-accelerator disable flags and
-rejects unsupported Sol execution. The native bypass is available before the
-Sol hardware gate. There is no backward, CUDA, causal/masked, GQA,
+The MPS backend rejects Sol when MFA or MFA attention is disabled. Disabling
+neural accelerators selects FP16 SIMD Sol. The native bypass is available before
+the Sol hardware gate. There is no backward, CUDA, causal/masked, GQA,
 unequal-length cross-attention, or noncontiguous execution implementation.
 The backward command ID exists only for the command-pair registry convention.
 
@@ -47,6 +50,12 @@ and computes the Sol approximation without emulating INT8 quantization. Dense
 selection uses the ordinary CPU SDPA implementation.
 
 ## Implementation
+
+The MFA encoder selects the backend using the host-only
+`params.use_neural_accelerators` field, set by the MPS frontend. Direct NA
+benchmark callers set it explicitly. The first 40 bytes of the parameter struct
+remain the Metal scalar ABI; the appended host fields are not sent to shaders.
+The NA implementation described below is unchanged.
 
 The kernel library is cached by pooling block size. Pipeline keys contain the
 stage, N/T/H, and query block size; shapes specialize Metal function constants.

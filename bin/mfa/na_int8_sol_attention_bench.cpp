@@ -64,7 +64,7 @@ int main(int argc, char** argv)
   ccv_nnc_mfa_sol_attention_params_t sol = {};
   sol.N = 1; sol.T = T; sol.H = H; sol.block_size = 64; sol.query_block_size = 64;
   sol.approximation_start = begin; sol.approximation_end = T;
-  sol.scale = scale; sol.tau = 0.5f; sol.local_block_radius = 1;
+  sol.scale = scale; sol.tau = 0.5f; sol.use_neural_accelerators = 1; sol.local_block_radius = 1;
   ccv_nnc_mfa_attention_params_t native = {};
   native.data_type = MTL::DataTypeHalf;
   native.R = T; native.C = T; native.Hq = H; native.Hk = H; native.D = 128;

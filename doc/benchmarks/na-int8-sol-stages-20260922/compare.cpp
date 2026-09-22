@@ -43,6 +43,7 @@ int main(int argc, char** argv)
   for (const auto& shape : shapes) {
     ccv_nnc_mfa_sol_attention_params_t p = {shape[0], shape[1], shape[2], shape[3],
       verify ? 17 : std::min(470u, shape[1]), shape[1] - (verify ? 7 : 0), 1, 0.5, shape[4], 1};
+    p.use_neural_accelerators = 1;
     if (getenv("SOL_SCALE")) p.scale = atof(getenv("SOL_SCALE"));
     const size_t inputOffset = getenv("SOL_UNALIGNED_INPUT") ? 258 : 256;
     const size_t count = size_t(p.N) * p.T * p.H * 128, bytes = count * 2;

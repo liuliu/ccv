@@ -6,6 +6,8 @@ typedef struct {
   float scale, tau;
   uint32_t query_block_size;
   uint32_t local_block_radius;
+  // Host-only selection; the Metal scalar parameter prefix ends above.
+  uint32_t use_neural_accelerators;
 } ccv_nnc_mfa_sol_attention_params_t;
 
 #ifdef __cplusplus

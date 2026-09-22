@@ -38,9 +38,9 @@ static int _ccv_nnc_sol_attention_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hi
 	}
 	@autoreleasepool {
 		ccv_nnc_mfa_context_t* const context = ccv_nnc_default_mfa_context();
-		if ((ccv_nnc_flags() & (CCV_NNC_DISABLE_MFA | CCV_NNC_DISABLE_MFA_ATTENTION | CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS)) || !ccv_nnc_mfa_context_supported(context) || !ccv_nnc_mfa_has_neural_accelerators(context))
+		if ((ccv_nnc_flags() & (CCV_NNC_DISABLE_MFA | CCV_NNC_DISABLE_MFA_ATTENTION)) || !ccv_nnc_mfa_context_supported(context))
 			return CCV_NNC_EXEC_INVALID;
-		const ccv_nnc_mfa_sol_attention_params_t params = { .N = N, .T = T, .H = H, .block_size = B, .approximation_start = start, .approximation_end = end, .scale = cmd.info.sol_attention.scale, .tau = cmd.info.sol_attention.tau, .query_block_size = QB, .local_block_radius = cmd.info.sol_attention.local_block_radius };
+		const ccv_nnc_mfa_sol_attention_params_t params = { .N = N, .T = T, .H = H, .block_size = B, .approximation_start = start, .approximation_end = end, .scale = cmd.info.sol_attention.scale, .tau = cmd.info.sol_attention.tau, .query_block_size = QB, .local_block_radius = cmd.info.sol_attention.local_block_radius, .use_neural_accelerators = !(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS) && ccv_nnc_mfa_has_neural_accelerators(context) };
 		mtl_buffer_t* tensors[] = { mpgetbuffer(inputs[0]), mpgetbuffer(inputs[1]), mpgetbuffer(inputs[2]), mpgetbuffer(outputs[0]) };
 		size_t offsets[] = { inputs[0]->dataof, inputs[1]->dataof, inputs[2]->dataof, outputs[0]->dataof };
 		mtl_command_batch_t* const batch = ccv_nnc_stream_context_start_command_batch(stream_context);

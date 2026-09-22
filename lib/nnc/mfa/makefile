@@ -36,7 +36,7 @@ SRCS += ccv_nnc_mfa_fill_if_less_than.cpp kernels/FillIfLessThanDescriptor.cpp k
 
 SRCS += ccv_nnc_mfa_transpose.cpp kernels/TransposeDescriptor.cpp kernels/TransposeKernel.cpp
 
-SRCS += ccv_nnc_mfa_sol_attention.cpp kernels/NAInt8SolAttentionDescriptor.cpp kernels/NAInt8SolAttentionKernel.cpp
+SRCS += ccv_nnc_mfa_sol_attention.cpp kernels/SolAttentionKernel.cpp kernels/NAInt8SolAttentionDescriptor.cpp kernels/NAInt8SolAttentionKernel.cpp
 
 SRC_OBJS := $(patsubst %.c,%.o,$(patsubst %.cpp,%.o,$(patsubst %.mm,%.o,$(SRCS))))
 
