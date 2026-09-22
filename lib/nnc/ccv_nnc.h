@@ -356,7 +356,6 @@ typedef struct {
 			int block_size; /**< KV summary block size. */
 			int approximation_start; /**< Inclusive start of the eligible query AND KV interval. */
 			int approximation_end; /**< Exclusive end; interactions with its complement remain token-resolution. */
-			int flags; /**< GEMM flags for the optional dense fallback. MPS Sol always uses INT8. */
 			int query_block_size; /**< 0 uses block_size. */
 			int local_block_radius; /**< Always evaluate this many neighboring KV blocks exactly. */
 		} sol_attention;

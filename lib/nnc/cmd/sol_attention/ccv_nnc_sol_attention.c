@@ -4,7 +4,7 @@
 
 static int _ccv_nnc_sol_attention_forw_bitmask(const ccv_nnc_cmd_param_t cmd, const int input_size, const int output_size, const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size)
 {
-	return (input_size == 3 || input_size == 4) && output_size == 1 && input_bitmasks[0] == ((1u << input_size) - 1) && output_bitmasks[0] == 1u;
+	return input_size == 3 && output_size == 1 && input_bitmasks[0] == 7u && output_bitmasks[0] == 1u;
 }
 
 static int _ccv_nnc_sol_attention_back_bitmask(const ccv_nnc_cmd_param_t cmd, const int input_size, const int output_size, const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size)
@@ -14,7 +14,7 @@ static int _ccv_nnc_sol_attention_back_bitmask(const ccv_nnc_cmd_param_t cmd, co
 
 static void _ccv_nnc_sol_attention_tensor_auto(const ccv_nnc_cmd_param_t cmd, const ccv_nnc_tensor_param_t* const inputs, const int input_size, const ccv_nnc_hint_t hint, ccv_nnc_tensor_param_t* const outputs, const int output_size)
 {
-	assert((input_size == 3 || input_size == 4) && output_size == 1);
+	assert(input_size == 3 && output_size == 1);
 	assert(ccv_nnc_tensor_nd(inputs[0].dim) == 4);
 	outputs[0] = inputs[0];
 }

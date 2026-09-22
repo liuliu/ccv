@@ -28,26 +28,21 @@ ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0,
 - `[approximation_start, approximation_end)` applies to both queries and keys.
   A complete query group and complete KV block must lie within it before their
   interaction can use a summary. Boundary-crossing groups and blocks stay exact.
-- An optional fourth input is a CPU Int32 scalar, `is_dense_attention`. Nonzero
-  calls the backend's shared dense SDPA function directly; zero or an omitted
-  input executes Sol. The MPS dense path requests FP16/INT8 arithmetic; `flags`
-  supplies additional GEMM flags to that path. With neural accelerators enabled
-  and available, MPS Sol uses INT8 even when `flags` is zero; otherwise it uses
-  the FP16 SIMD implementation.
-- To exercise the actual all-exact Sol kernel, select Sol and set an empty
-  eligible interval or a radius covering every KV block. Native bypass timings
-  are not all-exact Sol timings.
+- The command requires exactly three inputs: Q, K, and V. Call SDPA directly
+  when dense attention is desired.
+- With neural accelerators enabled and available, MPS Sol uses INT8; otherwise
+  it uses the FP16 SIMD implementation.
+- To exercise the all-exact Sol kernel, set an empty eligible interval or a
+  radius covering every KV block. SDPA timings are not all-exact Sol timings.
 
 The MPS backend rejects Sol when MFA or MFA attention is disabled. Disabling
-neural accelerators selects FP16 SIMD Sol. The native bypass is available before
-the Sol hardware gate. There is no backward, CUDA, causal/masked, GQA,
+neural accelerators selects FP16 SIMD Sol. There is no backward, CUDA, causal/masked, GQA,
 unequal-length cross-attention, or noncontiguous execution implementation.
 The backward command ID exists only for the command-pair registry convention.
 
 The independent CPU reference supports contiguous FP32 with general positive
 head/block dimensions. It uses double-precision pooling and accumulation,
-and computes the Sol approximation without emulating INT8 quantization. Dense
-selection uses the ordinary CPU SDPA implementation.
+and computes the Sol approximation without emulating INT8 quantization.
 
 ## Implementation
 
@@ -118,7 +113,7 @@ are included with this change, as requested for the commit.
 
 Native Sol tests cover CPU parity, signed/zero scales, all-exact/native parity,
 protected boundaries, pooling/query sizes, batches, centered large values,
-runtime switching, offset views with output sentinels, and growing/shrinking
+input-contract validation, offset views with output sentinels, and growing/shrinking
 shapes including T=20501 and T=32769. An additional comparison against the
 original supplied patch checked fourteen dense/sparse configurations, including
 batching, B16/B32/B64, Q16/Q32/Q64, offsets, and long tails: all outputs were

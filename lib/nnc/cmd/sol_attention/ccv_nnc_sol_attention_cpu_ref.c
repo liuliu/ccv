@@ -4,7 +4,6 @@
 #include "nnc/ccv_nnc_easy.h"
 #include "nnc/ccv_nnc_internal.h"
 #include <math.h>
-#include "../_ccv_nnc_cpu_ref.h"
 
 // Independent, deliberately slow oracle. Mean V + log(block length) is
 // algebraically equivalent to summed V + denominator multiplicity.
@@ -12,14 +11,8 @@
 // compute routing and attention.
 static int _ccv_nnc_sol_attention_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
 {
-	assert((input_size == 3 || input_size == 4) && output_size == 1);
-	int is_dense_attention = 0;
-	if (input_size == 4)
-	{
-		if (CCV_TENSOR_GET_MEMORY(inputs[3]->info.type) != CCV_TENSOR_CPU_MEMORY || inputs[3]->info.datatype != CCV_32S || ccv_nnc_tensor_count(inputs[3]->info) != 1)
-			return CCV_NNC_EXEC_INVALID;
-		is_dense_attention = inputs[3]->data.i32[0] != 0;
-	}
+	if (input_size != 3 || output_size != 1 || !inputs[0] || !inputs[1] || !inputs[2] || !outputs[0])
+		return CCV_NNC_EXEC_INVALID;
 	const int N = inputs[0]->info.dim[0], T = inputs[0]->info.dim[1], H = inputs[0]->info.dim[2], D = inputs[0]->info.dim[3];
 	const int B = cmd.info.sol_attention.block_size;
 	const int QB = cmd.info.sol_attention.query_block_size > 0 ? cmd.info.sol_attention.query_block_size : B;
@@ -32,12 +25,6 @@ static int _ccv_nnc_sol_attention_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hi
 		const ccv_nnc_tensor_t* const tensor = i < 3 ? inputs[i] : outputs[0];
 		if (CCV_TENSOR_GET_MEMORY(tensor->info.type) != CCV_TENSOR_CPU_MEMORY || tensor->info.format != CCV_TENSOR_FORMAT_NHWC || tensor->info.datatype != CCV_32F || ccv_nnc_tensor_nd(tensor->info.dim) != 4 || !CCV_IS_TENSOR_CONTIGUOUS(tensor) || tensor->info.dim[0] != N || tensor->info.dim[1] != T || tensor->info.dim[2] != H || tensor->info.dim[3] != D)
 			return CCV_NNC_EXEC_INVALID;
-	}
-	if (is_dense_attention)
-	{
-		ccv_nnc_cmd_t dense = CMD_SCALED_DOT_PRODUCT_ATTENTION_FORWARD(cmd.info.sol_attention.scale, 0);
-		dense.info.scaled_dot_product_attention.flags = cmd.info.sol_attention.flags;
-		return _ccv_nnc_scaled_dot_product_attention_forw_cpu_ref(dense, hint, flags, inputs, 3, outputs, output_size, stream_context);
 	}
 	const float* const q = inputs[0]->data.f32;
 	const float* const k = inputs[1]->data.f32;
@@ -132,7 +119,7 @@ static int _ccv_nnc_sol_attention_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hi
 REGISTER_COMMAND_BACKEND(CCV_NNC_SOL_ATTENTION_FORWARD, CCV_NNC_BACKEND_CPU_REF)(ccv_nnc_cmd_backend_registry_t* const registry)
 {
 	registry->tensor_formats = CCV_TENSOR_FORMAT_NHWC;
-	registry->tensor_datatypes = CCV_32F | CCV_32S;
+	registry->tensor_datatypes = CCV_32F;
 	registry->tensor_memory = CCV_TENSOR_CPU_MEMORY;
 	registry->algorithms = 1;
 	registry->exec = _ccv_nnc_sol_attention_forw;

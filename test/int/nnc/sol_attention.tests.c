@@ -13,6 +13,27 @@ TEST_SETUP()
 	ccv_nnc_init();
 }
 
+TEST_CASE("MPS Sol rejects missing inputs and the removed dense override")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SOL_ATTENTION_FORWARD, CCV_NNC_BACKEND_MPS));
+	ccv_nnc_cmd_t cmd = CMD_SOL_ATTENTION_FORWARD(1, 0.5, 64, 0, 257);
+	cmd.backend = CCV_NNC_BACKEND_MPS;
+	ccv_nnc_tensor_t* const input = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, 1, 257, 2, 128), 0);
+	ccv_nnc_tensor_t* const output = ccv_nnc_tensor_new(0, input->info, 0);
+	ccv_nnc_tensor_t* const extra = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, 1), 0);
+	for (int i = 0; i < 2; i++)
+	{
+		extra->data.i32[0] = i;
+		REQUIRE_EQ(ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(input, input, input, extra), TENSOR_LIST(output), 0), CCV_NNC_EXEC_INVALID, "reject removed dense override for either value");
+	}
+	REQUIRE_EQ(ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(input, input), TENSOR_LIST(output), 0), CCV_NNC_EXEC_INVALID, "reject missing V");
+	REQUIRE_EQ(ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(input, 0, input), TENSOR_LIST(output), 0), CCV_NNC_EXEC_INVALID, "reject null K");
+	REQUIRE_EQ(ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(input, input, input), TENSOR_LIST(0), 0), CCV_NNC_EXEC_INVALID, "reject null output");
+	ccv_nnc_tensor_free(extra);
+	ccv_nnc_tensor_free(output);
+	ccv_nnc_tensor_free(input);
+}
+
 TEST_CASE("int8 Sol attention matches CPU for pooling, signed scales, tails and batches")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SOL_ATTENTION_FORWARD, CCV_NNC_BACKEND_MPS));
@@ -48,7 +69,7 @@ TEST_CASE("int8 Sol attention matches CPU for pooling, signed scales, tails and 
 			ccv_nnc_cmd_t cmd = CMD_SOL_ATTENTION_FORWARD(scales[k], 0.5, shapes[c][2], 17, T - 7);
 			cmd.info.sol_attention.query_block_size = shapes[c][3];
 			REQUIRE_EQ(ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, cpu, 3, &cpu[3], 1, 0), CCV_NNC_EXEC_SUCCESS, "CPU Sol should run");
-			REQUIRE_EQ(ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, gpu, 3, &gpu[3], 1, 0), CCV_NNC_EXEC_SUCCESS, "INT8 Sol should run without precision flags");
+			REQUIRE_EQ(ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, gpu, 3, &gpu[3], 1, 0), CCV_NNC_EXEC_SUCCESS, "INT8 Sol should run");
 			ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(gpu[3]), TENSOR_LIST(half[3]), 0);
 			ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(half[3]), TENSOR_LIST(actual), 0);
 			double error = 0, norm = 0;
@@ -70,7 +91,7 @@ TEST_CASE("int8 Sol attention matches CPU for pooling, signed scales, tails and 
 	}
 }
 
-TEST_CASE("int8 Sol all-exact and runtime bypass match native attention across cache shapes")
+TEST_CASE("int8 Sol all-exact matches native attention across cache shapes")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SOL_ATTENTION_FORWARD, CCV_NNC_BACKEND_MPS));
 	extern uint8_t ccv_nnc_mfa_has_neural_accelerators(ccv_nnc_mfa_context_t* context);
@@ -103,15 +124,13 @@ TEST_CASE("int8 Sol all-exact and runtime bypass match native attention across c
 		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(gpu[4]), TENSOR_LIST(expected), 0);
 		ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(expected), TENSOR_LIST(host), 0);
 		ccv_nnc_tensor_t* const actual = ccv_nnc_tensor_new(0, host->info, 0);
-		ccv_nnc_tensor_t* const is_dense_attention = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, 1), 0);
 		ccv_nnc_cmd_t cmd = CMD_SOL_ATTENTION_FORWARD(1, 0.5, 64, 0, T);
 		cmd.info.sol_attention.local_block_radius = (T + 63) / 64;
 		for (int trial = 0; trial < (shape == 0 ? 5 : (shape == 2 ? 10 : 1)); trial++)
 		{
-			is_dense_attention->data.i32[0] = trial % 2 != 0;
 			// The final short-shape trial also exercises the empty-span all-exact control.
 			if (shape == 0 && trial == 4) { cmd.info.sol_attention.approximation_end = 0; cmd.info.sol_attention.local_block_radius = 1; }
-			REQUIRE_EQ(ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(gpu[0], gpu[1], gpu[2], is_dense_attention), TENSOR_LIST(gpu[3]), 0), CCV_NNC_EXEC_SUCCESS, "controlled Sol should run");
+			REQUIRE_EQ(ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(gpu[0], gpu[1], gpu[2]), TENSOR_LIST(gpu[3]), 0), CCV_NNC_EXEC_SUCCESS, "controlled Sol should run");
 			ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(gpu[3]), TENSOR_LIST(staging), 0);
 			ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(staging), TENSOR_LIST(actual), 0);
 			double error = 0, norm = 0;
@@ -122,10 +141,7 @@ TEST_CASE("int8 Sol all-exact and runtime bypass match native attention across c
 				norm += (double)host->data.f32[j] * host->data.f32[j];
 			}
 			REQUIRE(sqrt(error / norm) < 1e-4, "all-exact Sol must match native INT8 (T=%d error=%g)", T, sqrt(error / norm));
-			if (is_dense_attention->data.i32[0])
-				{ REQUIRE(memcmp(staging->data.f16, expected->data.f16, count * 2) == 0, "bypass must be byte-identical to native"); }
 		}
-		ccv_nnc_tensor_free(is_dense_attention);
 		ccv_nnc_tensor_free(actual);
 		ccv_nnc_tensor_free(expected);
 		ccv_nnc_tensor_free(staging);
@@ -167,7 +183,7 @@ TEST_CASE("Sol zero logits preserve multiplicity with large centered values")
 	ccv_nnc_tensor_free(staging);
 }
 
-TEST_CASE("Sol contiguous offset views and dense attention switching")
+TEST_CASE("Sol contiguous offset views preserve output sentinels")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SOL_ATTENTION_FORWARD, CCV_NNC_BACKEND_MPS));
 	const int T = 513, H = 2, count = (T + 2) * H * 128;
@@ -191,19 +207,11 @@ TEST_CASE("Sol contiguous offset views and dense attention switching")
 	}
 	ccv_nnc_tensor_t* const actual = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, 1, T, H, 128), 0);
 	ccv_nnc_tensor_t* const expected = ccv_nnc_tensor_new(0, actual->info, 0);
-	ccv_nnc_tensor_t* const is_dense_attention = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, 1), 0);
 	ccv_nnc_cmd_t sol = CMD_SOL_ATTENTION_FORWARD(1, 0.5, 64, 17, T - 9);
 	for (int trial = 0; trial < 3; trial++)
 	{
-		is_dense_attention->data.i32[0] = trial == 1;
-		ccv_nnc_cmd_t reference = sol;
-		if (is_dense_attention->data.i32[0])
-		{
-			reference = CMD_SCALED_DOT_PRODUCT_ATTENTION_FORWARD(1, 0);
-			reference.info.scaled_dot_product_attention.flags = CCV_NNC_GEMM_16F | CCV_NNC_GEMM_8I;
-		}
-		REQUIRE_EQ(ccv_nnc_cmd_exec(reference, ccv_nnc_no_hint, 0, plain, 3, &plain[3], 1, 0), CCV_NNC_EXEC_SUCCESS, "contiguous reference should run");
-		REQUIRE_EQ(ccv_nnc_cmd_exec(sol, ccv_nnc_no_hint, 0, TENSOR_LIST((ccv_nnc_tensor_t*)views[0], (ccv_nnc_tensor_t*)views[1], (ccv_nnc_tensor_t*)views[2], is_dense_attention), TENSOR_LIST((ccv_nnc_tensor_t*)views[3]), 0), CCV_NNC_EXEC_SUCCESS, "offset Sol should run");
+		REQUIRE_EQ(ccv_nnc_cmd_exec(sol, ccv_nnc_no_hint, 0, plain, 3, &plain[3], 1, 0), CCV_NNC_EXEC_SUCCESS, "contiguous reference should run");
+		REQUIRE_EQ(ccv_nnc_cmd_exec(sol, ccv_nnc_no_hint, 0, TENSOR_LIST((ccv_nnc_tensor_t*)views[0], (ccv_nnc_tensor_t*)views[1], (ccv_nnc_tensor_t*)views[2]), TENSOR_LIST((ccv_nnc_tensor_t*)views[3]), 0), CCV_NNC_EXEC_SUCCESS, "offset Sol should run");
 		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST((ccv_nnc_tensor_t*)views[3], plain[3]), TENSOR_LIST(actual, expected), 0);
 		REQUIRE(memcmp(actual->data.f16, expected->data.f16, T * H * 128 * 2) == 0, "offset and contiguous results should be identical");
 		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(backing[3]), TENSOR_LIST(staging), 0);
@@ -223,7 +231,6 @@ TEST_CASE("Sol contiguous offset views and dense attention switching")
 		ccv_nnc_tensor_free(backing[i]);
 		ccv_nnc_tensor_free(plain[i]);
 	}
-	ccv_nnc_tensor_free(is_dense_attention);
 	ccv_nnc_tensor_free(actual);
 	ccv_nnc_tensor_free(expected);
 	ccv_nnc_tensor_free(host);
@@ -276,8 +283,6 @@ TEST_CASE("non-NA Sol attention matches the FP32 CPU oracle across shapes, spans
 		ccv_nnc_cmd_t cmd = CMD_SOL_ATTENTION_FORWARD(cases[c].scale, 0.5, cases[c].b, cases[c].begin, cases[c].end);
 		cmd.info.sol_attention.query_block_size = cases[c].qb;
 		cmd.info.sol_attention.local_block_radius = cases[c].radius;
-		// INT8 requests must fall back to floating point when NA is disabled.
-		cmd.info.sol_attention.flags = CCV_NNC_GEMM_16F | CCV_NNC_GEMM_8I;
 		cmd.backend = CCV_NNC_BACKEND_CPU_REF;
 		REQUIRE(ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, cpu, 3, &ref, 1, 0) == CCV_NNC_EXEC_SUCCESS, "CPU Sol should execute");
 		cmd.backend = CCV_NNC_BACKEND_MPS;
@@ -297,45 +302,6 @@ TEST_CASE("non-NA Sol attention matches the FP32 CPU oracle across shapes, spans
 		for (i = 0; i < 3; i++) { ccv_nnc_tensor_free(qkv[i]); ccv_nnc_tensor_free(cpu[i]); ccv_nnc_tensor_free(gpu[i]); }
 		ccv_nnc_tensor_free(ref); ccv_nnc_tensor_free(got); ccv_nnc_tensor_free(out);
 	}
-	if (!(old_flags & CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS))
-		ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS);
-}
-
-TEST_CASE("non-NA Sol runtime flag switches between dense and approximation")
-{
-	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SOL_ATTENTION_FORWARD, CCV_NNC_BACKEND_MPS));
-	const uint64_t old_flags = ccv_nnc_flags();
-	ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS);
-	ccv_nnc_tensor_t* input = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, 1, 257, 2, 128), 0);
-	ccv_nnc_tensor_t* qkv[3];
-	dsfmt_t rng; dsfmt_init_gen_rand(&rng, 14);
-	int i, j;
-	for (i = 0; i < 3; i++)
-	{
-		qkv[i] = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, 1, 257, 2, 128), 0);
-		for (j = 0; j < 257 * 2 * 128; j++) ((_Float16*)input->data.f16)[j] = (dsfmt_genrand_open_close(&rng) * 2 - 1) * (i == 0 ? .25 : 1);
-		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, &input, 1, &qkv[i], 1, 0);
-	}
-	ccv_nnc_tensor_t* is_dense_attention = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, 1), 0);
-	ccv_nnc_tensor_t* out = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, 1, 257, 2, 128), 0);
-	ccv_nnc_tensor_t* ref = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, 1, 257, 2, 128), 0);
-	ccv_nnc_tensor_t* reference = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, 1, 257, 2, 128), 0);
-	ccv_nnc_cmd_t sol = CMD_SOL_ATTENTION_FORWARD(1, .5, 64, 0, 257);
-	sol.info.sol_attention.flags = CCV_NNC_GEMM_16F;
-	ccv_nnc_cmd_t native = CMD_SCALED_DOT_PRODUCT_ATTENTION_FORWARD(1, 0);
-	native.info.scaled_dot_product_attention.flags = CCV_NNC_GEMM_16F | CCV_NNC_GEMM_8I;
-	ccv_nnc_tensor_t* inputs[] = {qkv[0], qkv[1], qkv[2], is_dense_attention};
-	for (i = 0; i < 3; i++)
-	{
-		is_dense_attention->data.i32[0] = i != 1;
-		REQUIRE(ccv_nnc_cmd_exec(sol, ccv_nnc_no_hint, 0, inputs, 4, &out, 1, 0) == CCV_NNC_EXEC_SUCCESS, "dense attention switch should execute");
-		ccv_nnc_cmd_exec(i == 1 ? sol : native, ccv_nnc_no_hint, 0, qkv, 3, &ref, 1, 0);
-		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(out, ref), TENSOR_LIST(input, reference), 0);
-		REQUIRE_ARRAY_EQ(uint16_t, input->data.f16, reference->data.f16, 257 * 2 * 128, "dense attention switch should select matching path");
-	}
-	for (i = 0; i < 3; i++) ccv_nnc_tensor_free(qkv[i]);
-	ccv_nnc_tensor_free(is_dense_attention); ccv_nnc_tensor_free(out); ccv_nnc_tensor_free(ref);
-	ccv_nnc_tensor_free(input); ccv_nnc_tensor_free(reference);
 	if (!(old_flags & CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS))
 		ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS);
 }

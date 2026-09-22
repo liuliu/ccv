@@ -12,6 +12,32 @@ TEST_SETUP()
 	ccv_nnc_init();
 }
 
+TEST_CASE("Sol requires exactly Q K V and one output")
+{
+	ccv_nnc_cmd_t cmd = CMD_SOL_ATTENTION_FORWARD(0.25, 0.5, 32, 0, 137);
+	const uint64_t output_bitmask = 1;
+	for (uint64_t input_bitmask = 0; input_bitmask < 16; input_bitmask++)
+	{
+		REQUIRE_EQ(ccv_nnc_cmd_bitmask(cmd, 3, 1, &input_bitmask, 1, &output_bitmask, 1), input_bitmask == 7, "require all three inputs");
+		REQUIRE_EQ(ccv_nnc_cmd_bitmask(cmd, 4, 1, &input_bitmask, 1, &output_bitmask, 1), 0, "reject a fourth input slot");
+	}
+	ccv_nnc_tensor_t* const input = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, 137, 2, 16), 0);
+	ccv_nnc_tensor_t* const output = ccv_nnc_tensor_new(0, input->info, 0);
+	ccv_nnc_tensor_t* const extra = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, 1), 0);
+	cmd.backend = CCV_NNC_BACKEND_CPU_REF;
+	for (int i = 0; i < 2; i++)
+	{
+		extra->data.i32[0] = i;
+		REQUIRE_EQ(ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(input, input, input, extra), TENSOR_LIST(output), 0), CCV_NNC_EXEC_INVALID, "reject removed dense override for either value");
+	}
+	REQUIRE_EQ(ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(input, input), TENSOR_LIST(output), 0), CCV_NNC_EXEC_INVALID, "reject missing V");
+	REQUIRE_EQ(ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(input, 0, input), TENSOR_LIST(output), 0), CCV_NNC_EXEC_INVALID, "reject null K");
+	REQUIRE_EQ(ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(input, input, input), TENSOR_LIST(0), 0), CCV_NNC_EXEC_INVALID, "reject null output");
+	ccv_nnc_tensor_free(extra);
+	ccv_nnc_tensor_free(output);
+	ccv_nnc_tensor_free(input);
+}
+
 TEST_CASE("CPU Sol all-exact matches dense attention and infers output shape")
 {
 	const int N = 2, T = 137, H = 2, D = 16, count = N * T * H * D;
@@ -32,12 +58,6 @@ TEST_CASE("CPU Sol all-exact matches dense attention and infers output shape")
 	ccv_nnc_cmd_exec(CMD_SCALED_DOT_PRODUCT_ATTENTION_FORWARD(0.25, 0), ccv_nnc_no_hint, 0, tensors, 3, &tensors[4], 1, 0);
 	REQUIRE_EQ(ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, tensors, 3, &tensors[3], 1, 0), CCV_NNC_EXEC_SUCCESS, "CPU all-exact should run");
 	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, tensors[3]->data.f32, tensors[4]->data.f32, count, 1e-5, "CPU all-exact equals dense");
-	ccv_nnc_tensor_t* const is_dense_attention = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, 1), 0);
-	is_dense_attention->data.i32[0] = 1;
-	cmd.info.sol_attention.approximation_end = T;
-	REQUIRE_EQ(ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(tensors[0], tensors[1], tensors[2], is_dense_attention), TENSOR_LIST(tensors[3]), 0), CCV_NNC_EXEC_SUCCESS, "CPU bypass should run");
-	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, tensors[3]->data.f32, tensors[4]->data.f32, count, 1e-5, "CPU bypass equals dense");
-	REQUIRE(memcmp(tensors[3]->data.f32, tensors[4]->data.f32, count * sizeof(float)) == 0, "CPU dense selection must match native SDPA byte-for-byte");
 	cmd.info.sol_attention.approximation_end = T + 1;
 	REQUIRE_EQ(ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, tensors, 3, &tensors[3], 1, 0), CCV_NNC_EXEC_INVALID, "reject out-of-range interval");
 	cmd.info.sol_attention.approximation_end = T;
@@ -52,7 +72,6 @@ TEST_CASE("CPU Sol all-exact matches dense attention and infers output shape")
 	REQUIRE_EQ(ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(half_input, half_input, half_input), TENSOR_LIST(half_output), 0), CCV_NNC_EXEC_INVALID, "CPU Sol rejects FP16 tensors");
 	ccv_nnc_tensor_free(half_input);
 	ccv_nnc_tensor_free(half_output);
-	ccv_nnc_tensor_free(is_dense_attention);
 	for (int i = 0; i < 5; i++) ccv_nnc_tensor_free(tensors[i]);
 }
 
