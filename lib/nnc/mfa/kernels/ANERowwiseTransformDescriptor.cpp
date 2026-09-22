@@ -88,14 +88,16 @@ std::pair<ANERowwiseTransformKernelDescriptor, PipelineValue<ANERowwiseTransform
       memoryPrecision,
       device->supportsFamily(MTL::GPUFamily(1010)));
   auto kernel = createKernel(kernelDesc);
-  auto computeActivationScales = NS::TransferPtr(createPipeline(kernel, "compute_activation_scales"));
+  // Retain narrow rows through quantization. Wider rows use a separate
+  // reduction and tiled transpose to avoid full-row register pressure.
+  auto prepareActivation = NS::TransferPtr(createPipeline(kernel, K <= 8192 ? "quantize_activation" : "compute_activation_scales"));
   auto quantizeActivation = NS::TransferPtr(createPipeline(kernel, "quantize_transpose_activation"));
   auto dequantizeOutputTransposed = NS::TransferPtr(createPipeline(kernel, "dequantize_output_transposed"));
   auto dequantizeOutputTransposedBias = NS::TransferPtr(createPipeline(kernel, "dequantize_output_transposed_bias"));
   auto transposeQuantizedActivation = NS::TransferPtr(createPipeline(kernel, "transpose_quantized_activation"));
 
   PipelineValue<ANERowwiseTransformKernel>* output =
-      new PipelineValue<ANERowwiseTransformKernel> { kernel, computeActivationScales };
+      new PipelineValue<ANERowwiseTransformKernel> { kernel, prepareActivation };
   output->second = quantizeActivation;
   output->third = dequantizeOutputTransposed;
   output->fourth = dequantizeOutputTransposedBias;

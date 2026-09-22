@@ -466,10 +466,9 @@ static bool run_quantize_activation(
   const uint32_t program_M = ccv_nnc_mfa_ane_rowwise_coreml_program_M(program);
   const uint32_t program_N = ccv_nnc_mfa_ane_rowwise_coreml_program_N(program);
   const uint32_t program_K = ccv_nnc_mfa_ane_rowwise_coreml_program_K(program);
-  const MTL::Size activation_scale_grid_size = kernel->activationScaleGridSize(program_M);
-  const MTL::Size activation_scale_threadgroup_size = kernel->activationScaleThreadgroupSize();
-  const MTL::Size activation_quantize_grid_size = kernel->activationQuantizeGridSize(program_M, program_K);
-  const MTL::Size activation_quantize_threadgroup_size = kernel->activationQuantizeThreadgroupSize();
+  const bool fused = program_K <= 8192;
+  const MTL::Size activation_prepare_grid_size = fused ? kernel->activationPrepareGridSize(program_M, program_K) : MTL::Size(program_M, 1, 1);
+  const MTL::Size activation_prepare_threadgroup_size = fused ? kernel->activationPrepareThreadgroupSize() : MTL::Size(256, 1, 1);
 
   mtl_command_batch_t* const command_batch = ccv_nnc_stream_context_start_command_batch(stream_context);
   auto encoder = command_batch->startCommand();
@@ -478,19 +477,24 @@ static bool run_quantize_activation(
   encoder->useResource(ccv_nnc_mfa_ane_rowwise_coreml_cache_activation_scales_buffer(cache), MTL::ResourceUsageWrite);
   encoder->setBuffer(activation, activation_offset, 0);
   encoder->setBuffer(ccv_nnc_mfa_ane_rowwise_coreml_cache_activation_scales_buffer(cache), 0, 1);
-  encoder->dispatchThreadgroups(activation_scale_grid_size, activation_scale_threadgroup_size);
+  if (fused) {
+    encoder->useResource(ccv_nnc_mfa_ane_rowwise_coreml_cache_activation_surface_buffer(cache), MTL::ResourceUsageWrite);
+    encoder->setBuffer(ccv_nnc_mfa_ane_rowwise_coreml_cache_activation_surface_buffer(cache), 0, 2);
+  }
+  encoder->dispatchThreadgroups(activation_prepare_grid_size, activation_prepare_threadgroup_size);
   command_batch->finishCommand(encoder);
-
-  encoder = command_batch->startCommand();
-  encoder->setComputePipelineState(transform_pipeline->second.get());
-  encoder->useResource(activation, MTL::ResourceUsageRead);
-  encoder->useResource(ccv_nnc_mfa_ane_rowwise_coreml_cache_activation_scales_buffer(cache), MTL::ResourceUsageRead);
-  encoder->useResource(ccv_nnc_mfa_ane_rowwise_coreml_cache_activation_surface_buffer(cache), MTL::ResourceUsageWrite);
-  encoder->setBuffer(activation, activation_offset, 0);
-  encoder->setBuffer(ccv_nnc_mfa_ane_rowwise_coreml_cache_activation_scales_buffer(cache), 0, 1);
-  encoder->setBuffer(ccv_nnc_mfa_ane_rowwise_coreml_cache_activation_surface_buffer(cache), 0, 2);
-  encoder->dispatchThreadgroups(activation_quantize_grid_size, activation_quantize_threadgroup_size);
-  command_batch->finishCommand(encoder);
+  if (!fused) {
+    encoder = command_batch->startCommand();
+    encoder->setComputePipelineState(transform_pipeline->second.get());
+    encoder->useResource(activation, MTL::ResourceUsageRead);
+    encoder->useResource(ccv_nnc_mfa_ane_rowwise_coreml_cache_activation_scales_buffer(cache), MTL::ResourceUsageRead);
+    encoder->useResource(ccv_nnc_mfa_ane_rowwise_coreml_cache_activation_surface_buffer(cache), MTL::ResourceUsageWrite);
+    encoder->setBuffer(activation, activation_offset, 0);
+    encoder->setBuffer(ccv_nnc_mfa_ane_rowwise_coreml_cache_activation_scales_buffer(cache), 0, 1);
+    encoder->setBuffer(ccv_nnc_mfa_ane_rowwise_coreml_cache_activation_surface_buffer(cache), 0, 2);
+    encoder->dispatchThreadgroups(kernel->activationQuantizeGridSize(program_M, program_K), kernel->activationQuantizeThreadgroupSize());
+    command_batch->finishCommand(encoder);
+  }
   char error_buffer[1024] = {};
   const int weight_upload_ok = ccv_nnc_mfa_ane_rowwise_coreml_append_weight_upload(
       cache,

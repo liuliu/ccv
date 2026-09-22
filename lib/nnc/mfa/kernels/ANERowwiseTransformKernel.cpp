@@ -7,10 +7,10 @@ ANERowwiseTransformKernel::ANERowwiseTransformKernel(
     MTL::Device* const device)
 {
   memoryPrecision = descriptor.memoryPrecision;
-  activationScaleThreads = 256;
+  activationPrepareThreads = 1024;
   quantTileDimension = descriptor.supportsApple10 ? 64 : 32;
   quantBlockRows = descriptor.supportsApple10 ? 4 : 8;
-  quantTilePad = descriptor.supportsApple10 ? 65 : 33;
+  quantTilePad = quantTileDimension + 1;
   outputTileDimensions = simd::ushort2 { 16, 16 };
 
   source = createSource();
@@ -20,9 +20,9 @@ ANERowwiseTransformKernel::ANERowwiseTransformKernel(
   CCV_NNC_MFA_CHECK_ERROR(error);
 }
 
-MTL::Size ANERowwiseTransformKernel::activationScaleThreadgroupSize() const noexcept
+MTL::Size ANERowwiseTransformKernel::activationPrepareThreadgroupSize() const noexcept
 {
-  return MTL::Size(activationScaleThreads, 1, 1);
+  return MTL::Size(activationPrepareThreads, 1, 1);
 }
 
 MTL::Size ANERowwiseTransformKernel::activationQuantizeThreadgroupSize() const noexcept
@@ -35,9 +35,9 @@ MTL::Size ANERowwiseTransformKernel::outputDequantizeThreadgroupSize() const noe
   return MTL::Size(outputTileDimensions[0], outputTileDimensions[1], 1);
 }
 
-MTL::Size ANERowwiseTransformKernel::activationScaleGridSize(uint32_t paddedM) const noexcept
+MTL::Size ANERowwiseTransformKernel::activationPrepareGridSize(uint32_t paddedM, uint32_t K) const noexcept
 {
-  return MTL::Size(paddedM, 1, 1);
+  return MTL::Size(paddedM / (K > 8192 ? 4 : 8), 1, 1);
 }
 
 MTL::Size ANERowwiseTransformKernel::activationQuantizeGridSize(uint32_t paddedM, uint32_t K) const noexcept
@@ -60,8 +60,8 @@ std::string ANERowwiseTransformKernel::createSource() const noexcept
 {
   CodeWriter source;
   source.SetValue("IO_TYPE", memoryPrecision.name());
-  source.SetValue("THREADGROUP_SIZE", std::to_string(activationScaleThreads));
-  source.SetValue("QUANT_SIMDGROUPS", std::to_string(activationScaleThreads / 32));
+  source.SetValue("THREADGROUP_SIZE", "256");
+  source.SetValue("QUANT_SIMDGROUPS", "8");
   source.SetValue("QUANT_TILE_DIM", std::to_string(quantTileDimension));
   source.SetValue("QUANT_BLOCK_ROWS", std::to_string(quantBlockRows));
   source.SetValue("QUANT_TILE_PAD", std::to_string(quantTilePad));
@@ -159,6 +159,78 @@ kernel void compute_activation_scales(
   const float scale = max_abs > 0.0f ? max_abs / 127.0f : (1.0f / 127.0f);
   if (tid == 0)
     scales[row] = ({{IO_TYPE}})scale;
+}
+
+// Complete rows per threadgroup make the row reductions local while
+// a small INT8 tile packs adjacent rows into four-byte ANE surface stores.
+kernel void quantize_activation(
+    device const {{IO_TYPE}}* src [[buffer(0)]],
+    device {{IO_TYPE}}* scales [[buffer(1)]],
+    device char* dst [[buffer(2)]],
+    uint tid [[thread_index_in_threadgroup]],
+    ushort lane [[thread_index_in_simdgroup]],
+    uint gid [[threadgroup_position_in_grid]])
+{
+  const uint rows = K <= 8192 ? 8 : 4;
+  const uint threads = 1024 / rows;
+  const uint simdgroups = threads / 32;
+  const uint features = threads * 4;
+  threadgroup float partial[32];
+  threadgroup char tile[4096];
+  const uint row_in_tile = tid / threads;
+  const uint row = gid * rows + row_in_tile;
+  const uint local = tid % threads;
+  const uint sg = local / 32;
+  const uint base = source_offset(min(row, TOTAL_ROWS - 1));
+  float maximum = 0;
+  // Each lane retains at most 64 values. Wider rows get more threads per row;
+  // Production uses this fused kernel through K=8192. The wider tile remains
+  // available to the benchmark; wider production rows use two dispatches.
+  float4 values[16];
+  for (uint g = 0; g < (K + features - 1) / features; ++g) {
+    const uint col = g * features + local * 4;
+    float4 v = 0;
+    for (uint c = 0; c < 4; ++c)
+      if (col + c < K)
+        v[c] = float(src[base + col + c]);
+    if (K <= 16384)
+      values[g] = v;
+    const float4 a = abs(v);
+    maximum = max(maximum, max(max(a.x, a.y), max(a.z, a.w)));
+  }
+  maximum = simd_max(maximum);
+  if (lane == 0)
+    partial[row_in_tile * simdgroups + sg] = maximum;
+  threadgroup_barrier(mem_flags::mem_threadgroup);
+  maximum = 0;
+  for (uint g = 0; g < simdgroups; ++g)
+    maximum = max(maximum, partial[row_in_tile * simdgroups + g]);
+  // Match the two-dispatch path: quantize with the scale rounded to IO precision.
+  const {{IO_TYPE}} stored_scale = {{IO_TYPE}}(maximum > 0 ? maximum / 127.0f : 1.0f / 127.0f);
+  if (local == 0)
+    scales[row] = stored_scale;
+  const float inv = float(stored_scale) > 0 ? 1.0f / float(stored_scale) : 127.0f;
+  for (uint g = 0; g < (K + features - 1) / features; ++g) {
+    const uint col = g * features + local * 4;
+    float4 v = 0;
+    if (K <= 16384)
+      v = values[g];
+    else
+      for (uint c = 0; c < 4; ++c)
+        if (col + c < K)
+          v[c] = float(src[base + col + c]);
+    const char4 q = char4(clamp(int4(rint(v * inv)), int4(-127), int4(127)));
+    *reinterpret_cast<threadgroup char4*>(tile + row_in_tile * features + local * 4) = q;
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+    const uint feature = tid / (rows / 4);
+    const uint r = (tid % (rows / 4)) * 4;
+    const uint output_k = g * features + feature;
+    if (output_k < K) {
+      const char4 packed = char4(tile[r * features + feature], tile[(r + 1) * features + feature], tile[(r + 2) * features + feature], tile[(r + 3) * features + feature]);
+      reinterpret_cast<device char4*>(dst)[output_k * (PADDED_ROWS / 4) + gid * (rows / 4) + r / 4] = packed;
+    }
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+  }
 }
 
 kernel void quantize_transpose_activation(

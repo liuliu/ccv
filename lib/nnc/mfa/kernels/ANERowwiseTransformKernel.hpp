@@ -10,7 +10,7 @@ struct ANERowwiseTransformKernel {
   std::string source;
 
   GEMMOperandPrecision memoryPrecision;
-  uint16_t activationScaleThreads;
+  uint16_t activationPrepareThreads;
   uint16_t quantTileDimension;
   uint16_t quantBlockRows;
   uint16_t quantTilePad;
@@ -18,10 +18,10 @@ struct ANERowwiseTransformKernel {
 
   ANERowwiseTransformKernel(ANERowwiseTransformKernelDescriptor descriptor, MTL::Device* const device);
 
-  MTL::Size activationScaleThreadgroupSize() const noexcept;
+  MTL::Size activationPrepareThreadgroupSize() const noexcept;
   MTL::Size activationQuantizeThreadgroupSize() const noexcept;
   MTL::Size outputDequantizeThreadgroupSize() const noexcept;
-  MTL::Size activationScaleGridSize(uint32_t paddedM) const noexcept;
+  MTL::Size activationPrepareGridSize(uint32_t paddedM, uint32_t K) const noexcept;
   MTL::Size activationQuantizeGridSize(uint32_t paddedM, uint32_t K) const noexcept;
   MTL::Size outputDequantizeGridSize(uint32_t paddedM, uint32_t N) const noexcept;
 
