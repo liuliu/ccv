@@ -43,6 +43,7 @@ bool NAInt8MatMulDescriptor::operator==(const NAInt8MatMulDescriptor& rhs) const
     (loadM || packedABatchStride == rhs.packedABatchStride) &&
     (loadM || aScaleBatchStride == rhs.aScaleBatchStride) &&
     useBias == rhs.useBias &&
+    activationHadamard256 == rhs.activationHadamard256 &&
     loadM == rhs.loadM &&
     supportIndirectCommandBuffers == rhs.supportIndirectCommandBuffers &&
     simd_all(lhsMatrixDimensions == rhsMatrixDimensions);
@@ -69,6 +70,7 @@ std::size_t std::hash<NAInt8MatMulDescriptor>::operator()(const NAInt8MatMulDesc
   combine_32(seed, hash.loadM ? 0 : hash.packedABatchStride.value_or(0));
   combine_32(seed, hash.loadM ? 0 : hash.aScaleBatchStride.value_or(0));
   combine_32(seed, hash.useBias ? 1 : 0);
+  combine_32(seed, hash.activationHadamard256 ? 1 : 0);
   combine_32(seed, hash.loadM ? 1 : 0);
   combine_32(seed, hash.supportIndirectCommandBuffers ? 1 : 0);
   return seed;
@@ -84,7 +86,8 @@ NAInt8MatMulKernelDescriptor NAInt8MatMulDescriptor::kernelDescriptor() const no
       256,
       groupM(matrixDimensions[0]),
       groupN(matrixDimensions[1]),
-      leadingDimensions.has_value());
+      leadingDimensions.has_value(),
+      activationHadamard256);
 }
 
 std::pair<NAInt8MatMulKernelDescriptor, PipelineValue<NAInt8MatMulKernel> *> NAInt8MatMulDescriptor::findKernel(
@@ -96,6 +99,7 @@ std::pair<NAInt8MatMulKernelDescriptor, PipelineValue<NAInt8MatMulKernel> *> NAI
     std::unordered_map<NAInt8MatMulKernelDescriptor, std::unique_ptr<NAInt8MatMulKernel>> *const libraryCache) const noexcept
 {
   (void)dprops;
+  CCV_NNC_MFA_PRECONDITION(!activationHadamard256 || (matrixDimensions[2] > 0 && matrixDimensions[2] <= 65536 && matrixDimensions[2] % 256 == 0));
 
   auto createKernel =
   [=](const NAInt8MatMulKernelDescriptor& descriptor) -> NAInt8MatMulKernel* {

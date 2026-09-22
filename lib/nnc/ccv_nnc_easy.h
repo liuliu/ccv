@@ -228,7 +228,7 @@ static inline ccv_nnc_tensor_param_t ccv_nnc_tensor_8i_rowwise(const ccv_nnc_ten
 
 static inline int ccv_nnc_8i_rowwise_x_group_size(const int format)
 {
-	switch (format)
+	switch (format & CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK)
 	{
 		case CCV_NNC_QX_8I_ROWWISE_Q5_K:
 		case CCV_NNC_QX_8I_ROWWISE_Q4_K:
@@ -251,7 +251,7 @@ static inline int ccv_nnc_8i_rowwise_x_group_size(const int format)
 
 static inline int ccv_nnc_8i_rowwise_x_group_bits(const int format)
 {
-	switch (format)
+	switch (format & CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK)
 	{
 		case CCV_NNC_QX_8I_ROWWISE_Q5_K:
 			return 88;
@@ -280,7 +280,11 @@ static inline int ccv_nnc_8i_rowwise_x_group_bits(const int format)
 static inline ccv_nnc_tensor_param_t ccv_nnc_tensor_8i_rowwise_x(const ccv_nnc_tensor_param_t params, const int format)
 {
 	assert(params.datatype == CCV_16F || params.datatype == CCV_32F || params.datatype == CCV_64F || params.datatype == CCV_16BF);
-	assert(ccv_nnc_8i_rowwise_x_group_size(format) > 0);
+	const int nd = ccv_nnc_tensor_nd(params.dim);
+	if (format & CCV_NNC_QX_8I_ROWWISE_HADAMARD_256)
+	{
+		assert(nd > 0 && params.dim[nd - 1] > 0 && params.dim[nd - 1] % 256 == 0);
+	}
 	ccv_nnc_tensor_param_t new_params = params;
 	new_params.datatype = ((params.datatype >> 12) & 0xff) | CCV_QX | CCV_NNC_QX_8I_ROWWISE_X;
 	new_params.reserved = format;
@@ -317,6 +321,10 @@ static inline size_t ccv_nnc_tensor_data_size_without_padding(const ccv_nnc_tens
 		} else if (qx_subtype == CCV_NNC_QX_8I_ROWWISE_X) {
 			const int nd = ccv_nnc_tensor_nd(params.dim);
 			const int row_length = params.dim[nd - 1];
+			if (params.reserved & CCV_NNC_QX_8I_ROWWISE_HADAMARD_256)
+			{
+				assert(row_length > 0 && row_length % 256 == 0);
+			}
 			assert(row_length > 0);
 			assert(count % row_length == 0);
 			const ssize_t row_count = count / row_length;

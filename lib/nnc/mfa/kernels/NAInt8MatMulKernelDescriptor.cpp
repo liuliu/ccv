@@ -10,6 +10,7 @@ bool NAInt8MatMulKernelDescriptor::operator==(const NAInt8MatMulKernelDescriptor
       loadM == rhs.loadM &&
       useLeadingDimensions == rhs.useLeadingDimensions &&
       activationQuantizeThreads == rhs.activationQuantizeThreads &&
+      activationHadamard256 == rhs.activationHadamard256 &&
       groupM == rhs.groupM &&
       groupN == rhs.groupN;
 }
@@ -23,6 +24,7 @@ std::size_t std::hash<NAInt8MatMulKernelDescriptor>::operator()(const NAInt8MatM
   combine_32(seed, pack_32(simd::ushort2 { (uint16_t)hash.loadM, (uint16_t)hash.useLeadingDimensions }));
   combine_32(seed, hash.groupM);
   combine_32(seed, hash.groupN);
+  combine_32(seed, hash.activationHadamard256 ? 1 : 0);
   return seed;
 }
 
@@ -35,7 +37,8 @@ NAInt8MatMulKernelDescriptor::NAInt8MatMulKernelDescriptor(
     uint16_t activationQuantizeThreads,
     uint32_t groupM,
     uint32_t groupN,
-    bool useLeadingDimensions) noexcept
+    bool useLeadingDimensions,
+    bool activationHadamard256) noexcept
 {
   this->blockDimensions = blockDimensions;
   this->executionSIMDGroups = executionSIMDGroups;
@@ -44,6 +47,7 @@ NAInt8MatMulKernelDescriptor::NAInt8MatMulKernelDescriptor(
   this->loadM = loadM;
   this->useLeadingDimensions = useLeadingDimensions;
   this->activationQuantizeThreads = activationQuantizeThreads;
+  this->activationHadamard256 = activationHadamard256;
   this->groupM = groupM;
   this->groupN = groupN;
 }

@@ -19,6 +19,7 @@ struct NAInt8MatMulKernel {
   bool loadM;
   bool useLeadingDimensions;
   uint16_t activationQuantizeThreads;
+  bool activationHadamard256;
   uint32_t groupM;
   uint32_t groupN;
 

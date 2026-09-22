@@ -303,7 +303,11 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 		const int a_qx_subtype = CCV_GET_DATA_TYPE(a->info.datatype) == CCV_QX ? (a->info.datatype & 0xf00) : 0;
 		const int w_qx_subtype = CCV_GET_DATA_TYPE(w->info.datatype) == CCV_QX ? (w->info.datatype & 0xf00) : 0;
 		const int w_qx_8i_rowwise = (w_qx_subtype == CCV_NNC_QX_8I_ROWWISE || w_qx_subtype == CCV_NNC_QX_8I_ROWWISE_X);
-		const uint32_t w_8i_rowwise_x_format = w_qx_subtype == CCV_NNC_QX_8I_ROWWISE_X ? (uint32_t)w->info.reserved : 0;
+		const uint32_t w_8i_rowwise_x_flags = w_qx_subtype == CCV_NNC_QX_8I_ROWWISE_X ? (uint32_t)w->info.reserved : 0;
+		const int activation_hadamard_256 = !!(w_8i_rowwise_x_flags & CCV_NNC_QX_8I_ROWWISE_HADAMARD_256);
+		const uint32_t w_8i_rowwise_x_format = w_8i_rowwise_x_flags & CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK;
+		if (activation_hadamard_256 && (w_rows <= 0 || w_rows % 256 != 0 || w_rows > 65536))
+			return CCV_NNC_EXEC_INVALID;
 		const int is_same_dtype =
 			(a_datatype == w_datatype) &&
 			(a_datatype == b->info.datatype) &&
@@ -389,6 +393,7 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 			(is_interleaved_batched_dense_gemv && (w_rows % 4) == 0);
 		const int is_downcast = ((cmd.info.blas.flags & CCV_NNC_GEMM_16F) && (a_datatype == CCV_16F || a_datatype == CCV_16BF));
 		const int use_ane_rowwise_gemm =
+			!activation_hadamard_256 &&
 			w_qx_8i_rowwise &&
 			(a_datatype == CCV_16F || a_datatype == CCV_16BF || a_datatype == CCV_32F) &&
 			(!bias || bias_batch_size == 1) &&
@@ -434,6 +439,7 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 			!(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_GEMM) &&
 			(use_neural_accelerators || use_scaled_gemm_without_neural_accelerators);
 		const int use_scaled_gemv =
+			!activation_hadamard_256 &&
 			w_qx_8i_rowwise &&
 			(CCV_GET_DATA_TYPE(a->info.datatype) != CCV_QX) &&
 			(CCV_GET_DATA_TYPE(b->info.datatype) != CCV_QX) &&
@@ -450,6 +456,9 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 			(!bias || bias_batch_size == 1) &&
 			ccv_nnc_mfa_context_supported(context) &&
 			!(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA);
+		// Dense fallback / ANE / scaled GEMV do not implement the input rotation.
+		if (activation_hadamard_256 && (!use_scaled_gemm || !use_neural_accelerators))
+			return CCV_NNC_EXEC_INVALID;
 		// Generic MFA decodes row-wise weights before applying the interleaved strides.
 		const int is_interleaved_batched_mfa_gemm =
 			is_interleaved_batched_dense_gemm ||
@@ -560,6 +569,7 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 				.K = (uint32_t)w_rows,
 				.fused_bias = (bias ? 1 : 0),
 				.use_neural_accelerators = use_neural_accelerators,
+				.activation_hadamard_256 = activation_hadamard_256,
 				.batch_dimension = is_interleaved_batched_scaled_gemm ? (uint32_t)adim[1] : b_batch_size,
 				.batch_stride_a = is_interleaved_batched_scaled_gemm ? (uint32_t)w_rows : (a_batch_size > 1 ? ccv_max(a_batch_stride, b_rows * w_rows) : 0),
 				.batch_stride_b = is_interleaved_batched_scaled_gemm ? (uint32_t)interleaved_w_batch_stride : (w_batch_size > 1 ? b_cols * w_rows : 0),

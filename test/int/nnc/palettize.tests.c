@@ -5,6 +5,7 @@
 #include <nnc/ccv_nnc.h>
 #include <nnc/ccv_nnc_easy.h>
 #include "3rdparty/dsfmt/dSFMT.h"
+#include "3rdparty/sqlite3/sqlite3.h"
 
 TEST_SETUP()
 {
@@ -42,6 +43,121 @@ static double _test_8i_rowwise_x_format(const int format, const ccv_nnc_tensor_p
 	mse /= (double)(rows * cols);
 	ccfree(compressed);
 	return mse;
+}
+
+TEST_CASE("H256 rowwise-x quantization matches independent dense rotation for every codec and precision")
+{
+	enum { rows = 3, cols = 512, count = rows * cols };
+	float values[count], rotated[count], imatrix[count];
+	dsfmt_t dsfmt;
+	dsfmt_init_gen_rand(&dsfmt, 256);
+	int i, j, k, shift;
+	for (i = 0; i < count; i++)
+	{
+		// Dyadic values and their transforms are exact in all four precisions.
+		values[i] = dsfmt_genrand_open_close(&dsfmt) > 0.5 ? 1 : -1;
+		imatrix[i] = 0.25f + (i % 7) * 0.125f;
+	}
+	for (i = 0; i < count; i += 256)
+		for (j = 0; j < 256; j++)
+		{
+			double sum = 0;
+			for (k = 0; k < 256; k++)
+			{
+				int sign = 1;
+				for (shift = 0; shift < 8; shift += 2)
+					if (((j >> shift) & 3) + ((k >> shift) & 3) == 3)
+						sign = -sign;
+				sum += sign * values[i + k];
+			}
+			rotated[i + j] = sum / 16;
+		}
+	const int datatypes[] = {CCV_16F, CCV_16BF, CCV_32F, CCV_64F};
+	int d, codec;
+	for (d = 0; d < 4; d++)
+	{
+		ccv_nnc_tensor_param_t params = CPU_TENSOR_NHWC(32F, rows, cols);
+		params.datatype = datatypes[d];
+		ccv_nnc_tensor_t* const source = ccv_nnc_tensor_new(0, params, 0);
+		ccv_nnc_tensor_t* const reference = ccv_nnc_tensor_new(0, params, 0);
+		if (datatypes[d] == CCV_16F)
+		{
+			ccv_float_to_half_precision(values, (uint16_t*)source->data.u8, count);
+			ccv_float_to_half_precision(rotated, (uint16_t*)reference->data.u8, count);
+		} else if (datatypes[d] == CCV_16BF) {
+			ccv_float_to_bfloat(values, (uint16_t*)source->data.u8, count);
+			ccv_float_to_bfloat(rotated, (uint16_t*)reference->data.u8, count);
+		} else if (datatypes[d] == CCV_32F) {
+			memcpy(source->data.f32, values, sizeof(values));
+			memcpy(reference->data.f32, rotated, sizeof(rotated));
+		} else {
+			for (i = 0; i < count; i++)
+			{
+				source->data.f64[i] = values[i];
+				reference->data.f64[i] = rotated[i];
+			}
+		}
+		for (codec = CCV_NNC_QX_8I_ROWWISE_Q4_K; codec <= CCV_NNC_QX_8I_ROWWISE_Q6_K; codec++)
+		{
+			const int format = codec | CCV_NNC_QX_8I_ROWWISE_HADAMARD_256;
+			ccv_nnc_tensor_t* const actual = ccv_nnc_tensor_new(0, ccv_nnc_tensor_8i_rowwise_x(params, format), 0);
+			ccv_nnc_tensor_t* const expected = ccv_nnc_tensor_new(0, ccv_nnc_tensor_8i_rowwise_x(params, codec), 0);
+			const size_t size = ccv_nnc_tensor_data_size_without_padding(actual->info);
+			REQUIRE_EQ(actual->info.reserved, format, "tensor metadata preserves H256");
+			REQUIRE_EQ(size, ccv_nnc_tensor_data_size_without_padding(expected->info), "H256 does not change storage size");
+			REQUIRE_EQ(size, ccv_nnc_8i_rowwise_x_data_size(format, datatypes[d], count, cols), "byte sizing accepts modifier");
+			const float* const importance = codec & 1 ? imatrix : 0;
+			const size_t importance_count = importance ? count : 0;
+			REQUIRE_EQ(ccv_nnc_quantize_8i_rowwise_x(source->data.u8, datatypes[d], CCV_TENSOR_CPU_MEMORY, count, cols, format, importance, importance_count, actual->data.u8, size), size, "flagged weights quantize");
+			REQUIRE_EQ(ccv_nnc_quantize_8i_rowwise_x(reference->data.u8, datatypes[d], CCV_TENSOR_CPU_MEMORY, count, cols, codec, importance, importance_count, expected->data.u8, size), size, "independently rotated weights quantize");
+			REQUIRE_EQ(memcmp(actual->data.u8, expected->data.u8, size), 0, "H256 must run before scale fitting and packing, codec=%d datatype=%d", codec, datatypes[d]);
+			ccv_nnc_tensor_free(actual);
+			ccv_nnc_tensor_free(expected);
+		}
+		ccv_nnc_tensor_free(source);
+		ccv_nnc_tensor_free(reference);
+	}
+}
+
+TEST_CASE("H256 rowwise-x rejects invalid K without modifying output")
+{
+	float values[1024] = {0};
+	uint8_t output[4096], untouched[4096];
+	memset(output, 0xa5, sizeof(output));
+	memcpy(untouched, output, sizeof(output));
+	const int format = CCV_NNC_QX_8I_ROWWISE_Q6_K | CCV_NNC_QX_8I_ROWWISE_HADAMARD_256;
+	const size_t invalid_k[] = {0, 1, 255, 257, 384, 513};
+	int i;
+	for (i = 0; i < sizeof(invalid_k) / sizeof(invalid_k[0]); i++)
+	{
+		REQUIRE_EQ(ccv_nnc_8i_rowwise_x_data_size(format, CCV_32F, invalid_k[i], invalid_k[i]), 0, "invalid K has no encoded size");
+		REQUIRE_EQ(ccv_nnc_quantize_8i_rowwise_x(values, CCV_32F, CCV_TENSOR_CPU_MEMORY, invalid_k[i], invalid_k[i], format, 0, 0, output, sizeof(output)), 0, "invalid K must fail");
+	}
+	REQUIRE_EQ(ccv_nnc_quantize_8i_rowwise_x(values, CCV_32F, CCV_TENSOR_CPU_MEMORY, 513, 256, format, 0, 0, output, sizeof(output)), 0, "partial rows must fail");
+	REQUIRE_EQ(ccv_nnc_quantize_8i_rowwise_x(values, CCV_32F, CCV_TENSOR_CPU_MEMORY, 512, 256, format, 0, 0, output, 1), 0, "short output must fail");
+	REQUIRE_EQ(memcmp(output, untouched, sizeof(output)), 0, "failure must not write output");
+}
+
+TEST_CASE("H256 rowwise-x metadata and payload survive tensor persistence")
+{
+	const int format = CCV_NNC_QX_8I_ROWWISE_Q6_K | CCV_NNC_QX_8I_ROWWISE_HADAMARD_256;
+	ccv_nnc_tensor_t* const source = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 3, 256), 0);
+	ccv_nnc_tensor_zero(source);
+	ccv_nnc_tensor_t* const packed = ccv_nnc_tensor_new(0, ccv_nnc_tensor_8i_rowwise_x(source->info, format), 0);
+	const size_t size = ccv_nnc_tensor_data_size_without_padding(packed->info);
+	REQUIRE_EQ(ccv_nnc_quantize_8i_rowwise_x(source->data.f32, CCV_32F, CCV_TENSOR_CPU_MEMORY, 3 * 256, 256, format, 0, 0, packed->data.u8, size), size, "zero weights quantize");
+	sqlite3* db = 0;
+	REQUIRE_EQ(sqlite3_open(":memory:", &db), SQLITE_OK, "in-memory database opens");
+	REQUIRE_EQ(ccv_nnc_tensor_write(packed, db, "h256", 0), CCV_IO_FINAL, "flagged tensor writes");
+	ccv_nnc_tensor_t* restored = 0;
+	REQUIRE_EQ(ccv_nnc_tensor_read(db, "h256", 0, 0, 0, &restored), CCV_IO_FINAL, "flagged tensor reads");
+	REQUIRE_EQ(restored->info.reserved, format, "codec and rotation flag both persist");
+	REQUIRE_EQ(ccv_nnc_tensor_data_size_without_padding(restored->info), size, "size persists");
+	REQUIRE_EQ(memcmp(restored->data.u8, packed->data.u8, size), 0, "payload persists");
+	sqlite3_close(db);
+	ccv_nnc_tensor_free(restored);
+	ccv_nnc_tensor_free(packed);
+	ccv_nnc_tensor_free(source);
 }
 
 TEST_CASE("allocate row-wise int8 tensor with source-precision scales")

@@ -2057,6 +2057,108 @@ static int _mps_segmented_scaled_gemm_validate(const int datatype, const int use
 	return _mps_segmented_scaled_gemm_validate_format(datatype, use_bias, force_fallback, 0, max_abs_ref, max_rel_ref);
 }
 
+TEST_CASE("mps H256 rowwise-x GEMM rejects malformed K metadata")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_MPS));
+	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 3, 384), 0);
+	ccv_nnc_tensor_t* const w = ccv_nnc_tensor_new(0, ccv_nnc_tensor_8i_rowwise_x(GPU_TENSOR_NHWC(000, 32F, 73, 384), CCV_NNC_QX_8I_ROWWISE_Q6_K), 0);
+	ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 3, 73), 0);
+	// Bypass the constructor's rejection to exercise backend validation too.
+	w->info.reserved |= CCV_NNC_QX_8I_ROWWISE_HADAMARD_256;
+	REQUIRE_EQ(ccv_nnc_cmd_exec(CMD_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(0, 1)), ccv_nnc_no_hint, 0, TENSOR_LIST(a, w), TENSOR_LIST(b), 0), CCV_NNC_EXEC_INVALID, "invalid K must not dispatch");
+	ccv_nnc_tensor_free(a);
+	ccv_nnc_tensor_free(w);
+	ccv_nnc_tensor_free(b);
+}
+
+TEST_CASE("mps H256 rowwise-x GEMM uses rotated activations and ordinary output")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_MPS));
+#ifdef HAVE_MPS
+	extern uint8_t ccv_nnc_mfa_has_neural_accelerators(ccv_nnc_mfa_context_t* context);
+	GUARD_ELSE_RETURN(ccv_nnc_mfa_has_neural_accelerators(ccv_nnc_default_mfa_context()));
+	enum { n = 73, k = 512 };
+	const int codecs[] = {CCV_NNC_QX_8I_ROWWISE_IQ2_XXS, CCV_NNC_QX_8I_ROWWISE_Q6_K};
+	dsfmt_t dsfmt;
+	dsfmt_init_gen_rand(&dsfmt, 256);
+	int f, shape;
+	for (f = 0; f < 2; f++)
+		for (shape = 0; shape < 3; shape++)
+		{
+			const int m = shape == 0 ? 3 : 37;
+			const int batches = shape == 2 ? 2 : 1;
+			ccv_nnc_tensor_t* const ha = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, batches, m, k), 0);
+			ccv_nnc_tensor_t* const hw = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, n, k), 0);
+			ccv_nnc_tensor_t* const hbias = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, n), 0);
+			ccv_nnc_tensor_t* const href = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, batches, m, n), 0);
+			ccv_nnc_tensor_t* const actual = ccv_nnc_tensor_new(0, href->info, 0);
+			const int format = codecs[f] | CCV_NNC_QX_8I_ROWWISE_HADAMARD_256;
+			ccv_nnc_tensor_t* const hq = ccv_nnc_tensor_new(0, ccv_nnc_tensor_8i_rowwise_x(hw->info, format), 0);
+			ccv_nnc_tensor_param_t q_params = hq->info;
+			q_params.type = CCV_TENSOR_GPU_MEMORY;
+			ccv_nnc_tensor_t* const q = ccv_nnc_tensor_new(0, q_params, 0);
+			ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, batches, m, k), 0);
+			ccv_nnc_tensor_t* const bias = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, n), 0);
+			ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, batches, m, n), 0);
+			int i, j, l, shift;
+			for (i = 0; i < batches * m * k; i++)
+				ha->data.f32[i] = ((int)(dsfmt_genrand_open_close(&dsfmt) * 255) - 127) / 128.f;
+			for (i = 0; i < n * k; i++)
+				hw->data.f32[i] = ((int)(dsfmt_genrand_open_close(&dsfmt) * 255) - 127) / 128.f;
+			for (i = 0; i < n; i++)
+				hbias->data.f32[i] = (i % 11 - 5) / 128.f;
+			const size_t size = ccv_nnc_tensor_data_size_without_padding(hq->info);
+			REQUIRE_EQ(ccv_nnc_quantize_8i_rowwise_x(hw->data.f32, CCV_32F, CCV_TENSOR_CPU_MEMORY, n * k, k, format, 0, 0, hq->data.u8, size), size, "offline H256 quantization succeeds with N not divisible by 256");
+			// Explicit raw base-codec decode gives stored rotated weights.
+			ccv_nnc_dequantize_8i_rowwise_x(hq->data.u8, CCV_32F, CCV_TENSOR_CPU_MEMORY, size, k, codecs[f], hw->data.f32, n * k);
+			ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha, hq, hbias), TENSOR_LIST(a, q, bias), 0);
+			// Independent dense transform followed by the runtime absmax INT8 rule.
+			float rotated[k];
+			for (i = 0; i < batches * m; i++)
+			{
+				float max_abs = 0;
+				for (j = 0; j < k; j++)
+				{
+					double sum = 0;
+					for (l = 0; l < 256; l++)
+					{
+						int sign = 1;
+						for (shift = 0; shift < 8; shift += 2)
+							if (((j >> shift) & 3) + ((l >> shift) & 3) == 3)
+								sign = -sign;
+						sum += sign * ha->data.f32[i * k + (j / 256) * 256 + l];
+					}
+					rotated[j] = sum / 16;
+					max_abs = ccv_max(max_abs, fabsf(rotated[j]));
+				}
+				const float scale = max_abs > 0 ? max_abs / 127.f : 1.f / 127.f;
+				const float inv_scale = max_abs > 0 ? 127.f / max_abs : 127.f;
+				for (j = 0; j < k; j++)
+					ha->data.f32[i * k + j] = scale * ccv_clamp((int)lrintf(rotated[j] * inv_scale), -127, 127);
+			}
+			REQUIRE_EQ(ccv_nnc_cmd_exec(CMD_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(0, 1)), ccv_nnc_no_hint, 0, TENSOR_LIST(ha, hw, hbias), TENSOR_LIST(href), 0), CCV_NNC_EXEC_SUCCESS, "CPU reference succeeds");
+			const uint64_t old_flags = ccv_nnc_flags();
+			if (shape == 1)
+				ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M);
+			const int status = ccv_nnc_cmd_exec(CMD_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(0, 1)), ccv_nnc_no_hint, 0, TENSOR_LIST(a, q, bias), TENSOR_LIST(b), 0);
+			if (!(old_flags & CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M))
+				ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M);
+			REQUIRE_EQ(status, CCV_NNC_EXEC_SUCCESS, "flagged GEMM succeeds");
+			ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(b), TENSOR_LIST(actual), 0);
+			for (i = 0; i < batches * m * n; i++)
+				REQUIRE(fabsf(actual->data.f32[i] - href->data.f32[i]) / ccv_max(1.f, fabsf(href->data.f32[i])) < 5e-4, "rotated INT8 reference matches without output inverse at %d: %g vs %g", i, actual->data.f32[i], href->data.f32[i]);
+			ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS);
+			const int fallback_status = ccv_nnc_cmd_exec(CMD_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(0, 1)), ccv_nnc_no_hint, 0, TENSOR_LIST(a, q, bias), TENSOR_LIST(b), 0);
+			if (!(old_flags & CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS))
+				ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS);
+			REQUIRE_EQ(fallback_status, CCV_NNC_EXEC_INVALID, "unsupported fallback rejects rotated weights");
+			ccv_nnc_tensor_free(ha); ccv_nnc_tensor_free(hw); ccv_nnc_tensor_free(hbias);
+			ccv_nnc_tensor_free(href); ccv_nnc_tensor_free(actual); ccv_nnc_tensor_free(hq);
+			ccv_nnc_tensor_free(q); ccv_nnc_tensor_free(a); ccv_nnc_tensor_free(bias); ccv_nnc_tensor_free(b);
+		}
+#endif
+}
+
 TEST_CASE("mps forward gemm with row-wise 8i weight NA")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_MPS));

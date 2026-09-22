@@ -7,6 +7,7 @@ TARGETS = dynamic_m_bench gemm_scaffold int8_matmul_bench gemv_thin_tensorop_ben
 
 MPSGRAPH_LDFLAGS := $(LDFLAGS) -framework Foundation -framework MetalPerformanceShaders -framework MetalPerformanceShadersGraph
 TARGETS += moe_routing_bench scaled_dot_product_arg_partition_candidates_bench
+TARGETS += na_int8_convrot_bench
 ANE_LDFLAGS := $(LDFLAGS) -framework IOSurface -ldl
 ANE_ROWWISE_LDFLAGS := $(LDFLAGS) -framework Foundation -framework CoreML -framework CoreVideo -framework IOSurface -framework MetalPerformanceShaders
 
@@ -100,6 +101,7 @@ dynamic_m_bench: dynamic_m_bench.o libccv.a
 	$(CC) -o $@ dynamic_m_bench.o ../../lib/libccv.a $(MPSGRAPH_LDFLAGS)
 
 clean:
+	rm -f na_int8_convrot_bench.o
 	rm -f moe_routing_bench.o MoERoutingKernel.local.o
 	rm -f dynamic_m_bench.o dump_attention_source.o dump_na_source.o dump_na_attention_source.o dump_na_int8_attention_source.o gemm_scaffold.o int8_matmul_bench.o gemv_thin_tensorop_bench.o scaled_gemv_bench.o index_select_bench.o transpose_bench.o na_gemm_splitk_bench.o na_int8_attention_bench.o na_attention_causal_bench.o na_attention_decode1_bench.o na_scaled_dot_product_arg_partition_bench.o na_sparse_indexed_attention_bench.o na_int8_attention_backward_probe.o na_attention_backward_bench.o attention_backward_compare_probe.o sdpa_backward_compare_bench.o rotate_half_bench.o walsh_hadamard_transform_bench.o gated_delta_bench.o hyper_connection_bench.o na_int8_matmul_bench.o na_int8_rowwise_x_bench.o ane_fp16_matmul_harness.o ane_int8_matmul_probe.o ane_int8_conv_matmul_harness.o ane_int8_rowwise_conv_harness.o ane_na_int8_matmul_harness.o ane_coreml_split_matmul_bench.o conv3d_layout_scaffold.o implicit_conv3d_scaffold.o gemm_kernel_introspect.o implicit_conv3d_bench.o conv3d_kernel_bench.o conv3d_branch_validate.o $(COMMON_OBJS) $(GEMV_OBJS) $(INT8_GEMV_OBJS) $(NA_GEMM_OBJS) $(ANE_ROWWISE_OBJS) $(NA_CONV_OBJS) $(NA_ATTENTION_OBJS) $(NA_BASELINE_ATTENTION_OBJS) $(GENERIC_ATTENTION_OBJS) $(ROTATE_HALF_OBJS) $(WALSH_HADAMARD_TRANSFORM_OBJS) $(GATED_DELTA_OBJS) $(HYPER_CONNECTION_OBJS) $(TARGETS) dump_na_source
 
@@ -160,6 +162,10 @@ hyper_connection_bench: hyper_connection_bench.o Metal.local.o Dispatch.local.o 
 	$(CC) -o $@ $^ $(LDFLAGS)
 na_int8_matmul_bench: na_int8_matmul_bench.o $(COMMON_OBJS) $(NA_GEMM_OBJS)
 	$(CC) -o $@ $^ $(LDFLAGS)
+na_int8_convrot_bench: na_int8_convrot_bench.o libccv.a
+	$(CC) -o $@ na_int8_convrot_bench.o ../../lib/libccv.a $(MPSGRAPH_LDFLAGS)
+na_int8_convrot_bench.o: na_int8_convrot_bench.cpp ../../lib/nnc/mfa/kernels/NAInt8MatMulDescriptor.hpp ../../lib/nnc/mfa/kernels/NAInt8MatMulKernel.hpp ../../lib/nnc/mfa/kernels/NAInt8MatMulKernelDescriptor.hpp
+	$(CC) $< -o $@ -c $(CFLAGS) -O3
 na_int8_rowwise_x_bench: na_int8_rowwise_x_bench.o libccv.a
 	$(CC) -o $@ na_int8_rowwise_x_bench.o ../../lib/libccv.a $(LDFLAGS)
 libccv.a:

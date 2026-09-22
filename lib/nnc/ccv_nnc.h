@@ -1097,6 +1097,14 @@ enum {
 	CCV_NNC_QX_8I_ROWWISE_Q6_K,
 };
 
+/* Modifiers for the format argument / tensor reserved field of ROWWISE_X. */
+enum {
+	CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK = 0xff,
+	/* W R_K, where R256 = H4^tensor4 / 16 and H4 is +1 except -1 on
+	 * its anti-diagonal. Requires K % 256 == 0; no output rotation. */
+	CCV_NNC_QX_8I_ROWWISE_HADAMARD_256 = 0x100,
+};
+
 /**
  * Quantize a given memory region of a given datatype / memory resides, into nbits palette.
  * @param input The input memory region, it can be CCV_64F, CCV_32F or CCV_16F.
@@ -1159,6 +1167,11 @@ void ccv_nnc_dequantize_8i_rowwise(const void* input, const int datatype, const 
 CCV_WARN_UNUSED(size_t) ccv_nnc_8i_rowwise_x_data_size(const int format, const int datatype, const size_t input_length, const size_t row_length);
 /**
  * Quantize a memory region into a row-wise-x int8-compatible format.
+ * OR the codec with CCV_NNC_QX_8I_ROWWISE_HADAMARD_256 to rotate each group
+ * of 256 floating-point weights before scale fitting and packing. With this
+ * modifier, imatrix must be calibrated on rotated activations.
+ * Returns 0 without writing output for invalid shape or insufficient
+ * output space. H256 requires a positive row_length divisible by 256.
  * @param imatrix Optional per-column importance weights. Pass 0 for unweighted MSE.
  * @param imatrix_length The number of elements in @p imatrix. It must be a multiple of @p row_length.
  * If it contains multiple row-length slices, rows are evenly partitioned across these slices.
@@ -1166,6 +1179,8 @@ CCV_WARN_UNUSED(size_t) ccv_nnc_8i_rowwise_x_data_size(const int format, const i
 CCV_WARN_UNUSED(size_t) ccv_nnc_quantize_8i_rowwise_x(const void* input, const int datatype, const int memory_type, const size_t input_length, const size_t row_length, const int format, const float* const imatrix, const size_t imatrix_length, void* output, const size_t output_length);
 /**
  * Dequantize a row-wise-x int8-compatible format back to @p datatype.
+ * H256 logical-weight decoding is not supported yet.
+ * Passing only the base codec explicitly decodes the stored rotated values.
  */
 void ccv_nnc_dequantize_8i_rowwise_x(const void* input, const int datatype, const int memory_type, const size_t input_length, const size_t row_length, const int format, void* output, const size_t output_length);
 

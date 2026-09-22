@@ -16,6 +16,8 @@ typedef struct {
   uint32_t leading_dimension_a;
   uint32_t leading_dimension_c;
   uint8_t loadM;
+  // Offline weights must be W R_K when activation rotation is enabled.
+  uint8_t activation_hadamard_256;
 } ccv_nnc_mfa_scaled_gemm_params_t;
 
 #ifdef __cplusplus

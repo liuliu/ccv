@@ -140,6 +140,7 @@ void ccv_nnc_mfa_prepare_scaled_gemm(mfa::context* context, ccv_nnc_mfa_scaled_g
 
 size_t ccv_nnc_mfa_scaled_gemm_reserved_scratch_size(ccv_nnc_mfa_scaled_gemm_params_t params)
 {
+  CCV_NNC_MFA_PRECONDITION(params.use_neural_accelerators || !params.activation_hadamard_256);
   if (!params.use_neural_accelerators) {
     CCV_NNC_MFA_PRECONDITION(params.data_type == MTL::DataTypeFloat);
     CCV_NNC_MFA_PRECONDITION(!params.fused_bias && params.batch_dimension == 1);
@@ -160,6 +161,7 @@ void ccv_nnc_mfa_encode_scaled_gemm(mfa::context* context, ccv_nnc_mfa_scaled_ge
   while (tensors[num_tensors] != nullptr)
     ++num_tensors;
   CCV_NNC_MFA_PRECONDITION((num_tensors == 3) || (num_tensors == 4));
+  CCV_NNC_MFA_PRECONDITION(params.use_neural_accelerators || !params.activation_hadamard_256);
   if (!params.use_neural_accelerators) {
     CCV_NNC_MFA_PRECONDITION(params.data_type == MTL::DataTypeFloat);
     CCV_NNC_MFA_PRECONDITION(!params.fused_bias && params.batch_dimension == 1 && num_tensors == 3);
@@ -236,6 +238,7 @@ void ccv_nnc_mfa_encode_scaled_gemm(mfa::context* context, ccv_nnc_mfa_scaled_ge
   matmulDesc.ioPrecision = io_precision(params.data_type);
   matmulDesc.matrixDimensions = simd::uint3 { params.M, params.N, params.K };
   matmulDesc.loadM = params.loadM;
+  matmulDesc.activationHadamard256 = params.activation_hadamard_256;
   if (params.leading_dimension_a || params.leading_dimension_c) {
     CCV_NNC_MFA_PRECONDITION(params.leading_dimension_a && params.leading_dimension_c);
     matmulDesc.leadingDimensions = simd::uint2 {
