@@ -1,0 +1,505 @@
+--- a/ccv_nnc_mfa_sol_attention.cpp
++++ b/ccv_nnc_mfa_sol_attention.cpp
+@@ -31 +31,4 @@
+-  const size_t kci = (mean + size_t(NH) * 128 * 4 + 255) / 256 * 256;
++  // FP32 summary output and softmax state are consumed by the exact pass.
++  const size_t state = (mean + size_t(NH) * 128 * 4 + 255) / 256 * 256;
++  const size_t ml = state + size_t(NH) * params.T * 128 * 4;
++  const size_t kci = (ml + size_t(NH) * params.T * 8 + 255) / 256 * 256;
+@@ -35 +38,2 @@
+-  const size_t offsets[] = { qc, kc, vc, stats, routes, qi, ki, vi, qs, ks, vs, mean, kci, vch, kcs, vcs, route_bits };
++  const size_t offsets[] = { qc, kc, vc, stats, routes };
++  const size_t int8_offsets[] = { qi, ki, vi, qs, ks, vs, mean, state, ml, kci, vch, kcs, vcs, route_bits };
+@@ -37 +41 @@
+-  for (Stage stage : { Stage::VMean, Stage::Quantize, Stage::Pool, Stage::PrepareSummaries, Stage::Route, Stage::Attention }) {
++  for (Stage stage : { Stage::VMean, Stage::Quantize, Stage::Pool, Stage::QuantizeSummaries, Stage::Statistics, Stage::Route, Stage::Approximate, Stage::Attention }) {
+@@ -39 +43 @@
+-    // KC/VC entries; PrepareSummaries initializes its own padded KCI/VCH tail.
++    // KC/VC entries; QuantizeSummaries initializes its own padded KCI/VCH tail.
+@@ -50 +54 @@
+-    for (int i = 0; i < 17; ++i)
++    for (int i = 0; i < 5; ++i)
+@@ -51,0 +56,2 @@
++    for (int i = 0; i < 14; ++i)
++      encoder->setBuffer(scratch, int8_offsets[i], i + 14);
+@@ -53,2 +59,18 @@
+-    encoder->setBytes(&params, sizeof(params), 21);
+-    encoder->dispatchThreadgroups(value->kernel->threadgroupsPerGrid(descriptor), MTL::Size(value->kernel->threadgroupSize(descriptor), 1, 1));
++    encoder->setBytes(&params, sizeof(params), 10);
++    // Geometry always comes from this invocation, never from the library cache.
++    MTL::Size grid(QJ, NH, 1);
++    uint32_t threads = 128;
++    switch (stage) {
++      case Stage::VMean:
++        grid = value->kernel->vMeanThreadgroupsPerGrid(params.N, params.T, params.H);
++        threads = value->kernel->vMeanThreadgroupSize(params.T, params.H);
++        break;
++      case Stage::Quantize: grid.width = TP / 64; break;
++      case Stage::Pool: grid.width = JP; break;
++      case Stage::QuantizeSummaries: grid.width = JP / 64; break;
++      case Stage::Statistics: grid = MTL::Size(NH, 1, 1); break;
++      case Stage::Route: break;
++      case Stage::Approximate:
++      case Stage::Attention: threads = params.query_block_size * 2; break;
++    }
++    encoder->dispatchThreadgroups(grid, MTL::Size(threads, 1, 1));
+--- a/kernels/NAInt8SolAttentionDescriptor.hpp
++++ b/kernels/NAInt8SolAttentionDescriptor.hpp
+@@ -22 +22 @@
+-  VMean, Quantize, Pool, PrepareSummaries, Route, Attention
++  VMean, Quantize, Pool, QuantizeSummaries, Statistics, Route, Approximate, Attention
+--- a/kernels/NAInt8SolAttentionDescriptor.cpp
++++ b/kernels/NAInt8SolAttentionDescriptor.cpp
+@@ -24 +24 @@
+-  const char* names[] = { "sol_v_mean", "sol_quantize", "sol_pool", "sol_prepare_summaries", "sol_route", "sol_attention" };
++  const char* names[] = { "sol_v_mean", "sol_quantize", "sol_pool", "sol_quantize_summaries", "sol_stats", "sol_route", "sol_approximate", "sol_attention" };
+@@ -35 +35,3 @@
+-  CCV_NNC_MFA_PRECONDITION(kernel->threadgroupSize(*this) <= pipeline->maxTotalThreadsPerThreadgroup());
++  if (stage == NAInt8SolAttentionStage::VMean) {
++    CCV_NNC_MFA_PRECONDITION(kernel->vMeanThreadgroupSize(T, H) <= pipeline->maxTotalThreadsPerThreadgroup());
++  }
+--- a/kernels/NAInt8SolAttentionKernel.hpp
++++ b/kernels/NAInt8SolAttentionKernel.hpp
+@@ -14,3 +13,0 @@
+-  uint32_t threadgroupSize(const NAInt8SolAttentionDescriptor& descriptor) const noexcept;
+-  MTL::Size threadgroupsPerGrid(const NAInt8SolAttentionDescriptor& descriptor) const noexcept;
+-
+@@ -29 +26,2 @@
+-  void createPrepareSummaries(CodeWriter& source) const noexcept;
++  void createQuantizeSummaries(CodeWriter& source) const noexcept;
++  void createStatistics(CodeWriter& source) const noexcept;
+@@ -31,3 +29 @@
+-  void createAttention(CodeWriter& source) const noexcept;
+-  void loopAttention(CodeWriter& source, bool summary) const noexcept;
+-  void accumulateAttention(CodeWriter& source, bool summary) const noexcept;
++  void createAttention(CodeWriter& source, bool approximate) const noexcept;
+--- a/kernels/NAInt8SolAttentionKernel.cpp
++++ b/kernels/NAInt8SolAttentionKernel.cpp
+@@ -19,25 +18,0 @@
+-uint32_t NAInt8SolAttentionKernel::threadgroupSize(const NAInt8SolAttentionDescriptor& descriptor) const noexcept {
+-  switch (descriptor.stage) {
+-    case NAInt8SolAttentionStage::VMean: return vMeanThreadgroupSize(descriptor.T, descriptor.H);
+-    case NAInt8SolAttentionStage::Attention: return descriptor.queryBlockSize * 2;
+-    default: return 128;
+-  }
+-}
+-
+-MTL::Size NAInt8SolAttentionKernel::threadgroupsPerGrid(const NAInt8SolAttentionDescriptor& descriptor) const noexcept {
+-  // Runtime geometry must not be retained in the source-only kernel cache.
+-  const uint32_t J = (descriptor.T + blockSize - 1) / blockSize;
+-  const uint32_t JP = (J + 63) / 64 * 64;
+-  const uint32_t QJ = (descriptor.T + descriptor.queryBlockSize - 1) / descriptor.queryBlockSize;
+-  MTL::Size grid(QJ, descriptor.N * descriptor.H, 1);
+-  switch (descriptor.stage) {
+-    case NAInt8SolAttentionStage::VMean: return vMeanThreadgroupsPerGrid(descriptor.N, descriptor.T, descriptor.H);
+-    case NAInt8SolAttentionStage::Quantize: grid.width = (descriptor.T + 63) / 64; break;
+-    case NAInt8SolAttentionStage::Pool: grid.width = JP; break;
+-    case NAInt8SolAttentionStage::PrepareSummaries: grid.width = JP / 64 + 1; break;
+-    case NAInt8SolAttentionStage::Route:
+-    case NAInt8SolAttentionStage::Attention: break;
+-  }
+-  return grid;
+-}
+-
+@@ -50,3 +25,3 @@
+-  if (blockSize != 64)
+-    createPool(source);
+-  createPrepareSummaries(source);
++  createQuantizeSummaries(source);
++  createPool(source);
++  createStatistics(source);
+@@ -54 +29,2 @@
+-  createAttention(source);
++  createAttention(source, true);
++  createAttention(source, false);
+@@ -77,0 +54 @@
++using summary_value_t = float;
+@@ -140 +117 @@
+-kernel void sol_v_mean(device const packed_half4* V [[buffer(2)]], device float4* mean [[buffer(15)]],
++kernel void sol_v_mean(device const packed_half4* V [[buffer(2)]], device float4* mean [[buffer(20)]],
+@@ -190,4 +167,4 @@
+-  device const half* V [[buffer(2)]], device int8_t* QI [[buffer(9)]], device int8_t* KI [[buffer(10)]],
+-  device int8_t* VI [[buffer(11)]], device float* QS [[buffer(12)]], device float* KS [[buffer(13)]],
+-  device float* VS [[buffer(14)]], device const float* mean [[buffer(15)]], constant Params& p [[buffer(21)]],
+-  device float* QC [[buffer(4)]], device half* KC [[buffer(5)]], device float* VC [[buffer(6)]],
++  device const half* V [[buffer(2)]], device int8_t* QI [[buffer(14)]], device int8_t* KI [[buffer(15)]],
++  device int8_t* VI [[buffer(16)]], device float* QS [[buffer(17)]], device float* KS [[buffer(18)]],
++  device float* VS [[buffer(19)]], device const float* mean [[buffer(20)]], constant Params& p [[buffer(10)]],
++  device float* QC [[buffer(4)]], device half* KC [[buffer(5)]], device summary_value_t* VC [[buffer(6)]],
+@@ -264,2 +241,2 @@
+-  device float* VC [[buffer(6)]], constant Params& p [[buffer(21)]],
+-  device const float* mean [[buffer(15)]],
++  device summary_value_t* VC [[buffer(6)]], constant Params& p [[buffer(10)]],
++  device const float* mean [[buffer(20)]],
+@@ -275,0 +253,7 @@
++  if (blockSize == 64) {
++    source += R"(
++  // Summaries are produced while reading the same values for quantization.
++  // This dispatch only clears the padded summary tail.
++  return;
++)";
++  }
+@@ -289 +273 @@
+-  VC[(ulong(nh) * JP + j) * 128 + d] = float(v / count
++  VC[(ulong(nh) * JP + j) * 128 + d] = summary_value_t(v / count
+@@ -296,6 +280,6 @@
+-void NAInt8SolAttentionKernel::createPrepareSummaries(CodeWriter& source) const noexcept {
+-  source += R"(
+-kernel void sol_prepare_summaries(device const half* KC [[buffer(5)]],
+-  device float2* stats [[buffer(7)]], device const float* VC [[buffer(6)]], device int8_t* KCI [[buffer(16)]],
+-  device half* VCH [[buffer(17)]], device float* KCS [[buffer(18)]],
+-  device float* VCS [[buffer(19)]], constant Params& p [[buffer(21)]],
++void NAInt8SolAttentionKernel::createQuantizeSummaries(CodeWriter& source) const noexcept {
++  source += R"(
++kernel void sol_quantize_summaries(device const half* KC [[buffer(5)]],
++  device const summary_value_t* VC [[buffer(6)]], device int8_t* KCI [[buffer(23)]],
++  device half* VCH [[buffer(24)]], device float* KCS [[buffer(25)]],
++  device float* VCS [[buffer(26)]], constant Params& p [[buffer(10)]],
+@@ -307,13 +290,0 @@
+-
+-  // Independent head-statistics jobs share this launch with summary jobs.
+-  if (group.x == JP / 64) {
+-    float m = 0, v = 0;
+-    for (uint j = 0; j < J; ++j) {
+-      const float k = float(KC[(ulong(nh) * JP + j) * 128 + tid]);
+-      m += k; v += k * k;
+-    }
+-    m /= J;
+-    stats[nh * 128 + tid] = float2(m, max(0.0f, v / J - m * m));
+-    return;
+-  }
+-
+@@ -354,0 +326,17 @@
++void NAInt8SolAttentionKernel::createStatistics(CodeWriter& source) const noexcept {
++  source += R"(
++kernel void sol_stats(device const half* KC [[buffer(5)]],
++  device float2* stats [[buffer(7)]], constant Params& p [[buffer(10)]],
++  uint d [[thread_index_in_threadgroup]], uint nh [[threadgroup_position_in_grid]]) {
++  const uint J = (SOL_T + {{BLOCK_SIZE}} - 1) / {{BLOCK_SIZE}};
++  float m = 0, v = 0;
++  for (uint j = 0; j < J; ++j) {
++    const float k = float(KC[(ulong(nh) * ((J + 63) / 64 * 64) + j) * 128 + d]);
++    m += k; v += k * k;
++  }
++  m /= J;
++  stats[nh * 128 + d] = float2(m, max(0.0f, v / J - m * m));
++}
++)";
++}
++
+@@ -359,2 +347,2 @@
+-  device uchar* routes [[buffer(8)]], constant Params& p [[buffer(21)]],
+-  device uint* route_bits [[buffer(20)]],
++  device uchar* routes [[buffer(8)]], constant Params& p [[buffer(10)]],
++  device uint* route_bits [[buffer(27)]],
+@@ -396,3 +384,4 @@
+-void NAInt8SolAttentionKernel::createAttention(CodeWriter& source) const noexcept {
+-  source += R"(
+-kernel void sol_attention(device half* O_buf [[buffer(3)]],
++void NAInt8SolAttentionKernel::createAttention(CodeWriter& source, bool approximate) const noexcept {
++  source.SetValue("ATTENTION_NAME", approximate ? "sol_approximate" : "sol_attention");
++  source += R"(
++kernel void {{ATTENTION_NAME}}(device half* O_buf [[buffer(3)]],
+@@ -400,7 +389,8 @@
+-  device int8_t* QI_buf [[buffer(9)]], device int8_t* KI_buf [[buffer(10)]], device int8_t* VI_buf [[buffer(11)]],
+-  device const float* QS [[buffer(12)]], device const float* KS [[buffer(13)]], device const float* VS [[buffer(14)]],
+-  device const float* V_mean [[buffer(15)]],
+-  device int8_t* KCI_buf [[buffer(16)]], device half* VCH_buf [[buffer(17)]],
+-  device const float* KCS [[buffer(18)]], device const float* VCS [[buffer(19)]],
+-  device const uint* route_bits [[buffer(20)]],
+-  constant Params& p [[buffer(21)]],
++  device int8_t* QI_buf [[buffer(14)]], device int8_t* KI_buf [[buffer(15)]], device int8_t* VI_buf [[buffer(16)]],
++  device const float* QS [[buffer(17)]], device const float* KS [[buffer(18)]], device const float* VS [[buffer(19)]],
++  device const float* V_mean [[buffer(20)]],
++  device float* state_output [[buffer(21)]], device float2* state_ml [[buffer(22)]],
++  device int8_t* KCI_buf [[buffer(23)]], device half* VCH_buf [[buffer(24)]],
++  device const float* KCS [[buffer(25)]], device const float* VCS [[buffer(26)]],
++  device const uint* route_bits [[buffer(27)]],
++  constant Params& p [[buffer(10)]],
+@@ -413 +403 @@
+-  // Their Q tiles are zero padded and all output accesses are row guarded.
++  // Their Q tiles are zero padded and all state/output accesses are row guarded.
+@@ -416,0 +407 @@
++  state_output += ulong(n) * SOL_T * SOL_H * 128;
+@@ -419 +409,0 @@
+-
+@@ -430 +420 @@
+-  // Keep one FP32 numerator and softmax state across summary and exact tokens.
++  // FP32 state uses the same cooperative layout as the FP16 summary PV.
+@@ -461,5 +451,7 @@
+-
+-  // Emit distinct loops so each traversal has compile-time tensor/precision choices.
+-  loopAttention(source, true);
+-  loopAttention(source, false);
+-  source += R"(
++  if (!approximate) {
++    source += R"(
++  #pragma clang loop unroll(full)
++  for (ushort i = 0; i < M.get_capacity(); ++i) if (M.is_valid_element(i)) {
++    const uint r = row + M.get_multidimensional_index(i)[0];
++    if (r < SOL_T) { const float2 ml = state_ml[ulong(nh) * SOL_T + r]; M[i] = ml.x; L[i] = ml.y; }
++  }
+@@ -470 +461,0 @@
+-      const float reciprocal = 1 / *L.map_iterator(O0.get_iterator(i));
+@@ -472,27 +463,16 @@
+-)";
+-  for (uint32_t slice = 0; slice < 4; ++slice) {
+-    source.SetValue("SLICE", std::to_string(slice));
+-    source.SetValue("CHANNEL", std::to_string(slice * 32));
+-    source += R"(
+-      O_buf[index + {{CHANNEL}}] = half(O{{SLICE}}[i] * reciprocal
+-        + V_mean[nh * 128 + idx[0] + {{CHANNEL}}]);
+-)";
+-  }
+-  source += R"(
+-    }
+-  }
+-}
+-)";
+-}
+-
+-void NAInt8SolAttentionKernel::loopAttention(CodeWriter& source, bool summary) const noexcept {
+-  source.SetValue("KEY_TENSOR", summary ? "KCI" : "KI");
+-  source.SetValue("KEY_SCALE", summary ? "KCS[nh * (JP / 64) + c / 64]" : "KS[nh * TP / 64 + c / 64]");
+-  source.SetValue("VALID_KEY", summary ? "column < J && !routes[column]" : "column < SOL_T");
+-  if (summary) {
+-    source += R"(
+-  {
+-    const bool protected_query = qb * SOL_QB < p.begin || min((qb + 1) * SOL_QB, SOL_T) > p.end;
+-    const uint summaries = protected_query ? 0 : (J + {{BLOCK_SIZE}} - 1) / {{BLOCK_SIZE}};
+-    for (uint tile = 0; tile < summaries; ++tile) {
+-      const uint c = tile * {{BLOCK_SIZE}};
++      O0[i] = state_output[index]; O1[i] = state_output[index + 32];
++      O2[i] = state_output[index + 64]; O3[i] = state_output[index + 96];
++    }
++  }
++)";
++  }
++  source += R"(
++  // One normalization across both summary tokens and selected original blocks.
++  const bool protected_query = qb * SOL_QB < p.begin || min((qb + 1) * SOL_QB, SOL_T) > p.end;
++  const uint summaries = protected_query ? 0 : (J + {{BLOCK_SIZE}} - 1) / {{BLOCK_SIZE}};
++)";
++  if (approximate) {
++    source += R"(
++  for (uint tile = 0; tile < summaries; ++tile) {
++    constexpr bool summary = true;
++    const uint block = 0;
+@@ -502,13 +482,14 @@
+-  {
+-    const uint words = (J + 31) / 32;
+-    route_bits += (ulong(nh) * QJ + qb) * words;
+-    uint visited_blocks = 0;
+-    for (uint word = 0; word < words; ++word) {
+-      uint selected = route_bits[word];
+-      while (selected != 0) {
+-        const uint block = word * 32 + ctz(selected);
+-        selected &= selected - 1;
+-        const uint c = block * {{BLOCK_SIZE}};
+-)";
+-  }
+-  source += R"(
++  const uint words = (J + 31) / 32;
++  route_bits += (ulong(nh) * QJ + qb) * words;
++  uint visited_blocks = 0;
++  for (uint word = 0; word < words; ++word) {
++    uint selected = route_bits[word];
++    while (selected != 0) {
++    constexpr bool summary = false;
++    const uint block = word * 32 + ctz(selected);
++    selected &= selected - 1;
++    const uint tile = block;
++)";
++  }
++  source += R"(
++    const uint c = summary ? tile * {{BLOCK_SIZE}} : block * {{BLOCK_SIZE}};
+@@ -517,5 +498,12 @@
+-    auto k0 = {{KEY_TENSOR}}.slice<32, {{BLOCK_SIZE}}>(0, c); auto k1 = {{KEY_TENSOR}}.slice<32, {{BLOCK_SIZE}}>(32, c);
+-    auto k2 = {{KEY_TENSOR}}.slice<32, {{BLOCK_SIZE}}>(64, c); auto k3 = {{KEY_TENSOR}}.slice<32, {{BLOCK_SIZE}}>(96, c);
+-    qk.run(CQ0, k0, S8); qk.run(CQ1, k1, S8);
+-    qk.run(CQ2, k2, S8); qk.run(CQ3, k3, S8);
+-    const float scale = QS[nh * TP / 16 + row / 16] * {{KEY_SCALE}} * g;
++    if (summary) {
++      auto k0 = KCI.slice<32, {{BLOCK_SIZE}}>(0, c); auto k1 = KCI.slice<32, {{BLOCK_SIZE}}>(32, c);
++      auto k2 = KCI.slice<32, {{BLOCK_SIZE}}>(64, c); auto k3 = KCI.slice<32, {{BLOCK_SIZE}}>(96, c);
++      qk.run(CQ0, k0, S8); qk.run(CQ1, k1, S8);
++      qk.run(CQ2, k2, S8); qk.run(CQ3, k3, S8);
++    } else {
++      auto k0 = KI.slice<32, {{BLOCK_SIZE}}>(0, c); auto k1 = KI.slice<32, {{BLOCK_SIZE}}>(32, c);
++      auto k2 = KI.slice<32, {{BLOCK_SIZE}}>(64, c); auto k3 = KI.slice<32, {{BLOCK_SIZE}}>(96, c);
++      qk.run(CQ0, k0, S8); qk.run(CQ1, k1, S8);
++      qk.run(CQ2, k2, S8); qk.run(CQ3, k3, S8);
++    }
++    const float scale = QS[nh * TP / 16 + row / 16] * (summary ? KCS[nh * (JP / 64) + c / 64] : KS[nh * TP / 64 + c / 64]) * g;
+@@ -528 +516,4 @@
+-      S[i] = {{VALID_KEY}} ? S[i] : -INFINITY;
++      if (summary) S[i] = column < J && !routes[column] ? S[i]
++        : -INFINITY;
++      else S[i] = column < SOL_T ? S[i]
++        : -INFINITY;
+@@ -542,3 +532,0 @@
+-)";
+-  if (summary) {
+-    source += R"(
+@@ -547,7 +535,5 @@
+-      const uint column = c + S.get_multidimensional_index(i)[0];
+-      if (column < J) S[i] *= float(min(uint({{BLOCK_SIZE}}), SOL_T - column * {{BLOCK_SIZE}}));
+-)";
+-  }
+-  source += R"(
+-    }
+-
++      if (summary) {
++        const uint column = c + S.get_multidimensional_index(i)[0];
++        if (column < J) S[i] *= float(min(uint({{BLOCK_SIZE}}), SOL_T - column * {{BLOCK_SIZE}}));
++      }
++    }
+@@ -559 +545 @@
+-  if (summary) {
++  if (approximate) {
+@@ -570,21 +555,0 @@
+-)";
+-  accumulateAttention(source, summary);
+-  if (!summary) {
+-    source += R"(
+-    // Keep SIMD groups near the same K/V block on long traversals.
+-    if (SOL_T >= 32768 && SOL_QB == 64 && {{BLOCK_SIZE}} == 64 &&
+-        (++visited_blocks % 2) == 0 && c + {{BLOCK_SIZE}} < SOL_T)
+-      threadgroup_barrier(mem_flags::mem_none);
+-      }
+-)";
+-  }
+-  source += R"(
+-    }
+-  }
+-)";
+-}
+-
+-void NAInt8SolAttentionKernel::accumulateAttention(CodeWriter& source, bool summary) const noexcept {
+-  source += "{";
+-  if (summary) {
+-    source += R"(
+@@ -592,0 +558 @@
++    if (summary) {
+@@ -602,3 +568,13 @@
+-)";
+-  } else {
+-    source += R"(
++      summary_pv.run(P, v0, temporary);
++      #pragma clang loop unroll(full)
++      for (ushort i = 0; i < O0.get_capacity(); ++i) if (O0.is_valid_element(i)) O0[i] += temporary[i] * scale;
++      summary_pv.run(P, v1, temporary);
++      #pragma clang loop unroll(full)
++      for (ushort i = 0; i < O1.get_capacity(); ++i) if (O1.is_valid_element(i)) O1[i] += temporary[i] * scale;
++      summary_pv.run(P, v2, temporary);
++      #pragma clang loop unroll(full)
++      for (ushort i = 0; i < O2.get_capacity(); ++i) if (O2.is_valid_element(i)) O2[i] += temporary[i] * scale;
++      summary_pv.run(P, v3, temporary);
++      #pragma clang loop unroll(full)
++      for (ushort i = 0; i < O3.get_capacity(); ++i) if (O3.is_valid_element(i)) O3[i] += temporary[i] * scale;
++    } else {
+@@ -612,16 +588,4 @@
+-)";
+-  }
+-  for (uint32_t slice = 0; slice < 4; ++slice) {
+-    source.SetValue("SLICE", std::to_string(slice));
+-    if (summary) {
+-      source += R"(
+-      summary_pv.run(P, v{{SLICE}}, temporary);
+-      #pragma clang loop unroll(full)
+-      for (ushort i = 0; i < O{{SLICE}}.get_capacity(); ++i) if (O{{SLICE}}.is_valid_element(i)) O{{SLICE}}[i] += temporary[i] * scale;
+-)";
+-    } else {
+-      source += R"(
+-      pv8.run(P8, v{{SLICE}}, O8);
+-      #pragma clang loop unroll(full)
+-      for (ushort i = 0; i < O{{SLICE}}.get_capacity(); ++i) if (O{{SLICE}}.is_valid_element(i)) {
+-        O{{SLICE}}[i] = fma(float(O8[i]), scale, O{{SLICE}}[i] * *correction.map_iterator(O{{SLICE}}.get_iterator(i)));
++      pv8.run(P8, v0, O8);
++      #pragma clang loop unroll(full)
++      for (ushort i = 0; i < O0.get_capacity(); ++i) if (O0.is_valid_element(i)) {
++        O0[i] = fma(float(O8[i]), scale, O0[i] * *correction.map_iterator(O0.get_iterator(i)));
+@@ -629,5 +593,78 @@
+-)";
+-    }
+-  }
+-  source += "}";
+-}
++      pv8.run(P8, v1, O8);
++      #pragma clang loop unroll(full)
++      for (ushort i = 0; i < O1.get_capacity(); ++i) if (O1.is_valid_element(i)) {
++        O1[i] = fma(float(O8[i]), scale, O1[i] * *correction.map_iterator(O1.get_iterator(i)));
++      }
++      pv8.run(P8, v2, O8);
++      #pragma clang loop unroll(full)
++      for (ushort i = 0; i < O2.get_capacity(); ++i) if (O2.is_valid_element(i)) {
++        O2[i] = fma(float(O8[i]), scale, O2[i] * *correction.map_iterator(O2.get_iterator(i)));
++      }
++      pv8.run(P8, v3, O8);
++      #pragma clang loop unroll(full)
++      for (ushort i = 0; i < O3.get_capacity(); ++i) if (O3.is_valid_element(i)) {
++        O3[i] = fma(float(O8[i]), scale, O3[i] * *correction.map_iterator(O3.get_iterator(i)));
++      }
++    }
++)";
++  if (!approximate) {
++    source += R"(
++    // Keep SIMD groups near the same K/V block during long traversals.
++    // Shorter sequences pay the synchronization cost without the cache benefit.
++    if (SOL_T >= 32768 && SOL_QB == 64 && {{BLOCK_SIZE}} == 64 &&
++        (++visited_blocks % 2) == 0 && c + {{BLOCK_SIZE}} < SOL_T)
++      threadgroup_barrier(mem_flags::mem_none);
++)";
++  }
++  source += R"(
++  }
++)";
++  if (!approximate) {
++    source += R"(
++  }
++)";
++  }
++  if (approximate) {
++    source += R"(
++  #pragma clang loop unroll(full)
++  for (ushort i = 0; i < M.get_capacity(); ++i) if (M.is_valid_element(i)) {
++    const uint r = row + M.get_multidimensional_index(i)[0];
++    if (r < SOL_T) state_ml[ulong(nh) * SOL_T + r] = float2(M[i], L[i]);
++  }
++)";
++  }
++  source += R"(
++  #pragma clang loop unroll(full)
++  for (ushort i = 0; i < O0.get_capacity(); ++i) if (O0.is_valid_element(i)) {
++    const auto idx = O0.get_multidimensional_index(i);
++    if (row + idx[1] < SOL_T) {
++      const float reciprocal = 1 / *L.map_iterator(O0.get_iterator(i));
++      const ulong index = (ulong(row + idx[1]) * SOL_H + h) * 128 + idx[0];
++)";
++  if (approximate) {
++    source += R"(
++      state_output[index] = O0[i]; state_output[index + 32] = O1[i];
++      state_output[index + 64] = O2[i]; state_output[index + 96] = O3[i];
++)";
++  } else {
++    source += R"(
++      O_buf[index] = half(O0[i] * reciprocal
++        + V_mean[nh * 128 + idx[0]]
++      );
++      O_buf[index + 32] = half(O1[i] * reciprocal
++        + V_mean[nh * 128 + idx[0] + 32]
++      );
++      O_buf[index + 64] = half(O2[i] * reciprocal
++        + V_mean[nh * 128 + idx[0] + 64]
++      );
++      O_buf[index + 96] = half(O3[i] * reciprocal
++        + V_mean[nh * 128 + idx[0] + 96]
++      );
++)";
++  }
++  source += R"(
++    }
++  }
++}
++)";
++}

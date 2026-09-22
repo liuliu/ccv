@@ -1,0 +1,211 @@
+--- a/ccv_nnc_mfa_sol_attention.cpp
++++ b/ccv_nnc_mfa_sol_attention.cpp
+@@ -7 +7 @@
+-void ccv_nnc_mfa_encode_sol_attention(ccv_nnc_mfa_context_t* context, ccv_nnc_mfa_sol_attention_params_t params, mtl_command_batch_t* command_batch, mtl_buffer_t** tensors, size_t* tensor_offsets)
++void encode_sol_baseline(ccv_nnc_mfa_context_t* context, ccv_nnc_mfa_sol_attention_params_t params, mtl_command_batch_t* command_batch, mtl_buffer_t** tensors, size_t* tensor_offsets)
+@@ -28,3 +28 @@
+-  const size_t vs = ks + size_t(NH) * TP / 64 * 4;
+-  // The single-pass reduction writes float4 means, including for odd head counts.
+-  const size_t mean = (vs + size_t(NH) * TP / 64 * 4 + 15) / 16 * 16;
++  const size_t vs = ks + size_t(NH) * TP / 64 * 4, mean = vs + size_t(NH) * TP / 64 * 4;
+@@ -34 +32,3 @@
+-  const size_t kci = (ml + size_t(NH) * params.T * 8 + 255) / 256 * 256;
++  const uint32_t mean_threads = params.T <= 20480 ? 256 : 128;
++  const size_t v_partial = (ml + size_t(NH) * params.T * 8 + 255) / 256 * 256;
++  const size_t kci = (v_partial + size_t(NH) * 128 * mean_threads * 4 + 255) / 256 * 256;
+@@ -39 +39 @@
+-  const size_t int8_offsets[] = { qi, ki, vi, qs, ks, vs, mean, state, ml, kci, vch, kcs, vcs, route_bits };
++  const size_t int8_offsets[] = { qi, ki, vi, qs, ks, vs, mean, state, ml, v_partial, kci, vch, kcs, vcs, route_bits };
+@@ -41 +41 @@
+-  for (Stage stage : { Stage::VMean, Stage::Quantize, Stage::Pool, Stage::QuantizeSummaries, Stage::Statistics, Stage::Route, Stage::Approximate, Stage::Attention }) {
++  for (Stage stage : { Stage::VPartial, Stage::VMean, Stage::Quantize, Stage::Pool, Stage::QuantizeSummaries, Stage::Statistics, Stage::Route, Stage::Approximate, Stage::Attention }) {
+@@ -56 +56 @@
+-    for (int i = 0; i < 14; ++i)
++    for (int i = 0; i < 15; ++i)
+@@ -64,4 +64,2 @@
+-      case Stage::VMean:
+-        grid = value->kernel->vMeanThreadgroupsPerGrid(params.N, params.T, params.H);
+-        threads = value->kernel->vMeanThreadgroupSize(params.T, params.H);
+-        break;
++      case Stage::VPartial: grid.width = mean_threads / 8; threads = 256; break;
++      case Stage::VMean: grid.width = 32; threads = mean_threads; break;
+--- a/kernels/NAInt8SolAttentionDescriptor.hpp
++++ b/kernels/NAInt8SolAttentionDescriptor.hpp
+@@ -22 +22 @@
+-  VMean, Quantize, Pool, QuantizeSummaries, Statistics, Route, Approximate, Attention
++  VPartial, VMean, Quantize, Pool, QuantizeSummaries, Statistics, Route, Approximate, Attention
+--- a/kernels/NAInt8SolAttentionDescriptor.cpp
++++ b/kernels/NAInt8SolAttentionDescriptor.cpp
+@@ -24 +24 @@
+-  const char* names[] = { "sol_v_mean", "sol_quantize", "sol_pool", "sol_quantize_summaries", "sol_stats", "sol_route", "sol_approximate", "sol_attention" };
++  const char* names[] = { "sol_v_partial", "sol_v_mean", "sol_quantize", "sol_pool", "sol_quantize_summaries", "sol_stats", "sol_route", "sol_approximate", "sol_attention" };
+@@ -34,4 +33,0 @@
+-  CCV_NNC_MFA_PRECONDITION(pipeline->staticThreadgroupMemoryLength() <= device->maxThreadgroupMemoryLength());
+-  if (stage == NAInt8SolAttentionStage::VMean) {
+-    CCV_NNC_MFA_PRECONDITION(kernel->vMeanThreadgroupSize(T, H) <= pipeline->maxTotalThreadsPerThreadgroup());
+-  }
+--- a/kernels/NAInt8SolAttentionKernel.hpp
++++ b/kernels/NAInt8SolAttentionKernel.hpp
+@@ -14,4 +13,0 @@
+-  static uint32_t vMeanVectorsPerTile(uint32_t T, uint32_t H) noexcept;
+-  static uint32_t vMeanThreadgroupSize(uint32_t T, uint32_t H) noexcept;
+-  static MTL::Size vMeanThreadgroupsPerGrid(uint32_t N, uint32_t T, uint32_t H) noexcept;
+-
+@@ -22,0 +19 @@
++  void createVPartial(CodeWriter& source) const noexcept;
+--- a/kernels/NAInt8SolAttentionKernel.cpp
++++ b/kernels/NAInt8SolAttentionKernel.cpp
+@@ -3 +2,0 @@
+-#include <algorithm>
+@@ -22,0 +22 @@
++  createVPartial(source);
+@@ -58,17 +58,16 @@
+-uint32_t NAInt8SolAttentionKernel::vMeanVectorsPerTile(uint32_t T, uint32_t H) noexcept {
+-  const uint32_t maxTile = T <= 20480 ? 4 : 8;
+-  uint32_t tile = 1;
+-  while (tile < maxTile && H >= tile * 8)
+-    tile *= 2;
+-  return tile;
+-}
+-
+-uint32_t NAInt8SolAttentionKernel::vMeanThreadgroupSize(uint32_t T, uint32_t H) noexcept {
+-  return std::max(T <= 20480 ? 256u : 128u, 32 * vMeanVectorsPerTile(T, H));
+-}
+-
+-MTL::Size NAInt8SolAttentionKernel::vMeanThreadgroupsPerGrid(uint32_t N, uint32_t T, uint32_t H) noexcept {
+-  uint32_t paddedHeads = 1;
+-  while (paddedHeads < H)
+-    paddedHeads *= 2;
+-  return MTL::Size(uint64_t(paddedHeads) * (32 / vMeanVectorsPerTile(T, H)), 1, N);
++void NAInt8SolAttentionKernel::createVPartial(CodeWriter& source) const noexcept {
++  source += R"(
++kernel void sol_v_partial(device const half* V [[buffer(2)]],
++  device float4* partial [[buffer(23)]], uint lane [[thread_index_in_simdgroup]],
++  uint sg [[simdgroup_index_in_threadgroup]], uint2 group [[threadgroup_position_in_grid]]) {
++  const uint threads = SOL_T <= 20480 ? 256 : 128;
++  const uint nh = group.y, n = nh / SOL_H, h = nh % SOL_H, first = group.x * 8 + sg;
++  device const half4* values = reinterpret_cast<device const half4*>(V);
++  float4 sum = 0;
++  // Match each original reduction thread's accumulation, but load all 128
++  // channels of one token together instead of striding 56 heads per lane.
++  for (uint t = first; t < SOL_T; t += threads)
++    sum += float4(values[((ulong(n) * SOL_T + t) * SOL_H + h) * 32 + lane]);
++  partial[(nh * 32 + lane) * threads + first] = sum;
++}
++)";
+@@ -79,41 +78,5 @@
+-inline uint compact_morton_even_bits(uint x) {
+-  x &= 0x55555555u;
+-  x = (x | (x >> 1)) & 0x33333333u;
+-  x = (x | (x >> 2)) & 0x0f0f0f0fu;
+-  x = (x | (x >> 4)) & 0x00ff00ffu;
+-  x = (x | (x >> 8)) & 0x0000ffffu;
+-  return x;
+-}
+-
+-inline uint2 morton_decode_2d(uint code) {
+-  return uint2(compact_morton_even_bits(code),
+-               compact_morton_even_bits(code >> 1));
+-}
+-
+-inline uint lower_bits_mask(uint bit_count) {
+-  if (bit_count == 0)
+-    return 0;
+-  return (1u << bit_count) - 1;
+-}
+-
+-inline uint2 morton_decode_rectangular_2d(uint code,
+-                                         uint x_bits,
+-                                         uint y_bits) {
+-  const uint paired_bits = min(x_bits, y_bits);
+-  const uint paired_code = code & lower_bits_mask(paired_bits * 2);
+-  uint2 tile = morton_decode_2d(paired_code);
+-  uint tail = code >> (paired_bits * 2);
+-  if (x_bits > paired_bits) {
+-    const uint x_extra_bits = x_bits - paired_bits;
+-    tile.x |= (tail & lower_bits_mask(x_extra_bits)) << paired_bits;
+-    tail >>= x_extra_bits;
+-  }
+-  if (y_bits > paired_bits) {
+-    tile.y |= tail << paired_bits;
+-  }
+-  return tile;
+-}
+-
+-kernel void sol_v_mean(device const packed_half4* V [[buffer(2)]], device float4* mean [[buffer(20)]],
+-  uint tid [[thread_index_in_threadgroup]], uint lane [[thread_index_in_simdgroup]],
+-  uint3 group [[threadgroup_position_in_grid]]) {
++kernel void sol_v_mean(device const float4* partial [[buffer(23)]], device float* mean [[buffer(20)]],
++  constant Params& p [[buffer(10)]], uint tid [[thread_index_in_threadgroup]],
++  uint lane [[thread_index_in_simdgroup]], uint sg [[simdgroup_index_in_threadgroup]],
++  uint2 group [[threadgroup_position_in_grid]]) {
++  const uint nh = group.y, n = nh / SOL_H, h = nh % SOL_H, d = group.x * 4;
+@@ -121,21 +84,7 @@
+-  const uint max_tile = SOL_T <= 20480 ? 4 : 8;
+-  uint tile = 1;
+-  while (tile < max_tile && SOL_H >= tile * 8) tile *= 2;
+-  const uint dispatch_threads = max(threads, 32 * tile);
+-  const uint2 morton = morton_decode_rectangular_2d(group.x,
+-      32 - clz(32 / tile - 1), SOL_H <= 1 ? 0 : 32 - clz(SOL_H - 1));
+-  const uint h = morton.y, n = group.z;
+-  if (h >= SOL_H) return;
+-  const uint nh = n * SOL_H + h;
+-  // The fixed 16 KiB array also fits the validator's doubled allocation.
+-  // Reuse it for the SIMD sums after every reader has consumed the partials.
+-  threadgroup float4 partials[1024];
+-  const uint vec_dim = morton.x * tile + tid % tile;
+-  const uint rows_per_part = dispatch_threads / tile;
+-  for (uint part = 0; part < threads / rows_per_part; ++part) {
+-    const uint row = tid / tile + part * rows_per_part;
+-    float4 sum = 0;
+-    for (uint t = row; t < SOL_T; t += threads)
+-      sum += float4(V[((ulong(n) * SOL_T + t) * SOL_H + h) * 32 + vec_dim]);
+-    partials[(tid % tile) * threads + row] = sum;
+-  }
++  device float4* means = reinterpret_cast<device float4*>(mean);
++  float4 sum = partial[(nh * 32 + group.x) * threads + tid];
++  for (uint offset = 16; offset > 0; offset /= 2) {
++    for (uint component = 0; component < 4; ++component) sum[component] += simd_shuffle_xor(sum[component], offset);
++  }
++  threadgroup float4 partials[8];
++  if (lane == 0) partials[sg] = sum;
+@@ -143,16 +92,6 @@
+-  const uint row = tid % threads, sg = row / 32;
+-  for (uint vec = tid / threads; vec < tile; vec += dispatch_threads / threads) {
+-    float4 sum = partials[vec * threads + row];
+-    for (uint offset = 16; offset > 0; offset /= 2)
+-      for (uint component = 0; component < 4; ++component)
+-        sum[component] += simd_shuffle_xor(sum[component], offset);
+-    threadgroup_barrier(mem_flags::mem_threadgroup);
+-    if (lane == 0) partials[vec * threads + sg] = sum;
+-    threadgroup_barrier(mem_flags::mem_threadgroup);
+-    if (sg == 0) {
+-      float4 reduced = lane < threads / 32 ? partials[vec * threads + lane] : float4(0);
+-      for (uint offset = 16; offset > 0; offset /= 2)
+-        for (uint component = 0; component < 4; ++component)
+-          reduced[component] += simd_shuffle_xor(reduced[component], offset);
+-      if (lane == 0) mean[nh * 32 + morton.x * tile + vec] = reduced * (1.0f / float(SOL_T));
+-    }
++  if (sg == 0) {
++    float4 reduced = lane < threads / 32 ? partials[lane] : float4(0);
++    for (uint offset = 16; offset > 0; offset /= 2) {
++      for (uint component = 0; component < 4; ++component) reduced[component] += simd_shuffle_xor(reduced[component], offset);
++    }
++    if (lane == 0) means[(nh * 128 + d) / 4] = reduced * (1.0f / float(SOL_T));
+@@ -283,3 +222,3 @@
+-  device const summary_value_t* VC [[buffer(6)]], device int8_t* KCI [[buffer(23)]],
+-  device half* VCH [[buffer(24)]], device float* KCS [[buffer(25)]],
+-  device float* VCS [[buffer(26)]], constant Params& p [[buffer(10)]],
++  device const summary_value_t* VC [[buffer(6)]], device int8_t* KCI [[buffer(24)]],
++  device half* VCH [[buffer(25)]], device float* KCS [[buffer(26)]],
++  device float* VCS [[buffer(27)]], constant Params& p [[buffer(10)]],
+@@ -348 +287 @@
+-  device uint* route_bits [[buffer(27)]],
++  device uint* route_bits [[buffer(28)]],
+@@ -393,3 +332,3 @@
+-  device int8_t* KCI_buf [[buffer(23)]], device half* VCH_buf [[buffer(24)]],
+-  device const float* KCS [[buffer(25)]], device const float* VCS [[buffer(26)]],
+-  device const uint* route_bits [[buffer(27)]],
++  device int8_t* KCI_buf [[buffer(24)]], device half* VCH_buf [[buffer(25)]],
++  device const float* KCS [[buffer(26)]], device const float* VCS [[buffer(27)]],
++  device const uint* route_bits [[buffer(28)]],

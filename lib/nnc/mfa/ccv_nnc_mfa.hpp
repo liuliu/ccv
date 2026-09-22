@@ -11,6 +11,7 @@ extern "C" {
 #endif
 #include "ccv_nnc_mfa_defines.hpp"
 #include "ccv_nnc_mfa_attention.hpp"
+#include "ccv_nnc_mfa_sol_attention.hpp"
 #include "ccv_nnc_mfa_normalization.hpp"
 #include "ccv_nnc_mfa_rmsnorm_gated.hpp"
 #include "ccv_nnc_mfa_rmsnorm_cmul.hpp"

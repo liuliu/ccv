@@ -1,0 +1,26 @@
+Command: SOL_FUSION=4 /private/tmp/sol-production-five/compare 32768 56 6
+COMPARE device=Apple M5 Max fusion=4 (0: 8 vs 7 launches; 1: 7 vs 5; 2: 7 vs 4; 3: 7 vs 5 vs 4; 4: prototype 5 vs production 5)
+SHAPE N=1 T=32768 H=56 B=64 Q=64 dense=0 rounds=6 begin=470 end=32768 scale=1
+round=-3 baseline_ms=193.06013 variant1_ms=190.90787 speedup1=1.01127
+round=-2 baseline_ms=198.34063 variant1_ms=203.31750 speedup1=0.97552
+round=-1 baseline_ms=203.96883 variant1_ms=202.58921 speedup1=1.00681
+round=0 baseline_ms=200.91937 variant1_ms=201.03538 speedup1=0.99942
+round=1 baseline_ms=202.51271 variant1_ms=199.32738 speedup1=1.01598
+round=2 baseline_ms=200.22525 variant1_ms=203.79938 speedup1=0.98246
+round=3 baseline_ms=210.47683 variant1_ms=203.38662 speedup1=1.03486
+round=4 baseline_ms=207.36250 variant1_ms=216.79075 speedup1=0.95651
+round=5 baseline_ms=218.91192 variant1_ms=209.60479 speedup1=1.04440
+RESULT variant=1 baseline_ms=204.93760 new_ms=203.59300 paired_speedup=1.00770 differences=0 relative_l2=0 max_abs=0 baseline_scratch=769646080 new_scratch=769646080
+SHAPE N=1 T=32768 H=56 B=64 Q=64 dense=1 rounds=6 begin=470 end=32768 scale=1
+round=-3 baseline_ms=707.26517 variant1_ms=608.05775 speedup1=1.16315
+round=-2 baseline_ms=612.34462 variant1_ms=717.00121 speedup1=0.85404
+round=-1 baseline_ms=816.44662 variant1_ms=702.69375 speedup1=1.16188
+round=0 baseline_ms=645.41675 variant1_ms=675.44404 speedup1=0.95554
+round=1 baseline_ms=820.77554 variant1_ms=723.41604 speedup1=1.13458
+round=2 baseline_ms=874.32108 variant1_ms=916.58125 speedup1=0.95389
+round=3 baseline_ms=867.54338 variant1_ms=740.19558 speedup1=1.17205
+round=4 baseline_ms=724.45038 variant1_ms=875.97617 speedup1=0.82702
+round=5 baseline_ms=752.27304 variant1_ms=695.24125 speedup1=1.08203
+RESULT variant=1 baseline_ms=786.52429 new_ms=731.80581 paired_speedup=1.01879 differences=0 relative_l2=0 max_abs=0 baseline_scratch=769646080 new_scratch=769646080
+
+EXIT: 0

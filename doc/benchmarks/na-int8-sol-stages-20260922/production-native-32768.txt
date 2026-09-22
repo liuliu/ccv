@@ -1,0 +1,14 @@
+Command: /Users/liu/workspace/ccv/bin/mfa/na_int8_sol_attention_bench 32768 56 6
+device=Apple M5 Max input=synthetic-uniform-seed42 shape=[1,32768,56,128] B=64 Q=64 radius=1 tau=0.5 span=[470,32768) scale=1 rounds=6
+warmup=0 native_ms=703.4363 exact_ms=1105.6604 sparse_ms=349.8325 ratios=0.6362,2.0108
+warmup=1 native_ms=1026.6893 exact_ms=996.8691 sparse_ms=334.7710 ratios=1.0299,3.0668
+warmup=2 native_ms=1004.0527 exact_ms=965.1923 sparse_ms=348.2124 ratios=1.0403,2.8834
+round=0 native_ms=1038.8615 exact_ms=993.4795 sparse_ms=333.6101 ratios=1.0457,3.1140
+round=1 native_ms=1033.4189 exact_ms=958.6236 sparse_ms=338.8057 ratios=1.0780,3.0502
+round=2 native_ms=1067.3076 exact_ms=1011.1169 sparse_ms=338.2996 ratios=1.0556,3.1549
+round=3 native_ms=1012.0007 exact_ms=954.1567 sparse_ms=342.4869 ratios=1.0606,2.9549
+round=4 native_ms=1034.9614 exact_ms=1000.7668 sparse_ms=334.5071 ratios=1.0342,3.0940
+round=5 native_ms=1006.6906 exact_ms=1084.3366 sparse_ms=451.6699 ratios=0.9284,2.2288
+RESULT native_ms=1034.1901 exact_ms=997.1231 sparse_ms=338.5527 paired_exact_speedup=1.0506 paired_sparse_speedup=3.0721 exact_block_fraction=0.333888 exact_relative_l2=1.8361724e-05 protected_relative_l2=1.8173819e-05 sparse_relative_l2=1.0748245 scratch_bytes=769646080
+
+EXIT: 0

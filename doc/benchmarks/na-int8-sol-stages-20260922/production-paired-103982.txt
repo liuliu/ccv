@@ -1,0 +1,26 @@
+Command: SOL_FUSION=4 /private/tmp/sol-production-five/compare 103982 56 6
+COMPARE device=Apple M5 Max fusion=4 (0: 8 vs 7 launches; 1: 7 vs 5; 2: 7 vs 4; 3: 7 vs 5 vs 4; 4: prototype 5 vs production 5)
+SHAPE N=1 T=103982 H=56 B=64 Q=64 dense=0 rounds=6 begin=470 end=103982 scale=1
+round=-3 baseline_ms=4557.62987 variant1_ms=4967.53088 speedup1=0.91748
+round=-2 baseline_ms=4688.07438 variant1_ms=4644.01913 speedup1=1.00949
+round=-1 baseline_ms=4793.11788 variant1_ms=4760.61737 speedup1=1.00683
+round=0 baseline_ms=4641.33617 variant1_ms=4414.25275 speedup1=1.05144
+round=1 baseline_ms=4364.92987 variant1_ms=4430.93187 speedup1=0.98510
+round=2 baseline_ms=4366.46742 variant1_ms=4286.28208 speedup1=1.01871
+round=3 baseline_ms=4263.52717 variant1_ms=4285.01008 speedup1=0.99499
+round=4 baseline_ms=4279.42842 variant1_ms=4179.43696 speedup1=1.02392
+round=5 baseline_ms=4271.22217 variant1_ms=4261.12713 speedup1=1.00237
+RESULT variant=1 baseline_ms=4322.17915 new_ms=4285.64608 paired_speedup=1.01054 differences=0 relative_l2=0 max_abs=0 baseline_scratch=2559076896 new_scratch=2559076896
+SHAPE N=1 T=103982 H=56 B=64 Q=64 dense=1 rounds=6 begin=470 end=103982 scale=1
+round=-3 baseline_ms=12087.62437 variant1_ms=12418.95333 speedup1=0.97332
+round=-2 baseline_ms=11874.78462 variant1_ms=11616.91463 speedup1=1.02220
+round=-1 baseline_ms=11371.18317 variant1_ms=11552.77817 speedup1=0.98428
+round=0 baseline_ms=11359.86862 variant1_ms=11225.13196 speedup1=1.01200
+round=1 baseline_ms=11148.18862 variant1_ms=11230.71450 speedup1=0.99265
+round=2 baseline_ms=11680.06900 variant1_ms=12146.70704 speedup1=0.96158
+round=3 baseline_ms=11280.32100 variant1_ms=11284.87754 speedup1=0.99960
+round=4 baseline_ms=11329.35950 variant1_ms=11224.08000 speedup1=1.00938
+round=5 baseline_ms=11197.28387 variant1_ms=11308.26712 speedup1=0.99019
+RESULT variant=1 baseline_ms=11304.84025 new_ms=11257.79602 paired_speedup=0.99612 differences=0 relative_l2=0 max_abs=0 baseline_scratch=2559076896 new_scratch=2559076896
+
+EXIT: 0

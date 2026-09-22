@@ -1,0 +1,203 @@
+--- a/ccv_nnc_mfa_sol_attention.cpp
++++ b/ccv_nnc_mfa_sol_attention.cpp
+@@ -7 +7 @@
+-void ccv_nnc_mfa_encode_sol_attention(ccv_nnc_mfa_context_t* context, ccv_nnc_mfa_sol_attention_params_t params, mtl_command_batch_t* command_batch, mtl_buffer_t** tensors, size_t* tensor_offsets)
++void encode_sol_experiment(ccv_nnc_mfa_context_t* context, ccv_nnc_mfa_sol_attention_params_t params, mtl_command_batch_t* command_batch, mtl_buffer_t** tensors, size_t* tensor_offsets, int fusion)
+@@ -31,4 +31,2 @@
+-  // FP32 summary output and softmax state are consumed by the exact pass.
+-  const size_t state = (mean + size_t(NH) * 128 * 4 + 255) / 256 * 256;
+-  const size_t ml = state + size_t(NH) * params.T * 128 * 4;
+-  const size_t kci = (ml + size_t(NH) * params.T * 8 + 255) / 256 * 256;
++  const size_t state = 0, ml = 0;
++  const size_t kci = (mean + size_t(NH) * 128 * 4 + 255) / 256 * 256;
+@@ -39 +37 @@
+-  const size_t int8_offsets[] = { qi, ki, vi, qs, ks, vs, mean, state, ml, kci, vch, kcs, vcs, route_bits };
++  const size_t int8_offsets[] = { qi, ki, vi, qs, ks, vs, mean, state, ml, 0, kci, vch, kcs, vcs, route_bits };
+@@ -41 +39,3 @@
+-  for (Stage stage : { Stage::VMean, Stage::Quantize, Stage::Pool, Stage::QuantizeSummaries, Stage::Statistics, Stage::Route, Stage::Approximate, Stage::Attention }) {
++  for (Stage stage : { Stage::VMean, Stage::Quantize, Stage::Pool, Stage::Prepared, Stage::Route, Stage::Fused }) {
++    if (stage == Stage::Route && fusion == 2) continue;
++    if (stage == Stage::Fused && fusion == 2) stage = Stage::Routed;
+@@ -56 +56 @@
+-    for (int i = 0; i < 14; ++i)
++    for (int i = 0; i < 15; ++i)
+@@ -70,0 +71,3 @@
++      case Stage::Prepared: grid.width = JP / 64 + 1; break;
++      case Stage::Fused:
++      case Stage::Routed: threads = params.query_block_size * 2; break;
+--- a/kernels/NAInt8SolAttentionDescriptor.hpp
++++ b/kernels/NAInt8SolAttentionDescriptor.hpp
+@@ -22 +22 @@
+-  VMean, Quantize, Pool, QuantizeSummaries, Statistics, Route, Approximate, Attention
++  VMean, Quantize, Pool, QuantizeSummaries, Statistics, Route, Approximate, Attention, Prepared, Fused, Routed
+--- a/kernels/NAInt8SolAttentionDescriptor.cpp
++++ b/kernels/NAInt8SolAttentionDescriptor.cpp
+@@ -24 +24 @@
+-  const char* names[] = { "sol_v_mean", "sol_quantize", "sol_pool", "sol_quantize_summaries", "sol_stats", "sol_route", "sol_approximate", "sol_attention" };
++  const char* names[] = { "sol_v_mean", "sol_quantize", "sol_pool", "sol_quantize_summaries", "sol_stats", "sol_route", "sol_approximate", "sol_attention", "sol_prepare", "sol_fused", "sol_routed" };
+@@ -34,0 +35,4 @@
++  const uint32_t threads = stage == NAInt8SolAttentionStage::VMean ? kernel->vMeanThreadgroupSize(T, H) : (stage == NAInt8SolAttentionStage::Approximate || stage == NAInt8SolAttentionStage::Attention || stage == NAInt8SolAttentionStage::Fused || stage == NAInt8SolAttentionStage::Routed) ? queryBlockSize * 2 : 128;
++  CCV_NNC_MFA_PRECONDITION(threads <= pipeline->maxTotalThreadsPerThreadgroup());
++  if (getenv("SOL_REPORT_RESOURCES"))
++    printf("RESOURCE %s T=%u H=%u Q=%u threads=%u max_threads=%zu shared=%zu cap=%zu\n", names[uint32_t(stage)], T, H, queryBlockSize, threads, size_t(pipeline->maxTotalThreadsPerThreadgroup()), size_t(pipeline->staticThreadgroupMemoryLength()), size_t(device->maxThreadgroupMemoryLength()));
+--- a/kernels/NAInt8SolAttentionKernel.hpp
++++ b/kernels/NAInt8SolAttentionKernel.hpp
+@@ -26 +26 @@
+-  void createQuantizeSummaries(CodeWriter& source) const noexcept;
++  void createQuantizeSummaries(CodeWriter& source, bool statistics) const noexcept;
+@@ -29 +29 @@
+-  void createAttention(CodeWriter& source, bool approximate) const noexcept;
++  void createAttention(CodeWriter& source, int mode) const noexcept;
+--- a/kernels/NAInt8SolAttentionKernel.cpp
++++ b/kernels/NAInt8SolAttentionKernel.cpp
+@@ -25 +25,2 @@
+-  createQuantizeSummaries(source);
++  createQuantizeSummaries(source, false);
++  createQuantizeSummaries(source, true);
+@@ -29,2 +30,4 @@
+-  createAttention(source, true);
+-  createAttention(source, false);
++  createAttention(source, 0);
++  createAttention(source, 1);
++  createAttention(source, 2);
++  createAttention(source, 3);
+@@ -100,2 +103,2 @@
+-                                         uint x_bits,
+-                                         uint y_bits) {
++                                          uint x_bits,
++                                          uint y_bits) {
+@@ -115,0 +119 @@
++
+@@ -280,6 +284,8 @@
+-void NAInt8SolAttentionKernel::createQuantizeSummaries(CodeWriter& source) const noexcept {
+-  source += R"(
+-kernel void sol_quantize_summaries(device const half* KC [[buffer(5)]],
+-  device const summary_value_t* VC [[buffer(6)]], device int8_t* KCI [[buffer(23)]],
+-  device half* VCH [[buffer(24)]], device float* KCS [[buffer(25)]],
+-  device float* VCS [[buffer(26)]], constant Params& p [[buffer(10)]],
++void NAInt8SolAttentionKernel::createQuantizeSummaries(CodeWriter& source, bool statistics) const noexcept {
++  source.SetValue("PREPARE_NAME", statistics ? "sol_prepare" : "sol_quantize_summaries");
++  source.SetValue("STATS_ARGUMENT", statistics ? "device float2* stats [[buffer(7)]]," : "");
++  source += R"(
++kernel void {{PREPARE_NAME}}(device const half* KC [[buffer(5)]],
++  {{STATS_ARGUMENT}} device const summary_value_t* VC [[buffer(6)]], device int8_t* KCI [[buffer(24)]],
++  device half* VCH [[buffer(25)]], device float* KCS [[buffer(26)]],
++  device float* VCS [[buffer(27)]], constant Params& p [[buffer(10)]],
+@@ -290,0 +297,17 @@
++)";
++  if (statistics) {
++    source += R"(
++  // Independent head-statistics jobs share this launch with summary jobs.
++  if (group.x == JP / 64) {
++    float m = 0, v = 0;
++    for (uint j = 0; j < J; ++j) {
++      const float k = float(KC[(ulong(nh) * JP + j) * 128 + tid]);
++      m += k; v += k * k;
++    }
++    m /= J;
++    stats[nh * 128 + tid] = float2(m, max(0.0f, v / J - m * m));
++    return;
++  }
++)";
++  }
++  source += R"(
+@@ -348 +371 @@
+-  device uint* route_bits [[buffer(27)]],
++  device uint* route_bits [[buffer(28)]],
+@@ -384,2 +407,5 @@
+-void NAInt8SolAttentionKernel::createAttention(CodeWriter& source, bool approximate) const noexcept {
+-  source.SetValue("ATTENTION_NAME", approximate ? "sol_approximate" : "sol_attention");
++void NAInt8SolAttentionKernel::createAttention(CodeWriter& source, int mode) const noexcept {
++  const bool approximate = mode == 0, fused = mode >= 2, routed = mode == 3;
++  source.SetValue("ROUTE_CONST", routed ? "" : "const ");
++  source.SetValue("ROUTING_ARGUMENTS", routed ? "device const float* QC [[buffer(4)]], device const half* KC [[buffer(5)]], device const float2* stats [[buffer(7)]]," : "");
++  source.SetValue("ATTENTION_NAME", mode == 0 ? "sol_approximate" : mode == 1 ? "sol_attention" : mode == 2 ? "sol_fused" : "sol_routed");
+@@ -388 +414 @@
+-  device const uchar* routes [[buffer(8)]],
++  device {{ROUTE_CONST}}uchar* routes [[buffer(8)]],
+@@ -393,5 +419,6 @@
+-  device int8_t* KCI_buf [[buffer(23)]], device half* VCH_buf [[buffer(24)]],
+-  device const float* KCS [[buffer(25)]], device const float* VCS [[buffer(26)]],
+-  device const uint* route_bits [[buffer(27)]],
+-  constant Params& p [[buffer(10)]],
+-  uint2 group [[threadgroup_position_in_grid]], uint sg [[simdgroup_index_in_threadgroup]]) {
++  device int8_t* KCI_buf [[buffer(24)]], device half* VCH_buf [[buffer(25)]],
++  device const float* KCS [[buffer(26)]], device const float* VCS [[buffer(27)]],
++  device {{ROUTE_CONST}}uint* route_bits [[buffer(28)]],
++  {{ROUTING_ARGUMENTS}} constant Params& p [[buffer(10)]],
++  uint2 group [[threadgroup_position_in_grid]], uint sg [[simdgroup_index_in_threadgroup]],
++  uint tid [[thread_index_in_threadgroup]], uint lane [[thread_index_in_simdgroup]]) {
+@@ -409,0 +437,32 @@
++)";
++  if (routed) {
++    source += R"(
++  {
++    device const float* q = QC + (ulong(nh) * QJ + qb) * 128;
++    device const half* k = KC + ulong(nh) * JP * 128;
++    float mu = 0, variance = 0;
++    for (uint d = lane; d < 128; d += 32) {
++      const float2 st = stats[nh * 128 + d];
++      mu += q[d] * st.x; variance += q[d] * q[d] * st.y;
++    }
++    const float threshold = g * simd_sum(mu) + p.tau * sqrt(g * g * simd_sum(variance) + 1e-6f);
++    const bool exact_query = qb * SOL_QB < p.begin || min((qb + 1) * SOL_QB, SOL_T) > p.end;
++    for (uint j = sg; j < J; j += SOL_QB / 16) {
++      float dot = 0;
++      for (uint d = lane; d < 128; d += 32) dot += q[d] * float(k[j * 128 + d]);
++      const float score = simd_sum(dot) * g;
++      if (lane == 0) routes[j] = exact_query || j * {{BLOCK_SIZE}} < p.begin || min((j + 1) * {{BLOCK_SIZE}}, SOL_T) > p.end || abs(int(qb * SOL_QB / {{BLOCK_SIZE}}) - int(j)) <= p.local_block_radius || score > threshold;
++    }
++    threadgroup_barrier(mem_flags::mem_device);
++    const uint words = (J + 31) / 32;
++    for (uint word = tid; word < words; word += SOL_QB * 2) {
++      uint bits = 0;
++      for (uint bit = 0; bit < 32 && word * 32 + bit < J; ++bit)
++        bits |= uint(routes[word * 32 + bit] != 0) << bit;
++      route_bits[(ulong(nh) * QJ + qb) * words + word] = bits;
++    }
++    threadgroup_barrier(mem_flags::mem_device);
++  }
++)";
++  }
++  source += R"(
+@@ -451 +510 @@
+-  if (!approximate) {
++  if (!approximate && !fused) {
+@@ -474 +533,22 @@
+-  if (approximate) {
++  if (fused) {
++    source += R"(
++  const uint words = (J + 31) / 32;
++  route_bits += (ulong(nh) * QJ + qb) * words;
++)";
++  }
++  for (int phase = 0; phase < (fused ? 2 : 1); ++phase) {
++  source.SetValue("SUMMARY_PHASE", phase == 0 ? "true" : "false");
++  if (fused) {
++    source += R"(
++  {
++    constexpr bool summary = {{SUMMARY_PHASE}};
++    const uint passes = summary ? summaries : words;
++    uint visited_blocks = 0;
++    for (uint item = 0; item < passes; ++item) {
++      uint selected = summary ? 1 : route_bits[item];
++      while (selected != 0) {
++        const uint block = summary ? 0 : item * 32 + ctz(selected);
++        selected &= selected - 1;
++        const uint tile = summary ? item : block;
++)";
++  } else if (approximate) {
+@@ -545,2 +625,3 @@
+-  if (approximate) {
+-    source += R"(
++  if (approximate || fused) {
++    source += R"(
++    if (summary) {
+@@ -550,0 +632 @@
++    }
+@@ -614 +696 @@
+-    if (SOL_T >= 32768 && SOL_QB == 64 && {{BLOCK_SIZE}} == 64 &&
++    if (!summary && SOL_T >= 32768 && SOL_QB == 64 && {{BLOCK_SIZE}} == 64 &&
+@@ -625,0 +708,2 @@
++  }
++  if (fused) source += "}";

@@ -351,6 +351,16 @@ typedef struct {
 			int sliding_window; /**< [scaled_dot_product_attention.sliding_window] Causal sliding-window size, including the current token. 0 disables sliding-window attention. */
 		} scaled_dot_product_attention;
 		struct {
+			float scale; /**< Multiplier for Q.K logits. */
+			float tau; /**< Threshold standard-deviation multiplier; higher selects fewer exact blocks. */
+			int block_size; /**< KV summary block size. */
+			int approximation_start; /**< Inclusive start of the eligible query AND KV interval. */
+			int approximation_end; /**< Exclusive end; interactions with its complement remain token-resolution. */
+			int flags; /**< GEMM flags for the optional dense fallback. MPS Sol always uses INT8. */
+			int query_block_size; /**< 0 uses block_size. */
+			int local_block_radius; /**< Always evaluate this many neighboring KV blocks exactly. */
+		} sol_attention;
+		struct {
 			float scale; /**< [scaled_dot_product_arg_partition.scale] The scale we multiple to the summed positive dot product of Q & K. */
 			int kth; /**< [scaled_dot_product_arg_partition.kth] How many compressed-row ids to retain per query token. */
 			int is_causal; /**< [scaled_dot_product_arg_partition.is_causal] Whether to apply DS4 compressed causal visibility. */

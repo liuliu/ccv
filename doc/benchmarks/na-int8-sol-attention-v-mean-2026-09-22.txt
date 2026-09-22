@@ -1,0 +1,118 @@
+Single-pass Sol V-mean feasibility probes, Apple M5 Max, 2026-09-22.
+Reduction-only GPU command-buffer timing; these are NOT end-to-end attention timings.
+FP16 [N,T,H,128] input, FP32 per-head/channel means, uniform random seed42 [-3,3].
+Four warmup rounds and sixteen measured rounds; reverse variant order on alternating rounds.
+Compare the existing coalesced two-pass reduction, a native-style single-pass linear grid,
+a native-style Morton grid, and single-pass tiled reductions using threadgroup memory.
+All candidates preserve the current per-thread accumulation and XOR-shuffle reduction order.
+Long-sequence tiled variants cover 16, 32, or 64 channels per threadgroup (tile4/tile8/tile16 float4 vectors).
+Short-sequence tile8 and tile16 variants use 16 and 32 channels to fit threadgroup memory.
+The wide variant reuses its partials buffer for the final reduction to stay within 32 KiB.
+All reported medians are over sixteen measured rounds. TILED/WIDE report medians only;
+the per-round lines report the two-pass, linear-grid, and Morton-grid timings.
+
+Result: one launch is correct, but the best single-pass candidate was slower at all three
+realistic long shapes. Production remains two-pass. Native-style Morton was 2.9-3.8x slower;
+the best tiled single-pass version was 3.3%, 7.9%, and 11.6% slower at T32768/65536/103982.
+At T257/H2/N2, the simple single-pass versions were slightly faster (about 0.0005 ms saved).
+These results do not establish behavior for other devices or unmeasured head counts.
+
+device=Apple M5 Max N=2 T=257 H=2 rounds=16
+warmup=0 two_pass_ms=0.00629 single_linear_ms=0.00350 single_morton_ms=0.00350
+warmup=1 two_pass_ms=0.00383 single_linear_ms=0.00337 single_morton_ms=0.00342
+warmup=2 two_pass_ms=0.00388 single_linear_ms=0.00342 single_morton_ms=0.00358
+warmup=3 two_pass_ms=0.00400 single_linear_ms=0.00337 single_morton_ms=0.00362
+round=0 two_pass_ms=0.00408 single_linear_ms=0.00354 single_morton_ms=0.00350
+round=1 two_pass_ms=0.00388 single_linear_ms=0.00350 single_morton_ms=0.00346
+round=2 two_pass_ms=0.00379 single_linear_ms=0.00342 single_morton_ms=0.00362
+round=3 two_pass_ms=0.00379 single_linear_ms=0.00337 single_morton_ms=0.00337
+round=4 two_pass_ms=0.00375 single_linear_ms=0.00337 single_morton_ms=0.00350
+round=5 two_pass_ms=0.00400 single_linear_ms=0.00350 single_morton_ms=0.00354
+round=6 two_pass_ms=0.00388 single_linear_ms=0.00337 single_morton_ms=0.00342
+round=7 two_pass_ms=0.00396 single_linear_ms=0.00337 single_morton_ms=0.00350
+round=8 two_pass_ms=0.00388 single_linear_ms=0.00325 single_morton_ms=0.00337
+round=9 two_pass_ms=0.00387 single_linear_ms=0.00325 single_morton_ms=0.00325
+round=10 two_pass_ms=0.08921 single_linear_ms=0.05467 single_morton_ms=0.00338
+round=11 two_pass_ms=0.00400 single_linear_ms=0.00333 single_morton_ms=0.00337
+round=12 two_pass_ms=0.00388 single_linear_ms=0.00342 single_morton_ms=0.00333
+round=13 two_pass_ms=0.00392 single_linear_ms=0.00350 single_morton_ms=0.00346
+round=14 two_pass_ms=0.00392 single_linear_ms=0.00342 single_morton_ms=0.00342
+round=15 two_pass_ms=0.00388 single_linear_ms=0.00333 single_morton_ms=0.00346
+WIDE tile16_ms=0.00613 tile16_byte_equal=1
+TILED tile4_ms=0.00429 tile8_ms=0.00450 tile4_byte_equal=1 tile8_byte_equal=1
+RESULT two_pass_ms=0.00388 single_linear_ms=0.00340 single_morton_ms=0.00344 linear_speedup=1.14725 morton_speedup=1.13333 linear_byte_equal=1 morton_byte_equal=1
+
+device=Apple M5 Max N=1 T=32768 H=56 rounds=16
+warmup=0 two_pass_ms=0.90637 single_linear_ms=4.64354 single_morton_ms=2.89275
+warmup=1 two_pass_ms=1.08450 single_linear_ms=5.18508 single_morton_ms=2.78875
+warmup=2 two_pass_ms=0.91221 single_linear_ms=5.13063 single_morton_ms=2.39171
+warmup=3 two_pass_ms=0.88808 single_linear_ms=4.65013 single_morton_ms=2.81187
+round=0 two_pass_ms=0.89988 single_linear_ms=4.89429 single_morton_ms=2.52154
+round=1 two_pass_ms=0.86508 single_linear_ms=4.87050 single_morton_ms=2.43025
+round=2 two_pass_ms=0.91529 single_linear_ms=4.94750 single_morton_ms=2.55825
+round=3 two_pass_ms=0.89004 single_linear_ms=4.89425 single_morton_ms=2.47138
+round=4 two_pass_ms=0.98183 single_linear_ms=5.39925 single_morton_ms=2.48850
+round=5 two_pass_ms=0.88725 single_linear_ms=4.45100 single_morton_ms=2.85458
+round=6 two_pass_ms=0.89204 single_linear_ms=4.72463 single_morton_ms=3.12083
+round=7 two_pass_ms=0.90025 single_linear_ms=5.18350 single_morton_ms=2.68588
+round=8 two_pass_ms=0.88254 single_linear_ms=4.56404 single_morton_ms=2.60175
+round=9 two_pass_ms=0.89917 single_linear_ms=4.65487 single_morton_ms=2.59613
+round=10 two_pass_ms=0.87508 single_linear_ms=5.11425 single_morton_ms=2.24696
+round=11 two_pass_ms=0.89279 single_linear_ms=5.09217 single_morton_ms=3.01238
+round=12 two_pass_ms=0.86712 single_linear_ms=4.72596 single_morton_ms=2.55458
+round=13 two_pass_ms=0.87608 single_linear_ms=4.68529 single_morton_ms=2.58942
+round=14 two_pass_ms=1.16738 single_linear_ms=5.16004 single_morton_ms=2.61117
+round=15 two_pass_ms=0.88833 single_linear_ms=4.68446 single_morton_ms=2.54775
+WIDE tile16_ms=1.40119 tile16_byte_equal=1
+TILED tile4_ms=1.97490 tile8_ms=0.92081 tile4_byte_equal=1 tile8_byte_equal=1
+RESULT two_pass_ms=0.89104 single_linear_ms=4.88237 single_morton_ms=2.57383 linear_speedup=0.18443 morton_speedup=0.34751 linear_byte_equal=1 morton_byte_equal=1
+
+device=Apple M5 Max N=1 T=65536 H=56 rounds=16
+warmup=0 two_pass_ms=1.77517 single_linear_ms=11.38896 single_morton_ms=5.77350
+warmup=1 two_pass_ms=1.74842 single_linear_ms=10.96062 single_morton_ms=5.98912
+warmup=2 two_pass_ms=1.71363 single_linear_ms=11.29488 single_morton_ms=5.63104
+warmup=3 two_pass_ms=1.73267 single_linear_ms=10.74737 single_morton_ms=6.12575
+round=0 two_pass_ms=1.72725 single_linear_ms=12.23175 single_morton_ms=6.15592
+round=1 two_pass_ms=1.74550 single_linear_ms=11.19067 single_morton_ms=5.70300
+round=2 two_pass_ms=1.75513 single_linear_ms=11.52050 single_morton_ms=5.15517
+round=3 two_pass_ms=1.74900 single_linear_ms=10.74071 single_morton_ms=6.42750
+round=4 two_pass_ms=1.76417 single_linear_ms=12.21750 single_morton_ms=5.52900
+round=5 two_pass_ms=1.72942 single_linear_ms=10.59358 single_morton_ms=6.86621
+round=6 two_pass_ms=1.97750 single_linear_ms=11.13325 single_morton_ms=7.11950
+round=7 two_pass_ms=1.71308 single_linear_ms=10.56104 single_morton_ms=5.83508
+round=8 two_pass_ms=1.75975 single_linear_ms=12.02600 single_morton_ms=5.46175
+round=9 two_pass_ms=1.92308 single_linear_ms=11.96950 single_morton_ms=6.00517
+round=10 two_pass_ms=1.83250 single_linear_ms=12.75979 single_morton_ms=5.23275
+round=11 two_pass_ms=2.03996 single_linear_ms=12.12900 single_morton_ms=7.24333
+round=12 two_pass_ms=1.76379 single_linear_ms=12.83963 single_morton_ms=6.95517
+round=13 two_pass_ms=1.82100 single_linear_ms=10.91125 single_morton_ms=6.30800
+round=14 two_pass_ms=1.85063 single_linear_ms=13.31325 single_morton_ms=6.09075
+round=15 two_pass_ms=1.78675 single_linear_ms=11.38325 single_morton_ms=6.35212
+WIDE tile16_ms=2.26127 tile16_byte_equal=1
+TILED tile4_ms=4.21738 tile8_ms=1.90285 tile4_byte_equal=1 tile8_byte_equal=1
+RESULT two_pass_ms=1.76398 single_linear_ms=11.74500 single_morton_ms=6.12333 linear_speedup=0.15647 morton_speedup=0.29113 linear_byte_equal=1 morton_byte_equal=1
+
+device=Apple M5 Max N=1 T=103982 H=56 rounds=16
+warmup=0 two_pass_ms=2.82129 single_linear_ms=22.68567 single_morton_ms=9.44058
+warmup=1 two_pass_ms=2.80258 single_linear_ms=19.62738 single_morton_ms=10.41792
+warmup=2 two_pass_ms=2.87913 single_linear_ms=22.24288 single_morton_ms=11.60200
+warmup=3 two_pass_ms=2.69013 single_linear_ms=18.54058 single_morton_ms=10.54454
+round=0 two_pass_ms=2.80892 single_linear_ms=21.61542 single_morton_ms=11.49767
+round=1 two_pass_ms=2.98500 single_linear_ms=19.40575 single_morton_ms=9.42575
+round=2 two_pass_ms=2.78383 single_linear_ms=21.36929 single_morton_ms=10.64750
+round=3 two_pass_ms=2.92875 single_linear_ms=21.26354 single_morton_ms=13.59233
+round=4 two_pass_ms=2.75475 single_linear_ms=19.07029 single_morton_ms=10.98800
+round=5 two_pass_ms=2.76113 single_linear_ms=20.28838 single_morton_ms=10.32271
+round=6 two_pass_ms=2.73621 single_linear_ms=20.24508 single_morton_ms=10.51750
+round=7 two_pass_ms=2.80092 single_linear_ms=19.21167 single_morton_ms=10.64667
+round=8 two_pass_ms=2.76187 single_linear_ms=21.69104 single_morton_ms=10.45258
+round=9 two_pass_ms=2.80667 single_linear_ms=20.80275 single_morton_ms=10.46308
+round=10 two_pass_ms=2.80142 single_linear_ms=20.71312 single_morton_ms=11.63300
+round=11 two_pass_ms=2.74292 single_linear_ms=20.62171 single_morton_ms=9.51025
+round=12 two_pass_ms=2.75092 single_linear_ms=20.82842 single_morton_ms=9.83483
+round=13 two_pass_ms=2.71538 single_linear_ms=20.88154 single_morton_ms=8.85183
+round=14 two_pass_ms=2.90950 single_linear_ms=21.65921 single_morton_ms=11.68700
+round=15 two_pass_ms=2.81388 single_linear_ms=19.67837 single_morton_ms=11.06412
+WIDE tile16_ms=3.59837 tile16_byte_equal=1
+TILED tile4_ms=6.59681 tile8_ms=3.11646 tile4_byte_equal=1 tile8_byte_equal=1
+RESULT two_pass_ms=2.79238 single_linear_ms=20.75794 single_morton_ms=10.58208 linear_speedup=0.13504 morton_speedup=0.26227 linear_byte_equal=1 morton_byte_equal=1

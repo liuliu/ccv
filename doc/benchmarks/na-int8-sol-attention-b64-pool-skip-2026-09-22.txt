@@ -1,0 +1,71 @@
+B64 standalone Pool dispatch removal, 2026-09-22, Apple M5 Max.
+Synthetic uniform seed42, N=1 H=56 D=128 B64 Q64 tau0.5 radius1.
+Protected prefix 470 at T32768/T65536; 1262 at T103982.
+Three warmup rounds and six measured rounds per shape; GPU command-buffer times include all preprocessing.
+Within each round, execute native, old exact, old sparse, new exact, new sparse; reverse this order on alternating rounds.
+The baseline is the pre-change encoder saved as a separately named function; both paths share the same shader code, cache, input tensors, and scratch allocation, with separate output buffers.
+Old path: nine dispatches. New B64 path: eight (Pool skipped even with partial tails).
+COMPARISON reports medians of per-round old/new ratios; >1 favors the new path. RESULT reports the new path versus native NAInt8Attention.
+Byte comparisons and scratch-poison probes are outside timed command buffers.
+No consistent end-to-end speedup can be attributed to removing the Pool dispatch: sparse paired ratios straddle parity and individual rounds vary substantially.
+Build and Sol integration suite (4/4) passed. Poisoned-scratch checks at T257 and T32769/H2 passed byte-for-byte for both dense and sparse.
+
+device=Apple M5 Max input=synthetic-uniform-seed42 shape=[1,32768,56,128] B=64 Q=64 radius=1 tau=0.5 span=[470,32768) scale=1 rounds=6
+warmup=0 native_ms=476.9721 old_exact_ms=494.1950 old_sparse_ms=187.2900 new_exact_ms=491.6989 new_sparse_ms=188.1147 old_over_new=1.005077,0.995615
+warmup=1 native_ms=507.0700 old_exact_ms=503.1601 old_sparse_ms=188.9694 new_exact_ms=492.2481 new_sparse_ms=188.3322 old_over_new=1.022168,1.003383
+warmup=2 native_ms=592.7982 old_exact_ms=559.1819 old_sparse_ms=222.0482 new_exact_ms=615.4895 new_sparse_ms=230.1933 old_over_new=0.908516,0.964616
+round=0 native_ms=655.2046 old_exact_ms=632.2825 old_sparse_ms=239.4312 new_exact_ms=558.3354 new_sparse_ms=230.0895 old_over_new=1.132442,1.040601
+round=1 native_ms=598.2356 old_exact_ms=573.6394 old_sparse_ms=215.0321 new_exact_ms=631.9301 new_sparse_ms=273.9011 old_over_new=0.907758,0.785072
+round=2 native_ms=690.6003 old_exact_ms=736.0889 old_sparse_ms=238.0227 new_exact_ms=643.0184 new_sparse_ms=227.9049 old_over_new=1.144740,1.044395
+round=3 native_ms=717.1122 old_exact_ms=677.4449 old_sparse_ms=235.6167 new_exact_ms=647.7412 new_sparse_ms=239.7904 old_over_new=1.045857,0.982595
+round=4 native_ms=757.7739 old_exact_ms=766.0918 old_sparse_ms=280.3377 new_exact_ms=602.4682 new_sparse_ms=229.8448 old_over_new=1.271589,1.219683
+round=5 native_ms=719.8978 old_exact_ms=664.3909 old_sparse_ms=240.5549 new_exact_ms=646.9527 new_sparse_ms=249.4326 old_over_new=1.026954,0.964408
+PARITY exact_byte_identical=1 sparse_byte_identical=1 poison=0
+RESULT native_ms=703.8562 exact_ms=637.4743 sparse_ms=234.9399 paired_exact_speedup=1.1099 paired_sparse_speedup=2.9384 exact_block_fraction=0.333888 exact_relative_l2=1.8361724e-05 protected_relative_l2=1.8173819e-05 sparse_relative_l2=1.0748245 scratch_bytes=1727520256
+COMPARISON old_exact_ms=670.9179 old_sparse_ms=238.7270 new_exact_ms=637.4743 new_sparse_ms=234.9399 paired_exact_old_over_new=1.089150 paired_sparse_old_over_new=1.011598
+
+device=Apple M5 Max input=synthetic-uniform-seed42 shape=[1,65536,56,128] B=64 Q=64 radius=1 tau=0.5 span=[470,65536) scale=1 rounds=6
+warmup=0 native_ms=2290.5049 old_exact_ms=2391.7483 old_sparse_ms=914.0049 new_exact_ms=2680.2338 new_sparse_ms=979.2674 old_over_new=0.892366,0.933356
+warmup=1 native_ms=2787.1163 old_exact_ms=3257.1495 old_sparse_ms=998.9667 new_exact_ms=2805.7407 new_sparse_ms=996.7029 old_over_new=1.160888,1.002271
+warmup=2 native_ms=2873.6297 old_exact_ms=3380.1468 old_sparse_ms=1157.2817 new_exact_ms=3382.0119 new_sparse_ms=1186.3688 old_over_new=0.999449,0.975482
+round=0 native_ms=2546.2936 old_exact_ms=3310.9948 old_sparse_ms=1163.7196 new_exact_ms=3348.2026 new_sparse_ms=1210.3872 old_over_new=0.988887,0.961444
+round=1 native_ms=2629.1025 old_exact_ms=2549.4920 old_sparse_ms=928.7272 new_exact_ms=3291.2439 new_sparse_ms=1293.6434 old_over_new=0.774629,0.717916
+round=2 native_ms=4112.7685 old_exact_ms=4095.9543 old_sparse_ms=1294.1136 new_exact_ms=3881.6321 new_sparse_ms=1285.3232 old_over_new=1.055214,1.006839
+round=3 native_ms=3744.6735 old_exact_ms=3753.9577 old_sparse_ms=1451.0213 new_exact_ms=4351.9590 new_sparse_ms=1705.8341 old_over_new=0.862590,0.850623
+round=4 native_ms=4743.4985 old_exact_ms=4823.3820 old_sparse_ms=1806.6169 new_exact_ms=4858.9619 new_sparse_ms=1752.2875 old_over_new=0.992677,1.031005
+round=5 native_ms=5338.6050 old_exact_ms=5754.3141 old_sparse_ms=1951.3898 new_exact_ms=5664.6173 new_sparse_ms=1887.7854 old_over_new=1.015835,1.033693
+PARITY exact_byte_identical=1 sparse_byte_identical=1 poison=0
+RESULT native_ms=3928.7210 exact_ms=4116.7956 sparse_ms=1499.7388 paired_exact_speedup=0.9015 paired_sparse_speedup=2.4511 exact_block_fraction=0.321285 exact_relative_l2=2.1666737e-05 protected_relative_l2=2.1540819e-05 sparse_relative_l2=1.0996263 scratch_bytes=3484314624
+COMPARISON old_exact_ms=3924.9560 old_sparse_ms=1372.5674 new_exact_ms=4116.7956 new_sparse_ms=1499.7388 paired_exact_old_over_new=0.990782 paired_sparse_old_over_new=0.984142
+
+device=Apple M5 Max input=synthetic-uniform-seed42 shape=[1,103982,56,128] B=64 Q=64 radius=1 tau=0.5 span=[1262,103982) scale=1 rounds=6
+warmup=0 native_ms=12632.2756 old_exact_ms=13476.0389 old_sparse_ms=4842.3668 new_exact_ms=12672.2639 new_sparse_ms=4522.7724 old_over_new=1.063428,1.070663
+warmup=1 native_ms=11802.9187 old_exact_ms=12048.7647 old_sparse_ms=4397.7299 new_exact_ms=12177.4800 new_sparse_ms=4513.4174 old_over_new=0.989430,0.974368
+warmup=2 native_ms=11472.6642 old_exact_ms=11113.5685 old_sparse_ms=3816.6616 new_exact_ms=10892.4630 new_sparse_ms=3683.9215 old_over_new=1.020299,1.036032
+round=0 native_ms=11004.4160 old_exact_ms=11131.5000 old_sparse_ms=3732.4194 new_exact_ms=10522.2355 new_sparse_ms=3703.0173 old_over_new=1.057903,1.007940
+round=1 native_ms=10277.7583 old_exact_ms=10070.6697 old_sparse_ms=3495.1444 new_exact_ms=9818.1859 new_sparse_ms=3452.4102 old_over_new=1.025716,1.012378
+round=2 native_ms=9771.7351 old_exact_ms=9597.9788 old_sparse_ms=3324.2889 new_exact_ms=9640.5850 new_sparse_ms=3425.7354 old_over_new=0.995581,0.970387
+round=3 native_ms=9760.6520 old_exact_ms=9413.4189 old_sparse_ms=3353.5485 new_exact_ms=9303.9223 new_sparse_ms=3272.8296 old_over_new=1.011769,1.024663
+round=4 native_ms=9384.0200 old_exact_ms=9170.2783 old_sparse_ms=3194.0365 new_exact_ms=9148.5344 new_sparse_ms=3239.6701 old_over_new=1.002377,0.985914
+round=5 native_ms=9282.8532 old_exact_ms=8975.1629 old_sparse_ms=3151.0061 new_exact_ms=8989.0198 new_sparse_ms=3073.5697 old_over_new=0.998458,1.025194
+PARITY exact_byte_identical=1 sparse_byte_identical=1 poison=0
+RESULT native_ms=9766.1936 exact_ms=9472.2536 sparse_ms=3349.2825 paired_exact_speedup=1.0393 paired_sparse_speedup=2.9744 exact_block_fraction=0.326659 exact_relative_l2=5.3154436e-06 protected_relative_l2=5.3161138e-06 sparse_relative_l2=1.1002791 scratch_bytes=5590702880
+COMPARISON old_exact_ms=9505.6988 old_sparse_ms=3338.9187 new_exact_ms=9472.2536 new_sparse_ms=3349.2825 paired_exact_old_over_new=1.007073 paired_sparse_old_over_new=1.010159
+
+Poisoned-scratch probes (timings are not part of the performance comparison):
+device=Apple M5 Max input=synthetic-uniform-seed42 shape=[1,257,2,128] B=64 Q=64 radius=1 tau=0.5 span=[17,257) scale=1 rounds=1
+warmup=0 native_ms=0.0430 old_exact_ms=0.1010 old_sparse_ms=0.0806 new_exact_ms=0.0799 new_sparse_ms=0.0796 old_over_new=1.264997,1.012559
+warmup=1 native_ms=0.0393 old_exact_ms=0.0810 old_sparse_ms=0.0808 new_exact_ms=0.0804 new_sparse_ms=0.0797 old_over_new=1.007776,1.013069
+warmup=2 native_ms=0.0352 old_exact_ms=0.0805 old_sparse_ms=0.0809 new_exact_ms=0.0799 new_sparse_ms=0.0803 old_over_new=1.007825,1.007265
+round=0 native_ms=0.0351 old_exact_ms=0.0804 old_sparse_ms=0.0809 new_exact_ms=0.0799 new_sparse_ms=0.0800 old_over_new=1.006782,1.010938
+PARITY exact_byte_identical=1 sparse_byte_identical=1 poison=1
+RESULT native_ms=0.0351 exact_ms=0.0799 sparse_ms=0.0800 paired_exact_speedup=0.4397 paired_sparse_speedup=0.4391 exact_block_fraction=0.880000 exact_relative_l2=7.6328152e-06 protected_relative_l2=1.2325613e-05 sparse_relative_l2=0.28777092 scratch_bytes=1048576
+COMPARISON old_exact_ms=0.0804 old_sparse_ms=0.0809 new_exact_ms=0.0799 new_sparse_ms=0.0800 paired_exact_old_over_new=1.006782 paired_sparse_old_over_new=1.010938
+device=Apple M5 Max input=synthetic-uniform-seed42 shape=[1,32769,2,128] B=64 Q=64 radius=1 tau=0.5 span=[470,32769) scale=1 rounds=1
+warmup=0 native_ms=18.0829 old_exact_ms=16.3437 old_sparse_ms=6.1010 new_exact_ms=15.2948 new_sparse_ms=6.1313 old_over_new=1.068583,0.995066
+warmup=1 native_ms=18.3948 old_exact_ms=15.8750 old_sparse_ms=6.0543 new_exact_ms=18.8002 new_sparse_ms=6.0606 old_over_new=0.844406,0.998962
+warmup=2 native_ms=17.0281 old_exact_ms=16.1803 old_sparse_ms=5.8154 new_exact_ms=16.8282 new_sparse_ms=6.1222 old_over_new=0.961503,0.949882
+round=0 native_ms=17.5190 old_exact_ms=15.6365 old_sparse_ms=6.1624 new_exact_ms=15.8579 new_sparse_ms=6.0219 old_over_new=0.986037,1.023339
+PARITY exact_byte_identical=1 sparse_byte_identical=1 poison=1
+RESULT native_ms=17.5190 exact_ms=15.8579 sparse_ms=6.0219 paired_exact_speedup=1.1047 paired_sparse_speedup=2.9092 exact_block_fraction=0.323760 exact_relative_l2=5.1743625e-06 protected_relative_l2=3.1942778e-06 sparse_relative_l2=1.0945119 scratch_bytes=67108864
+COMPARISON old_exact_ms=15.6365 old_sparse_ms=6.1624 new_exact_ms=15.8579 new_sparse_ms=6.0219 paired_exact_old_over_new=0.986037 paired_sparse_old_over_new=1.023339

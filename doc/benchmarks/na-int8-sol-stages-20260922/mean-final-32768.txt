@@ -1,0 +1,23 @@
+COMPARE device=Apple M5 Max fusion=0 (0: 8 vs 7 launches; 1: 7 vs 5; 2: 7 vs 4; 3: 7 vs 5 vs 4)
+SHAPE N=1 T=32768 H=56 B=64 Q=64 dense=0 rounds=6 begin=470 end=32768 scale=1
+round=-3 baseline_ms=189.32367 variant1_ms=188.15942 speedup1=1.00619
+round=-2 baseline_ms=192.32508 variant1_ms=188.98775 speedup1=1.01766
+round=-1 baseline_ms=188.67563 variant1_ms=187.12354 speedup1=1.00829
+round=0 baseline_ms=190.69513 variant1_ms=189.74450 speedup1=1.00501
+round=1 baseline_ms=188.27400 variant1_ms=188.69600 speedup1=0.99776
+round=2 baseline_ms=189.41975 variant1_ms=197.36242 speedup1=0.95976
+round=3 baseline_ms=193.07600 variant1_ms=193.69025 speedup1=0.99683
+round=4 baseline_ms=198.45883 variant1_ms=194.35863 speedup1=1.02110
+round=5 baseline_ms=217.35279 variant1_ms=213.26208 speedup1=1.01918
+RESULT variant=1 baseline_ms=191.88556 new_ms=194.02444 paired_speedup=1.00139 differences=0 relative_l2=0 max_abs=0 baseline_scratch=1727520256 new_scratch=1723850240
+SHAPE N=1 T=32768 H=56 B=64 Q=64 dense=1 rounds=6 begin=470 end=32768 scale=1
+round=-3 baseline_ms=627.67958 variant1_ms=517.72175 speedup1=1.21239
+round=-2 baseline_ms=638.40000 variant1_ms=585.72187 speedup1=1.08994
+round=-1 baseline_ms=664.43883 variant1_ms=670.21183 speedup1=0.99139
+round=0 baseline_ms=656.01575 variant1_ms=614.55133 speedup1=1.06747
+round=1 baseline_ms=613.13658 variant1_ms=618.56212 speedup1=0.99123
+round=2 baseline_ms=649.47504 variant1_ms=605.40450 speedup1=1.07280
+round=3 baseline_ms=672.19054 variant1_ms=639.17379 speedup1=1.05166
+round=4 baseline_ms=665.91946 variant1_ms=640.70988 speedup1=1.03935
+round=5 baseline_ms=718.18696 variant1_ms=642.74450 speedup1=1.11738
+RESULT variant=1 baseline_ms=660.96760 new_ms=628.86796 paired_speedup=1.05956 differences=0 relative_l2=0 max_abs=0 baseline_scratch=1727520256 new_scratch=1723850240

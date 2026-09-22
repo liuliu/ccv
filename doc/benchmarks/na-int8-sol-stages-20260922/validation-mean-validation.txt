@@ -1,0 +1,18 @@
+2026-09-22 17:06:49.330 mean_verify[58640:5154447] Metal API Validation Enabled
+2026-09-22 17:06:49.331 mean_verify[58640:5154447] Metal GPU Validation Enabled
+N=2 T=257 H=3 tile=1 threads=256 shared=32768 cap=32768 differences=0 max_double_error=3.79985408e-06
+N=1 T=20480 H=2 tile=1 threads=256 shared=32768 cap=32768 differences=0 max_double_error=6.10351563e-06
+N=1 T=20481 H=56 tile=8 threads=256 shared=32768 cap=32768 differences=0 max_double_error=1.05211962e-05
+N=1 T=32769 H=2 tile=1 threads=128 shared=32768 cap=32768 differences=0 max_double_error=6.346304e-06
+N=1 T=32768 H=56 tile=8 threads=256 shared=32768 cap=32768 differences=0 max_double_error=8.58306885e-06
+N=1 T=65536 H=56 tile=8 threads=256 shared=32768 cap=32768 differences=0 max_double_error=9.53674316e-06
+N=1 T=103982 H=56 tile=8 threads=256 shared=32768 cap=32768 differences=0 max_double_error=1.04882713e-05
+N=2 T=193 H=1 tile=1 threads=256 shared=32768 cap=32768 differences=0 max_double_error=5.25756204e-06
+N=1 T=257 H=7 tile=1 threads=256 shared=32768 cap=32768 differences=0 max_double_error=3.82954045e-06
+N=1 T=257 H=8 tile=2 threads=256 shared=32768 cap=32768 differences=0 max_double_error=3.82954045e-06
+N=1 T=257 H=15 tile=2 threads=256 shared=32768 cap=32768 differences=0 max_double_error=3.79985408e-06
+N=1 T=257 H=16 tile=4 threads=256 shared=32768 cap=32768 differences=0 max_double_error=3.82954045e-06
+N=1 T=257 H=31 tile=4 threads=256 shared=32768 cap=32768 differences=0 max_double_error=3.82954045e-06
+N=1 T=257 H=32 tile=4 threads=256 shared=32768 cap=32768 differences=0 max_double_error=3.82954045e-06
+N=1 T=20501 H=63 tile=8 threads=256 shared=32768 cap=32768 differences=0 max_double_error=9.89093448e-06
+N=1 T=20501 H=64 tile=8 threads=256 shared=32768 cap=32768 differences=0 max_double_error=9.89019019e-06

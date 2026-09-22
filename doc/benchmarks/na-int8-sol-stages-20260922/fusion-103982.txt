@@ -1,0 +1,34 @@
+COMPARE device=Apple M5 Max fusion=3 (0: 8 vs 7 launches; 1: 7 vs 5; 2: 7 vs 4; 3: 7 vs 5 vs 4)
+SHAPE N=1 T=103982 H=56 B=64 Q=64 dense=0 rounds=6 begin=470 end=103982 scale=1
+RESOURCE sol_v_mean T=103982 H=56 Q=64 threads=256 max_threads=1024 shared=16384 cap=32768
+RESOURCE sol_quantize T=103982 H=56 Q=64 threads=128 max_threads=1024 shared=96 cap=32768
+RESOURCE sol_prepare T=103982 H=56 Q=64 threads=128 max_threads=1024 shared=32 cap=32768
+RESOURCE sol_route T=103982 H=56 Q=64 threads=128 max_threads=1024 shared=0 cap=32768
+RESOURCE sol_fused T=103982 H=56 Q=64 threads=128 max_threads=1024 shared=0 cap=32768
+RESOURCE sol_v_mean T=103982 H=56 Q=64 threads=256 max_threads=1024 shared=16384 cap=32768
+RESOURCE sol_quantize T=103982 H=56 Q=64 threads=128 max_threads=1024 shared=96 cap=32768
+RESOURCE sol_prepare T=103982 H=56 Q=64 threads=128 max_threads=1024 shared=32 cap=32768
+RESOURCE sol_routed T=103982 H=56 Q=64 threads=128 max_threads=1024 shared=0 cap=32768
+round=-3 baseline_ms=3548.41042 variant1_ms=3578.13887 speedup1=0.99169 variant2_ms=3645.85454 speedup2=0.97327
+round=-2 baseline_ms=3493.70771 variant1_ms=3773.00621 speedup1=0.92597 variant2_ms=3584.88288 speedup2=0.97457
+round=-1 baseline_ms=3258.69046 variant1_ms=3381.83300 speedup1=0.96359 variant2_ms=3766.19446 speedup2=0.86525
+round=0 baseline_ms=3478.91938 variant1_ms=3415.77275 speedup1=1.01849 variant2_ms=3420.03646 speedup2=1.01722
+round=1 baseline_ms=3149.98413 variant1_ms=3472.55429 speedup1=0.90711 variant2_ms=3547.48937 speedup2=0.88795
+round=2 baseline_ms=3249.08500 variant1_ms=3411.32883 speedup1=0.95244 variant2_ms=3574.69704 speedup2=0.90891
+round=3 baseline_ms=3355.56433 variant1_ms=3633.06800 speedup1=0.92362 variant2_ms=3766.56238 speedup2=0.89088
+round=4 baseline_ms=3678.09125 variant1_ms=3863.18525 speedup1=0.95209 variant2_ms=3979.35150 speedup2=0.92429
+round=5 baseline_ms=3594.49092 variant1_ms=3651.17004 speedup1=0.98448 variant2_ms=3557.29825 speedup2=1.01046
+RESULT variant=1 baseline_ms=3417.24185 new_ms=3552.81115 paired_speedup=0.95226 differences=1111 relative_l2=6.47011535e-07 max_abs=0.0009765625 baseline_scratch=5587032864 new_scratch=2559076896
+RESULT variant=2 baseline_ms=3417.24185 new_ms=3565.99765 paired_speedup=0.91660 differences=1111 relative_l2=6.47011535e-07 max_abs=0.0009765625 baseline_scratch=5587032864 new_scratch=2559076896
+SHAPE N=1 T=103982 H=56 B=64 Q=64 dense=1 rounds=6 begin=470 end=103982 scale=1
+round=-3 baseline_ms=10114.72425 variant1_ms=9264.88200 speedup1=1.09173 variant2_ms=9517.70300 speedup2=1.06273
+round=-2 baseline_ms=10524.30138 variant1_ms=9373.17400 speedup1=1.12281 variant2_ms=9430.69787 speedup2=1.11596
+round=-1 baseline_ms=9520.51825 variant1_ms=9488.08013 speedup1=1.00342 variant2_ms=9505.52804 speedup2=1.00158
+round=0 baseline_ms=9195.42425 variant1_ms=9612.61125 speedup1=0.95660 variant2_ms=9590.56821 speedup2=0.95880
+round=1 baseline_ms=9394.31942 variant1_ms=9361.92271 speedup1=1.00346 variant2_ms=9182.26850 speedup2=1.02309
+round=2 baseline_ms=9073.52729 variant1_ms=9270.34550 speedup1=0.97877 variant2_ms=9589.60846 speedup2=0.94618
+round=3 baseline_ms=9782.09646 variant1_ms=9140.57450 speedup1=1.07018 variant2_ms=9197.50083 speedup2=1.06356
+round=4 baseline_ms=9381.33175 variant1_ms=9393.98883 speedup1=0.99865 variant2_ms=9614.58425 speedup2=0.97574
+round=5 baseline_ms=9201.89492 variant1_ms=9822.14592 speedup1=0.93685 variant2_ms=9575.29550 speedup2=0.96100
+RESULT variant=1 baseline_ms=9291.61333 new_ms=9377.95577 paired_speedup=0.98871 differences=0 relative_l2=0 max_abs=0 baseline_scratch=5587032864 new_scratch=2559076896
+RESULT variant=2 baseline_ms=9291.61333 new_ms=9582.45198 paired_speedup=0.96837 differences=0 relative_l2=0 max_abs=0 baseline_scratch=5587032864 new_scratch=2559076896

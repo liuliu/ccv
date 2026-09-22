@@ -11,6 +11,8 @@ endif
 
 TARGETS += signed_sqrt.tests
 
+TARGETS += sol_attention.tests
+
 TARGET_SRCS := $(patsubst %,%.c,$(TARGETS))
 
 .PRECIOUS: $(patsubst %,%.o,$(TARGETS))

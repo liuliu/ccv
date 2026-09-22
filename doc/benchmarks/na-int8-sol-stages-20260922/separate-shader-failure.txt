@@ -1,0 +1,29 @@
+2026-09-22 16:39:39.971 sol_stage_compare[48782:5101705] Metal API Validation Enabled
+2026-09-22 16:39:39.972 sol_stage_compare[48782:5101705] Metal GPU Validation Enabled
+SHAPE N=2 T=257 H=3 B=64 Q=64 dense=0 rounds=1
+round=0 old_ms=0.24029 new_ms=0.34692 speedup=0.69265
+RESULT old_ms=0.24029 new_ms=0.34692 paired_speedup=0.69265 differences=0 relative_l2=0 max_abs=0 old_scratch=4194304 new_scratch=2097152
+SHAPE N=2 T=257 H=3 B=64 Q=64 dense=1 rounds=1
+round=0 old_ms=0.24263 new_ms=0.23825 speedup=1.01836
+RESULT old_ms=0.24263 new_ms=0.23825 paired_speedup=1.01836 differences=0 relative_l2=0 max_abs=0 old_scratch=4194304 new_scratch=2097152
+SHAPE N=1 T=197 H=3 B=32 Q=16 dense=0 rounds=1
+round=0 old_ms=0.24300 new_ms=0.24067 speedup=1.00970
+RESULT old_ms=0.24300 new_ms=0.24067 paired_speedup=1.00970 differences=0 relative_l2=0 max_abs=0 old_scratch=4194304 new_scratch=2097152
+SHAPE N=1 T=197 H=3 B=32 Q=16 dense=1 rounds=1
+round=0 old_ms=0.24250 new_ms=0.23817 speedup=1.01819
+RESULT old_ms=0.24250 new_ms=0.23817 paired_speedup=1.01819 differences=0 relative_l2=0 max_abs=0 old_scratch=4194304 new_scratch=2097152
+SHAPE N=1 T=133 H=2 B=16 Q=16 dense=0 rounds=1
+round=0 old_ms=0.27462 new_ms=0.26875 speedup=1.02186
+RESULT old_ms=0.27462 new_ms=0.26875 paired_speedup=1.02186 differences=0 relative_l2=0 max_abs=0 old_scratch=4194304 new_scratch=2097152
+SHAPE N=1 T=133 H=2 B=16 Q=16 dense=1 rounds=1
+round=0 old_ms=0.29075 new_ms=0.26596 speedup=1.09322
+RESULT old_ms=0.29075 new_ms=0.26596 paired_speedup=1.09322 differences=0 relative_l2=0 max_abs=0 old_scratch=4194304 new_scratch=2097152
+SHAPE N=1 T=20501 H=2 B=64 Q=64 dense=0 rounds=1
+round=0 old_ms=8.56642 new_ms=9.67112 speedup=0.88577
+RESULT old_ms=8.56642 new_ms=9.67112 paired_speedup=0.88577 differences=0 relative_l2=0 max_abs=0 old_scratch=67108864 new_scratch=67108864
+SHAPE N=1 T=20501 H=2 B=64 Q=64 dense=1 rounds=1
+round=0 old_ms=23.85413 new_ms=26.15375 speedup=0.91207
+RESULT old_ms=23.85413 new_ms=26.15375 paired_speedup=0.91207 differences=0 relative_l2=0 max_abs=0 old_scratch=67108864 new_scratch=67108864
+SHAPE N=1 T=32769 H=2 B=64 Q=64 dense=0 rounds=1
+round=0 old_ms=14.21600 new_ms=14.13308 speedup=1.00587
+NONFINITE i=16512 old=1.05859 new=-inf

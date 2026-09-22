@@ -4,6 +4,7 @@
 #include <nnc/ccv_nnc_easy.h>
 #include <nnc/ccv_nnc_internal.h>
 #include <nnc/mps/ccv_nnc_mps.h>
+#include "../../_ccv_nnc_mps.h"
 
 typedef struct {
 	int subtype;
@@ -83,7 +84,7 @@ static void _ccv_nnc_mfa_encode_qx_decode(ccv_nnc_mfa_context_t* const context, 
 	}
 }
 
-static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
+int _ccv_nnc_scaled_dot_product_attention_forw_mps(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
 {
 	// NNC notation:
 	// C = sm(Q * K^T) * V
@@ -968,7 +969,7 @@ REGISTER_COMMAND_BACKEND(CCV_NNC_SCALED_DOT_PRODUCT_ATTENTION_FORWARD, CCV_NNC_B
 	registry->tensor_datatypes = CCV_32F | CCV_16F | CCV_QX | CCV_16BF | CCV_32S;
 	registry->tensor_memory = CCV_TENSOR_GPU_MEMORY;
 	registry->algorithms = 1;
-	registry->exec = _ccv_nnc_scaled_dot_product_attention_forw;
+	registry->exec = _ccv_nnc_scaled_dot_product_attention_forw_mps;
 }
 
 REGISTER_COMMAND_BACKEND(CCV_NNC_SCALED_DOT_PRODUCT_ATTENTION_BACKWARD, CCV_NNC_BACKEND_MPS)(ccv_nnc_cmd_backend_registry_t* const registry)

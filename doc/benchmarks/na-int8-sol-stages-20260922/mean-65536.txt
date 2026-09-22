@@ -1,0 +1,22 @@
+SHAPE N=1 T=65536 H=56 B=64 Q=64 dense=0 rounds=6
+round=-3 old_ms=750.43125 new_ms=748.33104 speedup=1.00281
+round=-2 old_ms=755.44196 new_ms=796.41642 speedup=0.94855
+round=-1 old_ms=906.42508 new_ms=893.61300 speedup=1.01434
+round=0 old_ms=913.35617 new_ms=905.94762 speedup=1.00818
+round=1 old_ms=954.50525 new_ms=921.95275 speedup=1.03531
+round=2 old_ms=975.70117 new_ms=925.69546 speedup=1.05402
+round=3 old_ms=930.05850 new_ms=954.66433 speedup=0.97423
+round=4 old_ms=911.89571 new_ms=951.89150 speedup=0.95798
+round=5 old_ms=1061.51275 new_ms=1073.18900 speedup=0.98912
+RESULT old_ms=942.28188 new_ms=938.79348 paired_speedup=0.99865 differences=0 relative_l2=0 max_abs=0 old_scratch=3484314624 new_scratch=3480644608
+SHAPE N=1 T=65536 H=56 B=64 Q=64 dense=1 rounds=6
+round=-3 old_ms=2923.48687 new_ms=2880.32412 speedup=1.01499
+round=-2 old_ms=3312.56762 new_ms=3522.06925 speedup=0.94052
+round=-1 old_ms=3586.96275 new_ms=3581.28383 speedup=1.00159
+round=0 old_ms=3919.23063 new_ms=3381.02337 speedup=1.15918
+round=1 old_ms=3530.16963 new_ms=3367.03525 speedup=1.04845
+round=2 old_ms=3368.20375 new_ms=3867.35900 speedup=0.87093
+round=3 old_ms=3900.10183 new_ms=3638.70579 speedup=1.07184
+round=4 old_ms=3595.83242 new_ms=3826.75017 speedup=0.93966
+round=5 old_ms=3759.74967 new_ms=3870.12950 speedup=0.97148
+RESULT old_ms=3677.79104 new_ms=3732.72798 paired_speedup=1.00996 differences=0 relative_l2=0 max_abs=0 old_scratch=3484314624 new_scratch=3480644608

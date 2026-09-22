@@ -374,6 +374,8 @@
 #define CMD_SOFTMAX_CROSSENTROPY_BACKWARD_X_2(_trim0, _trim1) ccv_nnc_cmd(CCV_NNC_SOFTMAX_CROSSENTROPY_BACKWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.label_smoothing={.trim0=_trim0,.trim1=_trim1}}), 0)
 #define CMD_SOFTMAX_CROSSENTROPY_BACKWARD_X_SEL(_0, _1, _2, _FX, ...) _FX
 #define CMD_SOFTMAX_CROSSENTROPY_BACKWARD(...) CMD_SOFTMAX_CROSSENTROPY_BACKWARD_X_SEL(CMD_SOFTMAX_CROSSENTROPY_BACKWARD_X_F, ##__VA_ARGS__, CMD_SOFTMAX_CROSSENTROPY_BACKWARD_X_2, CMD_SOFTMAX_CROSSENTROPY_BACKWARD_X_F, CMD_SOFTMAX_CROSSENTROPY_BACKWARD_X_0)(__VA_ARGS__)
+// CCV_NNC_SOL_ATTENTION_FORWARD
+#define CMD_SOL_ATTENTION_FORWARD(_scale, _tau, _block_size, _start, _end) ccv_nnc_cmd(CCV_NNC_SOL_ATTENTION_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.sol_attention={.scale=_scale,.tau=_tau,.block_size=_block_size,.approximation_start=_start,.approximation_end=_end,.local_block_radius=1}}), 0)
 // CCV_NNC_SORT_FORWARD
 #define CMD_SORT_FORWARD(_along_axis, _descending) ccv_nnc_cmd(CCV_NNC_SORT_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.sort={.along_axis=_along_axis,.descending=_descending}}), 0)
 // CCV_NNC_SORT_BACKWARD

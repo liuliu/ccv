@@ -1,0 +1,55 @@
+Completed synthetic shape benchmarks. See ../na-int8-sol-attention.md for context and limitations.
+
+device=Apple M5 Max input=synthetic-uniform-seed42 shape=[1,32768,56,128] B=64 Q=64 radius=1 tau=0.5 span=[470,32768) scale=1 rounds=6
+warmup=0 native_ms=635.7717 exact_ms=1042.0783 sparse_ms=471.2689 ratios=0.6101,1.3491
+warmup=1 native_ms=1354.8048 exact_ms=1346.1141 sparse_ms=495.4178 ratios=1.0065,2.7347
+warmup=2 native_ms=1285.6279 exact_ms=1218.8776 sparse_ms=458.4102 ratios=1.0548,2.8045
+round=0 native_ms=1356.1070 exact_ms=1295.6127 sparse_ms=467.6090 ratios=1.0467,2.9001
+round=1 native_ms=1294.0987 exact_ms=1233.7652 sparse_ms=476.0136 ratios=1.0489,2.7186
+round=2 native_ms=1347.4476 exact_ms=1303.8536 sparse_ms=476.5536 ratios=1.0334,2.8275
+round=3 native_ms=1274.3894 exact_ms=1239.5698 sparse_ms=473.2549 ratios=1.0281,2.6928
+round=4 native_ms=1391.8697 exact_ms=1318.9621 sparse_ms=492.4438 ratios=1.0553,2.8265
+round=5 native_ms=1317.2114 exact_ms=1233.4032 sparse_ms=467.0845 ratios=1.0679,2.8201
+RESULT native_ms=1332.3295 exact_ms=1267.5913 sparse_ms=474.6343 paired_exact_speedup=1.0478 paired_sparse_speedup=2.8233 exact_block_fraction=0.333888 exact_relative_l2=1.8361724e-05 protected_relative_l2=1.8173819e-05 sparse_relative_l2=1.0748245 scratch_bytes=1727520256
+
+device=Apple M5 Max input=synthetic-uniform-seed42 shape=[1,65536,56,128] B=64 Q=64 radius=1 tau=0.5 span=[470,65536) scale=1 rounds=6
+warmup=0 native_ms=5336.8404 exact_ms=3860.4973 sparse_ms=1450.8893 ratios=1.3824,3.6783
+warmup=1 native_ms=3876.3386 exact_ms=3794.3145 sparse_ms=1431.1537 ratios=1.0216,2.7085
+warmup=2 native_ms=3673.5269 exact_ms=3511.8419 sparse_ms=1302.0818 ratios=1.0460,2.8213
+round=0 native_ms=3996.3838 exact_ms=3759.7684 sparse_ms=1318.7773 ratios=1.0629,3.0304
+round=1 native_ms=3727.5902 exact_ms=3598.1252 sparse_ms=1319.2459 ratios=1.0360,2.8255
+round=2 native_ms=3969.5167 exact_ms=4211.3692 sparse_ms=1342.4830 ratios=0.9426,2.9568
+round=3 native_ms=3559.4934 exact_ms=3488.2545 sparse_ms=1302.8241 ratios=1.0204,2.7321
+round=4 native_ms=4588.8603 exact_ms=4070.3493 sparse_ms=1325.7598 ratios=1.1274,3.4613
+round=5 native_ms=4620.0830 exact_ms=4294.1180 sparse_ms=1315.7862 ratios=1.0759,3.5113
+RESULT native_ms=3982.9503 exact_ms=3915.0589 sparse_ms=1319.0116 paired_exact_speedup=1.0495 paired_sparse_speedup=2.9936 exact_block_fraction=0.321285 exact_relative_l2=2.1666737e-05 protected_relative_l2=2.1540819e-05 sparse_relative_l2=1.0996263 scratch_bytes=3484314624
+
+device=Apple M5 Max input=synthetic-uniform-seed42 shape=[1,103982,56,128] B=64 Q=64 radius=1 tau=0.5 span=[1262,103982) scale=1 rounds=6
+warmup=0 native_ms=7417.7137 exact_ms=6466.9481 sparse_ms=2420.8016 ratios=1.1470,3.0642
+warmup=1 native_ms=7054.2138 exact_ms=6840.0933 sparse_ms=2607.2120 ratios=1.0313,2.7057
+warmup=2 native_ms=7242.4478 exact_ms=6892.0493 sparse_ms=2459.5050 ratios=1.0508,2.9447
+round=0 native_ms=6998.5123 exact_ms=7323.8768 sparse_ms=2475.6629 ratios=0.9556,2.8269
+round=1 native_ms=7078.1934 exact_ms=7056.9198 sparse_ms=2475.0433 ratios=1.0030,2.8598
+round=2 native_ms=7267.4471 exact_ms=6922.5241 sparse_ms=2506.8300 ratios=1.0498,2.8991
+round=3 native_ms=7274.9471 exact_ms=6979.1320 sparse_ms=2484.7521 ratios=1.0424,2.9278
+round=4 native_ms=7064.5152 exact_ms=6978.7165 sparse_ms=2499.9820 ratios=1.0123,2.8258
+round=5 native_ms=7235.3815 exact_ms=7013.7087 sparse_ms=2552.7856 ratios=1.0316,2.8343
+RESULT native_ms=7156.7874 exact_ms=6996.4204 sparse_ms=2492.3670 paired_exact_speedup=1.0219 paired_sparse_speedup=2.8471 exact_block_fraction=0.326659 exact_relative_l2=5.3154436e-06 protected_relative_l2=5.3161138e-06 sparse_relative_l2=1.1002791 scratch_bytes=5590702880
+
+Comparison against the supplied handoff kernel:
+N=2 T=257 H=2 B=64 Q=64 dense=0 different_half_elements=0
+N=2 T=257 H=2 B=64 Q=64 dense=1 different_half_elements=0
+N=1 T=197 H=3 B=32 Q=16 dense=0 different_half_elements=0
+N=1 T=197 H=3 B=32 Q=16 dense=1 different_half_elements=0
+N=1 T=133 H=2 B=16 Q=16 dense=0 different_half_elements=0
+N=1 T=133 H=2 B=16 Q=16 dense=1 different_half_elements=0
+N=1 T=21782 H=2 B=64 Q=64 dense=0 different_half_elements=0
+N=1 T=21782 H=2 B=64 Q=64 dense=1 different_half_elements=0
+N=1 T=32768 H=2 B=64 Q=64 dense=0 different_half_elements=0
+N=1 T=32768 H=2 B=64 Q=64 dense=1 different_half_elements=0
+N=1 T=32769 H=2 B=64 Q=64 dense=0 different_half_elements=0
+N=1 T=32769 H=2 B=64 Q=64 dense=1 different_half_elements=0
+N=1 T=133 H=2 B=64 Q=32 dense=0 different_half_elements=0
+N=1 T=133 H=2 B=64 Q=32 dense=1 different_half_elements=0
+
+Validation: native debug build passed; CPU Sol 2/2; MPS Sol 4/4; MPS DNN 126/126; full MPS BLAS 283/283 (no failures or skips).

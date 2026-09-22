@@ -1,0 +1,186 @@
+Actual native V-mean and single-pass Sol variants, Apple M5 Max, 2026-09-22.
+Reduction-only GPU command-buffer timings, not end-to-end attention timings.
+Input FP16 [N,T,H,128], output FP32 [N,H,128], uniform seed42 [-3,3].
+N=1/H=56 for T32768/65536/103982; N=2/H=3 for T257 (batching and padded Morton-head coverage).
+Five warmup rounds and twenty measured rounds. Rotate which variant executes first each round.
+Each variant receives the same V buffer and has its own output buffer. Compilation and input generation are outside timing.
+
+sol_two_pass: actual production Sol VPartial and VMean pipelines from the kernel cache, two dispatches.
+native_actual: actual NAInt8AttentionDescriptor pipelineValue->fifth (compute_v_mean), one dispatch.
+  FP16 D128, 128 mean threads for T>20480 (otherwise 256), native Morton grid and buffer bindings.
+morton_port: earlier native-style port for comparison; not the actual native pipeline.
+tiled_linear: previous coalesced single-pass candidate, 16.5 KiB static threadgroup memory.
+tiled_morton: same arithmetic and scratch as tiled_linear, with native-style Morton ordering over channel tiles and heads.
+small_128/small_256: coalesced single-pass Morton variants reducing in SIMD groups first; 512 B/1 KiB scratch.
+  These change summation order and are checked for finite output and relative L2 <1e-4 against production means.
+  Other variants must match production means byte-for-byte. This is a mean-only check, not full attention validation of the changed rounding.
+All median timings and paired speedups exclude warmups. Speedup is median within-round production-time/candidate-time.
+
+Outcome: production remains unchanged. Actual native is about 3.5-4.4x slower by median timing on the long shapes.
+Morton ordering modestly improves tiled locality but does not beat the two-pass reduction.
+The best smaller-scratch variant is still around 5-7% slower; long-shape mean relative L2 is at most 1.42e-7 for small_256.
+There is no end-to-end speedup claim and no production use of the candidates.
+
+device=Apple M5 Max N=2 T=257 H=3 rounds=20 warmups=5
+PIPELINE sol_two_pass static_tg_bytes=128 max_threads=1024
+PIPELINE native_actual static_tg_bytes=128 max_threads=1024
+PIPELINE morton_port static_tg_bytes=128 max_threads=1024
+PIPELINE tiled_linear static_tg_bytes=16896 max_threads=1024
+PIPELINE tiled_morton static_tg_bytes=16896 max_threads=1024
+PIPELINE small_128 static_tg_bytes=512 max_threads=1024
+PIPELINE small_256 static_tg_bytes=1024 max_threads=1024
+warmup=0 sol_two_pass_ms=0.00737 native_actual_ms=0.00392 morton_port_ms=0.00425 tiled_linear_ms=0.00512 tiled_morton_ms=0.00492 small_128_ms=0.00600 small_256_ms=0.00421
+warmup=1 sol_two_pass_ms=0.00433 native_actual_ms=0.00383 morton_port_ms=0.00413 tiled_linear_ms=0.00475 tiled_morton_ms=0.00458 small_128_ms=0.00600 small_256_ms=0.00413
+warmup=2 sol_two_pass_ms=0.00438 native_actual_ms=0.00388 morton_port_ms=0.00413 tiled_linear_ms=0.00471 tiled_morton_ms=0.00463 small_128_ms=0.00600 small_256_ms=0.00421
+warmup=3 sol_two_pass_ms=0.00437 native_actual_ms=0.00350 morton_port_ms=0.00404 tiled_linear_ms=0.00475 tiled_morton_ms=0.00450 small_128_ms=0.00587 small_256_ms=0.00425
+warmup=4 sol_two_pass_ms=0.00438 native_actual_ms=0.00438 morton_port_ms=0.00421 tiled_linear_ms=0.00467 tiled_morton_ms=0.00463 small_128_ms=0.00600 small_256_ms=0.00429
+round=0 sol_two_pass_ms=0.00425 native_actual_ms=0.00371 morton_port_ms=0.00413 tiled_linear_ms=0.00458 tiled_morton_ms=0.00433 small_128_ms=0.00587 small_256_ms=0.00417
+round=1 sol_two_pass_ms=0.00425 native_actual_ms=0.00379 morton_port_ms=0.04242 tiled_linear_ms=0.00546 tiled_morton_ms=0.00488 small_128_ms=0.00600 small_256_ms=0.00413
+round=2 sol_two_pass_ms=0.00425 native_actual_ms=0.00392 morton_port_ms=0.00413 tiled_linear_ms=0.00475 tiled_morton_ms=0.00442 small_128_ms=0.00587 small_256_ms=0.00417
+round=3 sol_two_pass_ms=0.00429 native_actual_ms=0.00396 morton_port_ms=0.00421 tiled_linear_ms=0.00467 tiled_morton_ms=0.00454 small_128_ms=0.00608 small_256_ms=0.00425
+round=4 sol_two_pass_ms=0.00438 native_actual_ms=0.00388 morton_port_ms=0.00413 tiled_linear_ms=0.00475 tiled_morton_ms=0.00454 small_128_ms=0.00596 small_256_ms=0.00425
+round=5 sol_two_pass_ms=0.00425 native_actual_ms=0.00400 morton_port_ms=0.00421 tiled_linear_ms=0.00463 tiled_morton_ms=0.00450 small_128_ms=0.00600 small_256_ms=0.00417
+round=6 sol_two_pass_ms=0.00438 native_actual_ms=0.00383 morton_port_ms=0.00413 tiled_linear_ms=0.00467 tiled_morton_ms=0.00454 small_128_ms=0.00587 small_256_ms=0.00413
+round=7 sol_two_pass_ms=0.00438 native_actual_ms=0.00388 morton_port_ms=0.00408 tiled_linear_ms=0.00463 tiled_morton_ms=0.00450 small_128_ms=0.00596 small_256_ms=0.00413
+round=8 sol_two_pass_ms=0.00429 native_actual_ms=0.00388 morton_port_ms=0.00408 tiled_linear_ms=0.00479 tiled_morton_ms=0.00463 small_128_ms=0.00604 small_256_ms=0.00413
+round=9 sol_two_pass_ms=0.00438 native_actual_ms=0.00383 morton_port_ms=0.00413 tiled_linear_ms=0.00475 tiled_morton_ms=0.00471 small_128_ms=0.00600 small_256_ms=0.00404
+round=10 sol_two_pass_ms=0.00421 native_actual_ms=0.00383 morton_port_ms=0.00388 tiled_linear_ms=0.00475 tiled_morton_ms=0.00450 small_128_ms=0.00596 small_256_ms=0.00421
+round=11 sol_two_pass_ms=0.00425 native_actual_ms=0.00375 morton_port_ms=0.00413 tiled_linear_ms=0.00458 tiled_morton_ms=0.00463 small_128_ms=0.00587 small_256_ms=0.00417
+round=12 sol_two_pass_ms=0.00421 native_actual_ms=0.00388 morton_port_ms=0.00400 tiled_linear_ms=0.00483 tiled_morton_ms=0.00458 small_128_ms=0.00588 small_256_ms=0.00413
+round=13 sol_two_pass_ms=0.00429 native_actual_ms=0.00388 morton_port_ms=0.00383 tiled_linear_ms=0.00471 tiled_morton_ms=0.00450 small_128_ms=0.00588 small_256_ms=0.00413
+round=14 sol_two_pass_ms=0.15500 native_actual_ms=0.11417 morton_port_ms=0.00400 tiled_linear_ms=0.00492 tiled_morton_ms=0.00475 small_128_ms=0.01183 small_256_ms=0.04996
+round=15 sol_two_pass_ms=0.00450 native_actual_ms=0.00388 morton_port_ms=0.00413 tiled_linear_ms=0.00463 tiled_morton_ms=0.00458 small_128_ms=0.00587 small_256_ms=0.00417
+round=16 sol_two_pass_ms=0.00425 native_actual_ms=0.00375 morton_port_ms=0.00404 tiled_linear_ms=0.00450 tiled_morton_ms=0.00446 small_128_ms=0.00587 small_256_ms=0.00425
+round=17 sol_two_pass_ms=0.00425 native_actual_ms=0.00362 morton_port_ms=0.00413 tiled_linear_ms=0.00463 tiled_morton_ms=0.00458 small_128_ms=0.00588 small_256_ms=0.00408
+round=18 sol_two_pass_ms=0.00421 native_actual_ms=0.00375 morton_port_ms=0.00412 tiled_linear_ms=0.00450 tiled_morton_ms=0.00438 small_128_ms=0.00583 small_256_ms=0.00404
+round=19 sol_two_pass_ms=0.00425 native_actual_ms=0.00362 morton_port_ms=0.00421 tiled_linear_ms=0.00471 tiled_morton_ms=0.00454 small_128_ms=0.00579 small_256_ms=0.00413
+RESULT sol_two_pass median_ms=0.00425 paired_speedup=1.00000 byte_equal=1 relative_l2=0 max_abs=0
+RESULT native_actual median_ms=0.00385 paired_speedup=1.12903 byte_equal=1 relative_l2=0 max_abs=0
+RESULT morton_port median_ms=0.00413 paired_speedup=1.05127 byte_equal=1 relative_l2=0 max_abs=0
+RESULT tiled_linear median_ms=0.00469 paired_speedup=0.92035 byte_equal=1 relative_l2=0 max_abs=0
+RESULT tiled_morton median_ms=0.00454 paired_speedup=0.94911 byte_equal=1 relative_l2=0 max_abs=0
+RESULT small_128 median_ms=0.00588 paired_speedup=0.72341 byte_equal=0 relative_l2=9.78590829e-09 max_abs=1.49011612e-08
+RESULT small_256 median_ms=0.00415 paired_speedup=1.03030 byte_equal=0 relative_l2=9.84662806e-09 max_abs=1.49011612e-08
+
+device=Apple M5 Max N=1 T=32768 H=56 rounds=20 warmups=5
+PIPELINE sol_two_pass static_tg_bytes=128 max_threads=1024
+PIPELINE native_actual static_tg_bytes=64 max_threads=1024
+PIPELINE morton_port static_tg_bytes=128 max_threads=1024
+PIPELINE tiled_linear static_tg_bytes=16896 max_threads=1024
+PIPELINE tiled_morton static_tg_bytes=16896 max_threads=1024
+PIPELINE small_128 static_tg_bytes=512 max_threads=1024
+PIPELINE small_256 static_tg_bytes=1024 max_threads=1024
+warmup=0 sol_two_pass_ms=0.88837 native_actual_ms=3.26525 morton_port_ms=2.92546 tiled_linear_ms=0.96187 tiled_morton_ms=0.89658 small_128_ms=1.02221 small_256_ms=0.92563
+warmup=1 sol_two_pass_ms=0.90296 native_actual_ms=2.73108 morton_port_ms=2.28663 tiled_linear_ms=1.07867 tiled_morton_ms=0.93558 small_128_ms=1.02721 small_256_ms=0.91750
+warmup=2 sol_two_pass_ms=0.88725 native_actual_ms=3.06908 morton_port_ms=3.10525 tiled_linear_ms=0.93633 tiled_morton_ms=0.90562 small_128_ms=1.03167 small_256_ms=0.95663
+warmup=3 sol_two_pass_ms=0.91313 native_actual_ms=3.20787 morton_port_ms=2.32596 tiled_linear_ms=1.21563 tiled_morton_ms=0.90404 small_128_ms=1.02917 small_256_ms=0.97392
+warmup=4 sol_two_pass_ms=1.21525 native_actual_ms=3.21387 morton_port_ms=2.48588 tiled_linear_ms=0.92800 tiled_morton_ms=0.94825 small_128_ms=1.03288 small_256_ms=0.94275
+round=0 sol_two_pass_ms=0.88738 native_actual_ms=2.97554 morton_port_ms=2.85933 tiled_linear_ms=1.14975 tiled_morton_ms=0.97263 small_128_ms=1.00275 small_256_ms=0.95667
+round=1 sol_two_pass_ms=0.89625 native_actual_ms=3.12117 morton_port_ms=2.56675 tiled_linear_ms=0.97187 tiled_morton_ms=0.93025 small_128_ms=1.03913 small_256_ms=0.93200
+round=2 sol_two_pass_ms=0.86808 native_actual_ms=3.16250 morton_port_ms=2.47946 tiled_linear_ms=0.96638 tiled_morton_ms=0.92379 small_128_ms=1.03137 small_256_ms=0.92087
+round=3 sol_two_pass_ms=0.87871 native_actual_ms=2.63962 morton_port_ms=2.48688 tiled_linear_ms=0.97725 tiled_morton_ms=1.06621 small_128_ms=1.26538 small_256_ms=0.92112
+round=4 sol_two_pass_ms=0.88483 native_actual_ms=3.14512 morton_port_ms=2.84312 tiled_linear_ms=0.96350 tiled_morton_ms=0.96529 small_128_ms=1.04454 small_256_ms=0.94179
+round=5 sol_two_pass_ms=0.89475 native_actual_ms=3.30575 morton_port_ms=2.32146 tiled_linear_ms=0.93225 tiled_morton_ms=0.90812 small_128_ms=1.27267 small_256_ms=0.94279
+round=6 sol_two_pass_ms=0.90725 native_actual_ms=3.15758 morton_port_ms=2.54479 tiled_linear_ms=0.91508 tiled_morton_ms=0.94525 small_128_ms=1.03108 small_256_ms=0.91050
+round=7 sol_two_pass_ms=0.89050 native_actual_ms=2.77379 morton_port_ms=2.30538 tiled_linear_ms=0.95396 tiled_morton_ms=0.96071 small_128_ms=1.00875 small_256_ms=0.93196
+round=8 sol_two_pass_ms=1.11263 native_actual_ms=3.13737 morton_port_ms=2.47800 tiled_linear_ms=0.96350 tiled_morton_ms=0.92238 small_128_ms=1.02704 small_256_ms=0.96625
+round=9 sol_two_pass_ms=0.86400 native_actual_ms=3.04283 morton_port_ms=2.66229 tiled_linear_ms=1.23683 tiled_morton_ms=0.89425 small_128_ms=1.02525 small_256_ms=0.95958
+round=10 sol_two_pass_ms=0.96738 native_actual_ms=3.03304 morton_port_ms=2.27938 tiled_linear_ms=0.94563 tiled_morton_ms=0.96575 small_128_ms=1.03479 small_256_ms=0.92479
+round=11 sol_two_pass_ms=0.88487 native_actual_ms=3.07938 morton_port_ms=2.50217 tiled_linear_ms=0.95367 tiled_morton_ms=0.95046 small_128_ms=1.02362 small_256_ms=0.93583
+round=12 sol_two_pass_ms=1.03013 native_actual_ms=2.88221 morton_port_ms=2.84817 tiled_linear_ms=0.91267 tiled_morton_ms=0.94137 small_128_ms=1.03025 small_256_ms=0.96812
+round=13 sol_two_pass_ms=0.86529 native_actual_ms=3.12975 morton_port_ms=2.95496 tiled_linear_ms=1.19558 tiled_morton_ms=0.96562 small_128_ms=1.02071 small_256_ms=0.92500
+round=14 sol_two_pass_ms=0.88550 native_actual_ms=2.83329 morton_port_ms=2.51213 tiled_linear_ms=0.95700 tiled_morton_ms=0.97092 small_128_ms=1.00263 small_256_ms=0.92075
+round=15 sol_two_pass_ms=0.89513 native_actual_ms=2.86688 morton_port_ms=3.22896 tiled_linear_ms=0.93017 tiled_morton_ms=0.94250 small_128_ms=1.01404 small_256_ms=0.94562
+round=16 sol_two_pass_ms=0.85783 native_actual_ms=3.34888 morton_port_ms=2.38758 tiled_linear_ms=0.95625 tiled_morton_ms=0.94175 small_128_ms=1.22025 small_256_ms=0.92721
+round=17 sol_two_pass_ms=0.88258 native_actual_ms=2.80633 morton_port_ms=2.42896 tiled_linear_ms=0.91675 tiled_morton_ms=0.94938 small_128_ms=1.02187 small_256_ms=0.93033
+round=18 sol_two_pass_ms=0.87654 native_actual_ms=3.30025 morton_port_ms=2.79254 tiled_linear_ms=1.19929 tiled_morton_ms=1.01775 small_128_ms=1.01788 small_256_ms=0.92954
+round=19 sol_two_pass_ms=0.88363 native_actual_ms=3.54888 morton_port_ms=3.07192 tiled_linear_ms=0.96237 tiled_morton_ms=0.91250 small_128_ms=1.02050 small_256_ms=0.95371
+RESULT sol_two_pass median_ms=0.88519 paired_speedup=1.00000 byte_equal=1 relative_l2=0 max_abs=0
+RESULT native_actual median_ms=3.10027 paired_speedup=0.28734 byte_equal=1 relative_l2=0 max_abs=0
+RESULT morton_port median_ms=2.52846 paired_speedup=0.35291 byte_equal=1 relative_l2=0 max_abs=0
+RESULT tiled_linear median_ms=0.95969 paired_speedup=0.92374 byte_equal=1 relative_l2=0 max_abs=0
+RESULT tiled_morton median_ms=0.94731 paired_speedup=0.93535 byte_equal=1 relative_l2=0 max_abs=0
+RESULT small_128 median_ms=1.02615 paired_speedup=0.86407 byte_equal=0 relative_l2=1.13800931e-07 max_abs=5.12227416e-09
+RESULT small_256 median_ms=0.93198 paired_speedup=0.94764 byte_equal=0 relative_l2=1.02783703e-07 max_abs=3.7252903e-09
+
+device=Apple M5 Max N=1 T=65536 H=56 rounds=20 warmups=5
+PIPELINE sol_two_pass static_tg_bytes=128 max_threads=1024
+PIPELINE native_actual static_tg_bytes=64 max_threads=1024
+PIPELINE morton_port static_tg_bytes=128 max_threads=1024
+PIPELINE tiled_linear static_tg_bytes=16896 max_threads=1024
+PIPELINE tiled_morton static_tg_bytes=16896 max_threads=1024
+PIPELINE small_128 static_tg_bytes=512 max_threads=1024
+PIPELINE small_256 static_tg_bytes=1024 max_threads=1024
+warmup=0 sol_two_pass_ms=1.77287 native_actual_ms=5.89871 morton_port_ms=6.51838 tiled_linear_ms=1.95871 tiled_morton_ms=1.87179 small_128_ms=2.10558 small_256_ms=2.19479
+warmup=1 sol_two_pass_ms=1.73112 native_actual_ms=5.81658 morton_port_ms=5.89788 tiled_linear_ms=1.93825 tiled_morton_ms=1.95637 small_128_ms=2.45187 small_256_ms=1.82150
+warmup=2 sol_two_pass_ms=1.77496 native_actual_ms=6.94704 morton_port_ms=6.25537 tiled_linear_ms=1.91688 tiled_morton_ms=1.91675 small_128_ms=2.47975 small_256_ms=1.81900
+warmup=3 sol_two_pass_ms=1.71279 native_actual_ms=6.59912 morton_port_ms=6.09779 tiled_linear_ms=1.94400 tiled_morton_ms=2.05037 small_128_ms=2.35521 small_256_ms=1.81496
+warmup=4 sol_two_pass_ms=1.76450 native_actual_ms=5.83454 morton_port_ms=7.45463 tiled_linear_ms=1.95850 tiled_morton_ms=1.89963 small_128_ms=2.13575 small_256_ms=1.82038
+round=0 sol_two_pass_ms=1.76338 native_actual_ms=6.66275 morton_port_ms=5.94833 tiled_linear_ms=1.96050 tiled_morton_ms=2.25400 small_128_ms=2.07996 small_256_ms=1.84550
+round=1 sol_two_pass_ms=1.75962 native_actual_ms=6.11292 morton_port_ms=5.66217 tiled_linear_ms=2.02421 tiled_morton_ms=1.92204 small_128_ms=2.08579 small_256_ms=1.82692
+round=2 sol_two_pass_ms=1.79079 native_actual_ms=6.03229 morton_port_ms=7.46325 tiled_linear_ms=1.99163 tiled_morton_ms=1.86875 small_128_ms=2.08471 small_256_ms=1.85587
+round=3 sol_two_pass_ms=1.75088 native_actual_ms=6.94196 morton_port_ms=6.70783 tiled_linear_ms=1.96963 tiled_morton_ms=1.89300 small_128_ms=2.35737 small_256_ms=1.84450
+round=4 sol_two_pass_ms=1.70650 native_actual_ms=7.09483 morton_port_ms=6.20238 tiled_linear_ms=1.94508 tiled_morton_ms=1.86421 small_128_ms=2.36758 small_256_ms=1.83958
+round=5 sol_two_pass_ms=1.75350 native_actual_ms=6.35325 morton_port_ms=6.64988 tiled_linear_ms=1.94825 tiled_morton_ms=1.88975 small_128_ms=2.39183 small_256_ms=1.83958
+round=6 sol_two_pass_ms=1.76358 native_actual_ms=6.28888 morton_port_ms=5.92775 tiled_linear_ms=1.96012 tiled_morton_ms=1.90779 small_128_ms=2.08346 small_256_ms=1.84083
+round=7 sol_two_pass_ms=1.69004 native_actual_ms=6.53250 morton_port_ms=5.88454 tiled_linear_ms=1.97496 tiled_morton_ms=1.85692 small_128_ms=2.07304 small_256_ms=1.84692
+round=8 sol_two_pass_ms=1.97354 native_actual_ms=5.97867 morton_port_ms=5.92954 tiled_linear_ms=1.92571 tiled_morton_ms=1.99283 small_128_ms=2.30350 small_256_ms=1.83263
+round=9 sol_two_pass_ms=1.70842 native_actual_ms=6.22325 morton_port_ms=6.47700 tiled_linear_ms=2.13133 tiled_morton_ms=1.87325 small_128_ms=2.07854 small_256_ms=1.85446
+round=10 sol_two_pass_ms=1.76171 native_actual_ms=6.50033 morton_port_ms=6.52662 tiled_linear_ms=2.00404 tiled_morton_ms=1.90296 small_128_ms=2.08063 small_256_ms=1.83863
+round=11 sol_two_pass_ms=1.75475 native_actual_ms=7.79267 morton_port_ms=4.97688 tiled_linear_ms=1.99092 tiled_morton_ms=1.94625 small_128_ms=2.11850 small_256_ms=1.83921
+round=12 sol_two_pass_ms=1.76667 native_actual_ms=7.23175 morton_port_ms=7.29987 tiled_linear_ms=1.98400 tiled_morton_ms=1.85362 small_128_ms=2.07775 small_256_ms=1.84567
+round=13 sol_two_pass_ms=1.76812 native_actual_ms=6.66358 morton_port_ms=5.70163 tiled_linear_ms=2.11737 tiled_morton_ms=1.88575 small_128_ms=2.36221 small_256_ms=1.82412
+round=14 sol_two_pass_ms=1.76817 native_actual_ms=6.10950 morton_port_ms=7.49925 tiled_linear_ms=2.00587 tiled_morton_ms=1.91600 small_128_ms=2.08983 small_256_ms=1.84675
+round=15 sol_two_pass_ms=1.72800 native_actual_ms=6.56146 morton_port_ms=5.48375 tiled_linear_ms=1.95525 tiled_morton_ms=1.85592 small_128_ms=2.09113 small_256_ms=1.83737
+round=16 sol_two_pass_ms=1.95763 native_actual_ms=6.25033 morton_port_ms=5.34862 tiled_linear_ms=1.93800 tiled_morton_ms=2.23517 small_128_ms=2.11300 small_256_ms=1.80871
+round=17 sol_two_pass_ms=1.76479 native_actual_ms=5.66104 morton_port_ms=6.20346 tiled_linear_ms=2.13175 tiled_morton_ms=1.84150 small_128_ms=2.08492 small_256_ms=1.84392
+round=18 sol_two_pass_ms=1.76029 native_actual_ms=6.31400 morton_port_ms=6.50867 tiled_linear_ms=2.11004 tiled_morton_ms=1.92562 small_128_ms=2.09479 small_256_ms=1.84629
+round=19 sol_two_pass_ms=1.73154 native_actual_ms=6.55817 morton_port_ms=5.80900 tiled_linear_ms=2.13088 tiled_morton_ms=1.88850 small_128_ms=2.08200 small_256_ms=1.87254
+RESULT sol_two_pass median_ms=1.76100 paired_speedup=1.00000 byte_equal=1 relative_l2=0 max_abs=0
+RESULT native_actual median_ms=6.42679 paired_speedup=0.27277 byte_equal=1 relative_l2=0 max_abs=0
+RESULT morton_port median_ms=6.07535 paired_speedup=0.28584 byte_equal=1 relative_l2=0 max_abs=0
+RESULT tiled_linear median_ms=1.98746 paired_speedup=0.88144 byte_equal=1 relative_l2=0 max_abs=0
+RESULT tiled_morton median_ms=1.89138 paired_speedup=0.92363 byte_equal=1 relative_l2=0 max_abs=0
+RESULT small_128 median_ms=2.08781 paired_speedup=0.84197 byte_equal=0 relative_l2=1.42109077e-07 max_abs=5.58793545e-09
+RESULT small_256 median_ms=1.84237 paired_speedup=0.95629 byte_equal=0 relative_l2=1.21792672e-07 max_abs=3.7252903e-09
+
+device=Apple M5 Max N=1 T=103982 H=56 rounds=20 warmups=5
+PIPELINE sol_two_pass static_tg_bytes=128 max_threads=1024
+PIPELINE native_actual static_tg_bytes=64 max_threads=1024
+PIPELINE morton_port static_tg_bytes=128 max_threads=1024
+PIPELINE tiled_linear static_tg_bytes=16896 max_threads=1024
+PIPELINE tiled_morton static_tg_bytes=16896 max_threads=1024
+PIPELINE small_128 static_tg_bytes=512 max_threads=1024
+PIPELINE small_256 static_tg_bytes=1024 max_threads=1024
+warmup=0 sol_two_pass_ms=2.79625 native_actual_ms=12.06425 morton_port_ms=9.78950 tiled_linear_ms=3.17013 tiled_morton_ms=3.18625 small_128_ms=3.43937 small_256_ms=3.01337
+warmup=1 sol_two_pass_ms=2.87113 native_actual_ms=14.54363 morton_port_ms=11.23300 tiled_linear_ms=3.14475 tiled_morton_ms=3.09563 small_128_ms=3.67892 small_256_ms=2.92279
+warmup=2 sol_two_pass_ms=3.13338 native_actual_ms=10.07700 morton_port_ms=11.62013 tiled_linear_ms=3.17787 tiled_morton_ms=3.19808 small_128_ms=3.39325 small_256_ms=2.90775
+warmup=3 sol_two_pass_ms=2.80063 native_actual_ms=12.92975 morton_port_ms=10.98567 tiled_linear_ms=3.19025 tiled_morton_ms=3.92925 small_128_ms=3.39692 small_256_ms=2.91812
+warmup=4 sol_two_pass_ms=2.92287 native_actual_ms=12.41725 morton_port_ms=11.24467 tiled_linear_ms=3.25075 tiled_morton_ms=3.14767 small_128_ms=3.39221 small_256_ms=2.90075
+round=0 sol_two_pass_ms=2.74550 native_actual_ms=11.00317 morton_port_ms=9.86138 tiled_linear_ms=3.11800 tiled_morton_ms=3.17362 small_128_ms=3.41338 small_256_ms=3.52421
+round=1 sol_two_pass_ms=2.80983 native_actual_ms=12.18721 morton_port_ms=10.38787 tiled_linear_ms=3.24287 tiled_morton_ms=3.59792 small_128_ms=3.41438 small_256_ms=3.61979
+round=2 sol_two_pass_ms=2.79054 native_actual_ms=12.07863 morton_port_ms=10.85775 tiled_linear_ms=3.82437 tiled_morton_ms=3.14312 small_128_ms=3.39962 small_256_ms=2.98675
+round=3 sol_two_pass_ms=3.16454 native_actual_ms=12.34375 morton_port_ms=10.53237 tiled_linear_ms=3.22788 tiled_morton_ms=3.18554 small_128_ms=3.40312 small_256_ms=2.87625
+round=4 sol_two_pass_ms=2.74225 native_actual_ms=13.02825 morton_port_ms=11.44187 tiled_linear_ms=3.53925 tiled_morton_ms=3.10858 small_128_ms=3.40037 small_256_ms=2.96837
+round=5 sol_two_pass_ms=2.89388 native_actual_ms=10.73025 morton_port_ms=10.55338 tiled_linear_ms=3.18846 tiled_morton_ms=3.19625 small_128_ms=4.03950 small_256_ms=3.05387
+round=6 sol_two_pass_ms=2.96112 native_actual_ms=14.07408 morton_port_ms=12.51850 tiled_linear_ms=3.13908 tiled_morton_ms=3.67950 small_128_ms=3.57758 small_256_ms=3.17204
+round=7 sol_two_pass_ms=3.08392 native_actual_ms=10.39558 morton_port_ms=13.86175 tiled_linear_ms=3.22550 tiled_morton_ms=3.50392 small_128_ms=3.39783 small_256_ms=3.01638
+round=8 sol_two_pass_ms=2.74838 native_actual_ms=12.49458 morton_port_ms=10.05962 tiled_linear_ms=3.33863 tiled_morton_ms=3.15292 small_128_ms=3.35050 small_256_ms=2.97275
+round=9 sol_two_pass_ms=2.89913 native_actual_ms=11.44350 morton_port_ms=11.39863 tiled_linear_ms=3.19283 tiled_morton_ms=3.16375 small_128_ms=3.53917 small_256_ms=2.94071
+round=10 sol_two_pass_ms=2.75975 native_actual_ms=13.68112 morton_port_ms=10.87275 tiled_linear_ms=3.32575 tiled_morton_ms=3.10850 small_128_ms=3.41683 small_256_ms=3.47787
+round=11 sol_two_pass_ms=3.06800 native_actual_ms=11.76108 morton_port_ms=14.02150 tiled_linear_ms=3.26025 tiled_morton_ms=3.24233 small_128_ms=3.38588 small_256_ms=2.94079
+round=12 sol_two_pass_ms=2.77725 native_actual_ms=14.67879 morton_port_ms=11.51196 tiled_linear_ms=3.55350 tiled_morton_ms=3.17292 small_128_ms=3.45467 small_256_ms=2.92212
+round=13 sol_two_pass_ms=2.77288 native_actual_ms=11.56875 morton_port_ms=10.51367 tiled_linear_ms=3.15825 tiled_morton_ms=3.13162 small_128_ms=3.38050 small_256_ms=3.43187
+round=14 sol_two_pass_ms=2.77871 native_actual_ms=12.16713 morton_port_ms=10.83312 tiled_linear_ms=3.32092 tiled_morton_ms=3.42500 small_128_ms=3.65613 small_256_ms=2.94721
+round=15 sol_two_pass_ms=2.85683 native_actual_ms=11.58888 morton_port_ms=9.10646 tiled_linear_ms=3.57767 tiled_morton_ms=3.14271 small_128_ms=3.43492 small_256_ms=2.93588
+round=16 sol_two_pass_ms=2.81592 native_actual_ms=11.30329 morton_port_ms=11.54171 tiled_linear_ms=3.22925 tiled_morton_ms=3.15438 small_128_ms=3.45742 small_256_ms=2.92375
+round=17 sol_two_pass_ms=2.76717 native_actual_ms=15.33550 morton_port_ms=10.35888 tiled_linear_ms=3.27638 tiled_morton_ms=3.13613 small_128_ms=3.55479 small_256_ms=2.99246
+round=18 sol_two_pass_ms=2.77017 native_actual_ms=14.75925 morton_port_ms=9.62046 tiled_linear_ms=3.74937 tiled_morton_ms=3.08475 small_128_ms=3.46212 small_256_ms=2.93483
+round=19 sol_two_pass_ms=2.76750 native_actual_ms=9.99125 morton_port_ms=11.43100 tiled_linear_ms=3.52154 tiled_morton_ms=3.13433 small_128_ms=3.48879 small_256_ms=2.95900
+RESULT sol_two_pass median_ms=2.78463 paired_speedup=1.00000 byte_equal=1 relative_l2=0 max_abs=0
+RESULT native_actual median_ms=12.12288 paired_speedup=0.23536 byte_equal=1 relative_l2=0 max_abs=0
+RESULT morton_port median_ms=10.84544 paired_speedup=0.25676 byte_equal=1 relative_l2=0 max_abs=0
+RESULT tiled_linear median_ms=3.26831 paired_speedup=0.85552 byte_equal=1 relative_l2=0 max_abs=0
+RESULT tiled_morton median_ms=3.15906 paired_speedup=0.88420 byte_equal=1 relative_l2=0 max_abs=0
+RESULT small_128 median_ms=3.42587 paired_speedup=0.81681 byte_equal=0 relative_l2=1.77057975e-07 max_abs=4.19095159e-09
+RESULT small_256 median_ms=2.97056 paired_speedup=0.93905 byte_equal=0 relative_l2=1.41050177e-07 max_abs=3.25962901e-09
