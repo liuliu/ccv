@@ -37,6 +37,8 @@ static int _ccv_nnc_index_select_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hin
 {
 	assert(input_size == 2);
 	assert(output_size == 1);
+	if (outputs[0]->info.dim[0] == 0)
+		return CCV_NNC_EXEC_SUCCESS;
 	const ccv_nnc_tensor_view_t* const a = (ccv_nnc_tensor_view_t*)inputs[0];
 	const int a_nd = ccv_nnc_tensor_nd(a->info.dim);
 	assert(a_nd <= 2);

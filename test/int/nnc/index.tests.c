@@ -12,6 +12,58 @@ TEST_SETUP()
 	ccv_nnc_init();
 }
 
+TEST_CASE("index select empty indices leaves storage untouched")
+{
+	const uint32_t backends[] = {CCV_NNC_BACKEND_CPU_REF, CCV_NNC_BACKEND_MPS, CCV_NNC_BACKEND_GPU_REF};
+	const int formats[] = {CCV_TENSOR_FORMAT_NHWC, CCV_TENSOR_FORMAT_NCHW};
+	const int datatypes[] = {CCV_32F, CCV_16F, CCV_32S, CCV_16F, CCV_16F};
+	int backend, format, kind;
+	for (backend = 0; backend < sizeof(backends) / sizeof(backends[0]); backend++)
+		for (format = 0; format < sizeof(formats) / sizeof(formats[0]); format++)
+			for (kind = 0; kind < sizeof(datatypes) / sizeof(datatypes[0]); kind++)
+			{
+				ccv_nnc_cmd_t cmd = CMD_INDEX_SELECT_FORWARD();
+				cmd.backend = backends[backend];
+				if (!ccv_nnc_cmd_ok(cmd.cmd, cmd.backend) || (kind >= 3 && cmd.backend != CCV_NNC_BACKEND_MPS))
+					continue;
+				ccv_nnc_tensor_param_t input_params[] = {
+					backend ? GPU_TENSOR_NHWC(000, 32F, 23, 130) : CPU_TENSOR_NHWC(32F, 23, 130),
+					backend ? GPU_TENSOR_NHWC(000, 32S, 0) : CPU_TENSOR_NHWC(32S, 0),
+				};
+				input_params[0].datatype = datatypes[kind];
+				input_params[0].format = input_params[1].format = formats[format];
+				if (kind == 3)
+					input_params[0] = ccv_nnc_tensor_8i_rowwise(input_params[0]);
+				else if (kind == 4)
+					input_params[0] = ccv_nnc_tensor_8i_rowwise_x(input_params[0], CCV_NNC_QX_8I_ROWWISE_IQ2_XXS);
+				ccv_nnc_tensor_param_t output_params;
+				ccv_nnc_hint_tensor_auto(cmd, input_params, 2, ccv_nnc_no_hint, &output_params, 1);
+				REQUIRE_EQ(ccv_nnc_tensor_count(output_params), 0, "empty indices infer an empty output");
+				REQUIRE_EQ(output_params.datatype, datatypes[kind], "empty gather preserves the decoded datatype");
+				REQUIRE_EQ(output_params.format, formats[format], "empty gather preserves the format");
+				// No input storage: an empty gather must not read or bind the embedding bank or indices.
+				ccv_nnc_tensor_t a = {.info = input_params[0]};
+				ccv_nnc_tensor_t indices = {.info = input_params[1]};
+				ccv_nnc_tensor_t output = {.info = output_params};
+				REQUIRE_EQ(ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(&a, &indices), TENSOR_LIST(&output), 0), CCV_NNC_EXEC_SUCCESS, "empty gather requires no output storage");
+				ccv_nnc_tensor_t* const expected = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 16), 0);
+				ccv_nnc_tensor_t* const actual = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 16), 0);
+				ccv_nnc_tensor_t* const storage = ccv_nnc_tensor_new(0, backend ? GPU_TENSOR_NHWC(000, 32F, 16) : CPU_TENSOR_NHWC(32F, 16), 0);
+				int i;
+				for (i = 0; i < 16; i++)
+					expected->data.f32[i] = i + 0.25f;
+				ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(expected), TENSOR_LIST(storage), 0);
+				output = *storage;
+				output.info = output_params;
+				REQUIRE_EQ(ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(&a, &indices), TENSOR_LIST(&output), 0), CCV_NNC_EXEC_SUCCESS, "empty gather with backing storage succeeds");
+				ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(storage), TENSOR_LIST(actual), 0);
+				REQUIRE_TENSOR_EQ(expected, actual, "empty gather must not modify backing storage");
+				ccv_nnc_tensor_free(storage);
+				ccv_nnc_tensor_free(actual);
+				ccv_nnc_tensor_free(expected);
+			}
+}
+
 TEST_CASE("index select a tensor")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_INDEX_SELECT_FORWARD, CCV_NNC_BACKEND_GPU_REF) || ccv_nnc_cmd_ok(CCV_NNC_INDEX_SELECT_FORWARD, CCV_NNC_BACKEND_MPS));
