@@ -78,7 +78,7 @@ void ccv_nnc_mfa_encode_sol_attention(ccv_nnc_mfa_context_t* context, ccv_nnc_mf
   auto scratch = context->request_scratch(l + size_t(NH) * params.T * 4);
   const size_t offsets[] = {qc, kc, vc, stats, routes};
   for (uint32_t entry : {0u, 1u, 2u}) {
-    auto value = context->kernel_cache.findKernel<SolAttentionKernel, SolAttentionPreparationDescriptor, SolAttentionKernelKey>(
+    auto value = context->kernel_cache.findKernel<SolAttentionKernel, SolAttentionPreparationDescriptor, SolAttentionKernelDescriptor>(
       {entry, params.block_size, params.N, params.T, params.H, params.query_block_size, use_route_bits}, context->device.get(), DeviceProperties());
     auto encoder = command_batch->startCommand();
     encoder->setComputePipelineState(value->pipeline.get());
@@ -94,7 +94,7 @@ void ccv_nnc_mfa_encode_sol_attention(ccv_nnc_mfa_context_t* context, ccv_nnc_mf
     encoder->dispatchThreadgroups(entry == 1 ? MTL::Size(NH, 1, 1) : MTL::Size(entry == 0 ? JP : QJ, NH, 1), MTL::Size(128, 1, 1));
     command_batch->finishCommand(encoder);
   }
-  auto value = context->kernel_cache.findKernel<SolAttentionKernel, SolAttentionDescriptor, SolAttentionKernelKey>(
+  auto value = context->kernel_cache.findKernel<SolAttentionKernel, SolAttentionDescriptor, SolAttentionKernelDescriptor>(
     {params.N, params.T, params.H, params.block_size, params.query_block_size, params.scale, use_route_bits}, context->device.get(), DeviceProperties());
   for (int phase = 0; phase < 2; ++phase) {
     auto encoder = command_batch->startCommand();

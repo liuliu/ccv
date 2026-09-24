@@ -32,11 +32,13 @@ struct SolAttentionSource {
   simd::ushort3 blockDimensions;
   static constexpr uint16_t headDimension = 128;
   bool preferAsyncCache, preferAsyncLoad;
+  const bool cacheQueryInRegisters, stageKeyInThreadgroup;
   bool disableAsyncCopy = false;
   uint16_t threadgroupSize, threadgroupMemoryAllocation;
 
-  SolAttentionSource(uint16_t rows, uint16_t columns, bool apple9)
-      : blockDimensions{rows, columns, 32}, preferAsyncCache(apple9), preferAsyncLoad(!apple9),
+  SolAttentionSource(uint16_t rows, uint16_t columns, const SolAttentionKernelDescriptor& descriptor)
+      : blockDimensions{rows, columns, 32}, preferAsyncCache(descriptor.preferAsyncCache), preferAsyncLoad(descriptor.preferAsyncLoad),
+        cacheQueryInRegisters(descriptor.cacheQueryInRegisters), stageKeyInThreadgroup(descriptor.stageKeyInThreadgroup),
         threadgroupSize(32 * (rows / 8)),
         threadgroupMemoryAllocation(std::max(rows * 32 * 2, columns * 32 * 2)) {}
 
@@ -1141,9 +1143,17 @@ constant uint SOL_JP = (SOL_J + 63) / 64 * 64;
       text += op.name() + " = " + kernel.operandLocationWithHeadOffsetValue(op) + ";\n";
     return text;
   };
-  // A query tile stays in threadgroup memory throughout traversal. K/V always
-  // retain their input layout on the direct path; no full-size copies are needed.
+  // Q stays in registers or in a threadgroup tile for the entire traversal.
+  // Both strategies read the original token/head layout.
   auto queryTile = [&](SolAttentionSource& kernel) -> std::string {
+    if (kernel.cacheQueryInRegisters) {
+      return R"(
+  simdgroup_matrix_storage<half> Q_cached[16];
+  auto q_src = Q + ulong(min(parallelization_group_offset + sidx * 8 + morton_offset.y, R - 1)) * Q_leading_dimension + morton_offset.x;
+  #pragma clang loop unroll(full)
+  for (ushort d = 0; d < 128; d += 8) Q_cached[d / 8].load(q_src, Q_leading_dimension, ushort2(d, 0), false);
+)";
+    }
     CodeWriter q;
     q.SetValue("BR", std::to_string(blockDimensions[0]));
     q.SetValue("THREADS", std::to_string(threadgroupSize));
@@ -1159,53 +1169,78 @@ constant uint SOL_JP = (SOL_J + 63) / 64 * 64;
 )";
     return q.ToString();
   };
-  // Separate the full and partial tile loads outside the channel loops. A
-  // per-element tail branch here substantially slows unaligned sequence lengths.
+  // Shared K loading zero-pads tails and reuses the tile across SIMD groups.
+  // Direct K loading separates full/partial tiles outside the channel loop.
   auto qk = [&](SolAttentionSource& kernel) -> std::string {
     CodeWriter q;
     q.SetValue("BC", std::to_string(kernel.blockDimensions[1]));
     q.SetValue("BD", std::to_string(kernel.blockDimensions[2]));
-    // Unroll the dense C128 dot product; the mixed path keeps a smaller body.
-    q.SetValue("UNROLL_D", kernel.blockDimensions[1] == 128 ? "full" : "disable");
+    q.SetValue("ASYNC_LANE", kernel.disableAsyncCopy ? ", lane_id" : "");
+    q.SetValue("UNROLL_D", kernel.cacheQueryInRegisters || kernel.blockDimensions[1] == 128 ? "full" : "disable");
+    q.SetValue("QUERY", kernel.cacheQueryInRegisters ? "Q_cached[(d_outer + d) / 8]" : "Q_sram[d / 8]");
     q += R"(
   simdgroup_matrix_storage<half> S_sram[{{BC}} / 8];
   #pragma clang loop unroll(full)
   for (ushort x = 0; x < {{BC}} / 8; ++x) *S_sram[x].thread_elements() = half2(0);
-  const uniform<bool> full_tile = make_uniform((C % {{BC}} == 0) || c + {{BC}} <= C);
 )";
+    if (!kernel.stageKeyInThreadgroup)
+      q += "const uniform<bool> full_tile = make_uniform((C % {{BC}} == 0) || c + {{BC}} <= C);\n";
     for (bool full : {true, false}) {
-      q += full ? "if (full_tile) {\n" : "} else {\n";
+      if (kernel.stageKeyInThreadgroup && !full) break;
+      if (!kernel.stageKeyInThreadgroup)
+        q += full ? "if (full_tile) {\n" : "} else {\n";
       q += R"(
   #pragma clang loop unroll({{UNROLL_D}})
   for (ushort d_outer = 0; d_outer < 128; d_outer += {{BD}}) {
+)";
+      if (kernel.stageKeyInThreadgroup)
+        q += R"(
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+    if (sidx == 0) {
+      simdgroup_event event;
+      event.async_copy<{{BD}}, 32>((threadgroup half*)threadgroup_block, ushort2({{BD}}, {{BC}}),
+        K + ulong(c) * K_leading_dimension + d_outer, K_leading_dimension,
+        ushort2({{BD}}, min(uint({{BC}}), C - c)){{ASYNC_LANE}}, false);
+      simdgroup_event::wait(1, &event);
+    }
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+    auto k_src = (threadgroup half*)threadgroup_block + morton_offset.x * {{BD}} + morton_offset.y;
+)";
+      if (!kernel.cacheQueryInRegisters)
+        q += R"(
     simdgroup_matrix_storage<half> Q_sram[{{BD}} / 8];
     auto q_src = Q_tile + (sidx * 8 + morton_offset.y) * 128 + morton_offset.x + d_outer;
     #pragma clang loop unroll(full)
     for (ushort d = 0; d < {{BD}}; d += 8) Q_sram[d / 8].load(q_src, 128, ushort2(d, 0), false);
+)";
+      q += R"(
     #pragma clang loop unroll(full)
     for (ushort d = 0; d < {{BD}}; d += 8) {
       #pragma clang loop unroll(full)
       for (ushort x = 0; x < {{BC}}; x += 8) {
         simdgroup_matrix_storage<half> key;
 )";
-      q += full ? R"(
+      if (kernel.stageKeyInThreadgroup)
+        q += "key.load(k_src, {{BD}}, ushort2(x, d), true);\n";
+      else
+        q += full ? R"(
         auto k_src = K + (c + morton_offset.x) * K_leading_dimension + d_outer + morton_offset.y;
         key.load(k_src, K_leading_dimension, ushort2(x, d), true);
 )"
-                : R"(
+                  : R"(
         const uint row = c + x + morton_offset.x;
         const uint channel = d_outer + d + morton_offset.y;
         *key.thread_elements() = half2(row < C ? K[row * K_leading_dimension + channel] : half(0),
           row + 1 < C ? K[(row + 1) * K_leading_dimension + channel] : half(0));
 )";
       q += R"(
-        S_sram[x / 8].multiply(Q_sram[d / 8], key);
+        S_sram[x / 8].multiply({{QUERY}}, key);
       }
     }
   }
 )";
     }
-    q += "}\n";
+    if (!kernel.stageKeyInThreadgroup) q += "}\n";
     return q.ToString();
   };
   std::string denseLoop;
@@ -1351,16 +1386,18 @@ constant uint SOL_JP = (SOL_J + 63) / 64 * 64;
 
 } // namespace
 
-SolAttentionKernel::SolAttentionKernel(MTL::Device* device, uint32_t blockSize, bool useRouteBits) {
+SolAttentionKernel::SolAttentionKernel(MTL::Device* device, const SolAttentionKernelDescriptor& descriptor)
+    : descriptor(descriptor) {
+  const uint32_t blockSize = descriptor.blockSize;
+  const bool useRouteBits = descriptor.useRouteBits;
   const uint16_t rows = 16;
-  const bool apple9 = device->supportsFamily(MTL::GPUFamily(1009));
-  SolAttentionSource dense(rows, 128, apple9);
-  SolAttentionSource sparse(rows, blockSize, apple9);
+  SolAttentionSource dense(rows, 128, descriptor);
+  SolAttentionSource sparse(rows, blockSize, descriptor);
   blockDimensions = dense.blockDimensions;
   threadgroupSize = dense.threadgroupSize;
-  // Keep Q beyond the Sol loaders' temporary storage. Dense and mixed
-  // kernels reserve their own sizes so mixed occupancy is not limited by C128.
-  const uint16_t queryBytes = blockDimensions[0] * 128 * sizeof(uint16_t);
+  // Register-cached Q needs no storage beyond the temporary K/V tile.
+  // Dense and mixed reserve separate sizes to preserve mixed occupancy.
+  const uint16_t queryBytes = descriptor.cacheQueryInRegisters ? 0 : blockDimensions[0] * 128 * sizeof(uint16_t);
   threadgroupMemoryAllocation = sparse.threadgroupMemoryAllocation + queryBytes;
   denseThreadgroupMemoryAllocation = dense.threadgroupMemoryAllocation + queryBytes;
   source = createSolSource(dense, sparse, blockSize, useRouteBits);
@@ -1381,6 +1418,32 @@ SolAttentionKernel::SolAttentionKernel(MTL::Device* device, uint32_t blockSize, 
   CCV_NNC_MFA_CHECK_ERROR(error);
 }
 
+bool SolAttentionKernelDescriptor::operator==(const SolAttentionKernelDescriptor& rhs) const {
+  return blockSize == rhs.blockSize && useRouteBits == rhs.useRouteBits &&
+    cacheQueryInRegisters == rhs.cacheQueryInRegisters && stageKeyInThreadgroup == rhs.stageKeyInThreadgroup &&
+    preferAsyncCache == rhs.preferAsyncCache && preferAsyncLoad == rhs.preferAsyncLoad;
+}
+size_t std::hash<SolAttentionKernelDescriptor>::operator()(const SolAttentionKernelDescriptor& d) const noexcept {
+  size_t hash = d.blockSize;
+  for (bool option : {d.useRouteBits, d.cacheQueryInRegisters, d.stageKeyInThreadgroup, d.preferAsyncCache, d.preferAsyncLoad})
+    hash = hash * 31 + option;
+  return hash;
+}
+
+SolAttentionKernelDescriptor SolAttentionDescriptor::kernelDescriptor(MTL::Device* device) const noexcept {
+  const bool supportsApple9 = device->supportsFamily(MTL::GPUFamily(1009));
+  SolAttentionKernelDescriptor descriptor;
+  descriptor.blockSize = blockSize;
+  descriptor.useRouteBits = useRouteBits;
+  // Sharing strided K loads and retaining Q in registers recovers dense parity
+  // on M2. Apple9+ GPUs are faster with threadgroup Q and direct K loads.
+  descriptor.cacheQueryInRegisters = !supportsApple9;
+  descriptor.stageKeyInThreadgroup = !supportsApple9;
+  descriptor.preferAsyncCache = supportsApple9;
+  descriptor.preferAsyncLoad = !supportsApple9;
+  return descriptor;
+}
+
 bool SolAttentionDescriptor::operator==(const SolAttentionDescriptor& r) const {
   return N == r.N && T == r.T && H == r.H && blockSize == r.blockSize && queryBlockSize == r.queryBlockSize &&
          scale == r.scale && useRouteBits == r.useRouteBits;
@@ -1392,13 +1455,13 @@ size_t std::hash<SolAttentionDescriptor>::operator()(const SolAttentionDescripto
   h = h * 31 + d.useRouteBits;
   return h;
 }
-std::pair<SolAttentionKernelKey, PipelineValue<SolAttentionKernel>*> SolAttentionDescriptor::findKernel(
+std::pair<SolAttentionKernelDescriptor, PipelineValue<SolAttentionKernel>*> SolAttentionDescriptor::findKernel(
     MTL::Device* device, const DeviceProperties&, NS::Array*, MTL::BinaryArchive*, const std::string&,
-    std::unordered_map<SolAttentionKernelKey, std::unique_ptr<SolAttentionKernel>>* cache) const noexcept {
-  const auto key = SolAttentionKernelKey(blockSize | uint32_t(useRouteBits) << 8);
+    std::unordered_map<SolAttentionKernelDescriptor, std::unique_ptr<SolAttentionKernel>>* cache) const noexcept {
+  const auto key = kernelDescriptor(device);
   auto& kernel = (*cache)[key];
   if (!kernel)
-    kernel = std::make_unique<SolAttentionKernel>(device, blockSize, useRouteBits);
+    kernel = std::make_unique<SolAttentionKernel>(device, key);
   auto constants = NS::TransferPtr(MTL::FunctionConstantValues::alloc()->init());
   const uint32_t ratio = 1, stride = T * H * 128, leading = H * 128;
   constants->setConstantValue(&T, MTL::DataTypeUInt, NS::UInteger(0));
@@ -1441,10 +1504,10 @@ bool SolAttentionPreparationDescriptor::operator==(const SolAttentionPreparation
   return useRouteBits == rhs.useRouteBits && entry == rhs.entry && blockSize == rhs.blockSize &&
     N == rhs.N && T == rhs.T && H == rhs.H && queryBlockSize == rhs.queryBlockSize;
 }
-std::pair<SolAttentionKernelKey, PipelineValue<SolAttentionKernel>*> SolAttentionPreparationDescriptor::findKernel(MTL::Device* device, const DeviceProperties&, NS::Array*, MTL::BinaryArchive*, const std::string&, std::unordered_map<SolAttentionKernelKey, std::unique_ptr<SolAttentionKernel>>* cache) const noexcept {
-  const auto key = SolAttentionKernelKey(blockSize | uint32_t(useRouteBits) << 8);
+std::pair<SolAttentionKernelDescriptor, PipelineValue<SolAttentionKernel>*> SolAttentionPreparationDescriptor::findKernel(MTL::Device* device, const DeviceProperties&, NS::Array*, MTL::BinaryArchive*, const std::string&, std::unordered_map<SolAttentionKernelDescriptor, std::unique_ptr<SolAttentionKernel>>* cache) const noexcept {
+  const auto key = SolAttentionDescriptor{N, T, H, blockSize, queryBlockSize, 1, useRouteBits}.kernelDescriptor(device);
   auto& kernel = (*cache)[key];
-  if (!kernel) kernel = std::make_unique<SolAttentionKernel>(device, blockSize, useRouteBits);
+  if (!kernel) kernel = std::make_unique<SolAttentionKernel>(device, key);
   const char* names[] = { "sol_pool", "sol_stats", "sol_route" };
   // Shapes specialize pipelines, not the source / kernel-object cache.
   auto constants = NS::TransferPtr(MTL::FunctionConstantValues::alloc()->init());

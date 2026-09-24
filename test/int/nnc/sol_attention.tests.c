@@ -246,6 +246,7 @@ TEST_CASE("non-NA Sol attention matches the FP32 CPU oracle across shapes, spans
 	// pipeline constants and runtime dispatch independently of the library cache.
 	const struct { int n, t, h, begin, end, b, qb, radius; float scale, v_shift; } cases[] = {
 		{1, 257, 2, 0, 257, 64, 64, 1, 1, 0},
+		{1, 1025, 3, 95, 1018, 64, 64, 1, 1, 0},
 		{2, 513, 2, 71, 491, 64, 64, 1, 1, 0},
 		{1, 193, 3, 0, 0, 64, 64, 1, 1, 0},
 		{1, 513, 2, 0, 513, 64, 64, 1, -1, 0},
@@ -353,6 +354,67 @@ TEST_CASE("non-NA Sol long zero-scale traversal stays uniform across the routing
 		ccv_nnc_tensor_free(host);
 		ccv_nnc_tensor_free(staging);
 		ccv_nnc_tensor_free(mean);
+	}
+	if (!(old_flags & CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS))
+		ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS);
+}
+
+TEST_CASE("non-NA Sol all-exact matches native attention across long tail cache shapes")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SOL_ATTENTION_FORWARD, CCV_NNC_BACKEND_MPS));
+	const uint64_t old_flags = ccv_nnc_flags();
+	ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS);
+	dsfmt_t rng;
+	dsfmt_init_gen_rand(&rng, 17);
+	// Cross the bit-routing cutoff, including the real H3 length and one-row tails.
+	const int lengths[] = { 513, 10423, 32769, 133 };
+	for (int shape = 0; shape < 4; shape++)
+	{
+		const int T = lengths[shape], H = 2, count = T * H * 128;
+		ccv_nnc_tensor_t* const host = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, T, H, 128), 0);
+		ccv_nnc_tensor_t* const staging = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, 1, T, H, 128), 0);
+		ccv_nnc_tensor_t* gpu[5];
+		for (int i = 0; i < 5; i++)
+		{
+			gpu[i] = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, 1, T, H, 128), 0);
+			if (i < 3)
+			{
+				for (int j = 0; j < count; j++)
+					host->data.f32[j] = (dsfmt_genrand_open_close(&rng) * 2 - 1) * (i == 0 ? 0.3 : 3) + (i == 2 && shape == 0 ? 64 : 0);
+				ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(host), TENSOR_LIST(staging), 0);
+				ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(staging), TENSOR_LIST(gpu[i]), 0);
+			}
+		}
+		ccv_nnc_cmd_t dense = CMD_SCALED_DOT_PRODUCT_ATTENTION_FORWARD(1, 0);
+		dense.info.scaled_dot_product_attention.flags = CCV_NNC_GEMM_16F;
+		REQUIRE_EQ(ccv_nnc_cmd_exec(dense, ccv_nnc_no_hint, 0, gpu, 3, &gpu[4], 1, 0), CCV_NNC_EXEC_SUCCESS, "native FP16 reference should run");
+		ccv_nnc_tensor_t* const expected = ccv_nnc_tensor_new(0, staging->info, 0);
+		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(gpu[4]), TENSOR_LIST(expected), 0);
+		ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(expected), TENSOR_LIST(host), 0);
+		ccv_nnc_tensor_t* const actual = ccv_nnc_tensor_new(0, host->info, 0);
+		ccv_nnc_cmd_t cmd = CMD_SOL_ATTENTION_FORWARD(1, 0.5, 64, 0, T);
+		cmd.info.sol_attention.local_block_radius = (T + 63) / 64;
+		for (int trial = 0; trial < (shape == 0 ? 5 : (shape == 2 ? 10 : 1)); trial++)
+		{
+			// The final short-shape trial also exercises the empty-span all-exact control.
+			if (shape == 0 && trial == 4) { cmd.info.sol_attention.approximation_end = 0; cmd.info.sol_attention.local_block_radius = 1; }
+			REQUIRE_EQ(ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(gpu[0], gpu[1], gpu[2]), TENSOR_LIST(gpu[3]), 0), CCV_NNC_EXEC_SUCCESS, "controlled Sol should run");
+			ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(gpu[3]), TENSOR_LIST(staging), 0);
+			ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(staging), TENSOR_LIST(actual), 0);
+			double error = 0, norm = 0;
+			for (int j = 0; j < count; j++)
+			{
+				REQUIRE(isfinite(actual->data.f32[j]), "all-exact output must be finite (T=%d index=%d)", T, j);
+				error += (double)(actual->data.f32[j] - host->data.f32[j]) * (actual->data.f32[j] - host->data.f32[j]);
+				norm += (double)host->data.f32[j] * host->data.f32[j];
+			}
+			REQUIRE(sqrt(error / fmax(norm, 1e-30)) < 1e-4, "all-exact Sol must match native FP16 (T=%d error=%g)", T, sqrt(error / fmax(norm, 1e-30)));
+		}
+		ccv_nnc_tensor_free(actual);
+		ccv_nnc_tensor_free(expected);
+		ccv_nnc_tensor_free(staging);
+		ccv_nnc_tensor_free(host);
+		for (int i = 0; i < 5; i++) ccv_nnc_tensor_free(gpu[i]);
 	}
 	if (!(old_flags & CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS))
 		ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS);

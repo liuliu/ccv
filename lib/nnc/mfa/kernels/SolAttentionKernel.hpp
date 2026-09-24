@@ -9,10 +9,24 @@
 #include <unordered_map>
 #include <utility>
 
-// Separate descriptor types keep Sol libraries out of the native attention cache.
-enum class SolAttentionKernelKey : uint32_t {};
+// Source-generation properties only; shapes specialize pipeline constants.
+struct SolAttentionKernelDescriptor {
+  uint32_t blockSize;
+  bool useRouteBits;
+  // Retain Q for the entire traversal in registers instead of threadgroup memory.
+  bool cacheQueryInRegisters;
+  // Share each K tile across SIMD groups instead of loading K directly.
+  bool stageKeyInThreadgroup;
+  bool preferAsyncCache, preferAsyncLoad;
+  bool operator==(const SolAttentionKernelDescriptor& rhs) const;
+};
+
+template <> struct std::hash<SolAttentionKernelDescriptor> {
+  size_t operator()(const SolAttentionKernelDescriptor& d) const noexcept;
+};
 
 struct SolAttentionKernel {
+  const SolAttentionKernelDescriptor descriptor;
   NS::SharedPtr<MTL::Library> library;
   std::string source;
   simd::ushort3 blockDimensions;
@@ -20,7 +34,7 @@ struct SolAttentionKernel {
   uint16_t threadgroupMemoryAllocation;
   uint16_t denseThreadgroupMemoryAllocation;
 
-  SolAttentionKernel(MTL::Device* device, uint32_t blockSize, bool useRouteBits = false);
+  SolAttentionKernel(MTL::Device* device, const SolAttentionKernelDescriptor& descriptor);
 };
 
 struct SolAttentionDescriptor {
@@ -28,9 +42,10 @@ struct SolAttentionDescriptor {
   float scale;
   bool useRouteBits;
   bool operator==(const SolAttentionDescriptor& rhs) const;
-  std::pair<SolAttentionKernelKey, PipelineValue<SolAttentionKernel>*>
+  SolAttentionKernelDescriptor kernelDescriptor(MTL::Device* device) const noexcept;
+  std::pair<SolAttentionKernelDescriptor, PipelineValue<SolAttentionKernel>*>
   findKernel(MTL::Device*, const DeviceProperties&, NS::Array*, MTL::BinaryArchive*, const std::string&,
-             std::unordered_map<SolAttentionKernelKey, std::unique_ptr<SolAttentionKernel>>*) const noexcept;
+             std::unordered_map<SolAttentionKernelDescriptor, std::unique_ptr<SolAttentionKernel>>*) const noexcept;
 };
 
 template <> struct std::hash<SolAttentionDescriptor> {
@@ -41,9 +56,9 @@ struct SolAttentionPreparationDescriptor {
   uint32_t entry, blockSize, N, T, H, queryBlockSize;
   bool useRouteBits;
   bool operator==(const SolAttentionPreparationDescriptor& rhs) const;
-  std::pair<SolAttentionKernelKey, PipelineValue<SolAttentionKernel>*>
+  std::pair<SolAttentionKernelDescriptor, PipelineValue<SolAttentionKernel>*>
   findKernel(MTL::Device*, const DeviceProperties&, NS::Array*, MTL::BinaryArchive*, const std::string&,
-             std::unordered_map<SolAttentionKernelKey, std::unique_ptr<SolAttentionKernel>>*) const noexcept;
+             std::unordered_map<SolAttentionKernelDescriptor, std::unique_ptr<SolAttentionKernel>>*) const noexcept;
 };
 
 template <> struct std::hash<SolAttentionPreparationDescriptor> {
