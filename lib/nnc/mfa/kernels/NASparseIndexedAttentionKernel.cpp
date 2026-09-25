@@ -601,10 +601,10 @@ kernel void sparse_indexed_attention(
   auto correction = qk_op.get_row_reduction_destination_cooperative_tensor<decltype(mQ), decltype(mK), float>();
   auto mV = KV.slice<{{DIM_BLOCK}}, {{THREADGROUP_ROW_BLOCK}}>(0, 0);
   auto cP = pv_op.get_left_input_cooperative_tensor<real, real, float>();
-  auto cO0 = pv_op.get_destination_cooperative_tensor<decltype(cP), decltype(mV), float>();
-  auto cO1 = pv_op.get_destination_cooperative_tensor<decltype(cP), decltype(mV), float>();
-  auto cO2 = pv_op.get_destination_cooperative_tensor<decltype(cP), decltype(mV), float>();
-  auto cO3 = pv_op.get_destination_cooperative_tensor<decltype(cP), decltype(mV), float>();
+  auto cO0 = pv_op.get_destination_cooperative_tensor<metal::remove_addrspace_t<decltype(cP)>, decltype(mV), float>();
+  auto cO1 = pv_op.get_destination_cooperative_tensor<metal::remove_addrspace_t<decltype(cP)>, decltype(mV), float>();
+  auto cO2 = pv_op.get_destination_cooperative_tensor<metal::remove_addrspace_t<decltype(cP)>, decltype(mV), float>();
+  auto cO3 = pv_op.get_destination_cooperative_tensor<metal::remove_addrspace_t<decltype(cP)>, decltype(mV), float>();
   #pragma clang loop unroll(full)
   for (ushort i = 0; i < cM.get_capacity(); ++i) {
     if (cM.is_valid_element(i)) {
