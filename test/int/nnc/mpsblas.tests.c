@@ -6182,6 +6182,30 @@ TEST_CASE("MFA elementwise multiply matches CPU across dynamic lengths and dispa
 		ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA);
 }
 
+TEST_CASE("MPS scalar multiply accepts zero-sized tensors without storage")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SCALAR_MUL_FORWARD, CCV_NNC_BACKEND_MPS));
+	const int datatypes[] = { CCV_32F, CCV_16F, CCV_16BF, CCV_32S };
+	const int formats[] = { CCV_TENSOR_FORMAT_NHWC, CCV_TENSOR_FORMAT_NCHW, CCV_TENSOR_FORMAT_CHWN };
+	const float scales[] = { 1, 0.5, 1.f / 0.7f };
+	int d, f, s;
+	for (d = 0; d < 4; d++)
+		for (f = 0; f < 3; f++)
+			for (s = 0; s < 3; s++)
+			{
+				ccv_nnc_cmd_t cmd = CMD_SCALAR_MUL_FORWARD(scales[s]);
+				cmd.backend = CCV_NNC_BACKEND_MPS;
+				ccv_nnc_tensor_param_t params = GPU_TENSOR_NHWC(000, 32F, 0);
+				params.datatype = datatypes[d];
+				params.format = formats[f];
+				// Empty activations have no Metal buffer, including when used in-place.
+				ccv_nnc_tensor_t input = { .info = params };
+				ccv_nnc_tensor_t output = { .info = params };
+				REQUIRE_EQ(CCV_NNC_EXEC_SUCCESS, ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(&input), TENSOR_LIST(&output), 0), "empty scalar multiply must not access storage");
+				REQUIRE_EQ(CCV_NNC_EXEC_SUCCESS, ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(&input), TENSOR_LIST(&input), 0), "empty in-place scalar multiply must not access storage");
+			}
+}
+
 TEST_CASE("MFA scalar multiply matches MPSGraph across data types and dispatch variants")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SCALAR_MUL_FORWARD, CCV_NNC_BACKEND_MPS));
