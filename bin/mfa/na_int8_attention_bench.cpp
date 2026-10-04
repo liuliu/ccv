@@ -78,6 +78,8 @@ struct Stats {
 };
 
 struct ValidationStats {
+  double squared_error_o = 0;
+  double squared_reference_o = 0;
   bool passed = false;
   bool full_reference = false;
   size_t checked_batches = 0;
@@ -1420,8 +1422,8 @@ void upload_buffer(
     MTL::Buffer* destination,
     size_t size)
 {
-  auto command_buffer = NS::TransferPtr(command_queue->commandBuffer());
-  auto blit = NS::TransferPtr(command_buffer->blitCommandEncoder());
+  auto command_buffer = NS::RetainPtr(command_queue->commandBuffer());
+  auto blit = NS::RetainPtr(command_buffer->blitCommandEncoder());
   blit->copyFromBuffer(source, 0, destination, 0, size);
   blit->endEncoding();
   command_buffer->commit();
@@ -1434,8 +1436,8 @@ void download_buffer(
     MTL::Buffer* destination,
     size_t size)
 {
-  auto command_buffer = NS::TransferPtr(command_queue->commandBuffer());
-  auto blit = NS::TransferPtr(command_buffer->blitCommandEncoder());
+  auto command_buffer = NS::RetainPtr(command_queue->commandBuffer());
+  auto blit = NS::RetainPtr(command_buffer->blitCommandEncoder());
   blit->copyFromBuffer(source, 0, destination, 0, size);
   blit->endEncoding();
   command_buffer->commit();
@@ -1497,9 +1499,9 @@ double run_quantize_once(
   const uint32_t q_tiles = (attention.R + block_dimensions[0] - 1) / block_dimensions[0];
   const uint32_t k_tiles = (attention.C + block_dimensions[1] - 1) / block_dimensions[1];
 
-  auto command_buffer = NS::TransferPtr(command_queue->commandBuffer());
+  auto command_buffer = NS::RetainPtr(command_queue->commandBuffer());
   {
-    auto encoder = NS::TransferPtr(command_buffer->computeCommandEncoder());
+    auto encoder = NS::RetainPtr(command_buffer->computeCommandEncoder());
     encoder->setComputePipelineState(pipelines.q_pipeline.get());
     encoder->setBuffer(q_buffer, 0, 0);
     encoder->setBuffer(q_int8_buffer, 0, 1);
@@ -1510,7 +1512,7 @@ double run_quantize_once(
     encoder->endEncoding();
   }
   {
-    auto encoder = NS::TransferPtr(command_buffer->computeCommandEncoder());
+    auto encoder = NS::RetainPtr(command_buffer->computeCommandEncoder());
     encoder->setComputePipelineState(pipelines.k_pipeline.get());
     encoder->setBuffer(k_buffer, 0, 0);
     encoder->setBuffer(k_int8_buffer, 0, 1);
@@ -1540,8 +1542,8 @@ double run_quantize_stage_once(
     uint32_t heads,
     uint32_t batch)
 {
-  auto command_buffer = NS::TransferPtr(command_queue->commandBuffer());
-  auto encoder = NS::TransferPtr(command_buffer->computeCommandEncoder());
+  auto command_buffer = NS::RetainPtr(command_queue->commandBuffer());
+  auto encoder = NS::RetainPtr(command_buffer->computeCommandEncoder());
   encoder->setComputePipelineState(pipeline);
   encoder->setBuffer(source_buffer, 0, 0);
   encoder->setBuffer(int8_buffer, 0, 1);
@@ -1567,7 +1569,7 @@ void encode_v_mean(
   if (!pipelines.center_v)
     return;
   const uint32_t mean_tiles = (attention.D % 4) == 0 ? (attention.D / 4) : attention.D;
-  auto encoder = NS::TransferPtr(command_buffer->computeCommandEncoder());
+  auto encoder = NS::RetainPtr(command_buffer->computeCommandEncoder());
   if (pipelines.v_mean_morton_pipeline && (attention.D % 4) == 0) {
     uint32_t vec_bits = 0;
     uint32_t x = mean_tiles <= 1 ? 0 : mean_tiles - 1;
@@ -1611,7 +1613,7 @@ void encode_v_quantize(
     MTL::Buffer* v_mean_buffer)
 {
   const uint32_t k_tiles = (attention.C + block_dimensions[1] - 1) / block_dimensions[1];
-  auto encoder = NS::TransferPtr(command_buffer->computeCommandEncoder());
+  auto encoder = NS::RetainPtr(command_buffer->computeCommandEncoder());
   encoder->setComputePipelineState(pipelines.v_pipeline.get());
   encoder->setBuffer(v_buffer, 0, 0);
   encoder->setBuffer(v_int8_buffer, 0, 1);
@@ -1635,7 +1637,7 @@ double run_quantize_v_once(
     MTL::Buffer* v_mean_buffer,
     MTL::Buffer* v_mean_sum_buffer)
 {
-  auto command_buffer = NS::TransferPtr(command_queue->commandBuffer());
+  auto command_buffer = NS::RetainPtr(command_queue->commandBuffer());
   encode_v_mean(command_buffer.get(), attention, block_dimensions, pipelines, v_buffer, v_mean_buffer, v_mean_sum_buffer);
   encode_v_quantize(command_buffer.get(), attention, block_dimensions, pipelines, v_buffer, v_int8_buffer, v_scale_buffer, v_mean_buffer);
   command_buffer->commit();
@@ -1652,7 +1654,7 @@ double run_v_mean_once(
     MTL::Buffer* v_mean_buffer,
     MTL::Buffer* v_mean_sum_buffer)
 {
-  auto command_buffer = NS::TransferPtr(command_queue->commandBuffer());
+  auto command_buffer = NS::RetainPtr(command_queue->commandBuffer());
   encode_v_mean(command_buffer.get(), attention, block_dimensions, pipelines, v_buffer, v_mean_buffer, v_mean_sum_buffer);
   command_buffer->commit();
   command_buffer->waitUntilCompleted();
@@ -1666,8 +1668,8 @@ double run_v_mean_1024_once(
     MTL::Buffer* v_buffer,
     MTL::Buffer* v_mean_buffer)
 {
-  auto command_buffer = NS::TransferPtr(command_queue->commandBuffer());
-  auto encoder = NS::TransferPtr(command_buffer->computeCommandEncoder());
+  auto command_buffer = NS::RetainPtr(command_queue->commandBuffer());
+  auto encoder = NS::RetainPtr(command_buffer->computeCommandEncoder());
   encoder->setComputePipelineState(pipelines.v_mean_1024_pipeline.get());
   encoder->setBuffer(v_buffer, 0, 0);
   encoder->setBuffer(v_mean_buffer, 0, 1);
@@ -1701,8 +1703,8 @@ double run_v_mean_morton_once(
     ++head_bits;
   }
   const uint32_t morton_codes = 1u << (vec_bits + head_bits);
-  auto command_buffer = NS::TransferPtr(command_queue->commandBuffer());
-  auto encoder = NS::TransferPtr(command_buffer->computeCommandEncoder());
+  auto command_buffer = NS::RetainPtr(command_queue->commandBuffer());
+  auto encoder = NS::RetainPtr(command_buffer->computeCommandEncoder());
   encoder->setComputePipelineState(pipelines.v_mean_morton_pipeline.get());
   encoder->setBuffer(v_buffer, 0, 0);
   encoder->setBuffer(v_mean_buffer, 0, 1);
@@ -1728,9 +1730,9 @@ double run_v_mean_atomic_once(
   const uint32_t flat_total = attention.batch * attention.Hk * attention.D;
   const uint32_t flat_groups = (flat_total + flat_threads - 1) / flat_threads;
   const uint32_t k_tiles = (attention.C + block_dimensions[1] - 1) / block_dimensions[1];
-  auto command_buffer = NS::TransferPtr(command_queue->commandBuffer());
+  auto command_buffer = NS::RetainPtr(command_queue->commandBuffer());
   {
-    auto encoder = NS::TransferPtr(command_buffer->computeCommandEncoder());
+    auto encoder = NS::RetainPtr(command_buffer->computeCommandEncoder());
     encoder->setComputePipelineState(pipelines.v_mean_clear_pipeline.get());
     encoder->setBuffer(v_mean_sum_buffer, 0, 0);
     encoder->dispatchThreadgroups(
@@ -1739,7 +1741,7 @@ double run_v_mean_atomic_once(
     encoder->endEncoding();
   }
   {
-    auto encoder = NS::TransferPtr(command_buffer->computeCommandEncoder());
+    auto encoder = NS::RetainPtr(command_buffer->computeCommandEncoder());
     encoder->setComputePipelineState(pipelines.v_mean_atomic_pipeline.get());
     encoder->setBuffer(v_buffer, 0, 0);
     encoder->setBuffer(v_mean_sum_buffer, 0, 1);
@@ -1762,8 +1764,8 @@ double run_v_tile_absmax_once(
     MTL::Buffer* v_scale_buffer)
 {
   const uint32_t k_tiles = (attention.C + block_dimensions[1] - 1) / block_dimensions[1];
-  auto command_buffer = NS::TransferPtr(command_queue->commandBuffer());
-  auto encoder = NS::TransferPtr(command_buffer->computeCommandEncoder());
+  auto command_buffer = NS::RetainPtr(command_queue->commandBuffer());
+  auto encoder = NS::RetainPtr(command_buffer->computeCommandEncoder());
   encoder->setComputePipelineState(pipelines.v_tile_absmax_pipeline.get());
   encoder->setBuffer(v_buffer, 0, 0);
   encoder->setBuffer(v_scale_buffer, 0, 1);
@@ -1785,8 +1787,8 @@ double run_v_tile_mean_once(
     MTL::Buffer* v_tile_mean_buffer)
 {
   const uint32_t k_tiles = (attention.C + block_dimensions[1] - 1) / block_dimensions[1];
-  auto command_buffer = NS::TransferPtr(command_queue->commandBuffer());
-  auto encoder = NS::TransferPtr(command_buffer->computeCommandEncoder());
+  auto command_buffer = NS::RetainPtr(command_queue->commandBuffer());
+  auto encoder = NS::RetainPtr(command_buffer->computeCommandEncoder());
   encoder->setComputePipelineState(pipelines.v_tile_mean_pipeline.get());
   encoder->setBuffer(v_buffer, 0, 0);
   encoder->setBuffer(v_tile_mean_buffer, 0, 1);
@@ -1824,9 +1826,9 @@ double run_quantize_and_int8_once(
   const uint32_t q_tiles = (attention.R + block_dimensions[0] - 1) / block_dimensions[0];
   const uint32_t k_tiles = (attention.C + block_dimensions[1] - 1) / block_dimensions[1];
 
-  auto command_buffer = NS::TransferPtr(command_queue->commandBuffer());
+  auto command_buffer = NS::RetainPtr(command_queue->commandBuffer());
   {
-    auto encoder = NS::TransferPtr(command_buffer->computeCommandEncoder());
+    auto encoder = NS::RetainPtr(command_buffer->computeCommandEncoder());
     encoder->setComputePipelineState(quantize_pipelines.q_pipeline.get());
     encoder->setBuffer(q_buffer, 0, 0);
     encoder->setBuffer(q_int8_buffer, 0, 1);
@@ -1837,7 +1839,7 @@ double run_quantize_and_int8_once(
     encoder->endEncoding();
   }
   {
-    auto encoder = NS::TransferPtr(command_buffer->computeCommandEncoder());
+    auto encoder = NS::RetainPtr(command_buffer->computeCommandEncoder());
     encoder->setComputePipelineState(quantize_pipelines.k_pipeline.get());
     encoder->setBuffer(k_buffer, 0, 0);
     encoder->setBuffer(k_int8_buffer, 0, 1);
@@ -1852,7 +1854,7 @@ double run_quantize_and_int8_once(
     encode_v_quantize(command_buffer.get(), attention, block_dimensions, quantize_pipelines, v_buffer, v_int8_buffer, v_scale_buffer, v_mean_buffer);
   }
   if (bundle.masked) {
-    auto encoder = NS::TransferPtr(command_buffer->computeCommandEncoder());
+    auto encoder = NS::RetainPtr(command_buffer->computeCommandEncoder());
     encoder->setComputePipelineState(bundle.block_mask_pipeline.get());
     encoder->setThreadgroupMemoryLength(NAInt8AttentionKernel::blockMaskThreads * sizeof(uint32_t) * 2, 0);
     encoder->setBuffer(mask_buffer, 0, 15);
@@ -1863,7 +1865,7 @@ double run_quantize_and_int8_once(
     encoder->endEncoding();
   }
   {
-    auto encoder = NS::TransferPtr(command_buffer->computeCommandEncoder());
+    auto encoder = NS::RetainPtr(command_buffer->computeCommandEncoder());
     encoder->setComputePipelineState(bundle.pipeline.get());
     const uint32_t threadgroup_memory_length = bundle.kernel->threadgroupMemoryAllocation();
     encoder->setThreadgroupMemoryLength(threadgroup_memory_length, 0);
@@ -1917,7 +1919,13 @@ BaselinePipeline create_baseline_pipeline(
     bundle.descriptor.batchStrides[AttentionOperand::O] = attention.R * attention.D * attention.Hq;
   }
   bundle.memory_precisions = create_memory_precisions(variant.input_precision);
-  const simd::ushort3 block_dimensions = create_baseline_block_dimensions(attention, variant.is_causal);
+  simd::ushort3 block_dimensions = create_baseline_block_dimensions(attention, variant.is_causal);
+  // Benchmark-only override to isolate traversal cost for realistic key tails.
+  if (const char* block_c = std::getenv("CCV_NA_BASELINE_BLOCK_C")) {
+    const int value = std::atoi(block_c);
+    CCV_NNC_MFA_PRECONDITION(value == 32 || value == 48 || value == 64);
+    block_dimensions[1] = value;
+  }
   bundle.block_dimensions = block_dimensions;
   const uint16_t execution_simd_groups =
       create_baseline_execution_simd_groups(variant.is_causal, variant.baseline_execution_simd_groups_override);
@@ -1933,10 +1941,22 @@ BaselinePipeline create_baseline_pipeline(
       bundle.memory_precisions,
       AttentionKernelType::forward,
       bundle.descriptor.scale,
-      false,
+      std::getenv("CCV_NA_BASELINE_BYPASS") != nullptr,
       variant.is_causal,
       variant.zero_mask);
   bundle.kernel = std::make_unique<NAAttentionKernel>(kernel_descriptor, device);
+  // Isolate cache locality without changing tiles, arithmetic, or dispatch size.
+  if (std::getenv("CCV_NA_BASELINE_HEAD_MAJOR")) {
+    const std::string from = "const uint2 morton_tile = morton_decode_rectangular_2d(tgid.x, row_group_bits, head_bits);";
+    const size_t offset = bundle.kernel->source.find(from);
+    CCV_NNC_MFA_PRECONDITION(offset != std::string::npos);
+    bundle.kernel->source.replace(offset, from.size(),
+        "const uint2 morton_tile = uint2(tgid.x % row_group_count, tgid.x / row_group_count);");
+    NS::Error* error = nil;
+    bundle.kernel->library = NS::TransferPtr(device->newLibrary(
+        NS::String::string(bundle.kernel->source.c_str(), NS::UTF8StringEncoding), nil, &error));
+    CCV_NNC_MFA_CHECK_ERROR(error);
+  }
 
   const uint32_t q_tiles = (attention.R + block_dimensions[0] - 1) / block_dimensions[0];
   const uint32_t k_tiles = (attention.C + block_dimensions[1] - 1) / block_dimensions[1];
@@ -2007,8 +2027,8 @@ Int8Pipeline create_int8_pipeline(
       attention.D,
       attention.Hq,
       attention.Hk,
-      16,
-      64,
+      bundle.block_dimensions[0],
+      bundle.block_dimensions[1],
       bundle.execution_simd_groups,
       v_mean_threads,
       (attention.C % bundle.block_dimensions[1]) != 0,
@@ -2178,9 +2198,9 @@ double run_baseline_once(
     MTL::Buffer* mask_buffer = nullptr,
     MTL::Buffer* block_mask_buffer = nullptr)
 {
-  auto command_buffer = NS::TransferPtr(command_queue->commandBuffer());
+  auto command_buffer = NS::RetainPtr(command_queue->commandBuffer());
   if (bundle.masked) {
-    auto encoder = NS::TransferPtr(command_buffer->computeCommandEncoder());
+    auto encoder = NS::RetainPtr(command_buffer->computeCommandEncoder());
     encoder->setComputePipelineState(bundle.block_mask_pipeline.get());
     encoder->setThreadgroupMemoryLength(NAAttentionKernel::blockMaskThreads * sizeof(uint32_t) * 2, 0);
     encoder->setBuffer(mask_buffer, 0, 15);
@@ -2192,7 +2212,7 @@ double run_baseline_once(
         MTL::Size(NAAttentionKernel::blockMaskThreads, 1, 1));
     encoder->endEncoding();
   }
-  auto encoder = NS::TransferPtr(command_buffer->computeCommandEncoder());
+  auto encoder = NS::RetainPtr(command_buffer->computeCommandEncoder());
   encoder->setComputePipelineState(bundle.pipeline.get());
   encoder->setThreadgroupMemoryLength(bundle.kernel->threadgroupMemoryAllocation(bundle.pipeline.get(), bundle.descriptor), 0);
   encoder->setBuffer(q_buffer, 0, 0);
@@ -2229,9 +2249,9 @@ double run_int8_once(
     MTL::Buffer* mask_buffer = nullptr,
     MTL::Buffer* block_mask_buffer = nullptr)
 {
-  auto command_buffer = NS::TransferPtr(command_queue->commandBuffer());
+  auto command_buffer = NS::RetainPtr(command_queue->commandBuffer());
   if (bundle.masked) {
-    auto encoder = NS::TransferPtr(command_buffer->computeCommandEncoder());
+    auto encoder = NS::RetainPtr(command_buffer->computeCommandEncoder());
     encoder->setComputePipelineState(bundle.block_mask_pipeline.get());
     encoder->setThreadgroupMemoryLength(NAInt8AttentionKernel::blockMaskThreads * sizeof(uint32_t) * 2, 0);
     encoder->setBuffer(mask_buffer, 0, 15);
@@ -2243,7 +2263,7 @@ double run_int8_once(
         MTL::Size(NAInt8AttentionKernel::blockMaskThreads, 1, 1));
     encoder->endEncoding();
   }
-  auto encoder = NS::TransferPtr(command_buffer->computeCommandEncoder());
+  auto encoder = NS::RetainPtr(command_buffer->computeCommandEncoder());
   encoder->setComputePipelineState(bundle.pipeline.get());
   const uint32_t threadgroup_memory_length = bundle.kernel->threadgroupMemoryAllocation();
   encoder->setThreadgroupMemoryLength(threadgroup_memory_length, 0);
@@ -2277,11 +2297,16 @@ bool benchmark(
 {
   std::vector<double> samples;
   samples.reserve(config.timed_iterations);
-  for (int i = 0; i < config.warmup_iterations + config.timed_iterations; ++i) {
+  // A fixed iteration count under-warms small dispatches after shader compilation.
+  const double minimum_warmup = std::getenv("CCV_NA_WARMUP_SECONDS") ?
+      std::atof(std::getenv("CCV_NA_WARMUP_SECONDS")) : 0;
+  double warmup_seconds = 0;
+  for (int i = 0; samples.size() < (size_t)config.timed_iterations; ++i) {
     const double seconds = run_once();
     if (!(seconds > 0) || std::isnan(seconds))
       return false;
-    if (i >= config.warmup_iterations)
+    warmup_seconds += seconds;
+    if (i >= config.warmup_iterations && warmup_seconds >= minimum_warmup)
       samples.push_back(seconds);
   }
   stats->average_seconds = std::accumulate(samples.begin(), samples.end(), 0.0) / samples.size();
@@ -2323,7 +2348,7 @@ QuantizationValidationStats validate_quantization(
   return stats;
 }
 
-void compute_int8_reference_row(
+void compute_reference_row(
     const AttentionCase& attention,
     simd::ushort3 block_dimensions,
     const QuantizedQK& quantized,
@@ -2335,7 +2360,9 @@ void compute_int8_reference_row(
     uint32_t row,
     bool is_causal,
     float* l_value,
-    std::vector<float>* o_values)
+    std::vector<float>* o_values,
+    const std::vector<float>* q_values,
+    const std::vector<float>* k_values)
 {
   const uint32_t head_ratio = attention.Hq / attention.Hk;
   const uint32_t kv_head = query_head / head_ratio;
@@ -2357,8 +2384,10 @@ void compute_int8_reference_row(
     const float k_scale = quantized.k_scale[((size_t)batch * attention.Hk + kv_head) * k_tiles + k_tile];
     float dot = 0;
     for (uint32_t dim = 0; dim < attention.D; ++dim) {
-      dot += ((float)quantized.q_int8[q_index(attention, batch, row, query_head, dim)] * q_scale) *
-          ((float)quantized.k_int8[kv_index(attention, batch, column, kv_head, dim)] * k_scale);
+      const auto qi = q_index(attention, batch, row, query_head, dim);
+      const auto ki = kv_index(attention, batch, column, kv_head, dim);
+      dot += q_values ? (*q_values)[qi] * (*k_values)[ki] :
+          ((float)quantized.q_int8[qi] * q_scale) * ((float)quantized.k_int8[ki] * k_scale);
     }
     float score = dot * create_scale(attention);
     if (mask_values) {
@@ -2413,7 +2442,7 @@ std::vector<uint32_t> make_sample_points(uint32_t dimension, const std::vector<u
   return sample_points;
 }
 
-ValidationStats validate_int8_outputs(
+ValidationStats validate_outputs(
     const AttentionCase& attention,
     simd::ushort3 block_dimensions,
     const QuantizedQK& quantized,
@@ -2422,7 +2451,9 @@ ValidationStats validate_int8_outputs(
     float mask_hard_threshold,
     const std::vector<float>& o_values,
     const std::vector<float>& l_values,
-    bool is_causal)
+    bool is_causal,
+    const std::vector<float>* q_values = nullptr,
+    const std::vector<float>* k_values = nullptr)
 {
   ValidationStats stats;
   for (const auto value : o_values)
@@ -2453,7 +2484,7 @@ ValidationStats validate_int8_outputs(
     for (const auto head : head_points) {
       for (const auto row : row_points) {
         float reference_l = 0;
-        compute_int8_reference_row(attention, block_dimensions, quantized, v_values, mask_values, mask_hard_threshold, batch, head, row, is_causal, &reference_l, &reference_o);
+        compute_reference_row(attention, block_dimensions, quantized, v_values, mask_values, mask_hard_threshold, batch, head, row, is_causal, &reference_l, &reference_o, q_values, k_values);
         const float actual_l = l_values[l_index(attention, batch, head, row)];
         const bool reference_l_finite = std::isfinite(reference_l);
         const bool actual_l_finite = std::isfinite(actual_l);
@@ -2468,6 +2499,8 @@ ValidationStats validate_int8_outputs(
         for (uint32_t dim = 0; dim < attention.D; ++dim) {
           const float actual_o = o_values[o_index(attention, batch, row, head, dim)];
           const double abs_o = std::fabs(reference_o[dim] - actual_o);
+          stats.squared_error_o += abs_o * abs_o;
+          stats.squared_reference_o += (double)reference_o[dim] * reference_o[dim];
           const double rel_o = abs_o / std::max<double>(std::max(std::fabs(reference_o[dim]), std::fabs(actual_o)), 1.0);
           stats.max_abs_o = std::max(stats.max_abs_o, abs_o);
           stats.max_rel_o = std::max(stats.max_rel_o, rel_o);
@@ -2694,17 +2727,15 @@ int main(int argc, char** argv)
         (uint16_t)std::strtoul(argv[30], nullptr, 10);
   }
 
-  auto* pool = NS::AutoreleasePool::alloc()->init();
+  auto pool = NS::TransferPtr(NS::AutoreleasePool::alloc()->init());
   auto device = NS::TransferPtr(MTL::CreateSystemDefaultDevice());
   if (!device) {
     std::cerr << "Metal device unavailable.\n";
-    pool->drain();
     return 1;
   }
   auto command_queue = NS::TransferPtr(device->newCommandQueue());
   if (!command_queue) {
     std::cerr << "Metal command queue unavailable.\n";
-    pool->drain();
     return 1;
   }
 
@@ -2899,7 +2930,6 @@ int main(int argc, char** argv)
       v_mean_sum_buffer.get());
   if (!(quantize_validation_seconds > 0)) {
     std::cerr << "quantize validation dispatch failed\n";
-    pool->drain();
     return 1;
   }
 
@@ -2953,7 +2983,6 @@ int main(int argc, char** argv)
             << '\n';
   if (!quantization_passed) {
     std::cerr << "quantization validation failed\n";
-    pool->drain();
     return 1;
   }
 
@@ -3025,7 +3054,6 @@ int main(int argc, char** argv)
             },
             &quantize_q_stats)) {
       std::cerr << "quantize-q benchmark failed\n";
-      pool->drain();
       return 1;
     }
 
@@ -3046,7 +3074,6 @@ int main(int argc, char** argv)
             },
             &quantize_k_stats)) {
       std::cerr << "quantize-k benchmark failed\n";
-      pool->drain();
       return 1;
     }
 
@@ -3067,7 +3094,6 @@ int main(int argc, char** argv)
             },
             &quantize_v_stats)) {
       std::cerr << "quantize-v benchmark failed\n";
-      pool->drain();
       return 1;
     }
 
@@ -3085,7 +3111,6 @@ int main(int argc, char** argv)
             },
             &v_tile_absmax_stats)) {
       std::cerr << "compute-v-tile-absmax benchmark failed\n";
-      pool->drain();
       return 1;
     }
 
@@ -3103,7 +3128,6 @@ int main(int argc, char** argv)
             },
             &v_tile_mean_stats)) {
       std::cerr << "compute-v-tile-mean benchmark failed\n";
-      pool->drain();
       return 1;
     }
 
@@ -3123,7 +3147,6 @@ int main(int argc, char** argv)
               },
               &v_mean_stats)) {
         std::cerr << "compute-v-mean benchmark failed\n";
-        pool->drain();
         return 1;
       }
     }
@@ -3142,7 +3165,6 @@ int main(int argc, char** argv)
               },
               &v_mean_1024_stats)) {
         std::cerr << "compute-v-mean-1024 benchmark failed\n";
-        pool->drain();
         return 1;
       }
     }
@@ -3161,7 +3183,6 @@ int main(int argc, char** argv)
               },
               &v_mean_morton_stats)) {
         std::cerr << "compute-v-mean-morton benchmark failed\n";
-        pool->drain();
         return 1;
       }
     }
@@ -3181,7 +3202,6 @@ int main(int argc, char** argv)
               },
               &v_mean_atomic_stats)) {
         std::cerr << "compute-v-mean-atomic benchmark failed\n";
-        pool->drain();
         return 1;
       }
     }
@@ -3209,7 +3229,6 @@ int main(int argc, char** argv)
             },
             &quantize_all_stats)) {
       std::cerr << "quantize-all benchmark failed\n";
-      pool->drain();
       return 1;
     }
 
@@ -3229,7 +3248,7 @@ int main(int argc, char** argv)
     print_time_stats("quantize-all", quantize_all_stats);
     std::cout.flush();
     std::cerr.flush();
-    std::_Exit(0);
+    return 0;
   }
 
   const double validation_seconds = run_int8_once(
@@ -3249,14 +3268,13 @@ int main(int argc, char** argv)
       block_mask_buffer.get());
   if (!(validation_seconds > 0)) {
     std::cerr << "int8 validation dispatch failed\n";
-    pool->drain();
     return 1;
   }
   download_buffer(command_queue.get(), o_buffer.get(), o_stage.get(), o_bytes);
   download_buffer(command_queue.get(), l_buffer.get(), l_stage.get(), l_bytes);
   const auto o_values = decode_values(o_stage->contents(), o_count, variant.input_precision);
   const auto l_values = decode_values(l_stage->contents(), l_count, variant.input_precision);
-  const auto validation = validate_int8_outputs(
+  const auto validation = validate_outputs(
       attention,
       block_dimensions,
       quantized,
@@ -3287,14 +3305,12 @@ int main(int argc, char** argv)
       }
     }
     std::cerr << "validation failed\n";
-    pool->drain();
     return 1;
   }
 
   if (variant.capture_path && variant.capture_path[0]) {
     const bool started = start_metal_capture(command_queue.get(), variant.capture_path);
     if (!started) {
-      pool->drain();
       return 1;
     }
     const double captured_seconds = run_int8_once(
@@ -3315,7 +3331,6 @@ int main(int argc, char** argv)
     stop_metal_capture();
     if (!(captured_seconds > 0)) {
       std::cerr << "captured int8 dispatch failed\n";
-      pool->drain();
       return 1;
     }
     std::cout << "capture saved to " << variant.capture_path << '\n';
@@ -3329,7 +3344,24 @@ int main(int argc, char** argv)
           },
           &baseline_stats)) {
     std::cerr << "baseline benchmark failed\n";
-    pool->drain();
+    return 1;
+  }
+
+  download_buffer(command_queue.get(), o_buffer.get(), o_stage.get(), o_bytes);
+  download_buffer(command_queue.get(), l_buffer.get(), l_stage.get(), l_bytes);
+  const auto baseline_validation = validate_outputs(
+      attention, block_dimensions, quantized, v_input_values,
+      variant.zero_mask ? &mask_values : nullptr,
+      mask_hard_threshold(variant.input_precision),
+      decode_values(o_stage->contents(), o_count, variant.input_precision),
+      decode_values(l_stage->contents(), l_count, variant.input_precision),
+      variant.is_causal, &q_reference_values, &k_reference_values);
+  const double baseline_l2 = std::sqrt(baseline_validation.squared_error_o /
+      std::max(1e-30, baseline_validation.squared_reference_o));
+  std::cout << "baseline-validation normalized_l2=" << baseline_l2
+            << " max_abs_o=" << baseline_validation.max_abs_o << '\n';
+  if (!baseline_validation.passed || baseline_l2 > 0.1) {
+    std::cerr << "baseline CPU validation failed\n";
     return 1;
   }
 
@@ -3341,7 +3373,6 @@ int main(int argc, char** argv)
           },
           &int8_stats)) {
     std::cerr << "int8 benchmark failed\n";
-    pool->drain();
     return 1;
   }
 
@@ -3368,7 +3399,6 @@ int main(int argc, char** argv)
           },
           &quantize_stats)) {
     std::cerr << "quantize benchmark failed\n";
-    pool->drain();
     return 1;
   }
 
@@ -3400,7 +3430,6 @@ int main(int argc, char** argv)
           },
           &quantize_and_int8_stats)) {
     std::cerr << "quantize+int8 benchmark failed\n";
-    pool->drain();
     return 1;
   }
 
@@ -3427,5 +3456,5 @@ int main(int argc, char** argv)
 
   std::cout.flush();
   std::cerr.flush();
-  std::_Exit(0);
+  return 0;
 }

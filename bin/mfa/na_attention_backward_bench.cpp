@@ -5,6 +5,7 @@
 #include <cstring>
 #include <iomanip>
 #include <iostream>
+#include <fstream>
 #include <memory>
 #include <numeric>
 #include <sstream>
@@ -110,8 +111,8 @@ void upload_buffer(
     MTL::Buffer* destination,
     size_t size)
 {
-  auto command_buffer = NS::TransferPtr(command_queue->commandBuffer());
-  auto blit = NS::TransferPtr(command_buffer->blitCommandEncoder());
+  auto command_buffer = NS::RetainPtr(command_queue->commandBuffer());
+  auto blit = NS::RetainPtr(command_buffer->blitCommandEncoder());
   blit->copyFromBuffer(source, 0, destination, 0, size);
   blit->endEncoding();
   command_buffer->commit();
@@ -122,11 +123,16 @@ bool benchmark(const BenchmarkConfig& config, const std::function<double()>& run
 {
   std::vector<double> samples;
   samples.reserve(config.timed_iterations);
-  for (int i = 0; i < config.warmup_iterations + config.timed_iterations; ++i) {
+  // A fixed iteration count under-warms small dispatches after shader compilation.
+  const double minimum_warmup = std::getenv("CCV_NA_WARMUP_SECONDS") ?
+      std::atof(std::getenv("CCV_NA_WARMUP_SECONDS")) : 0;
+  double warmup_seconds = 0;
+  for (int i = 0; samples.size() < (size_t)config.timed_iterations; ++i) {
     const double seconds = run_once();
     if (!(seconds > 0) || std::isnan(seconds))
       return false;
-    if (i >= config.warmup_iterations)
+    warmup_seconds += seconds;
+    if (i >= config.warmup_iterations && warmup_seconds >= minimum_warmup)
       samples.push_back(seconds);
   }
   stats->average_seconds = std::accumulate(samples.begin(), samples.end(), 0.0) / samples.size();
@@ -232,45 +238,10 @@ simd::ushort3 create_forward_block_dimensions(const AttentionCase& attention)
 simd::ushort3 create_backward_block_dimensions(const AttentionCase& attention)
 {
   auto block_dimensions = create_forward_block_dimensions(attention);
+  block_dimensions[1] = 64;
   if (attention.D == 128)
     block_dimensions[2] = 64;
   return block_dimensions;
-}
-
-bool create_backward_bypass_threadgroup_memory(const AttentionCase& attention)
-{
-  const auto block_dimensions = create_backward_block_dimensions(attention);
-  const uint32_t min_sequence_dimension = (attention.R < attention.C) ? attention.R : attention.C;
-  if (attention.D == 128 && min_sequence_dimension >= 4096)
-    return false;
-  switch (block_dimensions[1]) {
-  case 64:
-    switch (block_dimensions[2]) {
-    case 32:
-    case 40:
-    case 64:
-    case 80:
-    case 96:
-      return true;
-    default:
-      return false;
-    }
-  case 48:
-    switch (block_dimensions[2]) {
-    case 32:
-    case 40:
-    case 48:
-    case 64:
-    case 72:
-    case 80:
-    case 96:
-      return true;
-    default:
-      return false;
-    }
-  default:
-    return false;
-  }
 }
 
 AttentionOperands<GEMMOperandPrecision> create_fp16_backward_precisions()
@@ -590,8 +561,8 @@ double run_forward_once(
     MTL::Buffer* o_buffer,
     MTL::Buffer* l_buffer)
 {
-  auto command_buffer = NS::TransferPtr(command_queue->commandBuffer());
-  auto encoder = NS::TransferPtr(command_buffer->computeCommandEncoder());
+  auto command_buffer = NS::RetainPtr(command_queue->commandBuffer());
+  auto encoder = NS::RetainPtr(command_buffer->computeCommandEncoder());
   encoder->setComputePipelineState(pipeline.pipeline.get());
   encoder->setThreadgroupMemoryLength(pipeline.kernel->threadgroupMemoryAllocation(pipeline.pipeline.get(), pipeline.descriptor), 0);
   encoder->setBuffer(q_buffer, 0, 0);
@@ -628,8 +599,8 @@ double run_compute_d_once(
     MTL::Buffer* dO_buffer,
     MTL::Buffer* d_buffer)
 {
-  auto command_buffer = NS::TransferPtr(command_queue->commandBuffer());
-  auto encoder = NS::TransferPtr(command_buffer->computeCommandEncoder());
+  auto command_buffer = NS::RetainPtr(command_queue->commandBuffer());
+  auto encoder = NS::RetainPtr(command_buffer->computeCommandEncoder());
   encoder->setComputePipelineState(pipelines.compute_d_pipeline.get());
   if (pipelines.custom_compute_d) {
     encoder->setThreadgroupMemoryLength(((pipelines.compute_d_threads + 31) / 32) * sizeof(float), 0);
@@ -657,8 +628,8 @@ double run_backward_query_only_once(
     MTL::Buffer* dQ_buffer,
     MTL::Buffer* d_buffer)
 {
-  auto command_buffer = NS::TransferPtr(command_queue->commandBuffer());
-  auto encoder = NS::TransferPtr(command_buffer->computeCommandEncoder());
+  auto command_buffer = NS::RetainPtr(command_queue->commandBuffer());
+  auto encoder = NS::RetainPtr(command_buffer->computeCommandEncoder());
   encoder->setComputePipelineState(pipelines.query_pipeline.get());
   encoder->setThreadgroupMemoryLength(
       pipelines.query_kernel->threadgroupMemoryAllocation(pipelines.query_pipeline.get(), pipelines.query_descriptor), 0);
@@ -668,7 +639,7 @@ double run_backward_query_only_once(
   encoder->setBuffer(l_buffer, 0, 4);
   encoder->setBuffer(d_buffer, 0, 5);
   encoder->setBuffer(dO_buffer, 0, 6);
-  encoder->setBuffer(dQ_buffer, 0, 7);
+  encoder->setBuffer(dQ_buffer, 0, 9);
   encoder->dispatchThreadgroups(
       pipelines.query_kernel->threadgroupsPerGrid(pipelines.query_descriptor),
       MTL::Size(pipelines.query_kernel->threadgroupSize(pipelines.query_pipeline.get(), pipelines.query_descriptor), 1, 1));
@@ -690,8 +661,8 @@ double run_backward_keyvalue_only_once(
     MTL::Buffer* dV_buffer,
     MTL::Buffer* d_buffer)
 {
-  auto command_buffer = NS::TransferPtr(command_queue->commandBuffer());
-  auto encoder = NS::TransferPtr(command_buffer->computeCommandEncoder());
+  auto command_buffer = NS::RetainPtr(command_queue->commandBuffer());
+  auto encoder = NS::RetainPtr(command_buffer->computeCommandEncoder());
   encoder->setComputePipelineState(pipelines.keyvalue_pipeline.get());
   encoder->setThreadgroupMemoryLength(
       pipelines.keyvalue_kernel->threadgroupMemoryAllocation(pipelines.keyvalue_pipeline.get(), pipelines.keyvalue_descriptor), 0);
@@ -727,9 +698,9 @@ double run_backward_once(
     MTL::Buffer* dV_buffer,
     MTL::Buffer* d_buffer)
 {
-  auto command_buffer = NS::TransferPtr(command_queue->commandBuffer());
+  auto command_buffer = NS::RetainPtr(command_queue->commandBuffer());
   {
-  auto encoder = NS::TransferPtr(command_buffer->computeCommandEncoder());
+  auto encoder = NS::RetainPtr(command_buffer->computeCommandEncoder());
     encoder->setComputePipelineState(pipelines.compute_d_pipeline.get());
     if (pipelines.custom_compute_d) {
       encoder->setThreadgroupMemoryLength(((pipelines.compute_d_threads + 31) / 32) * sizeof(float), 0);
@@ -743,7 +714,7 @@ double run_backward_once(
     encoder->endEncoding();
   }
   {
-    auto encoder = NS::TransferPtr(command_buffer->computeCommandEncoder());
+    auto encoder = NS::RetainPtr(command_buffer->computeCommandEncoder());
     encoder->setComputePipelineState(pipelines.query_pipeline.get());
     encoder->setThreadgroupMemoryLength(
         pipelines.query_kernel->threadgroupMemoryAllocation(pipelines.query_pipeline.get(), pipelines.query_descriptor), 0);
@@ -753,14 +724,14 @@ double run_backward_once(
     encoder->setBuffer(l_buffer, 0, 4);
     encoder->setBuffer(d_buffer, 0, 5);
     encoder->setBuffer(dO_buffer, 0, 6);
-    encoder->setBuffer(dQ_buffer, 0, 7);
+    encoder->setBuffer(dQ_buffer, 0, 9);
     encoder->dispatchThreadgroups(
         pipelines.query_kernel->threadgroupsPerGrid(pipelines.query_descriptor),
         MTL::Size(pipelines.query_kernel->threadgroupSize(pipelines.query_pipeline.get(), pipelines.query_descriptor), 1, 1));
     encoder->endEncoding();
   }
   {
-    auto encoder = NS::TransferPtr(command_buffer->computeCommandEncoder());
+    auto encoder = NS::RetainPtr(command_buffer->computeCommandEncoder());
     encoder->setComputePipelineState(pipelines.keyvalue_pipeline.get());
     encoder->setThreadgroupMemoryLength(
         pipelines.keyvalue_kernel->threadgroupMemoryAllocation(pipelines.keyvalue_pipeline.get(), pipelines.keyvalue_descriptor), 0);
@@ -840,8 +811,8 @@ int main(int argc, char** argv)
   if (argc >= 19) {
     keyvalue_bypass_threadgroup_memory = std::strtoul(argv[18], nullptr, 10) != 0;
   } else if (argc < 18) {
-    query_bypass_threadgroup_memory = create_backward_bypass_threadgroup_memory(attention);
-    keyvalue_bypass_threadgroup_memory = query_bypass_threadgroup_memory;
+    query_bypass_threadgroup_memory = false;
+    keyvalue_bypass_threadgroup_memory = false;
   }
   if (argc >= 20) {
     compute_d_threads = (uint16_t)std::strtoul(argv[19], nullptr, 10);
@@ -852,17 +823,31 @@ int main(int argc, char** argv)
     forward_morton_order = true;
   }
 
-  auto* pool = NS::AutoreleasePool::alloc()->init();
+  if (argc < 16 && attention.D >= 128) {
+    NAAttentionDescriptor descriptor;
+    descriptor.matrixDimensions = simd::uint3 { attention.R, attention.C, attention.D };
+    descriptor.lowPrecisionInputs = true;
+    descriptor.lowPrecisionIntermediates = true;
+    descriptor.type = AttentionKernelType::backwardQuery;
+    query_backward_simdgroups = descriptor.executionSIMDGroups();
+    descriptor.type = AttentionKernelType::backwardKeyValue;
+    keyvalue_backward_simdgroups = descriptor.executionSIMDGroups();
+  }
+  if (argc < 16 && attention.D == 64) {
+    query_backward_simdgroups = keyvalue_backward_simdgroups = 4;
+  }
+  if (argc < 18 && attention.D == 64) {
+    query_bypass_threadgroup_memory = keyvalue_bypass_threadgroup_memory = true;
+  }
+  auto pool = NS::TransferPtr(NS::AutoreleasePool::alloc()->init());
   auto device = NS::TransferPtr(MTL::CreateSystemDefaultDevice());
   if (!device) {
     std::cerr << "Metal device unavailable.\n";
-    pool->drain();
     return 1;
   }
   auto command_queue = NS::TransferPtr(device->newCommandQueue());
   if (!command_queue) {
     std::cerr << "Metal command queue unavailable.\n";
-    pool->drain();
     return 1;
   }
 
@@ -921,10 +906,14 @@ int main(int argc, char** argv)
       (attention.D % (uint32_t)keyvalue_block_dimensions[2] == 0);
   if (!valid_query_block_d || !valid_keyvalue_block_d) {
     std::cerr << "invalid blockD: backwardQuery/backwardKeyValue require blockD to divide D\n";
-    pool->drain();
     return 2;
   }
   const auto backward_pipelines = create_backward_pipelines(device.get(), attention, query_block_dimensions, keyvalue_block_dimensions, query_backward_simdgroups, keyvalue_backward_simdgroups, query_bypass_threadgroup_memory, keyvalue_bypass_threadgroup_memory, compute_d_threads);
+  if (backward_pipelines.query_kernel->threadgroupMemoryAllocation(backward_pipelines.query_pipeline.get(), backward_pipelines.query_descriptor) > device->maxThreadgroupMemoryLength() ||
+      backward_pipelines.keyvalue_kernel->threadgroupMemoryAllocation(backward_pipelines.keyvalue_pipeline.get(), backward_pipelines.keyvalue_descriptor) > device->maxThreadgroupMemoryLength()) {
+    std::cerr << "backward configuration exceeds device threadgroup memory\n";
+    return 2;
+  }
 
   const double setup_forward_seconds = run_forward_once(
       command_queue.get(),
@@ -936,7 +925,6 @@ int main(int argc, char** argv)
       l_buffer.get());
   if (!(setup_forward_seconds > 0)) {
     std::cerr << "forward setup failed\n";
-    pool->drain();
     return 1;
   }
 
@@ -949,7 +937,6 @@ int main(int argc, char** argv)
       d_buffer.get());
   if (!(setup_compute_d_seconds > 0)) {
     std::cerr << "compute_d setup failed\n";
-    pool->drain();
     return 1;
   }
 
@@ -968,7 +955,6 @@ int main(int argc, char** argv)
           },
           &forward_stats)) {
     std::cerr << "forward benchmark failed\n";
-    pool->drain();
     return 1;
   }
 
@@ -986,7 +972,6 @@ int main(int argc, char** argv)
           },
           &compute_d_stats)) {
     std::cerr << "compute_d benchmark failed\n";
-    pool->drain();
     return 1;
   }
 
@@ -1007,7 +992,6 @@ int main(int argc, char** argv)
           },
           &query_stats)) {
     std::cerr << "query benchmark failed\n";
-    pool->drain();
     return 1;
   }
 
@@ -1029,7 +1013,6 @@ int main(int argc, char** argv)
           },
           &keyvalue_stats)) {
     std::cerr << "keyvalue benchmark failed\n";
-    pool->drain();
     return 1;
   }
 
@@ -1054,7 +1037,6 @@ int main(int argc, char** argv)
           },
           &backward_stats)) {
     std::cerr << "backward benchmark failed\n";
-    pool->drain();
     return 1;
   }
 
@@ -1090,6 +1072,19 @@ int main(int argc, char** argv)
             << " computeDThreads=" << backward_pipelines.compute_d_threads
             << " computeDCustom=" << (backward_pipelines.custom_compute_d ? 1 : 0)
             << '\n';
+  if (const char* dump = std::getenv("CCV_NA_DUMP")) {
+    MTL::Buffer* buffers[] = {dQ_buffer.get(), dK_buffer.get(), dV_buffer.get()};
+    size_t sizes[] = {dQ_bytes, dK_bytes, dV_bytes};
+    for (int i = 0; i < 3; ++i) {
+      auto stage = NS::TransferPtr(device->newBuffer(sizes[i], kSharedResourceOptions));
+      upload_buffer(command_queue.get(), buffers[i], stage.get(), sizes[i]);
+      auto* data = (const half_float*)stage->contents();
+      for (size_t j = 0; j < sizes[i] / sizeof(half_float); ++j)
+        if (!std::isfinite(float(data[j]))) { std::cerr << "nonfinite gradient\n"; return 2; }
+      std::ofstream output(std::string(dump) + "." + std::to_string(i), std::ios::binary);
+      output.write((const char*)stage->contents(), sizes[i]);
+    }
+  }
   print_stats("forward", forward_stats);
   print_stats("compute_d", compute_d_stats);
   print_stats("query", query_stats);
@@ -1101,6 +1096,6 @@ int main(int argc, char** argv)
             << " median=" << backward_stats.median_seconds / forward_stats.median_seconds
             << '\n';
 
-  pool->drain();
+  std::cout.flush();
   return 0;
 }

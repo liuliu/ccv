@@ -140,7 +140,18 @@ static void _ccv_nnc_mfa_encode_8i_rowwise_x_decode(ccv_nnc_mfa_context_t* const
 	ccv_nnc_mfa_encode_dequantize_8i_rowwise_x(context, params, command_batch, tensors, tensor_offsets);
 }
 
-static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
+// Distinct placement buffers can overlap in a heap. This helper is only used
+// for contiguous tensors (and the decoded contiguous weight scratch).
+static int _ccv_nnc_gemm_buffer_overlap(id<MTLBuffer> a, const size_t a_offset, const size_t a_size, id<MTLBuffer> b, const size_t b_offset, const size_t b_size)
+{
+	if (a != b && (!a.heap || a.heap != b.heap))
+		return 0;
+	const size_t a_start = (a.heap ? a.heapOffset : 0) + a_offset;
+	const size_t b_start = (b.heap ? b.heapOffset : 0) + b_offset;
+	return a_start < b_start + b_size && b_start < a_start + a_size;
+}
+
+static int _ccv_nnc_gemm_forw_impl(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context, ccv_nnc_tensor_t* const cast_output, const int allow_activation_alias, int* const did_fuse)
 {
 	assert(input_size >= 2);
 	const ccv_nnc_tensor_view_t* a = (const ccv_nnc_tensor_view_t*)inputs[0];
@@ -615,7 +626,26 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 				b->dataof,
 				bias ? bias->dataof : 0,
 			};
-			ccv_nnc_mfa_encode_scaled_gemm(context, params, command_batch, tensors, tensor_offsets);
+			if (cast_output && b->info.datatype == CCV_16F && cast_output->info.datatype == CCV_32F &&
+				memcmp(b->info.dim, cast_output->info.dim, sizeof(b->info.dim)) == 0 &&
+				(!CCV_IS_TENSOR_VIEW(cast_output) || ccv_nnc_tensor_view_is_contiguous(cast_output->info.dim, ((ccv_nnc_tensor_view_t*)cast_output)->stride)))
+			{
+				mtl_buffer_t* const cast_buffer = mpgetbuffer(cast_output);
+				const size_t cast_size = ccv_nnc_tensor_data_size_without_padding(cast_output->info);
+				const size_t weight_size = w_8i_rowwise_x_format ? w_8i_rowwise_data_size : ccv_nnc_tensor_data_size_without_padding(w->info);
+				if ((allow_activation_alias || !_ccv_nnc_gemm_buffer_overlap(cast_buffer, cast_output->dataof, cast_size, tensors[0], tensor_offsets[0], ccv_nnc_tensor_data_size_without_padding(a->info))) &&
+					!_ccv_nnc_gemm_buffer_overlap(cast_buffer, cast_output->dataof, cast_size, w_data, w_dataof, weight_size) &&
+					(!bias || !_ccv_nnc_gemm_buffer_overlap(cast_buffer, cast_output->dataof, cast_size, bias_buffer, bias->dataof, ccv_nnc_tensor_data_size_without_padding(bias->info))))
+				{
+					tensors[2] = cast_buffer;
+					tensor_offsets[2] = cast_output->dataof;
+					*did_fuse = ccv_nnc_mfa_encode_scaled_gemm_cast(context, params, command_batch, tensors, tensor_offsets);
+					tensors[2] = mpgetbuffer((ccv_nnc_tensor_t*)b);
+					tensor_offsets[2] = b->dataof;
+				}
+			}
+			if (!did_fuse || !*did_fuse)
+				ccv_nnc_mfa_encode_scaled_gemm(context, params, command_batch, tensors, tensor_offsets);
 			ccv_nnc_stream_context_finish_command_batch(stream_context, command_batch);
 			return CCV_NNC_EXEC_SUCCESS;
 		}
@@ -886,17 +916,44 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 				}
 				[resultMatrix release];
 			} else {
-				// Otherwise, use MPSGraph.
-				ccv_nnc_mps_graph_key_t key = ccv_nnc_mps_graph_key_new(cmd, 0, hint, flags, inputs, input_size, outputs, output_size);
+				// Otherwise, use MPSGraph. A decoded operand has a new offset and
+				// dtype in scratch. Use that same layout for the cache key,
+				// placeholder / slice and runtime data; the packed source offset
+				// would describe a different placeholder shape.
+				ccv_nnc_tensor_view_t a_decoded, w_decoded;
+				const ccv_nnc_tensor_view_t* a_graph = a;
+				const ccv_nnc_tensor_view_t* w_graph = w;
+				if (CCV_GET_DATA_TYPE(a->info.datatype) == CCV_QX)
+				{
+					memset(&a_decoded, 0, sizeof(a_decoded));
+					memcpy(&a_decoded, a, CCV_IS_TENSOR_VIEW(a) ? sizeof(a_decoded) : sizeof(ccv_nnc_tensor_t));
+					a_decoded.data.u8 = (uint8_t*)a_data;
+					a_decoded.dataof = a_dataof;
+					a_decoded.info.datatype = a_datatype;
+					a_decoded.info.reserved = 0;
+					a_graph = &a_decoded;
+				}
+				if (CCV_GET_DATA_TYPE(w->info.datatype) == CCV_QX)
+				{
+					memset(&w_decoded, 0, sizeof(w_decoded));
+					memcpy(&w_decoded, w, CCV_IS_TENSOR_VIEW(w) ? sizeof(w_decoded) : sizeof(ccv_nnc_tensor_t));
+					w_decoded.data.u8 = (uint8_t*)w_data;
+					w_decoded.dataof = w_dataof;
+					w_decoded.info.datatype = w_datatype;
+					w_decoded.info.reserved = 0;
+					w_graph = &w_decoded;
+				}
+				ccv_nnc_tensor_t* graph_inputs[] = { (ccv_nnc_tensor_t*)a_graph, (ccv_nnc_tensor_t*)w_graph, (ccv_nnc_tensor_t*)bias };
+				ccv_nnc_mps_graph_key_t key = ccv_nnc_mps_graph_key_new(cmd, 0, hint, flags, graph_inputs, input_size, outputs, output_size);
 				// Key will be consumed by the next method, therefore, no need to free.
 				int indices[3];
 				MPSGraphExecutable* executable = ccv_nnc_mps_graph_executable_cache(key, indices, ^void (MPSGraph* graph, NSMutableArray<MPSGraphTensor*>* inputTensors, NSMutableArray<MPSGraphShapedType*>* inputShapedTypes, NSMutableArray<MPSGraphTensor*>* resultTensors) {
 					MPSGraphTensor* mps_input_a;
-					MPSGraphTensor* mps_a = ccv_nnc_mps_graph_tensor_input(graph, a, adim_r, astride_r, &mps_input_a);
+					MPSGraphTensor* mps_a = ccv_nnc_mps_graph_tensor_input(graph, a_graph, adim_r, astride_r, &mps_input_a);
 					MPSGraphTensor* mps_input_w;
-					MPSGraphTensor* mps_w = ccv_nnc_mps_graph_tensor_input(graph, w, w->info.dim, w->stride, &mps_input_w);
-					MPSGraphShapedType* mps_a_shape = ccv_nnc_mps_graph_tensor_input_shape(a, adim_r, astride_r);
-					MPSGraphShapedType* mps_w_shape = ccv_nnc_mps_graph_tensor_input_shape(w, w->info.dim, w->stride);
+					MPSGraphTensor* mps_w = ccv_nnc_mps_graph_tensor_input(graph, w_graph, w->info.dim, w->stride, &mps_input_w);
+					MPSGraphShapedType* mps_a_shape = ccv_nnc_mps_graph_tensor_input_shape(a_graph, adim_r, astride_r);
+					MPSGraphShapedType* mps_w_shape = ccv_nnc_mps_graph_tensor_input_shape(w_graph, w->info.dim, w->stride);
 					if (is_transpose_a)
 						mps_a = [graph transposeTensor:mps_a dimension:-2 withDimension:-1 name:nil];
 					if (is_transpose_w)
@@ -918,8 +975,8 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 					}
 					[resultTensors addObject:mps_b];
 				});
-				MPSGraphTensorData* data_a = ccv_nnc_mps_graph_tensor_data_with_buffer(a, adim, astride, a_data, a_dataof);
-				MPSGraphTensorData* data_w = ccv_nnc_mps_graph_tensor_data_with_buffer(w, w->info.dim, w->stride, w_data, w_dataof);
+				MPSGraphTensorData* data_a = ccv_nnc_mps_graph_tensor_data_with_buffer(a_graph, adim, astride, a_data, a_dataof);
+				MPSGraphTensorData* data_w = ccv_nnc_mps_graph_tensor_data_with_buffer(w_graph, w->info.dim, w->stride, w_data, w_dataof);
 				if (bias)
 				{
 					MPSGraphTensorData* data_bias = ccv_nnc_mps_graph_tensor_data(bias, biasdim, biasstride);
@@ -934,6 +991,51 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 		}
 	}
 	return CCV_NNC_EXEC_SUCCESS;
+}
+
+static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
+{
+	return _ccv_nnc_gemm_forw_impl(cmd, hint, flags, inputs, input_size, outputs, output_size, stream_context, 0, 0, 0);
+}
+
+typedef struct {
+	ccv_nnc_cmd_vtab_t isa;
+	int allow_activation_alias;
+} ccv_nnc_gemm_cast_vtab_t;
+
+static int _ccv_nnc_gemm_cast_forw(ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
+{
+	assert(output_size == 2);
+	const int allow_activation_alias = ((const ccv_nnc_gemm_cast_vtab_t*)cmd.isa)->allow_activation_alias;
+	cmd.cmd = CCV_NNC_GEMM_FORWARD;
+	cmd.backend = CCV_NNC_BACKEND_MPS;
+	cmd.isa = 0;
+	int did_fuse = 0;
+	const int status = _ccv_nnc_gemm_forw_impl(cmd, hint, flags, inputs, input_size, outputs, 1, stream_context, outputs[1], allow_activation_alias, &did_fuse);
+	if (status != CCV_NNC_EXEC_SUCCESS || did_fuse)
+		return status;
+	// Keep all existing backend routes, including small/strided GEMM, FP16,
+	// ANE and unsupported hardware, with the original half rounding.
+	return ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, flags, outputs, 1, outputs + 1, 1, stream_context);
+}
+
+static ccv_nnc_gemm_cast_vtab_t _ccv_nnc_gemm_cast_vtabs[2] = {
+	{ .isa = { .exec = _ccv_nnc_gemm_cast_forw }, .allow_activation_alias = 0 },
+	{ .isa = { .exec = _ccv_nnc_gemm_cast_forw }, .allow_activation_alias = 1 },
+};
+
+ccv_nnc_cmd_t ccv_nnc_mps_gemm_cast_cmd(ccv_nnc_cmd_t gemm, const int allow_activation_alias)
+{
+	assert(gemm.cmd == CCV_NNC_GEMM_FORWARD);
+	gemm.cmd = CCV_NNC_CUSTOM_FORWARD;
+	gemm.isa = &_ccv_nnc_gemm_cast_vtabs[!!allow_activation_alias].isa;
+	return gemm;
+}
+
+int ccv_nnc_mps_is_gemm_cast_cmd(const ccv_nnc_cmd_t cmd)
+{
+	return cmd.cmd == CCV_NNC_CUSTOM_FORWARD &&
+		(cmd.isa == &_ccv_nnc_gemm_cast_vtabs[0].isa || cmd.isa == &_ccv_nnc_gemm_cast_vtabs[1].isa);
 }
 
 static int _ccv_nnc_gemm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)

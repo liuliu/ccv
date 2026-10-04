@@ -69,6 +69,7 @@ struct NAAttentionDescriptor {
   uint16_t splitKV(simd::ushort3 blockDimensions, uint16_t executionSIMDGroups) const noexcept;
 
 private:
+  bool bypassThreadgroupMemory() const noexcept;
   NAAttentionKernelDescriptor kernelDescriptor(MTL::Device *const device, const DeviceProperties &dprops) const noexcept;
   AttentionOperands<GEMMOperandPrecision> createMemoryPrecisions() const noexcept;
 };

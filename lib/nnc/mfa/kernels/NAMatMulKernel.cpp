@@ -182,7 +182,7 @@ inline uint2 morton_decode_rectangular_2d(uint code,
     source.SetValue("RELAXED_PRECISION", "true");
   }
   source.SetValue("EXECUTION_SIMD_GROUPS", std::to_string(executionSIMDGroups));
-  source.SetValue("REGISTER_NAME_C", memoryName('C'));
+  source.SetValue("REGISTER_NAME_C", registerPrecisions.C.name());
 
   source += R"(
 
@@ -540,6 +540,14 @@ kernel void matmul(device {{MEMORY_NAME_A}} *A_buf [[buffer(0)]],
     }
 )";
   }
+  if (splitK > 1) {
+    // Leading partitions cover complete pairs of K tiles. Only the last
+    // partition owns the global remainder; adding it to every partial output
+    // repeats its contribution when the partials are reduced.
+    source += R"(
+    if (k_split_idx == {{SPLIT_K_1}}) {
+)";
+  }
   source += R"(
     if (K % ({{BLOCK_DIMENSIONS_K}} * 2) >= {{BLOCK_DIMENSIONS_K}}) {
       auto mA = A.slice<{{A_SLICE}}>({{A_TILE_LAST_K2_SIZE}});
@@ -555,13 +563,31 @@ kernel void matmul(device {{MEMORY_NAME_A}} *A_buf [[buffer(0)]],
       matmul_op.run(mA, mB, cT);
     }
 )";
-  source += R"(
+  if (splitK > 1) {
+    source += R"(
+    }
 )";
+  }
   source += R"(
     auto mC = C.slice<{{BLOCK_DIMENSIONS_N}}, {{BLOCK_DIMENSIONS_M}}>({{SPLIT_K_STORE_OFFSET}}, M_group_offset);
 )";
+  if (registerPrecisions.C == memoryPrecisions.C) {
+    source += "    cT.store(mC);\n";
+  } else {
+    // MPP stores require matching cooperative-tensor and memory element types.
+    // Keep the requested accumulator precision until the final output cast.
+    source += R"(
+    auto outC = C_buf + {{EDGE_C_BASE_OFFSET}} + {{SPLIT_K_STORE_OFFSET}};
+    #pragma clang loop unroll(full)
+    for (unsigned short k = 0; k < cT.get_capacity(); ++k) {
+      if (cT.is_valid_element(k)) {
+        const auto idx = cT.get_multidimensional_index(k);
+        outC[idx[1] * {{EDGE_C_ROW_STRIDE}} + idx[0]] = ({{MEMORY_NAME_C}})cT[k];
+      }
+    }
+)";
+  }
   source += R"(
-    cT.store(mC);
   } else {
     // Use dynamic slice for this edge case.
     // descriptor to create matmul operation that does {{BLOCK_DIMENSIONS_K}}x{{BLOCK_DIMENSIONS_M}} times {{BLOCK_DIMENSIONS_N}}x{{BLOCK_DIMENSIONS_K}} producing {{BLOCK_DIMENSIONS_N}}x{{BLOCK_DIMENSIONS_M}}
@@ -572,7 +598,7 @@ kernel void matmul(device {{MEMORY_NAME_A}} *A_buf [[buffer(0)]],
 
     auto mA = A.slice({{A_TILE_0_SIZE}});
     auto mB = B.slice({{B_TILE_0_SIZE}});
-    auto cT = matmul_op.get_destination_cooperative_tensor<decltype(mA), decltype(mB), {{MEMORY_NAME_C}}>();
+    auto cT = matmul_op.get_destination_cooperative_tensor<decltype(mA), decltype(mB), {{REGISTER_NAME_C}}>();
 {{INITIALIZE_C}}
 )";
   if (splitK > 1) {

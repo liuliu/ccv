@@ -1,0 +1,115 @@
+Final handoff: handoff.txt and gating-review.txt supersede hardware-gate and
+commit-status statements in these chronological checkpoint reports. Historical
+loose artifacts are preserved in research-2026-10-02-04.tar.gz; research-index.json
+records their hashes. Extract into a separate research directory to restore the original file tree.
+
+Inference checkpoints, 2026-10-03
+
+Latest retained FP16 GEMM change: inference-fp16-medium.txt.
+  Extend register GEMM to FP32 requests at M>=512 and low-precision requests
+  at M>=2048 with sufficient output area. Preserve native full-tile wins on
+  compact moderate reductions. No new chip-name gate or attention transpose.
+  Exploration: 286 distinct shapes, 2,480 records; six repeated existing
+  low-precision stress failures are preserved. Final production: 63 cases /
+  378 passing records. The 50-case randomized regression and full MPSBLAS
+  301/301 / MPSDNN 126/126 pass. The report separates accumulator modes and
+  documents the remaining Local Code 4B deep-reduction gap.
+
+Latest retained INT8 graph/output change: inference-fused-cast-integration.txt.
+  The postallocation inference GEMM-to-Float32 store fusion is integrated.
+  H3 output-plus-cast reaches 1.83x / 1.84x actual MLX, with 6.6-6.7% less
+  compiled-graph GPU time and unchanged arenas in the exact 480p/720p cases.
+  FFN-down plus cast reaches 2.15x / 2.07x. The report preserves all 272
+  production measurements and 100 bit-identical full-output comparisons.
+  Graph reinitialization, fallbacks, aliasing and exposure controls pass.
+
+Earlier INT8 GEMM change: inference-register-crossover.txt.
+  Extend the current register kernel to M>=2048 for moderate reductions,
+  retaining the old minimum output area; below M4096 require K<=20480.
+  Twelve source-derived 768px projections take 9.7-36.8% less GPU time.
+  FFN-down versus actual MLX: FLUX.2 1.56x, Krea 2 1.83x, Ideogram 4 1.86x,
+  Qwen Image 2.1 1.64x. Some projections and small-image attention remain below 2x.
+  1,146 exploration records establish the bounds; 198 production measurements
+  confirm them, with all 66 before/after full-output pairs bit-identical.
+  The expanded 30-shape randomized regression and full MPSBLAS 298/298 /
+  MPSDNN 126/126 pass. All previous register selections remain selected.
+  No new chip-name gate, attention transpose or backward optimization.
+
+Latest retained attention change: inference-probability-bounds.txt.
+  Remove the redundant probability clamp in the existing partitioned loop.
+  Exact H3 UI 480p/10s: 157.76 ms versus MLX 305.97 ms (1.94x).
+  Exact H3 UI 720p/10s: 768.23 ms versus MLX 1605.09 ms (2.09x).
+  About 3.3-3.5% faster than the previous production implementation.
+  Global elision was swept over 78 shapes; image regressions kept it out of
+  the FP32-output loops. No additional selector threshold or chip-name gate.
+  60 production full-output pairs are bit-identical; MPSBLAS 298/298 and
+  MPSDNN 126/126 pass. The report preserves numerical limitations and failures.
+
+Earlier retained production changes: inference-grid-tail.txt.
+  D128 compact attention dispatch selected by KV length or padded-grid waste.
+  INT8 GEMM fast loads for complete K fragments within the reduction remainder.
+  No new chip-name gate, attention transpose, or backward optimization.
+  61-case attention sweep plus causal/policy boundaries; 83-case actual-MLX
+  GEMM sweep plus fragment boundaries; fresh application comparisons and repeats.
+  56 full-output pairs bit-identical to the immediately preceding implementation.
+  MPSBLAS 298/298 and MPSDNN 126/126 pass.
+
+Earlier retained changes:
+  inference-output-split.txt: D256 output partitioning and numerical limitations.
+  inference-gemm-scheduling.txt: INT8 register-GEMM main-loop unroll-two.
+The grid-tail report supersedes the earlier experimental status of D128 compact
+scheduling. The probability-bounds report has the latest attention comparisons;
+inference-register-crossover.txt has the new GEMM comparisons; grid-tail
+retains the earlier broader long-shape baseline. Raw evidence is preserved.
+
+The approximately-2x INT8 goal remains open. Latest H3 480p/10s and 720p/10s
+attention is about 1.94x / 2.09x MLX; Q/up 1.79-1.85x; FFN-down 2.03-2.11x.
+Large D128 image attention is around 1.67-1.75x; D256 Ideogram 2048 about 1.81x.
+Small image attention includes ratios around 1.3-1.6x. These are operator times,
+not full-generation speedups or rendered-quality claims.
+
+Earlier FP16 implementation remains unchanged by these INT8 checkpoints:
+  inference-fp16-expanded.txt: priority GEMM within 1.6% of MLX or faster.
+  inference-partitioned-integration.txt: attention within 1.3% of MLX or faster.
+Its old INT8 status is superseded by the reports above.
+
+Exact manifests, reversed-order results, raw logs, source snapshots and
+provenance are preserved in the research archive. Backward optimization remains deferred;
+actual MLX VJP comparisons are in priority-report.txt. This is a historical checkpoint; see handoff.txt for final validation and branch status.
+
+Isolated follow-up: inference-short-kv-prototype.txt. Removing the unused
+short-KV branch improves dynamic uneven H3 probes, but does not materially
+improve the fixed-shape application route. It remains outside production.
+
+Rejected main-loop variants: inference-main-loop-diagnostics.txt records shared
+K/V staging, packed probability conversion and native fragment dimensions.
+inference-probability-bounds.txt also records partition-count sweeps and the
+failed attempt to fold sequences shorter than one KV tile into the main loop.
+inference-row-reductions.txt isolates softmax reductions: verified fixed-index
+reductions give small mixed results, so the native MPP reductions remain.
+
+Additional inference coverage: inference-projection-cast.txt measures ten
+source-derived projection shapes with and without Float32 conversion, against
+actual MLX (120 records). H3 attention-output plus conversion is 1.68-1.70x;
+FFN-down plus conversion is 1.99-2.05x. These pair timings add costs omitted by
+bare GEMM comparisons. They do not replace the attention results above.
+The report also verifies the Apple Silicon Draw Things Qwen Float16 path and
+records the separate GEMM/conversion commands in a small compiled graph.
+
+Rejected output-update/addressing experiments:
+inference-output-update-diagnostics.txt records 182 measurements. Branching on
+identity softmax correction changes FMA rounding and regresses D128 images;
+explicit fragment-row addressing has no useful gain. Production is unchanged.
+
+Earlier isolated prototype: inference-fused-cast.txt; subsequently integrated
+in inference-fused-cast-integration.txt.
+Half-rounded Float32 stores remove the conversion after H3 output / down
+projections. Exact 480p/720p output pairs reach 1.83x/1.84x actual MLX, with
+7.6-7.9% less INT8 GPU time; FFN-down reaches 2.14x/2.06x. A compiled synthetic
+graph confirms the gain but exposes extra memory from preallocation fusion.
+An INT8-only postallocation prototype safely reuses A after full activation
+quantization in the tested linear graphs, preserving the arena size and all
+outputs. Same-buffer K=2N controls also pass. 218 records, 108 full-output pairs
+bit-identical. The subsequent integration report validates graph dependencies,
+fallback, reinitialization and cache separation in the retained implementation.
+The prototype report preserves its original evidence and plan.

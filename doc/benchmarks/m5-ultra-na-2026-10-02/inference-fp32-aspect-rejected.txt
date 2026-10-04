@@ -1,0 +1,45 @@
+Historical checkpoint: see handoff.txt for final validation, gating and branch status.
+Associated raw files are in research-2026-10-02-04.tar.gz; extract into a separate directory.
+
+FP32 GEMM aspect-policy experiment, 2026-10-04 UTC
+
+Rejected: production remains inference-fp16-medium.txt. The isolated candidate
+removes the K<3*N and M<N-or-M>=2*N conditions only for explicit FP32 requests.
+The existing K<=16384, weight-footprint, layout, hardware and split-K limits
+remain. No shader, tile or attention layout changes are involved.
+
+99 cases / 594 process records, all passing independent sampled CPU and finite
+checks. There are 87 newly selected cases. Median candidate/production ratio
+is 0.9389; 19 regress by more than 5%, worst 1.301x.
+The Local Code 4B FFN-down gap improves, but broad deep reductions lose.
+
+Paired medians, GPU milliseconds:
+M N K flags | Current candidate actual_MLX | candidate/current
+3072 2560 9216 0 | 1.5414 1.3383 1.3205 | 0.8682
+4096 2560 16384 0 | 3.3899 3.9635 3.1239 | 1.1692
+4096 4096 12288 0 | 3.9950 4.4009 5.4299 | 1.1016
+4096 4096 16384 0 | 5.2860 6.3589 6.4916 | 1.2030
+6144 4096 12288 0 | 5.8657 6.5228 6.4693 | 1.1120
+6144 4096 16384 0 | 7.8578 9.7654 9.6549 | 1.2428
+6144 6144 16384 0 | 11.9546 15.5499 13.7212 | 1.3008
+8192 2048 16384 0 | 5.2163 5.9010 5.8169 | 1.1313
+8192 4096 16384 0 | 10.3412 12.4397 12.1145 | 1.2029
+8192 6144 12288 0 | 11.5819 12.7428 12.8341 | 1.1002
+8192 6144 16384 0 | 15.4456 19.6503 19.4289 | 1.2722
+8192 8192 12288 0 | 15.4042 17.6071 15.0206 | 1.1430
+16384 1536 16384 0 | 7.8827 8.6806 8.4727 | 1.1012
+3072 2560 9216 0 | 1.4691 1.4721 1.3236 | 1.0021
+3072 2560 9216 1 | 1.5438 1.3520 1.3204 | 0.8757
+
+These results reject a blanket accumulator-mode exemption; they do not justify
+a special case for one Local Code matrix. The native MPP path is faster on
+several larger shapes even with explicit FP32 accumulation, sometimes faster
+than actual MLX. The follow-up tests native tensor base-pointer reuse instead
+of adding a narrowly selected register exception. That is a separate experiment.
+
+Three warm iterations, >=.5 GPU seconds warmup, seven samples, two reversed
+orders. GPU work is serial and follows all CPU compilation. Weights are already
+expanded; bias/decode/casts are excluded. Explicit low-precision controls keep
+their original route. The current production library and source remain unchanged.
+Complete sources, commands, per-order results, logs and binary hashes are saved.
+Backward remains deferred; no attention transpose is introduced.

@@ -1,0 +1,208 @@
+Historical checkpoint: see handoff.txt for final validation, gating and branch status.
+Associated raw files are in research-2026-10-02-04.tar.gz; extract into a separate directory.
+
+D256 INT8 inference: split output and compact dispatch, 2026-10-03
+
+This extends the validated inference-output-fusion checkpoint. Inference stays
+first; backward tuning is deferred. The retained change targets long D256
+attention (Ideogram 4), preserves the original SHD buffers, and uses no global
+attention transpose. H3 and the D128 image implementations are unchanged.
+
+Each of two independent threadgroups owns 128 output columns. Both compute the
+complete D256 QK product, then accumulate their own PV slice in FP32. This halves
+the live output state per group while avoiding cross-group exchange of QK
+partials. The cost is duplicated QK: the total matrix work is 1.5 times that of
+an unsplit QK/PV pair. It is a measured tradeoff, not a claim of free partitioning.
+Quantization, V centering, FP32 softmax state, and saved log2 LSE are retained.
+Only the first output partition writes LSE. Q/O aliasing remains safe because
+all input quantization completes before either output partition executes.
+
+The kernel uses R16/C64/D64 tiles and eight SIMD groups. The original Q scale
+group of 16 rows and KV scale group of 128 rows are retained. Quantizer dispatch
+and scale scratch strides must follow the 128-row scale groups, not the new
+64-row traversal. An initial isolated probe violated that distinction and failed
+on a batched KV tail; its failure logs are preserved. The corrected probes and
+production encoder use kvScaleTileSize for that dispatch.
+
+The initially promising split-output kernel still had large shape cliffs. Its
+Morton grid rounded row and head counts to powers of two. At R16640/H18, that
+means 16,384 dispatched groups for only 4,680 live groups across both partitions.
+The retained compact grid dispatches exactly the live count and keeps each
+head's query groups adjacent. Grid dimensions come from the current call, not a
+cached shape. Both source and pipeline keys distinguish splitOutput; runtime
+R/C still share appropriate kernel objects. Changing both ordering and padding
+removes the measured cliffs. The experiments do not isolate physical GPU
+utilization or attribute the entire gain to the cost of early-return groups.
+
+A nine-case, 72-record scheduling pilot compares padded Morton, compact row-
+major, compact head-major, interleaved output partitions, and compact eight-row
+chunks. All executions pass the sampled checks. Compact row-major is retained:
+Ideogram 1024 goes from 3.92 to 3.62 ms, 1536 from 18.56 to 16.02 ms, and 2048
+from 55.14 to 47.80 ms in that pilot. A one-head R16640 case goes from 5.63 to
+3.05 ms. Other orderings can help individual shapes, but do not justify another
+selector branch. Interleaving partitions is nearly tied at the largest shapes
+and worse at 1024.
+
+Dynamic C had a separate issue. The generated kernel retained a short-KV
+fallback although the split-output selector only accepts long KV sequences.
+Making that branch dead at compile time removes its unused dynamic-matmul and
+threadgroup-memory requirements. It recovers the dynamic R16641/C16639 pilot
+from about 69 to 56 ms before compact dispatch. The query bulk/tail split used
+by D128 was also tried here, but regressed D256; that extension is not retained.
+Row alignment alone did not explain the remaining cliffs: R4112, R4160 and R4224
+with C4096 still lost at low head counts until dispatch ordering was corrected.
+
+The final shared selector is deliberately simple: FP16 low-precision inference,
+D256, R>=4096, C>=4096, and the existing unmasked/noncausal/non-varlen/no-sink/
+no-sliding-window support conditions. Smaller shapes keep the existing FP16
+preference. There is no new chip-name, head-count, or alignment gate. A provisional
+four-head gate was removed after compact dispatch fixed the few-head cases.
+Training keeps its previous route, including when inference also retains LSE.
+
+The preceding tile exploration includes 64 corrected initial pilot records,
+48 cached-Q controls, 36 tile/group candidates, 40 paired tile confirmations,
+and 282 records over 45 shapes with selected FP16 and actual MLX comparisons.
+Caching Q fragments and splitting into four output partitions lose. A whole-
+width C32 traversal also loses; the benefit is not just reducing the KV tile.
+Further controls comprise 168 initial integration records, 120 short-KV branch
+controls, 114 few-head controls, 228 initial DynamicGraph records, and 104 query/
+KV alignment controls. These include rejected configurations; their zero exit
+codes establish execution/check completion, not that each choice was faster.
+
+The final 46-case DynamicGraph sweep has 184 records, all exit zero. It covers
+priority Ideogram shapes, rectangles, static/dynamic R/C, query and KV tails,
+GQA, batches, 1/2/3/4/8/18/32 query heads, and adjacent nonselected cases. Every selected
+case beats FP16 in the paired medians; the smallest gain is about 13.5%. The five
+unchanged fallback controls differ by at most about 0.4%. The final comparison
+uses no-gradient DynamicGraph evaluation, testing=false, retained LSE and exact
+Q/O buffer reuse. Quantization and V centering are included in GPU timing.
+
+The application comparison below uses actual local MLX with its normal backend
+selection and the same physical SHD input layout. MLX keeps its native output
+layout; no SHD output copy is added to its timing. CCV writes SHD and reuses
+the Q buffer. All unevaluated MLX forward stages, including preparation, are
+encoded into the measured command buffer. Only inputs are prematerialized. MLX has
+no equivalent INT8 SDPA route in this comparison, so its column is FP16. The
+D256 MLX logs show a six-stage Matmul/Softmax fallback; the D128 logs show
+ScaledDotProductAttention. No CCV input transpose is added. The MLX binary has
+only the previously documented D256 JIT-signature fix. These are warmed
+attention-operator times, not whole image/video generation times.
+Actual application comparison, median of process GPU medians (ms):
+Workload                         Previous      Current     MLX FP16  MLX/current
+ideogram4-512                       0.493        0.493        0.529       1.073x
+ideogram4-1024                      4.849        3.611        6.007       1.663x
+ideogram4-1536                     22.699       16.166       28.249       1.747x
+priority-flux2-2048                43.615       43.519       68.413       1.572x
+krea2-2048                         38.431       38.427       61.829       1.609x
+ideogram4-2048                     69.069       48.460       87.641       1.809x
+qwen21-2048                        26.593       26.651       42.583       1.598x
+ideogram4-last                      4.781        3.497        5.595       1.600x
+ideogram4-unconditional             4.471        3.298        5.251       1.592x
+h3-480p-10s                       170.413      170.488      305.806       1.794x
+h3-720p-10s                       850.697      850.375     1611.550       1.895x
+
+Each process uses at least 0.5 GPU seconds of warmup, three warmup iterations,
+and seven measured samples. The original comparison has 66 successful records
+(11 cases, three implementations, two reversed orders). Two D128 MLX medians
+were visibly noisy: FLUX 68.43/77.37 ms and Krea 61.82/81.72 ms. Four additional
+reversed-order passes for current/MLX add 16 successful records. The table uses
+all six process medians for those two current/MLX rows, retaining the outliers;
+their previous column still has two. Other rows use two process medians.
+Repeated MLX medians are 68.33-68.44 ms for FLUX and 61.82-61.85 ms for Krea.
+All raw results, including noisy observations, are preserved. The D128/H3
+implementations are unchanged, so their small previous/current differences
+are timing variation. The Ideogram 512 row remains an FP16 fallback.
+
+
+All CCV output elements are checked for finiteness. The added integration test
+uses 13 shapes across fixed/dynamic dimensions and separate/in-place outputs:
+52 combinations. It compares eight dispersed query rows, every head and all
+output columns with the CPU reference, checks all saved LSE entries for
+finiteness, and checks sampled log2 LSE. It includes batches, GQA, changing
+cache shapes, both selector boundaries, partial query/KV tiles, few heads,
+and V scaled by 1000. The existing 34-case query-range test also passes.
+
+The independent final numerical comparison covers four shapes and seven
+random/stress distributions (56 executions, prototype/current). It checks all
+outputs against the isolated compact-dispatch implementation and checks sampled
+rows against double-precision CPU softmax. All 28 full-output comparisons are
+bit-identical. All saved LSE values are finite. These checks distinguish
+integration correctness from the accuracy of INT8 attention itself.
+
+The earlier 84-record accuracy comparison includes previous raw INT8, split
+INT8 and FP16 on four shapes and seven distributions. Reducing the traversal
+from 128 to 64 keys changes online maxima and P rounding even though Q/K/V
+scales are preserved: the largest old/new full-output relative L2 difference
+is 1.006%. Maximum sampled CPU relative L2 by distribution (%):
+                     Previous INT8   Split INT8   FP16
+Q/K sigma 0.25             1.0478       1.0474    0.0417
+Q/K sigma 1                4.8880       4.8831    0.0450
+Q/K sigma 2                3.7464       3.7466    0.0244
+K outliers / shifted V     3.1530       3.1525    0.0248
+V sigma 1000               1.0552       1.0551    0.0415
+Opposing +/-1000 V means  20.7677      20.8976    0.8018
+Sparse +/-60000 V          near zero   near zero near zero
+
+Large cancellation-sensitive INT8 error is preexisting, not eliminated here.
+The largest saved-LSE error in the outlier probe is about 0.892 log2 units for
+both INT8 forms. In the final numerical set it is about 0.723. Do not interpret
+zero process exits or the normal-input integration tolerances as a universal
+2%/5% accuracy bound. Switching a large GEMM_8I request from the FP16 fallback
+to INT8 also changes its numerical behavior. Rendered image/video quality has
+not been evaluated by these operator tests.
+
+The first application attempt caught an intermediate template substitution in
+the non-split D128 source (the object predated its source correction). The failed
+process and initial build logs are retained. The source was rebuilt, both test
+binaries were relinked, the D128/D256 focused tests and numerical comparison
+were rerun, and the complete application comparison was restarted successfully.
+The final 184-record D256 sweep predates that rebuild; the fix only changes the
+non-split source branch. The final application and full-suite binaries use the
+corrected build. No failed record is counted as a successful measurement.
+
+
+Final full validation passes: MPSBLAS 298/298 and MPSDNN 126/126, both exit 0.
+The first full BLAS run passed 297/298. Its single failure was an outdated
+FP16-focused test that requested GEMM_8I on a long D256 shape and still expected
+FP16 accuracy. That test now explicitly requests FP16 for the newly quantized
+region and retains its strict 0.3% tolerance. It still requests GEMM_8I for the
+short-shape FP16 fallback, with new 4095x4097 and 4097x4095 boundary controls.
+The new INT8-specific test covers the long quantized route independently.
+The corrected focused FP16 test and both complete suites passed. The initial
+failure and correction are archived; no production code changed for this fix.
+git diff --check passes. Generated test graph files were moved to scratch.
+
+Builds use make -C lib lib DEBUG=1 -j4, then the debug MPS test targets with the
+library rebuilt and both binaries explicitly relinked. The ordinary aggregate
+make debug attempted to download an unrelated missing VGG fixture and failed
+because wget is absent. The explicit library and MPS targets avoid that fixture;
+no test model download or placeholder file is used. GPU jobs run serially with
+unrestricted Metal access, and CPU compilation finishes before GPU timing.
+
+The actual MLX checkout is 25532871329fe4cafdada9fa0941a1cdbfb3a9f2. Its M5 Ultra
+matmul tuning is commit 2d27ab05fb7dcda69bb3c57abd74c0b3bc9a5a99 (PR #4447).
+Draw Things references and workload assumptions remain in priority-workloads.json
+and priority-report.txt. UI H3 rows use the existing 31018 / 70186 token cases;
+patch-aligned proxies are not substituted for those rows. All source changes
+remain unstaged and uncommitted.
+
+Files prefixed inference-output-split preserve CSVs, exact shape manifests,
+paired summaries, numerical errors, build/test outcomes, SHA256 provenance,
+and source/raw-log archives. The source archive contains the prior snapshot,
+intermediate implementations, final source, integration diff, and every driver.
+Prototype environment switches occur only in isolated scratch binaries. The
+production shader has no experimental mode switch. For reproduction, use the
+final-source snapshot and production/build-probes.py, then the final application,
+numerical, compact-bounds and suite drivers. Historical builders expect their
+matching archived source snapshot and predecessor object list, not an arbitrary
+later checkout.
+
+The inference goal remains open. D256 inference is substantially closer to the
+approximately 2x MLX target, but the smaller Ideogram cases and D128 image cases
+still have gaps. FP16 projection parity and the current INT8 projection gains
+remain documented in inference-fp16-expanded.txt and inference-int8-register.txt.
+The remaining attention work is to test whether compact query/head traversal
+helps D128 without output splitting, and to reduce per-tile conversion or
+communication costs without assuming the rejected register/staging prototypes
+will become faster. No SHD-to-HSD conversion is part of that plan. Backward
+optimization remains deferred; its existing comparisons are retained.

@@ -1,0 +1,44 @@
+D256 causal inference, 2026-10-04
+
+The source-corrected Local Code sweep exposed a causal prefill gap after the
+noncausal register path was already integrated. The imported MLX kernel already
+supports a causal function constant. The wrapper had disabled it and passed a
+zero query offset. Retained integration enables it for D256 inference, passing
+C-R as the offset so new queries are right-aligned with a growing KV cache.
+Q remains in registers across KV tiles; two output slices reduce live state;
+the causal traversal omits fully masked tiles. No storage transpose is added.
+
+Selection retains R>64, FP16 IO, existing layouts, upcast/alias restrictions,
+and excludes explicit masks, varlen, attention sinks and sliding windows.
+Causal mode additionally requires inference, R<=C and C<=INT32_MAX-96. These
+bounds avoid empty leading causal rows and overflow in padded tile arithmetic.
+Causal is a pipeline constant/cache property. Only D generates kernel source;
+shape, C-R and strides remain runtime parameters. Causal training is unchanged.
+An INT8 preference uses the FP16 fallback here: INT8 output partitioning does
+not implement causal masks. These rows are not INT8 arithmetic speedups.
+
+GPU milliseconds, two reversed process orders, seven samples/order, at least
+0.5 GPU seconds warmup. Actual MLX revision/build is recorded in handoff.txt.
+
+R     C     Hq/Hkv | Previous FP16 | Retained FP16 | MLX      | Previous/current
+128   2048  16/4   | 0.45835       | 0.22202       | 0.17063  | 2.06x
+2048  8192  16/4   | 5.86462       | 3.33706       | 3.38086  | 1.76x
+2048  2048  24/4   | 1.45444       | 0.76906       | 0.79746  | 1.89x
+2048  8192  24/4   | 8.97742       | 4.57108       | 4.65594  | 1.96x
+4096  8192  24/4   | 18.47250      | 8.14306       | 8.04988  | 2.27x
+
+Validation: 23 cases, 230 process records, zero numerical failures, against a
+frozen pre-causal CCV probe and actual MLX. Eleven existing application/control
+cases and twelve new boundaries cover R64/65, 127/128, 255/256/257, C65/257/513,
+batch 2, unequal heads, aligned large queries and partial R4097/C8193 tails.
+The R64 unchanged control had one slow FP16 order (0.18450 vs 0.08075 ms), with
+identical output hashes. Its original flag is preserved; the longer confirmation
+is in regression-repeat-results.csv and handoff.txt. No selected case was flagged.
+
+A new randomized integration test checks B2/Hq6/Hkv2 with eight R/C shapes,
+noncausal and causal inference, INT8 preference with exact Q/output alias, and
+causal training controls. Dynamic-R/C cache reuse, saved log2 half LSE, full
+output finiteness and sampled CPU attention use original causal row positions.
+The focused test passed; final complete MPS suite results are in handoff.txt.
+No tolerance was relaxed. Inference-specific comparisons use a 0.3% normalized
+L2 bound in this randomized test; the unchanged R64 INT8 control allows 5%.

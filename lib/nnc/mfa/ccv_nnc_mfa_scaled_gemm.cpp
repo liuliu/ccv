@@ -5,6 +5,9 @@ using namespace ccv::nnc;
 #include "kernels/NAInt8MatMulKernel.hpp"
 #include "kernels/NAInt8MatMulKernelDescriptor.hpp"
 #include "kernels/NAInt8MatMulDescriptor.hpp"
+#include "kernels/NARegisterMatMulDescriptor.hpp"
+#include "kernels/NARegisterMatMulKernel.hpp"
+#include "kernels/NAMatMulTuning.hpp"
 #include "kernels/NAInt8MatMulSmallMKernel.hpp"
 #include "kernels/NAInt8MatMulSmallMKernelDescriptor.hpp"
 #include "kernels/NAInt8MatMulSmallMDescriptor.hpp"
@@ -155,13 +158,67 @@ size_t ccv_nnc_mfa_scaled_gemm_reserved_scratch_size(ccv_nnc_mfa_scaled_gemm_par
   return a_layout.scratch_bytes;
 }
 
-void ccv_nnc_mfa_encode_scaled_gemm(mfa::context* context, ccv_nnc_mfa_scaled_gemm_params_t params, MTL::CommandBatch* command_batch, MTL::Buffer** tensors, size_t* tensor_offsets)
+static bool use_register_matmul(mfa::context* context, const ccv_nnc_mfa_scaled_gemm_params_t params)
+{
+  // Register operands also help medium-row projections after the reduction
+  // loop improvements. Preserve the previous minimum output area (768 full
+  // 64x128 tiles) and keep deeper reductions on the native path below M4096:
+  // K24576 and above still lost in the crossover sweep. Smaller selected
+  // outputs have complete 64-row tiles; larger outputs amortize partial tiles.
+  return params.use_neural_accelerators &&
+      params.data_type == MTL::DataTypeHalf && params.batch_dimension == 1 &&
+      !params.leading_dimension_a && !params.leading_dimension_c &&
+      !params.activation_hadamard_256 &&
+      params.M >= 2048 && params.N >= 1536 &&
+      uint64_t(params.M) * params.N >= uint64_t(4096) * 1536 &&
+      (params.M >= 4096 || params.K <= 20480) &&
+      (params.M >= 8192 || params.M % 64 == 0) &&
+      params.K >= 4096 && params.K <= 32768 && uint64_t(params.K) <= uint64_t(4) * params.N &&
+      params.M <= INT32_MAX - 63 && params.N <= INT32_MAX - 127 &&
+      uint64_t(params.M) * params.K <= UINT32_MAX &&
+      useNeuralAcceleratorMatMulTuning(context->device.get());
+}
+
+static void encode_scaled_gemm(mfa::context* context, ccv_nnc_mfa_scaled_gemm_params_t params, MTL::CommandBatch* command_batch, MTL::Buffer** tensors, size_t* tensor_offsets, const bool cast_output_to_float)
 {
   int num_tensors = 0;
   while (tensors[num_tensors] != nullptr)
     ++num_tensors;
   CCV_NNC_MFA_PRECONDITION((num_tensors == 3) || (num_tensors == 4));
   CCV_NNC_MFA_PRECONDITION(params.use_neural_accelerators || !params.activation_hadamard_256);
+  const bool useRegisterMatMul = use_register_matmul(context, params) &&
+      (cast_output_to_float || tensors[0] != tensors[2]);
+  CCV_NNC_MFA_PRECONDITION(!cast_output_to_float || useRegisterMatMul);
+  // Quantize and consume a bounded row range before moving to the next one.
+  // Large activation and weight working sets benefit from this ordering; small
+  // weight matrices and nearly single-chunk inputs can regress from the extra
+  // dispatches. Require at least two full chunks. These are measured
+  // footprint thresholds, not assumptions about the GPU's physical cache size.
+  // Stay within the measured wide-projection surface (K/N <= 3); deeper,
+  // narrower reductions favored the original traversal with dynamic M.
+  // The K <= 8192 profile already uses a smaller 64-row kernel tile and does
+  // not consistently benefit from adding this second level of partitioning.
+  // Keep batching, strided views and rotated activations on their existing path.
+  if (!useRegisterMatMul && params.use_neural_accelerators && params.data_type == MTL::DataTypeHalf &&
+      params.batch_dimension == 1 && !params.leading_dimension_a && !params.leading_dimension_c &&
+      !params.activation_hadamard_256 && params.M >= 16384 && params.K > 8192 &&
+      uint64_t(params.K) <= uint64_t(3) * params.N &&
+      uint64_t(params.M) * params.K > (uint64_t(128) << 20) &&
+      uint64_t(params.N) * params.K > (uint64_t(64) << 20) &&
+      tensors[0] != tensors[2] && useNeuralAcceleratorMatMulTuning(context->device.get())) {
+    for (uint32_t row = 0; row < params.M;) {
+      auto chunk = params;
+      chunk.M = std::min<uint32_t>(8192, params.M - row);
+      size_t offsets[4];
+      for (int i = 0; i < num_tensors; ++i)
+        offsets[i] = tensor_offsets[i];
+      offsets[0] += size_t(row) * params.K * sizeof(uint16_t);
+      offsets[2] += size_t(row) * params.N * sizeof(uint16_t);
+      ccv_nnc_mfa_encode_scaled_gemm(context, chunk, command_batch, tensors, offsets);
+      row += chunk.M;
+    }
+    return;
+  }
   if (!params.use_neural_accelerators) {
     CCV_NNC_MFA_PRECONDITION(params.data_type == MTL::DataTypeFloat);
     CCV_NNC_MFA_PRECONDITION(!params.fused_bias && params.batch_dimension == 1 && num_tensors == 3);
@@ -308,6 +365,43 @@ void ccv_nnc_mfa_encode_scaled_gemm(mfa::context* context, ccv_nnc_mfa_scaled_ge
     command_batch->finishCommand(encoder);
   }
 
+  if (useRegisterMatMul) {
+    const NARegisterMatMulDescriptor descriptor {
+      params.M % 64 == 0, params.N % 128 == 0, params.K % 512 == 0,
+      bool(params.fused_bias), true, false, false, cast_output_to_float
+    };
+    auto registerPool = NS::AutoreleasePool::alloc()->init();
+    auto* value = shaderCache.findKernel<NARegisterMatMulKernel,
+        NARegisterMatMulDescriptor, NARegisterMatMulKernelDescriptor>(
+            descriptor, context->device.get(), dprops);
+    registerPool->drain();
+    const int32_t M = params.M, N = params.N, K = params.K;
+    const NARegisterMatMulParams arguments {
+      M, N, K, K, K, N, (N + 127) / 128, (M + 63) / 64,
+      0, 0, 0, 0, K / 512, 1
+    };
+    auto* encoder = command_batch->startCommand();
+    encoder->setComputePipelineState(value->pipeline.get());
+    encoder->setBuffer(scratch, 0, 0);
+    encoder->setBuffer(tensors[1], tensor_offsets[1], 1);
+    encoder->setBuffer(tensors[2], tensor_offsets[2], 3);
+    encoder->setBytes(&arguments, sizeof(arguments), 4);
+    encoder->setBuffer(scratch, a_layout.scale_offset, 8);
+    encoder->setBuffer(tensors[1], tensor_offsets[1] + b_scale_offset, 9);
+    encoder->useResource(scratch, MTL::ResourceUsageRead);
+    encoder->useResource(tensors[1], MTL::ResourceUsageRead);
+    encoder->useResource(tensors[2], MTL::ResourceUsageWrite);
+    if (params.fused_bias) {
+      CCV_NNC_MFA_PRECONDITION(num_tensors == 4);
+      encoder->setBuffer(tensors[3], tensor_offsets[3], 2);
+      encoder->useResource(tensors[3], MTL::ResourceUsageRead);
+    }
+    encoder->dispatchThreadgroups(MTL::Size(arguments.tiles_n, arguments.tiles_m, 1),
+        MTL::Size(32, 4, 2));
+    command_batch->finishCommand(encoder);
+    return;
+  }
+
   if (useSmallM) {
     CCV_NNC_MFA_PRECONDITION((params.fused_bias && num_tensors == 4) || (!params.fused_bias && num_tensors == 3));
     if (METAL_LOG_LEVEL(context) >= 1) {
@@ -383,4 +477,19 @@ void ccv_nnc_mfa_encode_scaled_gemm(mfa::context* context, ccv_nnc_mfa_scaled_ge
         MTL::Size(kernel->threadgroupSize(matmulPipeline.get()), 1, 1));
     command_batch->finishCommand(encoder);
   }
+}
+
+void ccv_nnc_mfa_encode_scaled_gemm(mfa::context* context, ccv_nnc_mfa_scaled_gemm_params_t params, MTL::CommandBatch* command_batch, MTL::Buffer** tensors, size_t* tensor_offsets)
+{
+  encode_scaled_gemm(context, params, command_batch, tensors, tensor_offsets, false);
+}
+
+int ccv_nnc_mfa_encode_scaled_gemm_cast(mfa::context* context, ccv_nnc_mfa_scaled_gemm_params_t params, MTL::CommandBatch* command_batch, MTL::Buffer** tensors, size_t* tensor_offsets)
+{
+  if (!use_register_matmul(context, params))
+    return 0;
+  // Unlike chunked GEMM, this path consumes the entire A into separate INT8
+  // scratch before writing C. This remains safe when widening C reuses A.
+  encode_scaled_gemm(context, params, command_batch, tensors, tensor_offsets, true);
+  return 1;
 }

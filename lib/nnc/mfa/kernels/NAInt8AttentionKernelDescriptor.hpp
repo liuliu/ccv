@@ -18,6 +18,9 @@ struct NAInt8AttentionKernelDescriptor {
   bool hasCRemainder;
   uint16_t threadBarrierEveryC;
   GEMMOperandPrecision ioPrecision;
+  bool partitioned = false;
+  bool splitOutput = false;
+  bool compactGrid = false;
   bool lowPrecisionIntermediates;
   AttentionKernelType type;
   float scale;

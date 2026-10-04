@@ -4,6 +4,7 @@
 #include "../ccv_nnc_mfa.hpp"
 #include "../ccv_nnc_mfa_hash.hpp"
 #include "../ccv_nnc_mfa_error.hpp"
+#include "NAMatMulTuning.hpp"
 
 static void serializeBinaries(MTL::BinaryArchive *const binaryArchive, const std::string& pathToWrite) noexcept {
   NS::Error *error = nil;
@@ -27,6 +28,8 @@ bool NAMatMulDescriptor::operator==(const NAMatMulDescriptor& rhs) const {
   }
   return
   (batchDimension == rhs.batchDimension) &&
+  (!loadM || useWideTile() == rhs.useWideTile()) &&
+  (!loadM || wideTileSplitK() == rhs.wideTileSplitK()) &&
   simd_all(lhsMatrixDimensions == rhsMatrixDimensions) &&
   simd_all(leadingDimensions.value_or(simd::uint2(UINT32_MAX)) == rhs.leadingDimensions.value_or(simd::uint2(UINT32_MAX))) &&
   (loadM || simd_all(batchStrides.value_or(simd::uint4(UINT32_MAX)) == rhs.batchStrides.value_or(simd::uint4(UINT32_MAX)))) &&
@@ -42,6 +45,10 @@ std::size_t std::hash<NAMatMulDescriptor>::operator()(const NAMatMulDescriptor& 
   std::size_t seed = 0;
   using namespace ccv::nnc::mfa::hash;
   combine_64(seed, hash.batchDimension);
+  if (hash.loadM) {
+    combine_32(seed, hash.useWideTile() ? 1 : 0);
+    combine_32(seed, hash.wideTileSplitK());
+  }
   combine_32(seed, hash.loadM ? groupM(hash.matrixDimensions[0]) : hash.matrixDimensions[0]);
   combine_32(seed, hash.matrixDimensions[1]);
   combine_32(seed, hash.matrixDimensions[2]);
@@ -78,6 +85,37 @@ uint16_t NAMatMulDescriptor::splitK() const noexcept {
     return 2; // Use split by 2 if we can end up with >= 2048 per split.
   }
   return 1;
+}
+
+bool NAMatMulDescriptor::useWideTile() const noexcept {
+  // A deeper reduction tile amortizes MPP calls. Keep full N/K tiles: short
+  // tails pay for the larger traversal without getting its reuse benefit.
+  // Bound this profile by its measured output footprint. Beyond 16384 tiles
+  // (256 MiB of FP16 output), large image/video projections favor the original
+  // shallower reduction and taller M tile. Padding M or restoring split-K did
+  // not remove that regression. This is an empirical limit, not a cache size.
+  const uint64_t outputTiles = ((uint64_t(matrixDimensions[0]) + 63) / 64) *
+      ((uint64_t(matrixDimensions[1]) + 127) / 128) * batchDimension;
+  return memoryPrecisions.A == GEMMOperandPrecision::FP16 &&
+      memoryPrecisions.B == GEMMOperandPrecision::FP16 &&
+      memoryPrecisions.C == GEMMOperandPrecision::FP16 &&
+      registerPrecisionC.value_or(GEMMOperandPrecision::FP16) == GEMMOperandPrecision::FP16 &&
+      !leadingDimensions.has_value() &&
+      matrixDimensions[1] % 128 == 0 && matrixDimensions[2] >= 512 &&
+      matrixDimensions[2] % 512 == 0 && outputTiles <= 16384;
+}
+
+uint16_t NAMatMulDescriptor::wideTileSplitK() const noexcept {
+  const uint64_t outputTiles = ((uint64_t(matrixDimensions[0]) + 63) / 64) *
+      ((uint64_t(matrixDimensions[1]) + 127) / 128) * batchDimension;
+  // 512 output tiles provide several waves on the measured 80-core GPU.
+  // Splitting these moderate reductions only adds partial-output traffic and
+  // a reduction dispatch. Small grids and long K still need split-K.
+  // This decision is part of the loadM pipeline key, since M is otherwise
+  // grouped only by pointer-rebasing requirements.
+  if (useWideTile() && outputTiles >= 512 && matrixDimensions[2] <= 8192)
+    return 1;
+  return splitK();
 }
 
 bool NAMatMulDescriptor::threadBarrierOverK(uint32_t K, uint16_t splitKValue) noexcept {
@@ -231,11 +269,17 @@ std::pair<NAMatMulKernelDescriptor, PipelineValue<NAMatMulKernel> *> NAMatMulDes
     .bias = registerPrecisionBias,
   };
 
-  uint16_t splitK = this->splitK();
-  const bool threadBarrierOverK = NAMatMulDescriptor::threadBarrierOverK(this->matrixDimensions[2], splitK);
+  const bool wideTile = useNeuralAcceleratorMatMulTuning(device) && useWideTile();
+  const uint16_t splitK = wideTile ? wideTileSplitK() : this->splitK();
+  // Long split reductions on the wide profile benefit from the barrier before
+  // the generic K >= 16384 threshold too. The application sweep shows a large
+  // throughput cliff without it at K=9216/12288/14336; split-K=1/2 stay unchanged.
+  const bool threadBarrierOverK = NAMatMulDescriptor::threadBarrierOverK(this->matrixDimensions[2], splitK) ||
+      (wideTile && splitK >= 4);
   const uint32_t groupMValue = groupM(this->matrixDimensions[0]);
   const uint32_t groupNValue = this->transposeState[1] ? groupN(this->matrixDimensions[1]) : 0;
-  auto kernelDesc = NAMatMulKernelDescriptor(simd::ushort3 { 128, 64, 64 }, this->memoryPrecisions, registerPrecisions, splitK, 4, threadBarrierOverK, this->transposeState, this->useBias, this->loadM, groupMValue, groupNValue, this->leadingDimensions.has_value());
+  const auto blockDimensions = wideTile ? simd::ushort3 { 64, 128, 512 } : simd::ushort3 { 128, 64, 64 };
+  auto kernelDesc = NAMatMulKernelDescriptor(blockDimensions, this->memoryPrecisions, registerPrecisions, splitK, 4, threadBarrierOverK, this->transposeState, this->useBias, this->loadM, groupMValue, groupNValue, this->leadingDimensions.has_value());
   NAMatMulKernel* kernel = createKernel(kernelDesc);
   auto pipelines = createPipeline(kernel->library.get(), splitK, (this->matrixDimensions[1] % 2) == 0);
 

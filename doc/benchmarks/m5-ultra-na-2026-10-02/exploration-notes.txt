@@ -1,0 +1,82 @@
+Historical checkpoint: see handoff.txt for final validation, gating and branch status.
+Associated raw files are in research-2026-10-02-04.tar.gz; extract into a separate directory.
+
+Sources and discarded measurements
+
+MLX M5 Ultra tuning: https://github.com/ml-explore/mlx/pull/4447
+Local commit 2d27ab05fb7dcda69bb3c57abd74c0b3bc9a5a99.
+The PR changes GEMM aspect-ratio tiles, K traversal depth, split-K partition
+sizes and swizzling. It does not publish a numerical shape table in the PR
+conversation. Our sweep therefore spans both aspect ratios, output-grid sizes,
+reduction lengths, irregular dimensions, transposes and batches.
+CCV retains its MPP implementation and Morton traversal; MLX tile numbers are
+candidates to measure, not assumed to be optimal in a different kernel.
+
+MLX SDPA VJP: https://github.com/ml-explore/mlx/pull/4563
+The implementation uses a blocked sequence of matrix multiplies. The probe
+asserts NAX availability and prints ScaledDotProductAttentionVJP with three
+outputs; it materializes the saved forward before measuring the backward.
+The PR's own sweep includes batches 1 and 4, different head dimensions and
+GQA. These dimensions are included here. CCV backward comparisons are unmasked.
+
+Metal 4.1 compatibility: https://github.com/ml-explore/mlx/pull/4594
+Both projects need the factory return type for cooperative tensors, because
+local-variable decltype acquires an address space that MPP traits do not strip.
+CCV's generic SIMD matrix methods also need explicit thread qualification.
+
+Discarded early data:
+- The first MLX build lacked the optional Metal compiler and disabled NAX.
+  It was rebuilt with Metal 4.1. Non-NAX comparison timings are excluded.
+- The old static-M GEMM probe omitted its M function constant. Fixed before
+  the saved sweeps; those earlier timings did not measure valid matrix work.
+- Early short warmups were sensitive to clock ramp-up and do not set policy.
+- The old FP16 backward probe bound dQ to slot 7 instead of 9, used obsolete
+  default tiles/SIMD groups/bypass settings, and had an autorelease teardown
+  crash. The corrected probe matches production settings and validates outputs.
+- The old INT8 backward probe quantized only batch zero. Its dispatch now
+  includes all batches. Saved backward results use the corrected probe.
+- INT8 backward's fixed probability scale could produce all-zero dV for
+  diffuse attention. The existing GQA dynamic scale now applies to MHA too;
+  dS precision and the fixed-quant query algorithm are unchanged.
+
+No attention selector is inferred from a single square case. Larger
+query tiles regressed D=128 INT8 forward in initial exploration. SIMD-group
+and wider-head candidates are measured separately from production defaults.
+
+Additional probe corrections before accepting results:
+- MLX D192/256 inference lowers to a graph, not a single fused primitive.
+  Timing only its final primitive omitted upstream work. All saved MLX
+  forward entries now come from full-graph traversal, with sampled CPU output
+  checks; the earlier partial timings are excluded.
+- INT8 backward now uses the production Q-scale tile of 32 and the D128 GQA
+  key/value SIMD-group count of 8. The final backward sweep supersedes earlier
+  probe defaults. DQ/DK/DV are compared against MLX on both repetitions.
+- The forward INT8 candidate probe initially hardcoded a KV scale tile of 64
+  while its C128 quantizer allocated scales per 128 keys. Periodic inputs hid
+  some invalid indexing. The descriptor now uses the quantizer's tile size.
+  Only the repaired, two-pass attention-wide-head-candidates.csv is retained.
+- Attention probes now retain autoreleased command buffers/encoders and use
+  an RAII autorelease pool. This fixes the double release previously hidden
+  by _Exit; validation failures can return their actual status.
+
+Accepted attention changes use existing kernel geometry/precision fields,
+without model-name checks: D64 low-precision backward bypasses threadgroup
+staging with four SIMD groups; D256 unmasked low-precision INT8 forward uses
+C128/D32/four groups and matching KV quantization scales. D192 and D128
+backward candidates did not win consistently and keep their previous policy.
+
+The D128 g8-b0 backward candidate produced near-zero gradients (normalized
+L2 about 1), despite returning success. It is rejected; consult
+backward-candidate-accuracy.csv before interpreting any candidate latency.
+Execution success alone is not the acceptance criterion.
+
+The FP16 D256 forward slice of the broad sweep also consistently preferred
+four SIMD groups. Two further passes confirmed all nine shapes, including
+GQA, batches and tails. This rule is accepted for unmasked fixed-length
+low-precision prefill. Both new D256 forward policies retain the old decode
+configuration at R<=64; FP16 retains its sliding-window policy too.
+
+The forward probe now additionally validates the floating-point baseline
+against CPU softmax on original, precision-rounded Q/K/V. Output normalized
+L2 is checked as well as finite values and LSE, so near-zero output is not
+accepted solely because its absolute magnitude is small.

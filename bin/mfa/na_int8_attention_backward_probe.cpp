@@ -5,6 +5,7 @@
 #include <cstring>
 #include <iomanip>
 #include <iostream>
+#include <fstream>
 #include <memory>
 #include <numeric>
 #include <vector>
@@ -143,11 +144,16 @@ bool benchmark(const BenchmarkConfig& config, const std::function<double()>& run
 {
   std::vector<double> samples;
   samples.reserve(config.timed_iterations);
-  for (int i = 0; i < config.warmup_iterations + config.timed_iterations; ++i) {
+  // A fixed iteration count under-warms small dispatches after shader compilation.
+  const double minimum_warmup = std::getenv("CCV_NA_WARMUP_SECONDS") ?
+      std::atof(std::getenv("CCV_NA_WARMUP_SECONDS")) : 0;
+  double warmup_seconds = 0;
+  for (int i = 0; samples.size() < (size_t)config.timed_iterations; ++i) {
     const double seconds = run_once();
     if (!(seconds > 0) || std::isnan(seconds))
       return false;
-    if (i >= config.warmup_iterations)
+    warmup_seconds += seconds;
+    if (i >= config.warmup_iterations && warmup_seconds >= minimum_warmup)
       samples.push_back(seconds);
   }
   stats->average_seconds = std::accumulate(samples.begin(), samples.end(), 0.0) / samples.size();
@@ -241,7 +247,7 @@ uint16_t create_backward_query_execution_simdgroups(const AttentionCase&)
 uint16_t create_backward_keyvalue_execution_simdgroups(const AttentionCase& attention)
 {
   if (attention.D == 128) {
-    return 16;
+    return attention.Hq > attention.Hk ? 8 : 16;
   }
   return 4;
 }
@@ -287,14 +293,14 @@ NS::SharedPtr<MTL::FunctionConstantValues> create_attention_constants(
 NS::SharedPtr<MTL::FunctionConstantValues> create_quantize_constants(
     const AttentionCase& attention,
     uint32_t q_tiles,
-    uint32_t kv_tiles)
+    uint32_t kv_tiles,
+    uint32_t q_tile_size)
 {
   auto constants = NS::TransferPtr(MTL::FunctionConstantValues::alloc()->init());
   const uint32_t q_sequence = attention.R;
   const uint32_t kv_sequence = attention.C;
   const uint32_t q_heads = attention.Hq;
   const uint32_t kv_heads = attention.Hk;
-  const uint32_t q_tile_size = 16;
   const uint32_t kv_tile_size = 64;
   const uint32_t q_batch_stride = attention.batch > 1 ? attention.R * attention.D * attention.Hq : 0;
   const uint32_t k_batch_stride = attention.batch > 1 ? attention.C * attention.D * attention.Hk : 0;
@@ -334,11 +340,11 @@ NS::SharedPtr<MTL::ComputePipelineState> create_pipeline(
   return pipeline;
 }
 
-QuantizePipelines create_quantize_pipelines(MTL::Device* device, const AttentionCase& attention)
+QuantizePipelines create_quantize_pipelines(MTL::Device* device, const AttentionCase& attention, uint16_t q_tile_size = 16)
 {
   QuantizePipelines bundle;
   const simd::ushort3 forward_block_dimensions = create_forward_block_dimensions(attention);
-  bundle.q_tiles = (attention.R + 15) / 16;
+  bundle.q_tiles = (attention.R + q_tile_size - 1) / q_tile_size;
   bundle.kv_tiles = (attention.C + 63) / 64;
   bundle.v_mean_threads =
       attention.C <= 20480 ?
@@ -349,7 +355,7 @@ QuantizePipelines create_quantize_pipelines(MTL::Device* device, const Attention
       attention.D,
       attention.Hq,
       attention.Hk,
-      16,
+      q_tile_size,
       64,
       create_forward_execution_simdgroups(attention),
       bundle.v_mean_threads,
@@ -364,7 +370,7 @@ QuantizePipelines create_quantize_pipelines(MTL::Device* device, const Attention
       false,
       false);
   bundle.kernel = std::make_unique<NAInt8AttentionKernel>(kernel_descriptor, device);
-  auto quantize_constants = create_quantize_constants(attention, bundle.q_tiles, bundle.kv_tiles);
+  auto quantize_constants = create_quantize_constants(attention, bundle.q_tiles, bundle.kv_tiles, q_tile_size);
   bundle.q_pipeline = create_pipeline(device, bundle.kernel->library.get(), "quantize_q", quantize_constants.get());
   bundle.k_pipeline = create_pipeline(device, bundle.kernel->library.get(), "quantize_k", quantize_constants.get());
   bundle.v_pipeline = create_pipeline(device, bundle.kernel->library.get(), "quantize_v", quantize_constants.get());
@@ -422,7 +428,7 @@ BackwardPipelines create_backward_pipelines(
       attention.D,
       attention.Hq,
       attention.Hk,
-      16,
+      32,
       64,
       query_execution_simdgroups,
       v_mean_threads,
@@ -441,7 +447,7 @@ BackwardPipelines create_backward_pipelines(
       attention.D,
       attention.Hq,
       attention.Hk,
-      16,
+      32,
       64,
       keyvalue_execution_simdgroups,
       v_mean_threads,
@@ -458,7 +464,7 @@ BackwardPipelines create_backward_pipelines(
   bundle.query_kernel = std::make_unique<NAInt8AttentionKernel>(query_descriptor, device);
   bundle.keyvalue_kernel = std::make_unique<NAInt8AttentionKernel>(keyvalue_descriptor, device);
   auto attention_constants = create_attention_constants(
-      attention, (attention.R + 15) / 16, (attention.C + 63) / 64);
+      attention, (attention.R + 31) / 32, (attention.C + 63) / 64);
   bundle.compute_d_pipeline = create_pipeline(device, bundle.query_kernel->library.get(), "compute_d", attention_constants.get());
   bundle.query_pipeline = create_pipeline(device, bundle.query_kernel->library.get(), "int8_backward_query", attention_constants.get());
   bundle.keyvalue_pipeline = create_pipeline(device, bundle.keyvalue_kernel->library.get(), "int8_backward_keyvalue", attention_constants.get());
@@ -497,13 +503,14 @@ void encode_quantize(
     size_t scale_offset,
     uint32_t tiles,
     uint32_t heads,
-    uint16_t threads)
+    uint16_t threads,
+    uint32_t batch)
 {
   encoder->setComputePipelineState(pipeline);
   encoder->setBuffer(src, src_offset, 0);
   encoder->setBuffer(scratch, int8_offset, 1);
   encoder->setBuffer(scratch, scale_offset, 2);
-  encoder->dispatchThreadgroups(MTL::Size(tiles, heads, 1), MTL::Size(threads, 1, 1));
+  encoder->dispatchThreadgroups(MTL::Size(tiles, heads, batch), MTL::Size(threads, 1, 1));
 }
 
 void encode_compute_v_mean(
@@ -561,7 +568,7 @@ double run_forward_total_once(
     encode_quantize(
         encoder.get(), quantize_pipelines.q_pipeline.get(),
         q_buffer, 0, scratch, layout.q_int8, layout.q_scale,
-        quantize_pipelines.q_tiles, attention.Hq, quantize_pipelines.q_threads);
+        quantize_pipelines.q_tiles, attention.Hq, quantize_pipelines.q_threads, attention.batch);
     encoder->endEncoding();
   }
   {
@@ -569,7 +576,7 @@ double run_forward_total_once(
     encode_quantize(
         encoder.get(), quantize_pipelines.k_pipeline.get(),
         k_buffer, 0, scratch, layout.k_int8, layout.k_scale,
-        quantize_pipelines.kv_tiles, attention.Hk, quantize_pipelines.kv_threads);
+        quantize_pipelines.kv_tiles, attention.Hk, quantize_pipelines.kv_threads, attention.batch);
     encoder->endEncoding();
   }
   {
@@ -624,7 +631,7 @@ double run_prepare_backward_once(
     encode_quantize(
         encoder.get(), quantize_pipelines.q_pipeline.get(),
         q_buffer, 0, scratch, layout.q_int8, layout.q_scale,
-        quantize_pipelines.q_tiles, attention.Hq, quantize_pipelines.q_threads);
+        quantize_pipelines.q_tiles, attention.Hq, quantize_pipelines.q_threads, attention.batch);
     encoder->endEncoding();
   }
   {
@@ -632,7 +639,7 @@ double run_prepare_backward_once(
     encode_quantize(
         encoder.get(), quantize_pipelines.k_pipeline.get(),
         k_buffer, 0, scratch, layout.k_int8, layout.k_scale,
-        quantize_pipelines.kv_tiles, attention.Hk, quantize_pipelines.kv_threads);
+        quantize_pipelines.kv_tiles, attention.Hk, quantize_pipelines.kv_threads, attention.batch);
     encoder->endEncoding();
   }
   {
@@ -650,7 +657,7 @@ double run_prepare_backward_once(
     encode_quantize(
         encoder.get(), quantize_pipelines.q_pipeline.get(),
         dO_buffer, 0, scratch, layout.dO_int8, layout.dO_scale,
-        quantize_pipelines.q_tiles, attention.Hq, quantize_pipelines.q_threads);
+        quantize_pipelines.q_tiles, attention.Hq, quantize_pipelines.q_threads, attention.batch);
     encoder->endEncoding();
   }
   {
@@ -761,7 +768,7 @@ double run_backward_total_once(
     encode_quantize(
         encoder.get(), quantize_pipelines.q_pipeline.get(),
         q_buffer, 0, scratch, layout.q_int8, layout.q_scale,
-        quantize_pipelines.q_tiles, attention.Hq, quantize_pipelines.q_threads);
+        quantize_pipelines.q_tiles, attention.Hq, quantize_pipelines.q_threads, attention.batch);
     encoder->endEncoding();
   }
   {
@@ -769,7 +776,7 @@ double run_backward_total_once(
     encode_quantize(
         encoder.get(), quantize_pipelines.k_pipeline.get(),
         k_buffer, 0, scratch, layout.k_int8, layout.k_scale,
-        quantize_pipelines.kv_tiles, attention.Hk, quantize_pipelines.kv_threads);
+        quantize_pipelines.kv_tiles, attention.Hk, quantize_pipelines.kv_threads, attention.batch);
     encoder->endEncoding();
   }
   {
@@ -787,7 +794,7 @@ double run_backward_total_once(
     encode_quantize(
         encoder.get(), quantize_pipelines.q_pipeline.get(),
         dO_buffer, 0, scratch, layout.dO_int8, layout.dO_scale,
-        quantize_pipelines.q_tiles, attention.Hq, quantize_pipelines.q_threads);
+        quantize_pipelines.q_tiles, attention.Hq, quantize_pipelines.q_threads, attention.batch);
     encoder->endEncoding();
   }
   {
@@ -969,6 +976,7 @@ int main(int argc, char** argv)
   upload_buffer(command_queue.get(), dO_stage.get(), dO_buffer.get(), dO_bytes);
 
   const auto quantize_pipelines = create_quantize_pipelines(device.get(), attention);
+  const auto backward_quantize_pipelines = create_quantize_pipelines(device.get(), attention, 32);
   const auto forward_pipeline = create_forward_pipeline(device.get(), attention);
   const auto backward_pipelines = create_backward_pipelines(
       device.get(),
@@ -986,7 +994,7 @@ int main(int argc, char** argv)
     return 1;
   }
   const double setup_prepare_seconds = run_prepare_backward_once(
-      command_queue.get(), attention, quantize_pipelines, backward_pipelines, scratch_layout,
+      command_queue.get(), attention, backward_quantize_pipelines, backward_pipelines, scratch_layout,
       q_buffer.get(), k_buffer.get(), v_buffer.get(), dO_buffer.get(), o_buffer.get(), scratch.get());
   if (!(setup_prepare_seconds > 0)) {
     std::cerr << "backward prepare setup failed\n";
@@ -1011,7 +1019,7 @@ int main(int argc, char** argv)
           config,
           [&]() {
             return run_prepare_backward_once(
-                command_queue.get(), attention, quantize_pipelines, backward_pipelines, scratch_layout,
+                command_queue.get(), attention, backward_quantize_pipelines, backward_pipelines, scratch_layout,
                 q_buffer.get(), k_buffer.get(), v_buffer.get(), dO_buffer.get(), o_buffer.get(), scratch.get());
           },
           &prepare_stats)) {
@@ -1050,7 +1058,7 @@ int main(int argc, char** argv)
           config,
           [&]() {
             return run_backward_total_once(
-                command_queue.get(), attention, quantize_pipelines, backward_pipelines, scratch_layout,
+                command_queue.get(), attention, backward_quantize_pipelines, backward_pipelines, scratch_layout,
                 q_buffer.get(), k_buffer.get(), v_buffer.get(), dO_buffer.get(), o_buffer.get(), l_buffer.get(),
                 scratch.get(), dQ_buffer.get(), dK_buffer.get(), dV_buffer.get());
           },
@@ -1086,6 +1094,19 @@ int main(int argc, char** argv)
             << " keyvalueBlockD=" << backward_pipelines.keyvalue_kernel->blockDimensions[2]
             << " keyvalueSimdgroups=" << backward_pipelines.keyvalue_kernel->executionSIMDGroups
             << '\n';
+  if (const char* dump = std::getenv("CCV_NA_DUMP")) {
+    MTL::Buffer* buffers[] = {dQ_buffer.get(), dK_buffer.get(), dV_buffer.get()};
+    size_t sizes[] = {dQ_bytes, dK_bytes, dV_bytes};
+    for (int i = 0; i < 3; ++i) {
+      auto stage = NS::TransferPtr(device->newBuffer(sizes[i], kSharedResourceOptions));
+      upload_buffer(command_queue.get(), buffers[i], stage.get(), sizes[i]);
+      auto* data = (const half_float*)stage->contents();
+      for (size_t j = 0; j < sizes[i] / sizeof(half_float); ++j)
+        if (!std::isfinite(float(data[j]))) { std::cerr << "nonfinite gradient\n"; return 2; }
+      std::ofstream output(std::string(dump) + "." + std::to_string(i), std::ios::binary);
+      output.write((const char*)stage->contents(), sizes[i]);
+    }
+  }
   print_stats("forward_total", forward_stats);
   print_stats("backward_prepare", prepare_stats);
   print_stats("backward_query", query_stats);

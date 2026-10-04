@@ -1,0 +1,167 @@
+Historical checkpoint: see handoff.txt for final validation, gating and branch status.
+Associated raw files are in research-2026-10-02-04.tar.gz; extract into a separate directory.
+
+Medium-row FP16 inference dispatch, 2026-10-03
+
+The register-GEMM minimum row count left measurable gaps at 768px image sizes
+and Local Code prefill lengths. This checkpoint retains an accumulator-aware
+extension of the existing dispatcher. Kernel source, tiling, the hardware helper,
+attention layouts and INT8 selection are unchanged by this checkpoint.
+
+GPU milliseconds below are medians of two reversed-order process medians.
+All matrices use FP16 input, weights and GEMM output. acc=f32 explicitly requests
+FP32 accumulation; acc=low permits the existing lower-precision path. The selected
+register implementation accumulates in FP32 in both modes. cast=1 includes the
+following Float32 conversion for every implementation. Timings exclude weight
+decode and bias; decoded weights and bias are exercised by the regression.
+Actual MLX runs from the local checkout; these are not estimates or peak-rate
+comparisons. They are operator times, not whole-model generation speedups.
+
+768px image projection / FFN surface
+Workload                         M      N      K  acc cast | Previous  Retained  Actual MLX | less GPU time
+flux2-768-projection             2304   6144   6144  low    0 |   1.8832   1.5460      1.5409 |   17.90%
+flux2-768-up                     2304  18432   6144  low    0 |   4.6957   4.3580      4.3514 |    7.19%
+flux2-768-down                   2304   6144  18432  low    0 |   6.4107   4.4768      4.4812 |   30.17%
+flux2-768-projection             2304   6144   6144  f32    0 |   1.9072   1.5414      1.5389 |   19.18%
+flux2-768-up                     2304  18432   6144  f32    0 |   6.0045   4.3587      4.3454 |   27.41%
+flux2-768-down                   2304   6144  18432  f32    0 |   5.4417   4.4774      4.4837 |   17.72%
+krea2-768-projection             2560   6144   6144  low    0 |   1.8903   1.5953      1.5869 |   15.60%
+krea2-768-up                     2560  16384   6144  low    0 |   4.3481   4.1384      4.1354 |    4.82%
+krea2-768-down                   2560   6144  16384  low    0 |   4.6902   4.3648      4.9342 |    6.94%
+krea2-768-projection             2560   6144   6144  f32    0 |   2.1053   1.5980      1.5968 |   24.10%
+krea2-768-up                     2560  16384   6144  f32    0 |   5.2086   4.1387      4.1366 |   20.54%
+krea2-768-down                   2560   6144  16384  f32    0 |   5.1769   4.3655      4.9642 |   15.67%
+ideogram4-768-projection         2560   4608   4608  low    0 |   1.0853   0.9156      0.9130 |   15.64%
+ideogram4-768-up                 2560  12288   4608  low    0 |   2.5572   2.3077      2.3003 |    9.76%
+ideogram4-768-down               2560   4608  12288  low    0 |   3.1105   2.4937      2.6803 |   19.83%
+ideogram4-768-projection         2560   4608   4608  f32    0 |   1.2216   0.9146      0.9137 |   25.13%
+ideogram4-768-up                 2560  12288   4608  f32    0 |   2.9693   2.3114      2.3017 |   22.16%
+ideogram4-768-down               2560   4608  12288  f32    0 |   3.0362   2.4937      2.7075 |   17.87%
+qwen21-768-projection            2304   4096   4096  low    0 |   0.7683   0.6890      0.6865 |   10.32%
+qwen21-768-up                    2304  12288   4096  low    0 |   2.1068   1.9566      1.9525 |    7.13%
+qwen21-768-down                  2304   4096  12288  low    0 |   2.1099   2.0012      1.9979 |    5.15%
+qwen21-768-projection            2304   4096   4096  f32    0 |   0.8996   0.6885      0.6858 |   23.47%
+qwen21-768-up                    2304  12288   4096  f32    0 |   2.4714   1.9602      1.9558 |   20.68%
+qwen21-768-down                  2304   4096  12288  f32    0 |   2.3533   1.9983      1.9986 |   15.08%
+
+Projection plus Float32 conversion
+Workload                         M      N      K  acc cast | Previous  Retained  Actual MLX | less GPU time
+flux2-768-down-cast              2304   6144  18432  low    1 |   6.4283   4.5458      4.5478 |   29.28%
+krea2-768-down-cast              2560   6144  16384  low    1 |   4.9176   4.4308      4.9814 |    9.90%
+ideogram4-768-down-cast          2560   4608  12288  low    1 |   3.1848   2.5513      2.7319 |   19.89%
+qwen21-768-down-cast             2304   4096  12288  low    1 |   2.2281   2.0358      2.0334 |    8.63%
+
+Local Code prefill
+Workload                         M      N      K  acc cast | Previous  Retained  Actual MLX | less GPU time
+qwen35-4b-up                      512   9216   2560  f32    0 |   0.2598   0.2270      0.2257 |   12.64%
+qwen35-4b-down                    512   2560   9216  f32    0 |   0.3087   0.2598      0.2620 |   15.84%
+qwen35-4b-up                     2048   9216   2560  f32    0 |   1.0451   0.7724      0.7708 |   26.10%
+qwen35-4b-down                   2048   2560   9216  f32    0 |   1.0438   0.8837      0.8818 |   15.34%
+qwen35-9b-up                      512  12288   4096  f32    0 |   0.6004   0.4546      0.4495 |   24.28%
+qwen35-9b-down                    512   4096  12288  f32    0 |   0.5799   0.4894      0.4882 |   15.61%
+qwen35-9b-up                     2048  12288   4096  f32    0 |   2.1076   1.6606      1.6587 |   21.21%
+qwen35-9b-down                   2048   4096  12288  f32    0 |   2.0541   1.7730      1.7755 |   13.68%
+qwen35-27b-up                     512  17408   5120  f32    0 |   1.0633   0.7911      0.8141 |   25.60%
+qwen35-27b-down                   512   5120  17408  f32    0 |   1.0020   0.8585      0.8519 |   14.32%
+qwen35-27b-up                    2048  17408   5120  f32    0 |   3.6629   2.9266      2.9440 |   20.10%
+qwen35-27b-down                  2048   5120  17408  f32    0 |   3.7211   3.2033      3.2023 |   13.91%
+qwen35-4b-down-followup          1024   2560   9216  f32    0 |   0.5253   0.4668      0.4672 |   11.13%
+qwen35-4b-down-followup          3072   2560   9216  f32    0 |   1.5375   1.5658      1.3325 |   -1.84%
+
+Exact long H3 UI controls
+Workload                         M      N      K  acc cast | Previous  Retained  Actual MLX | less GPU time
+h3-long-cast-control            31018   5376   7168  low    1 |  19.8032  19.8293     19.8184 |   -0.13%
+h3-long-cast-control            31018   5376  14336  low    1 |  47.5978  47.2973     47.3811 |    0.63%
+h3-long-cast-control            70186   5376   7168  low    1 |  44.5607  44.5704     44.5670 |   -0.02%
+h3-long-cast-control            70186   5376  14336  low    1 | 102.2442 102.4605    102.3215 |   -0.21%
+
+Retained rule and reasoning
+Keep all previously selected M>=4096 cases. Within the existing contiguous NT,
+one-batch FP16 IO support (N>=1536), additionally allow:
+  - Explicit FP32 accumulator requests with M>=512.
+  - Low-precision requests with M>=2048 and M*N>=4096*1536, except when the
+    native wide MPP kernel has full N/K tiles (N divisible by 128, K by 512)
+    and 2*N<=K<=8192. These compact moderate reductions retain the native path.
+All preexisting unsplit K/aspect/weight-footprint limits and split-K rules remain.
+Split-K still takes priority for M<N, K>=2*N, K<=32768 and <=256MiB per FP32
+partial output. This also preserves the existing eight-partition / 2GiB bound.
+The shared support helper is used for both encoding and decoded-weight scratch
+reservation. Runtime dimensions and dispatch geometry remain encode-time values.
+
+FP32 requests benefit from register fragments even on smaller grids. A blanket
+extension of low-precision requests loses 8-10% on M512/N12288/K8192 and
+M1024/N6144/K8192; an output-area bound alone does not protect those rows.
+M3072/N2048,K8192 and M3072/N3072,K8192 also favor the native profile. The
+retained mode/row/grid rule preserves those wins. Full-tile qualification matters:
+neighboring irregular N/K shapes cannot use that native profile and benefit from
+register fragments. These are measured bounds, not inferred physical cache sizes.
+No model-name conditions or additional chip-name gate are introduced.
+
+Simply enabling the unsplit register kernel is insufficient for wide deep FFNs.
+For example the exploration measures FLUX.2 M2304/N6144/K18432 at approximately
+4.47ms with split-K versus 6.02ms unsplit. Partition-major traversal and FP32
+partial outputs contribute to the result beyond tile selection.
+The imported register/split kernels and Ultra orientation derive from MLX PR
+#4447, commit 2d27ab05fb7dcda69bb3c57abd74c0b3bc9a5a99. The local MIT
+attribution is in lib/nnc/mfa/3rdparty/mlx/README. No new imported shader is added.
+
+Coverage and validation
+Exploration: 353 stage cases, 346 distinct requests, 286 distinct matrix shapes,
+2,480 process records. Wide sweep: 221 cases / 1600 records; precision and
+Local Code: 99 / 666; neighboring guard and repeat checks: 33 / 214.
+Final retained-production comparison: 63 cases / 378 records, all passing.
+Three warm iterations and at least .5 GPU seconds precede seven timed samples.
+Processes run serially in opposite orders; no CPU compilation overlaps GPU work.
+Every process checks all outputs for finiteness and 64 sampled values against
+an independent CPU reference. Float32 casts are checked exactly against FP16
+outputs. Different accumulation paths may change rounding; no bitwise identity
+between old and new FP16 paths is claimed.
+Full final MPSBLAS: 301/301. Full final MPSDNN: 126/126. Both exit 0 with the
+expected success message. The GEMM regression now contains 50 cases, comparing
+16 dispersed rows against CPU GEMM over all N columns at 3e-3 absolute tolerance.
+It covers signed randomized tensors, prior positive stress cases, both accumulator
+modes, row/area/K/N boundaries, partial tiles, bias, dynamic M, repeated cache
+entries, and palettized weights after the enlarged FP32 split scratch region.
+Existing source cases keep their previous flags and positive-input coverage.
+
+Preserved failures and timing uncertainty
+The precision exploration has six failed records, not six distinct shapes.
+Both orders of the frozen baseline fail the 1% sampled relative-L2 limit at
+M512/N12287/K24576 (1.1554%) and M512/N12289/K24576 (1.0620%). The broad
+medium candidate also retains the latter native fallback and fails identically
+in both orders. All outputs are finite. These explicitly low-precision stress
+limitations remain outside the final extension, and are not valid speedup rows.
+No tolerance was relaxed and no workaround is claimed for the odd-width cases.
+All register-selected exploratory processes pass. The separate full randomized
+regression provides stronger bias/tail/decode coverage than the timing probe.
+
+One M1024/N2560/K9216 FP32 candidate record measured 0.82225ms instead of the
+other order's 0.46537ms, giving an apparent 21.8% two-pass regression. Both
+original records are preserved. A specifically labeled repeat measured 0.46671
+and 0.46546ms; MLX was 0.46863 and 0.46413ms. The production table provides
+another independent paired measurement. This report does not delete the slow
+record or present every exploratory paired aggregate as non-regressing.
+
+Remaining scope
+The old deep-reduction aspect policy still leaves the Local Code Qwen 3.5 4B
+M3072/N2560/K9216 case on its native FP32 path; its residual gap is shown above.
+The broader unsplit prototype improves that case but regresses other measured
+near-square low-precision cases, so that broader change is not retained here.
+Small low-precision image shapes below the new row/area bounds remain on their
+previous paths. This checkpoint does not assert parity for every possible shape.
+
+The prior inference INT8 cast fusion remains integrated and validated; see
+inference-fused-cast-integration.txt. Latest long H3 INT8 attention remains
+1.94x / 2.09x actual MLX for exact UI 480p/10s and 720p/10s; the source and
+protocol are in inference-probability-bounds.txt. Some image INT8 cases remain
+below the approximately-2x goal. No new backward tuning or SHD-to-HSD attention
+transpose is included. Earlier actual MLX VJP comparisons remain in
+priority-report.txt. The wider goal stays open. Nothing is staged or committed.
+
+Artifacts
+Per-stage CSVs retain failures and each order; workloads and summary JSON retain
+explicit accumulator/cast flags and selector predictions. Raw logs, commands,
+before/after source snapshots, build logs, benchmark scripts, validation logs and
+checksums are in the accompanying raw archive. The archive index is verified
+against every entry after writing. Binary hashes identify the exact local builds.
+See inference-fp16-medium-reproduce.txt for the build/run procedure.

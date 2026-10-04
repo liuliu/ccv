@@ -1,0 +1,165 @@
+Historical checkpoint: see handoff.txt for final validation, gating and branch status.
+Associated raw files are in research-2026-10-02-04.tar.gz; extract into a separate directory.
+
+Application workload mapping and comparison method
+
+Draw Things revision: afed99ce5981875e3b3aa7d19059a516c73c5f2f
+MLX revision: 25532871329fe4cafdada9fa0941a1cdbfb3a9f2
+Hardware/toolchain: see environment.txt. All GPU jobs run serially.
+
+These are source-derived operator microbenchmarks, not whole-model timings or
+captured activations. Text lengths and image/video dimensions are stated inputs
+to the workload manifest, not claims about a universal application default.
+Bias, weight-file decoding, model scheduling, linear attention, normalization,
+RoPE, sampling, and CPU graph overhead are outside the measurements.
+
+The 62 workloads add 31 attention-forward cases, 25 projection/MLP cases, and
+six attention-backward cases to the earlier generic sweeps. Shapes and exact
+source references are in application-workloads.json. Paths below are relative
+to ~/workspace/draw-things.
+
+Draw Things
+
+Flux.1: channels=3072, D=128, H=24; 19 joint and 38 single blocks.
+  Libraries/SwiftDiffusion/Sources/Models/UNetProtocol.swift:1373
+  Libraries/SwiftDiffusion/Sources/Models/Flux1.swift:511,575
+Image tokens are (pixel_height/16)*(pixel_width/16), from the 8x VAE reduction
+and 2x2 latent patches. With 512 assumed text tokens and no reference images,
+512/1024/1536 square images give 1536/4608/9728 attention tokens. GEMM image
+streams have 1024/4096/9216 rows. Query projection and FFN expansion explicitly
+request Float16 accumulation (Flux1.swift:134,175). FFN contraction requests
+Float32 output (line 140): its FP16-IO benchmark is a geometry proxy only.
+
+Flux.2: channels=6144, D=128, H=48 for the full model; 9B and 4B variants use
+4096 and 3072 channels. This sweep uses the full model with the same selected
+image/text lengths. FFN gate expansion is 3*channels=18432, with explicit
+Float16 accumulation; the up projection uses the default Dense flags.
+  Libraries/SwiftDiffusion/Sources/Models/UNetProtocol.swift:1892
+  Libraries/SwiftDiffusion/Sources/Models/Flux2.swift:144,551,589
+
+Qwen Image: channels=3072, D=128, H=24, 60 layers. The selected workload uses
+1024 square, 256 assumed text tokens, CFG batch 2: R=C=4352. This benchmark
+uses the supported FP16 mode. It is not a BF16 measurement; isBF16 routes in
+QwenImage.swift have different precision contracts.
+  Libraries/SwiftDiffusion/Sources/Models/UNetProtocol.swift:1765
+  Libraries/SwiftDiffusion/Sources/Models/QwenImage.swift:316,360,574
+
+SDXL: channels 640/1280 at latent resolutions 64x64/32x32 for a 1024 image,
+D64 and H10/H20. Self-attention lengths 4096/1024; cross-attention uses an
+assumed 77 text tokens; CFG batch 2. The measured mode allows Float16
+intermediates. The application can also request upcast attention.
+  Libraries/SwiftDiffusion/Sources/Models/UNetProtocol.swift:1053
+  Libraries/SwiftDiffusion/Sources/Models/UNetXL.swift:71,177,982
+
+Wan 1.3B/14B: channels=1536/5120, D128, H12/H40; FFN expansion=8960/13824.
+At 832x480, 49/81 video frames give 13/21 latent frames and 20280/32760 tokens.
+Time is folded into the sequence; the attention batch is 1. We measure the
+full unmasked attention branch, not the optional block-causal inference mode.
+The 14B cross-attention case uses 512 assumed text tokens. Backward uses a
+short 9-frame clip (4680 tokens) to keep the training comparison practical.
+  Libraries/SwiftDiffusion/Sources/Models/UNetProtocol.swift:1552,1656
+  Libraries/SwiftDiffusion/Sources/Models/Wan.swift:110,129,171,315
+  Libraries/LocalImageGenerator/Sources/LocalImageGenerator.swift:4548
+
+Local Code
+
+Qwen3.5 4B/9B: Hq=16, Hkv=4, D256. 27B: Hq=24, Hkv=4, D256.
+Hidden/intermediate dimensions are 2560/9216, 4096/12288, 5120/17408.
+Every fourth layer uses full causal SDPA; the other three use GatedDelta.
+Full attention explicitly requests Float16 intermediates; the MLP Dense
+operators use default flags, so the upcast column is the floating-point
+comparison relevant to those projections.
+  Libraries/SwiftLLM/Sources/Models/Qwen3_5.swift:60,123,191,274,295
+Local Code normally chunks prefill at 4096 (2048 under the memory-conservation
+policy), and the final/tail chunk may be shorter. Growing-cache attention
+disables C specialization, and short prefill chunks disable M specialization.
+The final application reruns reproduce those flags. R1 decode selects
+AttentionR1; it does not measure NAAttention. R4 is a speculative-verification
+geometry. Context lengths are total visible KV rows, including current tokens.
+  Apps/LocalCode/Sources/Chat/ChatWorkflow.swift:173
+  Apps/LocalCode/Sources/Models/Qwen3_5TextGenerator.swift:338,407,692
+The loader uses i8x/ezm7 (line 649). The benchmark's rowwise W8A8 matrix path
+starts from already expanded INT8 weights; packed-weight expansion and any
+Apple Neural Engine route are not included. Decode INT8 uses Int8Gemv (W8A16),
+not NAInt8MatMul (W8A8). Do not infer tokens/sec from these projection times.
+
+DeepSeek4/4.1: query expansion has K=1024/1280, N=64*512=32768. The former
+explicitly requests Float16; the latter uses default Dense flags. These
+projection shapes are measured with FP16 IO and both accumulation modes.
+Most attention uses SparseIndexedAttention, compressed KV, attention sinks,
+and a 128-token raw window. The first raw-attention layers have D512 and sinks.
+These are not represented by the ordinary dense D128/D256 SDPA comparisons;
+no full DeepSeek attention or MoE performance claim is made here.
+  Libraries/SwiftLLM/Sources/Models/DeepSeek4.swift:126,334,675,787
+  Libraries/SwiftLLM/Sources/Models/DeepSeek4_1.swift:4,247,431,563,610
+
+Timing and validation
+
+Forward and projection measurements call the shipping MFA dispatchers. The
+GEMM probe mirrors the dense frontend's M<=3 GEMV and low-K FP16 exception.
+SmallM kernels, split-K reduction, attention split-KV reduction, activation
+quantization and attention preparation are included when selected. Each job
+warms for at least 0.1 GPU seconds, then records 25 GPU command-buffer samples
+after at least 100 warmups. Very long video jobs use 30 warmups and 15 samples.
+Two complete passes reverse execution order. The report uses the median of
+pass medians, and retains both passes in CSV form.
+Four cases with substantial launch-to-launch variation received three further
+passes with at least one GPU second of warmup; these confirmations replace
+their earlier timings in the summary. The final Wan projection rerun also
+uses one GPU second. Each summary column identifies its source run and count.
+
+MLX uses matmul and fast.scaled_dot_product_attention with normal FP16 inputs.
+All unevaluated graph stages are timed when MLX lowers to several primitives.
+The backward benchmark uses MLX's actual ScaledDotProductAttentionVJP, with
+saved forward O/LSE materialized before timing, and measures all dQ/dK/dV.
+The CCV backward probes use the validated production D64/D128 configurations.
+
+Every CCV forward/projection output is checked for finiteness. Sampled outputs
+are checked against a CPU reference using the unquantized FP16 inputs; INT8
+errors therefore include quantization. MLX forward attention is also checked
+against the same CPU formula. Backward dumps all three gradients in B/R/H/D
+order, checks finiteness, and compares 16384 distributed values per gradient
+against MLX. These deterministic inputs do not establish model-quality bounds.
+
+FP16 IO does not imply identical accumulator precision between libraries.
+The na and upcast matrix columns deliberately show both CCV contracts. MLX's
+FP16 API is not an equivalent W8A8 matmul or INT8 attention operation.
+
+MLX JIT correction
+
+The original MLX checkout fails on causal D256 prefill (and the earlier D256
+training-forward experiment). get_steel_attention_nax_kernel emits BV as a
+template argument for attention_nax_dsplit, whose template has no BV argument.
+mlx-dsplit-jit.patch omits this argument only for that specialization. A copy
+of the JIT object and static library was built under /private/tmp; the checkout
+was not modified. Patched measurements are explicitly identified. The patch
+does not change tile selection, arithmetic, or the non-split specialization.
+Original failures are retained rather than assigned timings.
+
+Selector correction from the application sweep
+
+The wide/deep FP16 GEMM tile regressed the large Wan MLP projection: approximately
+53 ms versus 42 ms with the old 128x64x64 tile. Padding M from 32760 to 32768
+did not fix it, and restoring split-K on the deep tile still took about 50 ms.
+A 32768x18432x6144 Flux.2 projection also regressed, while the wide tile still
+won at 9216x12288x3072, 32768x3072x3072, and 32768x4096x4096. Taller/deeper and
+larger square candidates did not improve the large-output cases.
+
+The final selector therefore bounds the wide/deep tile to 16384 output tiles
+of 64x128, including batch (256 MiB of padded FP16 output). This is a conservative
+measured footprint limit, not a claim about cache capacity or an exact crossover.
+Larger footprints retain the original tile and split-K policy. No new hardware
+check is introduced. Dynamic-M pipeline hashing and equality include the tile
+choice as well as split-K. The randomized CPU-reference integration test crosses
+that boundary in both directions at K512, where both policies use split-K=1.
+It checks all GPU elements for finiteness and compares every column in 64
+distributed rows against the CPU GEMM command, including first/last rows and
+both sides of the 4096-row pointer boundary. Computing a full CPU reference for
+these output footprints made the debug test impractical; the initial full-
+reference test run was interrupted and is not counted as a successful suite.
+
+The attention tile pilot did not justify a new production rule. At Wan's 20280
+tokens, forcing C64 with 16 SIMD groups still took 154 ms; four groups took
+122-127 ms, versus 24.7 ms for MLX and 19.2 ms for CCV INT8. The large floating-
+point video-attention gap remains. These are pilot measurements, not a final
+candidate sweep or evidence of a universal benefit from changing the selector.

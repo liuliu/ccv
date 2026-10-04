@@ -10,6 +10,8 @@ using namespace ccv::nnc;
 #include "kernels/NAMatMulKernel.hpp"
 #include "kernels/NAMatMulKernelDescriptor.hpp"
 #include "kernels/NAMatMulDescriptor.hpp"
+#include "kernels/NAMatMulTuning.hpp"
+#include "kernels/NARegisterMatMulKernel.hpp"
 #include "kernels/NAMatMulSmallMKernel.hpp"
 #include "kernels/NAMatMulSmallMKernelDescriptor.hpp"
 #include "kernels/NAMatMulSmallMDescriptor.hpp"
@@ -20,6 +22,35 @@ static constexpr uint32_t kNAMatMulSmallMReducedMaxM = 16;
 static constexpr uint32_t kNAMatMulSmallMHighK = 16384;
 static constexpr uint32_t kNAMatMulSmallMVectorK = 5120;
 static constexpr uint32_t kNAMatMulSmallMPack = 8;
+
+static bool _ccv_nnc_mfa_register_matmul_supported(const ccv_nnc_mfa_gemm_params_t params) noexcept
+{
+  // FP32 accumulation benefits from register fragments even on smaller grids.
+  // Half accumulation needs more rows and the former minimum output area.
+  // Preserve the wide MPP profile's advantage on compact moderate reductions;
+  // like NAMatMulDescriptor::useWideTile(), that profile needs full N/K tiles.
+  const bool native_moderate_reduction = params.K <= 8192 &&
+      params.K >= uint64_t(2) * params.N && params.N % 128 == 0 && params.K % 512 == 0;
+  const bool register_grid = params.M >= 4096 || (params.M >= 512 && params.register_float) ||
+      (params.M >= 2048 && uint64_t(params.M) * params.N >= 4096ull * 1536 &&
+       !native_moderate_reduction);
+  return params.use_neural_accelerators && params.data_type == MTL::DataTypeHalf &&
+      (!params.output_data_type || params.output_data_type == MTL::DataTypeHalf) &&
+      params.batch_dimension == 1 && !params.A_trans && params.B_trans && !params.D_trans &&
+      !params.leading_dimension_a && !params.leading_dimension_c &&
+      register_grid && params.N >= 1536 &&
+      params.M <= INT32_MAX - 127 && params.N <= INT32_MAX - 127;
+}
+
+static bool _ccv_nnc_mfa_register_matmul_split_k(const ccv_nnc_mfa_gemm_params_t params) noexcept
+{
+  // Wide outputs with deep reductions benefit from partition-major traversal.
+  // Keep each FP32 partial output within the measured 256 MiB working set and
+  // at most eight 4096-element partitions. Tall outputs favor the unsplit path.
+  return _ccv_nnc_mfa_register_matmul_supported(params) && params.M < params.N &&
+      params.K >= uint64_t(2) * params.N && params.K <= 32768 &&
+      uint64_t(params.M) * params.N * sizeof(float) <= (256ull << 20);
+}
 
 static bool _ccv_nnc_mfa_gemm_memory_precisions(const ccv_nnc_mfa_gemm_params_t params, GEMMOperandPrecisions* const precisions) noexcept
 {
@@ -182,6 +213,15 @@ size_t ccv_nnc_mfa_gemm_reserved_scratch_size(ccv_nnc_mfa_gemm_params_t params)
     NAMatMulSmallMDescriptor desc = _ccv_nnc_mfa_make_na_matmul_small_m_descriptor(params);
     return desc.scratchOffsets().total;
   }
+  if (_ccv_nnc_mfa_register_matmul_split_k(params)) {
+    // This API has no device argument. Conservatively reserve for both paths
+    // so packed / palettized weights placed after this region remain intact.
+    NAMatMulDescriptor descriptor;
+    descriptor.matrixDimensions = simd::uint3 { params.M, params.N, params.K };
+    const size_t partitions = (params.K + 4095) / 4096;
+    return size_t(params.M) * params.N *
+        std::max(partitions * sizeof(float), size_t(descriptor.splitK()) * sizeof(uint16_t));
+  }
   if (params.use_neural_accelerators) {
     // Branch on whether to use the new kernel.
     NAMatMulDescriptor gemmDesc;
@@ -261,6 +301,92 @@ void ccv_nnc_mfa_encode_gemm(mfa::context* context, ccv_nnc_mfa_gemm_params_t pa
   CCV_NNC_MFA_PRECONDITION((num_tensors == 3) || (num_tensors == 4))
   if (_ccv_nnc_mfa_use_na_matmul_small_m(params)) {
     _ccv_nnc_mfa_encode_na_matmul_small_m(context, params, command_batch, tensors, tensor_offsets, num_tensors);
+    return;
+  }
+  // Register fragments avoid tensor-view staging and, on sufficiently large
+  // grids, repeated full-output writes. Keep the existing path for narrow
+  // outputs and deep reductions with large weight working sets. The bounds
+  // are measured neighboring-shape limits, not assumed hardware cache sizes.
+  const bool register_split_k = _ccv_nnc_mfa_register_matmul_split_k(params);
+  const bool register_unsplit = params.K >= 2048 && (params.K <= 8192 ||
+      (params.K <= 16384 && params.K < uint64_t(3) * params.N &&
+       (params.M < params.N || params.M >= uint64_t(2) * params.N) &&
+       uint64_t(params.N) * params.K * sizeof(uint16_t) <= (192ull << 20)));
+  if (_ccv_nnc_mfa_register_matmul_supported(params) &&
+      useNeuralAcceleratorMatMulTuning(context->device.get()) && (register_split_k || register_unsplit)) {
+    const bool wide_m = params.N > params.M;
+    const int32_t block_m = wide_m ? 128 : 64, block_n = wide_m ? 64 : 128;
+    const NARegisterMatMulDescriptor descriptor {
+      params.M % block_m == 0, params.N % block_n == 0, params.K % 512 == 0,
+      bool(params.fused_bias), false, wide_m, register_split_k
+    };
+    auto pool = NS::AutoreleasePool::alloc()->init();
+    auto* value = context->kernel_cache.findKernel<NARegisterMatMulKernel,
+        NARegisterMatMulDescriptor, NARegisterMatMulKernelDescriptor>(
+            descriptor, context->device.get(), DeviceProperties());
+    pool->drain();
+    const int32_t M = params.M, N = params.N, K = params.K;
+    const int32_t tiles_n = (N + block_n - 1) / block_n, tiles_m = (M + block_m - 1) / block_m;
+    if (register_split_k) {
+      const int32_t partitions = (K + 4095) / 4096;
+      const NARegisterMatMulSplitKParams arguments {
+        M, N, K, K, K, N, tiles_n, tiles_m, partitions, M * N, 4096, 1, 8
+      };
+      auto* scratch = context->request_scratch(size_t(M) * N * partitions * sizeof(float));
+      auto* encoder = command_batch->startCommand();
+      encoder->setComputePipelineState(value->pipeline.get());
+      encoder->setBuffer(tensors[0], tensor_offsets[0], 0);
+      encoder->setBuffer(tensors[1], tensor_offsets[1], 1);
+      encoder->setBuffer(scratch, 0, 2);
+      encoder->setBytes(&arguments, sizeof(arguments), 3);
+      encoder->useResource(tensors[0], MTL::ResourceUsageRead);
+      encoder->useResource(tensors[1], MTL::ResourceUsageRead);
+      encoder->useResource(scratch, MTL::ResourceUsageWrite);
+      // Partition-major 1D grid preserves the intended traversal order.
+      encoder->dispatchThreadgroups(MTL::Size(tiles_n * 2 * ((tiles_m + 1) / 2) * partitions, 1, 1),
+          MTL::Size(32, 2, 4));
+      command_batch->finishCommand(encoder);
+      encoder = command_batch->startCommand();
+      encoder->setComputePipelineState(value->second.get());
+      encoder->setBuffer(scratch, 0, 0);
+      encoder->setBuffer(tensors[2], tensor_offsets[2], 1);
+      encoder->setBytes(&arguments, sizeof(arguments), 2);
+      encoder->useResource(scratch, MTL::ResourceUsageRead);
+      encoder->useResource(tensors[2], MTL::ResourceUsageWrite);
+      if (params.fused_bias) {
+        CCV_NNC_MFA_PRECONDITION(num_tensors == 4);
+        encoder->setBuffer(tensors[3], tensor_offsets[3], 3);
+        encoder->useResource(tensors[3], MTL::ResourceUsageRead);
+      }
+      encoder->dispatchThreads(MTL::Size(N, M, 1), MTL::Size(32, 8, 1));
+      command_batch->finishCommand(encoder);
+      return;
+    }
+    const int32_t swizzle_log = wide_m ? 2 : 0;
+    const NARegisterMatMulParams arguments {
+      M, N, K, K, K, N, tiles_n, tiles_m,
+      0, 0, 0, swizzle_log, K / 512, 1
+    };
+    auto* encoder = command_batch->startCommand();
+    encoder->setComputePipelineState(value->pipeline.get());
+    encoder->setBuffer(tensors[0], tensor_offsets[0], 0);
+    encoder->setBuffer(tensors[1], tensor_offsets[1], 1);
+    encoder->setBuffer(tensors[2], tensor_offsets[2], 3);
+    encoder->useResource(tensors[0], MTL::ResourceUsageRead);
+    encoder->useResource(tensors[1], MTL::ResourceUsageRead);
+    encoder->useResource(tensors[2], MTL::ResourceUsageWrite);
+    encoder->setBytes(&arguments, sizeof(arguments), 4);
+    if (params.fused_bias) {
+      CCV_NNC_MFA_PRECONDITION(num_tensors == 4);
+      const NARegisterMatMulBiasParams bias_arguments {0, 1, 0, 1, 1};
+      encoder->setBuffer(tensors[3], tensor_offsets[3], 2);
+      encoder->useResource(tensors[3], MTL::ResourceUsageRead);
+      encoder->setBytes(&bias_arguments, sizeof(bias_arguments), 5);
+    }
+    encoder->dispatchThreadgroups(MTL::Size(tiles_n << swizzle_log,
+        (tiles_m + (1 << swizzle_log) - 1) >> swizzle_log, 1),
+        MTL::Size(32, block_n / 32, block_m / 32));
+    command_batch->finishCommand(encoder);
     return;
   }
   if (params.use_neural_accelerators && params.K < 65536) {
@@ -409,7 +535,10 @@ void ccv_nnc_mfa_encode_gemm(mfa::context* context, ccv_nnc_mfa_gemm_params_t pa
     };
     CCV_NNC_MFA_PRECONDITION(_ccv_nnc_mfa_gemm_memory_precisions(params, &gemmDesc.memoryPrecisions));
     gemmDesc.transposeState = simd::uchar3 { params.A_trans, params.B_trans, params.D_trans };
-    gemmDesc.registerPrecisionC = (params.register_float) ? std::optional(GEMMOperandPrecision::FP32) : std::nullopt;
+    // The generic fallback does not split long reductions. Half accumulation
+    // can stop changing well before K=65536, even when the result is finite.
+    gemmDesc.registerPrecisionC = (params.register_float || params.K >= 65536) ?
+        std::optional(GEMMOperandPrecision::FP32) : std::nullopt;
     if (params.leading_dimension_a || params.leading_dimension_c) {
       gemmDesc.leadingDimensions = simd::uint3 {
         params.leading_dimension_a,

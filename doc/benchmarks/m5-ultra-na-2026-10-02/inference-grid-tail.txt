@@ -1,0 +1,193 @@
+Historical checkpoint: see handoff.txt for final validation, gating and branch status.
+Associated raw files are in research-2026-10-02-04.tar.gz; extract into a separate directory.
+
+INT8 inference: compact attention grids and GEMM remainder loads, 2026-10-03
+
+This checkpoint retains two changes: compact dispatch for appropriate D128
+attention grids, and ordinary loads for complete K fragments in the INT8
+register-GEMM remainder. Inference is the priority; backward tuning is deferred.
+No SHD-to-HSD transpose or other attention layout conversion is introduced.
+
+Machine: Apple M5 Ultra, 80 GPU cores, 256 GB, macOS 27.0.1.
+MLX checkout: 25532871329fe4cafdada9fa0941a1cdbfb3a9f2, including Ultra tuning
+PR #4447 (2d27ab05fb7dcda69bb3c57abd74c0b3bc9a5a99). The actual local MLX
+binary includes only the D256 JIT-signature fix documented in earlier reports.
+Its GEMM tuning and D128 SDPA are unchanged. Draw Things source revision:
+afed99ce5981875e3b3aa7d19059a516c73c5f2f.
+
+Attention dispatch
+------------------
+The existing Morton grid pads both query groups and head count to powers of
+two. Compact row-major dispatch emits only live query/head groups, changing
+execution order without changing per-query arithmetic. D128 uses it when
+KV length >=8192 or padded/live grid size >=1.5 (at least one-third inactive).
+The padding calculation uses bulk query groups when bulk/tail splitting is
+active. This avoids counting a separately dispatched tail as a full-grid cost.
+The long-KV threshold is empirical; these timings do not establish a physical
+GPU-cache limit. Compact order also changes access locality, so eliminating
+empty groups is not the sole possible cause of its gains.
+
+This applies to FP16-storage, low-precision D128 forward attention without
+causal masking, explicit masks, variable lengths or sinks. Backward kernel
+ordering remains unchanged. D256 output partitioning already uses compact
+order and is unchanged. Selection uses workload geometry, with no added M5
+model-name check. The source-generating compact flag participates in kernel
+equality/hash and derived pipeline descriptors. Dispatch sizes use the current
+runtime descriptor, including query ranges and batch, rather than cached shape.
+
+Evidence: 72 raw pilot executions compare Morton, row-major, head-major and
+eight-query-group chunks on nine shapes. All full-output hashes match. That
+pilot uses dynamic R/C and must not replace application measurements. A
+48-execution application comparison confirms row-major gains against actual
+MLX on FLUX, Krea, Qwen and both exact H3 UI rows. A 61-case sweep has 244
+executions spanning short queries, rectangular attention, head counts 1-56,
+GQA and batch. Unconditional compact order regresses dense short grids (FLUX
+last block about 4.3%, Qwen 1024 about 3.1%); the retained policy excludes these.
+
+Two broad-case IDs, qwen21-prefix-text and qwen21-prefix-after-image, are
+noncausal geometry controls in that sweep, not real causal-prefix timings.
+The archived broad-protocol.json records this distinction. A separate causal
+sweep has 56 successful executions on seven actual causal shapes, fixed and
+dynamic R/C, with identical full-output hashes. Its prefill losses support
+keeping the existing causal order. Another 120 executions examine C8191/8192/
+8193, R4096/8192, H8/32/48, and both sides of the padding cutoff, including
+dynamic descriptors. Selected cases are generally faster; the weakest are
+about 0.7-0.8% slower. No extra head-count or alignment gate is introduced.
+
+GEMM remainder loads
+--------------------
+The outer reduction remains BK512, with the previously retained unroll-two
+main loop. Previously every K32 fragment in the remainder used bounds-checked
+loads, including complete fragments. Complete fragments now use ordinary
+loads on aligned M/N sides; partial M/N and the final partial K fragment keep
+safe loads. H3 Q/up has K5376: its 256-element remainder contains eight complete
+fragments. This removes unnecessary checks without changing INT32 products,
+accumulation, scales or bias. No new shape gate or reduction-width selector is
+added. FP16 source and the imported MLX header remain unchanged.
+
+A 64-execution BK128/256/512/1024 pilot found that BK256 helps H3 Q/up but
+regresses some aligned reductions by 4-5%; it is not retained. A separate
+64-execution pilot isolates fast remainder loads, remainder unroll-two and
+their combination. Fast loads alone are the general choice. The subsequent
+83-case sweep compares previous/current/actual MLX in two reversed orders:
+498 successful executions, with all 166 previous/current sampled CPU-error
+pairs identical. Another 64 executions cover M8193, N2048/2049 and sixteen
+K remainders around fragment and reduction boundaries; all 32 full-output
+pairs are identical. These boundary checks use 0.2 GPU seconds of warmup;
+the main timing protocol below uses 0.5 seconds.
+
+Production timings
+------------------
+Fresh production library and probes, CPU compilation completed before timing,
+all GPU jobs serial with unrestricted Metal access. Three warmup iterations
+and at least 0.5 GPU seconds; nine timed samples for GEMM, seven for attention.
+Tables show medians of process GPU medians, milliseconds. Initially there are
+two reversed-order passes per variant: 78 GEMM and 114 attention records.
+Four additional reversed-order passes on H3 720p, FLUX last and FLUX 512 add
+28 records. Repeated columns use all six process medians, including outliers;
+other columns use the original two. All raw values and per-process variation
+are preserved in attention-final-summary.json.
+
+GEMM includes activation quantization; weights are already rowwise INT8.
+MLX uses ordinary FP16 matmul, including all unevaluated GPU preparation.
+Attention uses the actual NoGrad DynamicGraph path, testing=false, saved LSE,
+Q/O alias, fixed dimensions, and original physical SHD inputs. MLX includes
+its native SDPA stages and preparation, with its native output layout and no
+added output-copy cost. These are operator measurements, not generation times.
+
+GEMM workload                   Previous INT8  Current INT8  MLX FP16  MLX/current
+h3-480p-ui-ffn-down                    22.099        22.045     46.415       2.105x
+h3-720p-ui-ffn-down                    49.367        49.399    100.266       2.030x
+flux2-2048-ffn-down                    17.339        17.285     49.050       2.838x
+krea2-2048-ffn-down                    15.992        16.036     34.839       2.173x
+ideogram4-2048-ffn-down                 8.566         8.567     17.270       2.016x
+qwen21-2048-ffn-down                    7.541         7.548     14.942       1.980x
+4096-2048-4096                          0.338         0.337      0.562       1.670x
+int8-selection-8191-1536-6144           1.044         1.047      1.288       1.230x
+int8-selection-8193-1537-6145           1.380         1.399      1.622       1.159x
+h3-480p-ui-q                           12.282        10.645     19.012       1.786x
+h3-480p-ui-ffn-up                      23.934        20.644     38.004       1.841x
+h3-720p-ui-q                           27.494        23.805     42.856       1.800x
+h3-720p-ui-ffn-up                      53.776        46.353     85.661       1.848x
+
+Attention workload              Previous 8I-pref  Current 8I-pref  MLX FP16  MLX/current
+ideogram4-512                               0.493            0.493      0.531       1.076x
+ideogram4-1024                              3.621            3.625      6.023       1.662x
+ideogram4-1536                             16.091           16.164     28.410       1.758x
+priority-flux2-2048                        43.509           39.233     68.401       1.743x
+krea2-2048                                 38.406           36.614     61.953       1.692x
+ideogram4-2048                             48.528           48.606     87.800       1.806x
+qwen21-2048                                26.594           25.571     42.712       1.670x
+ideogram4-last                              3.506            3.505      5.614       1.602x
+ideogram4-unconditional                     3.307            3.302      5.276       1.598x
+h3-480p-10s                               170.536          163.181    306.075       1.876x
+h3-720p-10s                               850.333          796.065   1611.500       2.024x
+priority-flux2-512                          0.482            0.467      0.610       1.306x
+krea2-512                                   0.360            0.320      0.420       1.314x
+qwen21-512                                  0.209            0.209      0.274       1.311x
+priority-flux2-1024                         3.473            3.267      5.052       1.547x
+krea2-1024                                  2.933            2.723      4.354       1.599x
+qwen21-1024                                 1.892            1.891      2.987       1.579x
+priority-flux2-last                         2.807            2.809      4.443       1.582x
+qwen21-reference                            3.662            3.701      5.756       1.555x
+
+8I-pref denotes requested INT8 inference. Ideogram 512 still selects FP16;
+its ratio must not be presented as a true INT8 speedup. D256 rows otherwise
+retain the earlier output-partition implementation. Small variation on
+unchanged paths is not attributed to this checkpoint. The partial GEMM case
+8193x1537x6145 is about 1.4% slower in this confirmation, with about 2.8%
+baseline variation; its one-element K remainder has no complete fast fragment.
+Qwen reference attention is about 1% slower. No universal zero-regression
+claim is made. One original H3 720p MLX median was 1770 ms versus 1610 ms in
+the other pass; additional passes are included instead of reporting that
+two-pass comparison's inflated 2.12x ratio.
+
+Exact H3 UI shapes use R31018/R70186, H56, D128, corresponding to 832x512 /
+1280x768, 240 requested frames (10 seconds), 72 latent frames, 256 text tokens,
+810 audio tokens, and no references. Q/up has K5376, N7168/N14336; FFN-down
+has N5376, K14336. The older R29146/R67306 proxies remain labeled in broad
+manifests and are not substituted for exact UI measurements. Source paths
+and geometry derivations are in priority-workloads.json and the earlier FP16
+report. Every table row has its exact dimensions in the adjacent JSON/CSV.
+
+Correctness and validation
+--------------------------
+The production GEMM equivalence sweep has 64 executions / 32 full-output
+pairs across eight shapes, fixed/dynamic dimensions, and FP16/INT8 paths.
+The attention sweep has 48 executions / 24 full-output pairs across twelve
+shapes, fixed/dynamic R/C, GQA, batch, causal controls, both selector boundaries,
+partitioned H3 and a D256 control. All 56 pairs are bit-identical and finite.
+These checks establish equivalence to the immediately preceding quantized
+implementation, not model-quality equivalence to unquantized MLX.
+
+The randomized CPU-reference GEMM integration test now covers sixteen shapes,
+adding K4127/4128/4129 with partial M/N and actual H3 K5376. The attention
+query-range/compact-grid test now covers 26 shapes in both fixed/dynamic modes:
+52 scenarios with GQA/batch, sampled CPU attention and saved log2 LSE, all
+output finiteness, and same-cache transitions across both policy thresholds.
+The existing Vx1000 stress scenario is preserved. Both focused tests pass.
+Full MPSBLAS: 298/298, exit zero. Full MPSDNN: 126/126, exit zero.
+git diff --check passes. No changes have been staged or committed.
+
+The earlier D256 checkpoint switched a requested-INT8 region from FP16
+fallback to actual INT8. It does not share this checkpoint's bit-equivalence
+claim. Its measured quantization errors and adversarial cancellation behavior
+remain documented in inference-output-split.txt; rendered quality is untested.
+
+Remaining inference gaps
+------------------------
+The broad approximately-2x goal remains open. H3 attention is now around
+1.88x / 2.0x MLX, H3 Q/up around 1.79-1.85x and FFN-down around 2.03-2.11x.
+Large D128 image attention remains around 1.67-1.74x; D256 Ideogram 2048 about
+1.81x. Small image attention has less headroom and several ratios near
+1.3-1.6x. Earlier FP16 production comparisons remain within 1.6% for GEMM and
+1.3% for attention, or faster; this checkpoint does not change those shaders.
+Further inference work should examine per-tile state and fragment/control
+costs without assuming that another tile or hardware-name gate will solve it.
+Backward optimization remains deferred; actual MLX VJP comparisons remain in
+priority-report.txt.
+
+Artifacts with prefix inference-grid-tail retain the production CSVs, combined
+medians, exact manifests, full-output hashes, complete validation results,
+prototype sweeps, source snapshots, integration diff, logs and SHA256 provenance.
+Prototype environment controls exist only in scratch binaries.

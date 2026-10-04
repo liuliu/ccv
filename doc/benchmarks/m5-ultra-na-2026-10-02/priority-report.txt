@@ -1,0 +1,247 @@
+Historical checkpoint: see handoff.txt for final validation, gating and branch status.
+Associated raw files are in research-2026-10-02-04.tar.gz; extract into a separate directory.
+
+Later precision audit: inference-projection-cast.txt verifies the Apple Silicon
+Draw Things Qwen Float16 path and measures half-output projections followed by
+Float32 conversion. Its scope qualifications supersede the broad BF16-Qwen /
+Float32-projection TODO below; independent BF16 callers remain outside that audit.
+
+Priority model sweep and structural investigation (in progress)
+
+Latest inference attention investigation and precision correction
+The new 23-shape / 184-measurement comparison is in inference-int8-kv-partitions.txt.
+Four-part INT8 attention prototypes take H3 UI 480p/720p from 201.68 / 1051.96 to
+187.93 / 960.16 ms, versus paired MLX 318.48 / 1687.82 ms. They are not enabled in
+production: smaller workloads regress, and full materialization adds 1.80 / 4.09 GB
+of partial buffers. A bounded version uses about 477 MB and takes 194.55 / 965.51 ms.
+The faster register-fragment GEMM approach did not carry over to INT8 attention;
+a direct rewrite was substantially slower. Raw favorable and unfavorable results,
+independent randomized checks, and reproducible source overrides are retained.
+
+The old NAMatMul generator now honors an explicit FP32 accumulator request;
+see inference-fp32-accumulator.txt for the correctness fix and validation. The
+explicit low-precision mode and production attention selectors are unchanged.
+
+Latest FP16 projection expansion
+See inference-fp16-expanded.txt and inference-fp16-expanded-summary.csv for the
+newest FP16 inference results. They supersede the earlier narrow register-GEMM
+selector and its projection tables below. The expansion uses register fragments
+for Q/FFN-up and larger down projections, plus partition-major split-K for wide
+outputs with deep reductions. It also fixes duplicated K remainders in the old
+split-K path and promotes the generic K>=65536 fallback accumulator to FP32.
+INT8 GEMM and production attention are unchanged by this follow-up.
+
+Latest INT8 projection follow-up
+The 83-case / 81-shape production comparison adds INT8 register operands and
+INT32 accumulation, with unchanged quantization. All 498 measurements passed;
+all 51 selected paired medians improved and sampled errors were unchanged.
+Long H3 UI FFN-down is 25.32 / 56.57 ms, versus MLX 46.44 / 100.17 ms. Large
+FLUX/Krea FFN-down reach 2.44x / 2.04x MLX. H3 attention remains 1.55-1.62x,
+and D256 INT8 remains slower than CCV FP16. See inference-int8-register.txt
+and inference-int8-register-summary.csv for every case and excluded experiments.
+
+Earlier FP16 GEMM / INT8 attention follow-up
+Inference remains the priority; further backward tuning is deferred.
+The latest 42-shape GEMM confirmation retains a bounded register GEMM path and
+a reduction-barrier fix for the existing wide profile. H3's UI-sized 480p/720p
+FFN-down projections now take 46.43 / 100.51 ms, versus MLX 46.50 / 100.26 ms,
+and previous CCV 80.73 / 192.66 ms. All 11 selected register shapes were within
+0.3% of MLX; none of the 42 paired medians regressed by more than 5%.
+
+The INT8 attention query split preserves SHD buffers and the original quantization
+strides while removing partial-query stores from the bulk shader. Paired H3 UI
+480p/720p INT8 medians are 203.64 / 1070.74 ms, versus previous INT8
+227.25 / 1196.48 ms and MLX 314.69 / 1738.96 ms. Wide-head INT8 also skips identity
+output rescaling. The latest inference-followup.txt and associated GEMM/query-range
+CSVs explain the measured selection boundaries and retain rejected experiments.
+INT8 is still short of the requested 2x target; some FP16 image and short-K
+projection gaps also remain.
+
+The MLX-derived D128/D256 register forward path is now integrated directly on
+SHD buffers, replacing the edge partition/merge and its extra scratch. All 37
+attention workloads have two reversed-order comparisons against the prior
+production dispatcher, actual INT8, and MLX. See inference-followup.txt and
+inference-register-summary.csv for current timings and selection rationale.
+D256 Ideogram at 16640 tokens improved from 300.1 to 68.3 ms; MLX is 87.6 ms.
+Long UI H3 FP16 is 326.4 / 1667.4 ms versus MLX 306.0 / 1687.1 ms.
+INT8 remains short of the requested 2x target and is slower than new FP16 at
+D256. Further backward optimization is deferred while inference gaps remain.
+
+Scope
+73 source-derived operator shapes cover FLUX.2, Krea 2, Ideogram 4,
+Qwen Image 2.1, and MiniMax H3. This supplements the earlier 62-workload
+Draw Things / Local Code sweep in application-report.txt; it does not replace
+its causal Qwen prefill/decode results. priority-workloads.json records geometry
+and assumptions. priority-summary.csv contains the original 65-case baseline;
+priority-ui-long.csv adds the two UI-rounded long H3 forward cases.
+Six more projection cases cover UI-rounded H3 and 2048px image FFNs; their
+current-versus-baseline confirmation is recorded separately. The historical
+baseline below has one pass for smaller rows and two for the long H3 forward
+rows. The newer inference register and projection confirmations each use two
+opposite-order passes. Each measurement is a GPU-time median.
+
+These are synthetic operator inputs, not end-to-end model generation or image
+quality measurements. Attention includes all production preparation, including
+INT8 quantization. Matmul weights are already rowwise quantized; activation
+quantization is timed. Saved forward is excluded from backward timing in both
+CCV and MLX; all three gradients and backward preparation are included.
+
+The desired FP16 parity and roughly 2x INT8 throughput versus MLX are not yet
+met across the priority surface. No transpose-based optimization is planned:
+Q/K/V and output retain the existing S,H,D layout.
+
+Long MiniMax H3 geometry
+H3 uses 56 query and KV heads of D=128, hidden width 5376, Q/K/V width 7168,
+FFN up/gate width 14336 and down width 5376, with 50 layers. Its exact attention
+concatenates text, reference image/audio, audio and video tokens. The measured
+long cases assume 256 text tokens, no references, and 810 audio tokens.
+Requested 240 frames maps to 72 latent frames and 243 decoded frames through
+LocalImageGenerator's temporal rounding and UNetProtocol's inverse mapping.
+Video tokens = latent_frames * latent_height/2 * latent_width/2, with spatial
+compression 16. Thus the patch-aligned proxies used here are:
+  nominal 480p/10s: 832x480,  28080 video + 1066 conditioning = 29146 tokens
+  nominal 720p/10s: 1280x736, 66240 video + 1066 conditioning = 67306 tokens
+These dimensions are explicit proxies, not a claim that the UI emits exactly
+these sizes: LocalImageGenerator constructs latent dimensions in multiples of
+4 (64 decoded pixels), so the additional UI-rounded measurements use:
+  832x512:  29952 video + 1066 conditioning = 31018 tokens
+  1280x768: 69120 video + 1066 conditioning = 70186 tokens
+At the register-forward checkpoint before the INT8 query split, two reversed passes measured:
+                         CCV FP16        CCV INT8         MLX
+31018 tokens             326.41          226.09           306.02
+70186 tokens            1667.36         1186.91          1687.12
+CCV outputs were all finite, and both implementations passed sampled CPU
+comparison. INT8 rows include quantization. These are operator timings.
+
+Sources at Draw Things revision afed99ce5981875e3b3aa7d19059a516c73c5f2f:
+  Libraries/SwiftDiffusion/Sources/Models/MiniMaxH3.swift:6,166,194,203,279,740
+  Libraries/SwiftDiffusion/Sources/Models/UNetProtocol.swift:767,819
+  Libraries/LocalImageGenerator/Sources/LocalImageGenerator.swift:4265
+The optional SolAttention route is distinct. These results cover exact dense
+SDPA. Synthetic approximate Sol routing cannot establish actual model quality
+or represent its data-dependent fraction of dense tiles.
+
+Long H3 baseline, milliseconds
+                         CCV FP16        CCV INT8         MLX
+480p forward             1310.79          198.30           270.38
+720p forward             7794.07         1095.10          1488.48
+480p backward            6044.81         2727.86          1339.46
+720p backward           36261.69        15344.30          7142.19
+The forward INT8 speedup is approximately 1.36x. Backward has an independent,
+large gap; forward improvements must not be presented as solving it.
+
+Priority image baseline, milliseconds (1024px)
+                         CCV FP16        CCV INT8         MLX
+FLUX.2 4608x4608          6.045           3.643            4.966
+Krea 2 4352x4352          5.453           3.358            4.274
+Ideogram 4 D256           14.644          6.630            5.998
+Qwen 2.1 4096x4352        3.174           2.104            2.925
+The 2048px rows expose larger gaps, including Krea FP16 129.9 vs 61.8 ms,
+and Ideogram FP16 299.6 / INT8 89.7 vs MLX 87.8 ms. Manifest variants also
+cover rectangular final blocks, cached references, text refiners, CFG batching
+and causal Qwen prefix segments. Text lengths remain stated assumptions.
+
+The new backward comparisons use the actual production dispatcher:
+FLUX.2:     FP16 22.42, INT8 25.00, MLX VJP 29.05 ms
+Krea 2:     FP16 22.26, INT8 26.01, MLX VJP 23.98 ms
+Ideogram 4: FP16 43.40, INT8-requested 43.39, MLX VJP 15.61 ms
+Qwen 2.1:   FP16 12.73, INT8 13.34, MLX VJP 15.75 ms
+D256 backward currently uses generic MFA for BOTH floating-point and
+INT8-requested calls. Its two rows do not represent distinct NA kernels.
+
+What the investigations establish
+1. Small sequence tails can change whole-kernel performance far beyond their
+   arithmetic cost. At H3's 56 heads/D128, 14848x14848 takes about 68.4 ms;
+   14864x14864 takes 399.5 ms and 14878x14878 takes 439.3 ms. Both query and
+   key tails matter. This is observed code-generation/performance behavior;
+   the exact compiler mechanism has not been established.
+2. Changing tile C alone, Morton ordering, staging P in registers, fixed-width
+   PV tail multiplication, or padded tensor-view extents did not recover parity.
+   Several naive register-fragment prototypes were also slower than MLX.
+3. An exact aligned-bulk plus small-edge decomposition removes most of the
+   H3 FP16 gap while retaining S,H,D. 14878 tokens measured 70.2 ms (MLX 68.0).
+   29146 tokens with generic MFA for the tiny KV edge measured 278.5 ms
+   (MLX 270.4). Production confirmation (two reversed-order passes): 29146 tokens
+   281.62 ms vs MLX 275.96; 67306 tokens 1677.44 ms vs MLX 1482.70.
+   See priority-edge-confirmation.csv.
+   The two partition outputs are weighted by their log2 softmax sums; this is
+   exact attention decomposition, with the existing low-precision rounding.
+4. The NA tiny-KV edge failed when supplied through one large sub-buffer offset;
+   copying the same inputs into a fresh buffer passed. Generic MFA handled the
+   original offset correctly. The implementation uses generic MFA for that
+   small edge, without copying or transposing Q/K/V. The precise MPP offset
+   issue still needs a minimal independent reproducer.
+5. Quantization preparation is only a small fraction of long INT8 forward time.
+   Reaching ~2x MLX requires improving the attention loop, not just its quantizer.
+6. MLX D256 forward splits the head across SIMD groups and combines score
+   partials. The register-attention follow-up now ports this kernel for
+   noncausal FP16 attention directly on CCV SHD buffers, with no transpose.
+   Causal Local Code prefill retains its existing implementation.
+7. MLX VJP uses blocked GEMMs plus softmax/dS and gradient accumulation, with
+   its own layout preparation included in timing. It is not simply the forward
+   NAX kernel with derivatives. CCV needs a separate backward solution.
+8. Deep projection K and large output footprints were matmul gaps. At H3's
+   67306x5376x14336 down projection, FP16 is 179.3 ms and INT8 105.0 ms versus
+   MLX 96.2 ms. Smaller image projections are closer, so a single tile rule
+   should not be generalized from short square matrices.
+   Follow-up INT8 row-range scheduling is now implemented for measured large
+   working sets; see inference-followup.txt and its confirmation CSV. FP16
+   projection chunking remains experimental because its crossover differs.
+
+Current implementation and validation status
+The register-attention follow-up supersedes the aligned-bulk/edge forward fix.
+D128 and D256 unmasked/noncausal FP16 inference now use MLX-derived register
+kernels directly on SHD buffers. D256 splits the head into two output slices.
+There is no additional chip-name gate, tensor copy, partition merge, or extra
+attention workspace. Causal, masked, variable-length, sink, upcast and other
+precision/head-width cases keep their established paths.
+The library cache keys the generated head width; pipeline constants encode
+alignment and whether statistics are saved. All dimensions, strides and scale
+are supplied at dispatch, including dynamic R/C. Saved LSE retains MFA's log2
+half contract. The randomized CPU-reference regression covers ten shapes,
+B2/GQA, dynamic shape reuse, D128/D256, aligned/uneven bounds, outputs and LSE.
+The frozen previous binary and priority-edge-confirmation.csv retain the earlier
+edge implementation's measurements for comparison. Latest validation and
+production confirmation are in inference-followup.txt and priority-validation.txt.
+
+A separate raw backward-probe issue was fixed: its threadgroup allocation return
+type was uint16, so 96 KiB at D256/groups6 wrapped to 32 KiB. Allocation now uses
+uint32 and staged group selection stays within 48 KiB (D128 retains groups6;
+D256 uses groups3). Unsupported forced probe allocations are rejected. Production
+already excluded NA D256 backward, so the invalid old raw result is not a
+production regression or a valid MLX comparison. Corrected raw groups3 passed
+an independent CPU gradient check but still trails MLX and is not dispatched.
+
+Further implementation work, ordered by the requested priorities
+Inference is the immediate priority. Further backward experiments are deferred.
+- Close the remaining long H3 forward attention and projection gaps, including
+  UI-rounded shapes. Retain S,H,D layout and time all preparation.
+- Improve INT8 inner-loop reuse and accumulator placement; test long H3 first,
+  then image MHA/GQA and D256. The wider C/D tile sweep did not improve H3.
+  Query-register reuse improved the first pilot by less than 1%, which is not
+  sufficient evidence for a production change.
+- The register-attention follow-up now integrates the MLX-derived D128 and
+  head-partitioned D256 forward kernels directly on S,H,D buffers. It replaces
+  the edge-partition implementation and its extra workspace. See
+  inference-followup.txt for the production confirmation and remaining gaps.
+- Revisit long-K projection accumulation and data reuse on the actual H3 FFN
+  dimensions. Distinguish FP16 accumulation and FP32-upcast contracts.
+- Complete BF16 Qwen 2.1, float32-output projections, Sol exact/approximate
+  routing, and sparse/sliding Local Code coverage; none is implied by the
+  current dense FP16 tables.
+
+Deferred backward prototype results
+Neutral sequence padding (no transpose), including GPU padding/copy costs,
+passed all three gradient comparisons against MLX VJP. At 14878 tokens it
+measured FP16 305.48 / INT8 357.39 ms versus MLX 351.90 ms. The long cases did
+not resolve the gap: 29146 tokens measured FP16 2410.73 / INT8 1417.85 ms;
+67306 tokens measured FP16 20253.83 / INT8 7722.50 ms. These results remain
+prototype evidence, not production dispatch. See priority-backward-pad-long.csv.
+
+MLX comparison provenance
+Local MLX revision 25532871329fe4cafdada9fa0941a1cdbfb3a9f2. D256 requires
+mlx-dsplit-jit.patch in an isolated build: upstream JIT emits one extra template
+argument. No MLX numerical algorithm or selector was changed; the checkout
+remains untouched. GPU jobs ran serially. See the benchmark drivers and raw
+CSV files for repetitions and correctness metrics. Timing drift is visible in
+long runs; candidate claims require reversed-order confirmation.

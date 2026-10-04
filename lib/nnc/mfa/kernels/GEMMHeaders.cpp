@@ -451,7 +451,9 @@ std::string createMetalSimdgroupMatrixStorage(bool BF16) {
         output += ", ";
       }
     }
-    output += ") {\n";
+    // These methods access thread-local matrix storage. Metal 4.1 requires
+    // their implicit object address space to match thread_elements().
+    output += ") thread {\n";
 
     auto createAddress =
     [=](bool transposed, int64_t offset) -> std::string {
@@ -754,7 +756,7 @@ namespace metal
   // Add the last section of the header.
   output += R"(
     template <typename U, typename V>
-    METAL_FUNC void multiply(simdgroup_matrix_storage<U> a, simdgroup_matrix_storage<V> b, bool accumulate = true) {
+    METAL_FUNC void multiply(simdgroup_matrix_storage<U> a, simdgroup_matrix_storage<V> b, bool accumulate = true) thread {
       if (!accumulate) {
         *(thread_elements()) = vec<T, 2>(0);
       }

@@ -1,9 +1,9 @@
 #include "NAInt8MatMulDescriptor.hpp"
+#include "NAMatMulTuning.hpp"
 #include "NAInt8MatMulKernelDescriptor.hpp"
 #include "NAInt8MatMulKernel.hpp"
 #include "../ccv_nnc_mfa_hash.hpp"
 #include "../ccv_nnc_mfa_error.hpp"
-#include <cstring>
 
 namespace {
 
@@ -76,10 +76,15 @@ std::size_t std::hash<NAInt8MatMulDescriptor>::operator()(const NAInt8MatMulDesc
   return seed;
 }
 
-NAInt8MatMulKernelDescriptor NAInt8MatMulDescriptor::kernelDescriptor() const noexcept {
+NAInt8MatMulKernelDescriptor NAInt8MatMulDescriptor::kernelDescriptor(MTL::Device* device) const noexcept {
+  // Halving M and the SIMD-group count reduces per-threadgroup resources.
+  // Keep the larger tile for long reductions: its extra operand reuse wins
+  // on several large working sets, and the crossover is not uniform in M/N.
+  // This decision is independent of dynamic M, preserving pipeline sharing.
+  const bool smallTile = useNeuralAcceleratorMatMulTuning(device) && matrixDimensions[2] <= 8192;
   return NAInt8MatMulKernelDescriptor(
-      simd::ushort3 { 128, 128, 128 },
-      8,
+      simd::ushort3 { (uint16_t)(smallTile ? 64 : 128), 128, 128 },
+      smallTile ? 4 : 8,
       ioPrecision,
       useBias,
       loadM,
@@ -175,7 +180,7 @@ std::pair<NAInt8MatMulKernelDescriptor, PipelineValue<NAInt8MatMulKernel> *> NAI
     return pipeline;
   };
 
-  auto kernelDesc = kernelDescriptor();
+  auto kernelDesc = kernelDescriptor(device);
   auto kernel = createKernel(kernelDesc);
   auto pipeline = NS::TransferPtr(createPipeline(kernel, "int8_matmul"));
   auto quantize = NS::TransferPtr(createPipeline(kernel, "quantize_activation"));

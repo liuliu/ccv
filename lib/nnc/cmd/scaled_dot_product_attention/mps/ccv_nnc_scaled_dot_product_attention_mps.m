@@ -367,9 +367,31 @@ static int _ccv_nnc_scaled_dot_product_attention_forw_mps(const ccv_nnc_cmd_t cm
 			ccv_nnc_mfa_has_neural_accelerators(context) &&
 			(mtl_data_type != 121 || ccv_nnc_mfa_neural_accelerators_support_bfloat(context)) &&
 			(D > 128 || (D % 8) == 0);
+		// The D=256 FP16 register kernel wins on short ranges. For long ranges,
+		// independent INT8 output partitions reduce FP32 accumulator state enough
+		// to recover the quantization cost. Preserve training selection even though
+		// inference graphs also retain LSE.
+		// INT8 output partitioning does not support causal masks. For wide-head
+		// causal inference, use the register kernel's split FP32 accumulators.
+		// Its triangular traversal is right-aligned to the growing KV cache.
+		const int register_causal_inference = cmd.info.scaled_dot_product_attention.is_causal &&
+			(flags & CCV_NNC_NO_BACKWARD) && R <= C && C <= INT32_MAX - 96;
+		const int prefer_fp16_attention = is_downcast && D == 256 && R > 64 && C > 0 &&
+			(register_causal_inference || (!cmd.info.scaled_dot_product_attention.is_causal &&
+				!ccv_nnc_mfa_attention_split_output_shape(R, C, D))) &&
+			((flags & CCV_NNC_NO_BACKWARD) || !lse) &&
+			!attn_mask &&
+			!is_varlen && !attention_sinks && sliding_window == 0 &&
+			(mpgetbuffer((ccv_nnc_tensor_t*)q) != mpgetbuffer((ccv_nnc_tensor_t*)o) ||
+				(q->dataof == o->dataof &&
+				 mpgetbuffer((ccv_nnc_tensor_t*)q) != mpgetbuffer((ccv_nnc_tensor_t*)k) &&
+				 mpgetbuffer((ccv_nnc_tensor_t*)q) != mpgetbuffer((ccv_nnc_tensor_t*)v))) &&
+			(uint64_t)R * Hq * batch_size <= INT32_MAX - 64 && C <= INT32_MAX - 32 &&
+			(uint64_t)Hq * D * 64 <= INT32_MAX && (uint64_t)Hk * D * 32 <= INT32_MAX;
 		const int use_quantized_attention =
 			use_neural_accelerators &&
 			(cmd.info.scaled_dot_product_attention.flags & CCV_NNC_GEMM_8I) &&
+			!prefer_fp16_attention &&
 			!weights &&
 			!bias;
 		if (sliding_window > 0 && use_quantized_attention)
@@ -396,6 +418,7 @@ static int _ccv_nnc_scaled_dot_product_attention_forw_mps(const ccv_nnc_cmd_t cm
 			.upcast = !is_downcast,
 			.use_neural_accelerators = use_neural_accelerators,
 			.use_quantized_attention = use_quantized_attention,
+			.is_inference = !!(flags & CCV_NNC_NO_BACKWARD),
 			.attention_sinks = attention_sinks,
 			.sliding_window = (uint32_t)sliding_window,
 			.sink_head_stride = sink_head_stride,

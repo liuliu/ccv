@@ -17,6 +17,7 @@
 #include "nnc/mfa/kernels/NAMatMulKernel.hpp"
 #include "nnc/mfa/kernels/NAMatMulKernelDescriptor.hpp"
 #include "nnc/mfa/kernels/NAInt8MatMulKernel.hpp"
+#include "nnc/mfa/kernels/NAInt8MatMulDescriptor.hpp"
 #include "nnc/mfa/kernels/NAInt8MatMulKernelDescriptor.hpp"
 #include "nnc/mfa/kernels/NAInt8MatMulSmallMDescriptor.hpp"
 #include "nnc/mfa/kernels/NAInt8MatMulSmallMKernel.hpp"
@@ -197,7 +198,9 @@ uint32_t groupN(const BenchmarkCase& bench, const VariantConfig& variant) noexce
 BaselinePipeline create_baseline_pipeline(
     MTL::Device* device,
     const BenchmarkCase& bench,
-    bool load_m)
+    bool load_m,
+    simd::ushort3 block_dimensions,
+    uint16_t execution_simd_groups)
 {
   BaselinePipeline bundle;
   bundle.descriptor.batchDimension = 1;
@@ -222,11 +225,11 @@ BaselinePipeline create_baseline_pipeline(
       .bias = GEMMOperandPrecision::FP16,
   };
   const NAMatMulKernelDescriptor kernel_descriptor(
-      simd::ushort3 { 128, 64, 64 },
+      block_dimensions,
       bundle.descriptor.memoryPrecisions,
       register_precisions,
       1,
-      4,
+      execution_simd_groups,
       false,
       bundle.descriptor.transposeState,
       false,
@@ -1231,11 +1234,16 @@ bool benchmark(const BenchmarkConfig& config, RunOnce&& run_once, Stats* stats)
 {
   std::vector<double> samples;
   samples.reserve(config.timed_iterations);
-  for (int i = 0; i < config.warmup_iterations + config.timed_iterations; ++i) {
+  // A fixed iteration count under-warms small dispatches after shader compilation.
+  const double minimum_warmup = std::getenv("CCV_NA_WARMUP_SECONDS") ?
+      std::atof(std::getenv("CCV_NA_WARMUP_SECONDS")) : 0;
+  double warmup_seconds = 0;
+  for (int i = 0; samples.size() < (size_t)config.timed_iterations; ++i) {
     const double seconds = run_once();
     if (!(seconds > 0) || std::isnan(seconds))
       return false;
-    if (i >= config.warmup_iterations)
+    warmup_seconds += seconds;
+    if (i >= config.warmup_iterations && warmup_seconds >= minimum_warmup)
       samples.push_back(seconds);
   }
   stats->average_seconds = std::accumulate(samples.begin(), samples.end(), 0.0) / samples.size();
@@ -1346,6 +1354,10 @@ ValidationStats validate_output(
           compute_float_reference_value(bench, a_values, b_values, row, col);
       const float compared_reference = half_reference ? (float)(half_float)reference : reference;
       const float actual = output[c_index(bench, row, col)];
+      if (!std::isfinite(actual)) {
+        stats.max_abs = stats.max_rel = std::numeric_limits<double>::infinity();
+        continue;
+      }
       const double abs_diff = std::fabs(compared_reference - actual);
       const double rel_diff = abs_diff / std::max<double>(std::max(std::fabs(compared_reference), std::fabs(actual)), 1.0);
       stats.max_abs = std::max(stats.max_abs, abs_diff);
@@ -1457,6 +1469,16 @@ int main(int argc, char** argv)
     baseline_load_m = std::strtoul(argv[15], nullptr, 10) != 0;
   if (argc >= 17)
     smallm_load_m = std::strtoul(argv[16], nullptr, 10) != 0;
+  // Optional FP16 tile and SIMD-group overrides after the existing arguments.
+  simd::ushort3 baseline_block_dimensions { 128, 64, 64 };
+  uint16_t baseline_simd_groups = 4;
+  if (argc >= 21) {
+    baseline_block_dimensions = simd::ushort3 {
+      (uint16_t)std::strtoul(argv[17], nullptr, 10),
+      (uint16_t)std::strtoul(argv[18], nullptr, 10),
+      (uint16_t)std::strtoul(argv[19], nullptr, 10) };
+    baseline_simd_groups = (uint16_t)std::strtoul(argv[20], nullptr, 10);
+  }
 
   auto* pool = NS::AutoreleasePool::alloc()->init();
   auto device = NS::TransferPtr(MTL::CreateSystemDefaultDevice());
@@ -1470,6 +1492,15 @@ int main(int argc, char** argv)
     std::cerr << "Metal command queue unavailable.\n";
     pool->drain();
     return 1;
+  }
+
+  if (argc < 9) {
+    NAInt8MatMulDescriptor descriptor;
+    descriptor.matrixDimensions = simd::uint3 { bench.M, bench.N, bench.K };
+    descriptor.ioPrecision = GEMMOperandPrecision::FP16;
+    const auto kernel_descriptor = descriptor.kernelDescriptor(device.get());
+    variant.block_dimensions = kernel_descriptor.blockDimensions;
+    variant.execution_simd_groups = kernel_descriptor.executionSIMDGroups;
   }
 
   const auto a_half_values = make_half_matrix(bench.M, bench.K, 0.03125f, 1);
@@ -1493,11 +1524,13 @@ int main(int argc, char** argv)
   smallm_descriptor.matrixDimensions = simd::uint3 { bench.M, bench.N, bench.K };
   smallm_descriptor.useBias = false;
   smallm_descriptor.loadM = smallm_load_m;
-  const bool benchmark_smallm = (bench.K % smallm_descriptor.pack()) == 0 && bench.K < 65536;
+  // Focused sweep skips unrelated experimental paths and the unsplit FP16 baseline.
+  const bool focused = std::getenv("CCV_NA_INT8_ONLY") != nullptr;
+  const bool benchmark_smallm = !focused && (bench.K % smallm_descriptor.pack()) == 0 && bench.K < 65536;
   const size_t c_smallm_i32_bytes = benchmark_smallm ? smallm_descriptor.scratchOffsets().total : 0;
   const size_t c_raw_i32_bytes = (size_t)bench.M * bench.N * sizeof(int32_t);
   const size_t c_splitk_i32_bytes = (size_t)bench.M * bench.N * variant.split_k * sizeof(int32_t);
-  const bool benchmark_raw = !variant.load_m && c_raw_i32_bytes <= (size_t(512) << 20);
+  const bool benchmark_raw = !focused && !variant.load_m && c_raw_i32_bytes <= (size_t(512) << 20);
   const bool benchmark_splitk = !variant.load_m && variant.split_k > 1 && c_splitk_i32_bytes <= (size_t(512) << 20);
 
   std::vector<half_float> b_half_scales(b_quantized_reference.scales.size());
@@ -1557,7 +1590,10 @@ int main(int argc, char** argv)
   upload_buffer(command_queue.get(), b_int8_stage.get(), b_int8_buffer.get(), b_int8_bytes);
   upload_buffer(command_queue.get(), b_scale_stage.get(), b_scale_buffer.get(), b_scale_bytes);
 
-  auto baseline = create_baseline_pipeline(device.get(), bench, baseline_load_m);
+  BaselinePipeline baseline;
+  if (!focused)
+    baseline = create_baseline_pipeline(device.get(), bench, baseline_load_m,
+        baseline_block_dimensions, baseline_simd_groups);
   auto quantize = create_quantize_pipeline(device.get(), bench, variant);
   auto dynamic = create_dynamic_pipeline(device.get(), bench, variant);
   SmallMPipeline smallm;
@@ -1585,12 +1621,35 @@ int main(int argc, char** argv)
             << " groupN=" << groupN(bench, variant)
             << " loadM=" << (variant.load_m ? 1 : 0)
             << " baselineLoadM=" << (baseline_load_m ? 1 : 0)
+            << " baselineBlock=" << baseline_block_dimensions[0] << 'x'
+            << baseline_block_dimensions[1] << 'x' << baseline_block_dimensions[2]
+            << " baselineSimdgroups=" << baseline_simd_groups
             << " smallMLoadM=" << (smallm_load_m ? 1 : 0)
             << " rawInt32=" << (benchmark_raw ? 1 : 0)
             << " splitK=" << variant.split_k
             << " smallM=" << (benchmark_smallm ? 1 : 0)
             << " smallMSplitK=" << (benchmark_smallm ? smallm_descriptor.splitK() : 0)
             << '\n';
+
+  if (!focused) {
+  if (!(run_baseline_once(command_queue.get(), baseline, a_half_buffer.get(),
+          b_half_buffer.get(), c_half_buffer.get(), m_buffer.get()) > 0)) {
+    std::cerr << "FP16 validation dispatch failed\n";
+    return 1;
+  }
+  download_buffer(command_queue.get(), c_half_buffer.get(), c_half_stage.get(), c_half_bytes);
+  const auto baseline_values = half_to_float_vector(std::vector<half_float>(
+      (const half_float*)c_half_stage->contents(),
+      (const half_float*)c_half_stage->contents() + (size_t)bench.M * bench.N));
+  const auto baseline_validation = validate_output(bench, a_float_values, b_float_values,
+      a_quantized_reference, b_quantized_reference, baseline_values.data(), false, true);
+  print_validation("baseline-validation", baseline_validation);
+  if (!(baseline_validation.max_rel <= 5e-3)) {
+    std::cerr << "FP16 validation failed\n";
+    return 1;
+  }
+
+  }
 
   const double quantize_validation_seconds =
       run_quantize_once(command_queue.get(), bench, quantize, a_half_buffer.get(), a_int8_buffer.get(), a_scale_buffer.get());
@@ -1782,7 +1841,7 @@ int main(int argc, char** argv)
   }
 
   Stats baseline_stats;
-  if (!benchmark(config, [&]() {
+  if (!focused && !benchmark(config, [&]() {
         return run_baseline_once(command_queue.get(), baseline, a_half_buffer.get(), b_half_buffer.get(), c_half_buffer.get(), m_buffer.get());
       }, &baseline_stats)) {
     std::cerr << "baseline benchmark failed\n";
@@ -1919,7 +1978,7 @@ int main(int argc, char** argv)
     }
   }
 
-  print_stats("baseline-fp16", bench, baseline_stats);
+  if (!focused) print_stats("baseline-fp16", bench, baseline_stats);
   print_stats("quantize-activation", bench, quantize_stats);
   if (benchmark_raw)
     print_stats("int8-int8-raw-int32", bench, raw_stats);
@@ -1937,6 +1996,10 @@ int main(int argc, char** argv)
   print_stats("quantize-plus-int8", bench, combined_stats);
   if (benchmark_smallm)
     print_stats("quantize-plus-smallm-int8", bench, combined_smallm_stats);
+  if (focused) {
+    std::cout.flush();
+    std::_Exit(0);
+  }
   std::cout << "speedup";
   if (benchmark_raw)
     std::cout << " raw_kernel_avg=" << baseline_stats.average_seconds / raw_stats.average_seconds

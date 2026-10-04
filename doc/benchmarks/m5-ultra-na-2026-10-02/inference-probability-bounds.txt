@@ -1,0 +1,140 @@
+Historical checkpoint: see handoff.txt for final validation, gating and branch status.
+Associated raw files are in research-2026-10-02-04.tar.gz; extract into a separate directory.
+
+Partitioned inference probability bounds, 2026-10-03
+
+Retained production change
+Remove the redundant [0,127] clamp after rint(P*127) in the existing partitioned
+INT8 inference main loop. For finite scores, P=exp2(score-runningMax) is in
+[0,1], so this rounding already fits signed INT8. All other conversion,
+quantization, normalization, reduction and output operations remain unchanged.
+The existing partitioned kernel property carries this source decision through
+the cache. There is no new shape threshold, chip-name gate, transpose, scratch
+allocation, runtime geometry, backward behavior, or experimental environment
+switch in production. The short-KV fallback and FP32-output loops are unchanged.
+
+Why restrict it to the existing algorithm
+The isolated global-elision prototype covered 78 shapes: head dimensions
+32/64/80/96/128/192/256, tails, static/dynamic lengths, batch/GQA, upcast and
+causal controls. Its 386 records include two orders for previous/current on
+all 78 and actual MLX on 37 priority cases. All exit zero and paired sampled
+CPU errors match. It improves long H3 by about 3%, but some image workloads
+regress by about 1-1.7%. Reusing the existing normalized-half partitioned path
+captures the consistent gain without adding a model- or size-specific clamp
+gate. The broad rows h3-480p-10s and h3-720p-10s are older R29146/R67306 proxies;
+rows containing -ui- are exact R31018/R70186 UI sizes. This production report's
+application table below uses exact UI sizes for both H3 10-second rows.
+
+Correctness
+The global prototype completed 224 randomized/stress executions, with 112
+bit-identical full-output pairs. Those cases did not select partitioning.
+An additional 56 executions cover R4097/C31018 and R4097/C70186 with D128,
+Hq56/Hk7, query/KV tails, and fixed/dynamic lengths: 28 bit-identical pairs.
+Inputs include Gaussian Q/K at sigma .25/1/2, key outliers, large V, opposing
+V offsets, and sparse near-half-maximum V. All outputs are finite. This is
+numerical validation, not rendered image/video quality validation.
+
+The rebuilt production library independently repeats the 28 long-path stress
+pairs and adds 32 full-output pairs across selector/dispatch boundaries,
+D256, batch/GQA, and causal controls. All 60 pairs are bit-identical to the
+immediately preceding implementation. CPU-reference error is unchanged;
+existing cancellation stress reaches relative L2 0.0727077, so these results
+must not be described as every case having less than 5% error. Existing saved
+statistics, aliasing, dynamic cache and CPU-reference integration tests run
+in the full MPS suites. No new test merely mirrors the clamp implementation.
+
+Actual application-path comparison
+CCV uses NoGrad DynamicGraph, saved LSE, Q/O aliasing and original SHD strides.
+All preparation, quantization, attention partitions and merging are included.
+Previous/current request INT8 inference; the existing small-D256 fallback still
+selects FP16 for Ideogram 512. That row must not be labeled true INT8 execution.
+MLX is the checked-out FP16 SDPA implementation with the previously documented
+D256 JIT signature fix; it is not a local approximation of MLX. Three warmups,
+at least .5 GPU seconds of warmup and seven samples per process. Cases and
+implementations run in reversed orders. CPU compilation finishes before GPU
+timing; GPU jobs are serial. Values are median of two process medians in ms,
+except FLUX.2 512/2048 and Krea 2 2048, which combine four after a confirmation
+of noisy initial results. All observations, including MLX 79.95 ms for FLUX.2
+2048 and 82.81 ms for Krea 2 2048, are retained in the CSV and summary arrays.
+
+Case                         Previous      Current      MLX FP16   MLX/current
+ideogram4-512                     0.4926       0.4943        0.5292       1.071x
+ideogram4-1024                    3.6156       3.6108        5.9995       1.662x
+ideogram4-1536                   16.0482      16.0783       28.2776       1.759x
+priority-flux2-2048              39.2253      39.1748       68.4605       1.748x
+krea2-2048                       36.6105      36.5995       61.9505       1.693x
+ideogram4-2048                   48.5548      48.4937       87.6771       1.808x
+qwen21-2048                      25.5638      25.5621       42.6320       1.668x
+ideogram4-last                    3.4947       3.4961        5.6023       1.602x
+ideogram4-unconditional           3.3025       3.2924        5.2566       1.597x
+h3-480p-10s                     163.1989     157.7579      305.9735       1.940x
+h3-720p-10s                     796.1546     768.2329     1605.0900       2.089x
+priority-flux2-512                0.4689       0.4717        0.6623       1.404x
+krea2-512                         0.3199       0.3195        0.4202       1.315x
+qwen21-512                        0.2089       0.2091        0.2743       1.312x
+priority-flux2-1024               3.2586       3.2604        4.9944       1.532x
+krea2-1024                        2.7258       2.7168        4.2811       1.576x
+qwen21-1024                       1.8921       1.8863        2.9361       1.557x
+priority-flux2-last               2.8076       2.8083        4.4590       1.588x
+qwen21-reference                  3.6845       3.6893        5.7698       1.564x
+
+H3 is about 3.3-3.5% faster than the immediately preceding implementation,
+reaching about 1.94x / 2.09x MLX for exact UI 480p/10s and 720p/10s. The image
+controls retain their preceding shaders; differences there are timing variation.
+
+These are operator measurements, not full-generation latency. FP16 and GEMM
+are unchanged by this checkpoint; see inference-fp16-expanded.txt,
+inference-partitioned-integration.txt and inference-grid-tail.txt for their
+validated comparisons. The approximately-2x INT8 target remains open for
+several image sizes and projection shapes. Backward remains deferred; earlier
+actual MLX VJP results remain in priority-report.txt.
+
+Rejected partition-count extension
+An isolated actual-NoGrad experiment forces the existing normalized-half /
+per-partition FP32 V-mean algorithm with one, two, four or eight partitions.
+Counts round to KV64 tiles; existing bounded query chunks and scratch cap
+remain. Eight workloads, six variants including production and actual MLX,
+and two reversed orders give 96 records, all exit zero. Images regress even
+at one partition; none justify expanding this path. H3 480p gains about 2%
+with two/four, but 720p favors eight. This is insufficient evidence for another
+selector threshold, particularly because partition count changes rounding.
+
+Case                 Current         P1         P2         P4         P8       MLX
+krea512                  0.3207     0.4691     0.4961     0.5506     0.6355     0.4214
+flux1024                 3.2574     3.8232     3.9189     4.0747     4.4099     4.9756
+flux2048                39.2351    42.0715    42.3576    42.8757    44.1284    68.4741
+krea2048                36.5913    39.8603    40.1769    40.7775    41.9118    61.8440
+qwen2048                25.7247    27.8510    27.9466    28.3865    29.4793    42.5439
+h3-5s                   37.1950    38.9718    39.1746    39.7966    41.0968    67.9087
+h3-480-ui              163.2416   164.1598   160.2186   160.5218   163.1433   306.2870
+h3-720-ui              808.9775   867.7251   825.4892   798.4869   795.9834  1612.2050
+
+The 720p production-control median includes a slow second pass; forced P8
+runs the same count and provides an additional stable reference. Raw medians
+are preserved, not filtered. Fewer partitions do not show a 720p benefit.
+
+Rejected short-KV folding
+A separate attempt removes the short-C dynamic-K fallback, lets the ordinary
+bounded-load loop handle C smaller than its tile, and removes its threadgroup
+scratch. It fails the first correctness case R129/C1/D32/B2/Hq8/Hk2: CPU
+relative L2 1.23639, full previous-output relative L2 1.15317, max difference
+0.361328. The baseline is exact on the sampled CPU check. The driver stops
+with exit 4 after two records; no timing or production claim follows. The
+fallback is retained. This failure is distinct from the earlier safe isolated
+short-branch removal for C known to be at least one complete tile, documented
+in inference-short-kv-prototype.txt.
+
+Validation and provenance
+partition-accuracy: exit 0, 90.61 seconds.
+attention-accuracy: exit 0, 19.00 seconds.
+attention-confirmation: exit 0, 183.80 seconds.
+mpsblas: exit 0, 693.62 seconds.
+mpsdnn: exit 0, 167.32 seconds.
+MPSBLAS 298/298 and MPSDNN 126/126 pass. git diff --check passes.
+The prefixed CSV/JSON files preserve every observation. The source/log archive
+contains the isolated builders, failed smoke, full shader sources, drivers,
+per-process logs, before/final production source, integration diff and build
+commands. Provenance records every archived source/log and benchmark binary
+hash, including the frozen previous implementation and actual MLX executable.
+Builders retain their original scratch paths; restore those paths to replay.
+Nothing is staged or committed.

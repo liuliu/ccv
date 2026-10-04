@@ -1,0 +1,227 @@
+Historical checkpoint: see handoff.txt for final validation, gating and branch status.
+Associated raw files are in research-2026-10-02-04.tar.gz; extract into a separate directory.
+
+Later image inference results: inference-output-fusion.txt adds a validated
+FP32 output-update fusion for nonpartitioned INT8 attention. The long-H3 route
+and its integration described here are unchanged.
+
+Inference integration: bounded INT8 output state and actual no-gradient graphs
+2026-10-03
+
+Implemented changes
+Long-sequence D128 INT8 inference now splits KV into eight tile-aligned parts,
+with no SHD/HSD conversion. Each part has its own FP32 V mean. Persistent output
+state is one quarter of the normalized, centered weighted mean in FP16; row
+maxima and normalization sums remain FP32. A fused FP32 rescale/PV update rounds
+once to half. Partial outputs retain the factor of one quarter until the FP32
+merge, avoiding intermediate half overflow even when a centered residual is
+larger than a representable half value. The merge adds the separate V means,
+weights the partials by FP32 log2 LSE, and writes O plus the graph's required
+saved LSE in the existing half-prefix/log2 format.
+
+Query chunks are at most 4096 rows and aligned to 64. Partial O plus FP32 LSE
+storage is capped at 512 MiB independently of R. H56 uses 477,102,080 bytes;
+H64 reduces the chunk to 4032 rows. Quantized inputs, scales, global LSE and
+partition means are additional. Runtime ranges, partition sizes, chunk lengths,
+and dispatch geometry are computed at encoding time. Only the source-changing
+partitioned boolean enters the kernel-object cache; both descriptor layers
+include it. The merge uses the normal cached library/pipeline/archive path.
+No environment-variable selector or process-global pipeline is introduced.
+
+Production selector
+FP16 input/output with low-precision intermediates, INT8 preference, D128,
+batch one, R >= 4096, C >= 24576, C*Hq >= 1,048,576, no causal mask, explicit
+mask, packed variable lengths, sinks, or sliding window. At least one 64-row
+chunk must fit the partial-buffer cap. Backward must not be required.
+These bounds follow the 31-case crossover sweep (186 records), including
+GQA and rectangular shapes. Hq counts aggregate traversal work; this is not
+a physical KV-footprint/cache-capacity claim. There is no model-name or new
+M5 Ultra name gate. Shorter C and lower head counts retain their faster route.
+The C24576/H32 and H40 controls improve only ~1% or less; H48/H56 improve
+8-9%. At C32768, H16/H24 regress while H32 and larger improve. C65536/H16
+improves ~3%, H24 ~8%, H8 regresses. These outcomes motivated the joint bound.
+
+Wide heads and Q/output reuse
+Unmasked noncausal D256 inference with R>64 prefers the FP16 register kernel
+over the current INT8 implementation when GEMM_8I is allowed. This follows the
+25-case/150-record D256 sweep; it is an inference selection improvement, not a
+2x INT8 throughput claim. Saved LSE no longer prevents inference selection.
+Exact Q/O aliasing is also supported by register attention when K and V do not
+share that buffer. A query tile writes its own rows after its last Q load.
+Existing layout and signed-index bounds remain in force.
+
+Why no-backward is separate from testing
+Standard SDPA's command bitmask requires O and LSE even in a no-gradient model
+graph. The earlier claim that CNNP pruning removes LSE was incorrect.
+Furthermore Draw Things uses DynamicGraph.withNoGrad while the pinned Swift
+Model.testing property defaults to false. Test-mode gating alone therefore
+misses this application path. The final implementation adds the execution flag
+CCV_NNC_NO_BACKWARD and passes it from ccv_cnnp_model_evaluate whenever
+requires_grad is false. Both full-graph and scheduled evaluation propagate it
+through the existing graph execution path. This does not change dropout/BN
+is_test behavior. The MPS frontend passes it as MFA is_inference. Direct calls
+with no LSE also qualify. Calls that require gradients keep the original INT8
+V-centering/statistics contract. No model vtable or SDPA command-param field
+was added in the final implementation. The paired application benchmark uses
+ccv_nnc_dynamic_graph_set_no_grad with testing=false, matching Draw Things,
+and compares it with a gradient-required CNNP forward control and actual MLX.
+
+Relevant references
+- Draw Things Package.swift: s4nnc revision 1db38650465deeff7b51d04e413c9c74ea842464.
+- s4nnc nnc/Model.swift:59 testing defaults false; DynamicGraph.swift:730
+  withNoGrad calls ccv_nnc_dynamic_graph_set_no_grad.
+- Draw Things LocalImageGenerator/Sources/LocalImageGenerator.swift:4434:
+  generation inside graph.withNoGrad.
+- Draw Things SwiftDiffusion/Sources/Models/MiniMaxH3.swift:166-203:
+  H56,D128, quantized attention flags, SHD tensors.
+- Draw Things SwiftDiffusion/Sources/Models/Ideogram4.swift:133-138:
+  D256 with Int8/Float16 preferences.
+
+Numerical checks before final suite
+Randomized integration tests cover seven long shapes in both specialized and
+dynamic R/C modes, including both selector boundaries, partial KV tiles,
+query tails, the reduced H64 scratch chunk, GQA, repeat cache use, saved LSE,
+and V scaled by 1000. Every output is scanned for finiteness; sampled outputs
+and LSE are compared with the CPU operator. Exact Q/O reuse is checked using
+the same shader configuration in both calls. The model regression also switches
+no-gradient -> gradient-required -> no-gradient with is_test=0 throughout.
+
+An independent 42-execution stress sweep compares inference against the retained
+training forward: R4097 with C24577/H48/Hk12, C32768/H32/Hk8, and
+C70186/H56/Hk7; seed 1701; 16 sampled query rows and four spread-out heads,
+all 128 output components, double-precision CPU softmax, all-output finite scan.
+Modes vary Q/K sigma(.25,1,2), key outliers, shifted V, V sigma1000, opposing
++/-1000 V means, and sparse +60000 values among -60000 with logits selecting
+the positive values. Probe exit zero means finite/executed, not an arbitrary
+accuracy-threshold pass. These tensor checks do not validate rendered quality.
+
+Final production comparison
+The paired comparison uses no-gradient DynamicGraph evaluation with testing=false,
+and the standard O+LSE graph contract. Previous selection uses the same final
+library through a gradient-required CNNP forward; backward is not timed.
+Actual MLX FP16 SDPA uses SHD-derived strided views, with any backend copies
+inside the measured command buffer. No CCV attention transpose was added.
+The MLX binary includes only the documented D256 JIT-signature fix.
+
+Seven shapes, three implementations, two reversed orders: 42 records, all
+exit zero. Three warmups and a 0.5-GPU-second warmup floor, seven timed samples.
+Compilation, allocation and host setup are excluded; INT8 quantization, all V
+means, partition attention, required saved LSE and final merging are included.
+The table is the median of the two per-pass GPU medians, in milliseconds.
+
+Workload / R=C              Previous selection  Inference  Actual MLX  MLX/inference
+H3 480 patch / 29146                  177.831    150.085     272.550       1.816x
+H3 480 UI / 31018                     201.565    170.559     312.868       1.834x
+H3 720 patch / 67306                  960.870    784.203    1531.890       1.953x
+H3 720 UI / 70186                    1049.490    850.275    1607.490       1.891x
+Ideogram 1024 / 4352                    5.777      4.848       6.025       1.243x
+Ideogram 1536 / 9472                   24.877     22.744      28.394       1.248x
+Ideogram 2048 / 16640                  83.688     68.986      87.949       1.275x
+
+H3 is D128/H56; Ideogram is D256/H18. H3 uses INT8 QK and PV. Ideogram inference
+selects FP16; its speedup must not be described as improved INT8 throughput.
+H3 UI durations are 240 requested frames (10s), with 72 latent frames, 256 text
+tokens and 810 audio tokens. UI spatial dimensions are 832x512 and 1280x768.
+The patch-aligned 832x480 and 1280x736 rows are retained as labeled proxies.
+These are per-attention GPU times, not whole image/video generation latency.
+
+The two H3 UI cases reduce time by 15.4% and 19.0% against previous selection.
+Their inference pass medians are stable near 170.6/850.3 ms; MLX can vary across
+runs. The paired patch-720 MLX values are approximately 1481/1583 ms. Earlier
+prototype ratios above 2x do not override the fresh paired results here.
+
+Dynamic-shape selector confirmation
+An additional 41-case/82-record sweep compares the preceding frozen dispatcher
+with the final integrated dispatcher. Both use dynamic R/C, including tails,
+GQA, H64 capped chunks, R/C/work thresholds, and batch-two fallback. All exit
+zero. The 28 selected cases are 1.048-1.438x faster (median 1.158x). The 13
+fallback cases are within -1.2%/+2.7% throughput variation and have identical
+sampled error metrics between binaries. This is one paired pass per case;
+it validates final selection, alongside the earlier reversed-order crossover
+sweep. Dynamic R/C times differ materially from fixed-specialization graph
+times and must not be substituted into the application table.
+
+Earlier is_test-gated results and superseded partial suite logs are retained
+with explicit filenames. They are historical, not final application validation.
+
+Completed independent no-backward stress comparison
+All 42 records exit zero and every output is finite. Relative L2 values:
+C / Hq / Hk       Max modes 0-4, old/new      Opposing means, old/new
+24577 / 48 / 12       0.048205 / 0.036205           0.098464 / 0.092711
+32768 / 32 /  8       0.054528 / 0.035040           0.094461 / 0.011154
+70186 / 56 /  7       0.063649 / 0.039119           0.124390 / 0.072708
+The near-half-range +/-60000 case has inference L2 .00053335 (~0.0533%),
+max absolute error 32 at expected output 60000; the prior forward is nearly exact
+there. Both remain finite. Cancellation errors exceed 5% in some cases for both
+paths; this is explicitly not an all-cases 5%-accuracy claim. See the full CSV.
+
+Final validation: Debug library/probe/test builds passed. The complete MPS BLAS
+suite passed 297/297 (721.181s), and MPS DNN passed 126/126 (167.564s).
+The no-backward model regression passed. The 42 independent stress executions
+completed with finite outputs and the numerical limitations reported above.
+git diff --check passed. See validation.json and raw suite logs.
+
+In-place application comparison across the priority models
+A separate final 42-record reversed-order sweep uses DynamicGraph.no_grad,
+testing=false, required saved LSE, and the same Q/O buffer. Original Q is restored
+outside each timed command buffer. Both CCV preferences run against actual MLX.
+All records exit zero; maximum sampled FP16 relative L2 is 0.000442 (0.0442%).
+
+Workload / R x C                 CCV FP16  INT8 preference  MLX FP16  MLX/preference
+H3 UI 480p / 10s / 31018x31018        302.481       170.467      322.450       1.892x
+H3 UI 720p / 10s / 70186x70186       1597.140       850.518     1612.790       1.896x
+FLUX.2 2048 / 16896x16896          68.157        45.230       68.516       1.515x
+Krea 2 2048 / 16640x16640           61.127        43.585       61.842       1.419x
+Qwen Image 2.1 2048 / 16384x16640    42.021        29.112       42.551       1.462x
+Ideogram 4 1024 / 4352x4352          4.857         4.878        6.028       1.236x
+Ideogram 4 2048 / 16640x16640        69.166        69.192       88.014       1.272x
+
+Units are GPU ms, median of the two pass medians. Ideogram INT8 preference
+selects FP16; equal arithmetic produces identical error metrics, with minor
+timing variation. Krea uses Hq48/Hk12; FLUX H48, Qwen H32, Ideogram H18/D256.
+Image shapes come from priority-workloads.json, including conditioning tokens.
+H3 uses H56/D128. The 480p MLX pass medians are 305.509 and 339.390 ms, so the
+separate 1.834x paired result above is also reported rather than selecting the
+more favorable ratio. CCV 480p INT8 is 170.4705/170.4625 ms in this in-place run.
+FP16 is within 1.3% of MLX or faster on these priority application shapes.
+
+Remaining inference gaps and next implementation direction
+The approximately 2x INT8 target is not achieved across the priority surface.
+Long H3 attention is now close, but image D128 attention is 1.42-1.51x MLX and
+D256 inference currently benefits from selecting FP16. Reaching 2x on the image
+rows requires approximately 24-29% less time at D128 and 36% less at D256.
+The eight-partition algorithm is not selected on these shorter sequences because
+its partial writes, repeated query traversal and merge did not amortize there.
+The next kernel investigation should separate QK/softmax/P-quantization time
+from PV conversion and persistent-output updates, using arithmetic-preserving
+diagnostics. A smaller live output state without the full partition workspace,
+and sharing query/probability fragments across D256 output slices, are hypotheses
+to test. They are not additional accepted gates or measured improvements.
+
+Prior attempts at global INT32 output accumulation, explicit INT8 register
+fragments, tile-local K/V staging and FP8 PV did not improve these workloads;
+see inference-lowp-state.txt and inference-register-int8-prototypes.txt.
+Blindly broadening the partition selector would repeat measured regressions.
+No attention SHD-to-HSD conversion is planned. Backward optimization remains
+deferred; the existing MLX VJP results are preserved in priority-report.txt.
+
+The earlier projection work remains in the final library: NAMatMul's 32 priority
+FP16 projection cases reach MLX parity (worst 1.6% slower at that checkpoint),
+and NAInt8MatMul FFN-down is 1.77-2.44x MLX across the listed priority models.
+H3 Q/up projections remain around 1.57-1.60x, another inference gap. Full shape
+and error details are in inference-fp16-expanded.txt, inference-int8-register.txt
+and inference-fp32-accumulator.txt. These are separate measured runs, not an
+end-to-end model latency estimate. No rendered image/video validation was run.
+
+Artifacts
+inference-partitioned-integration-{graph-paired,fp16-graph,sweep,accuracy}.csv:
+  complete final raw measurements; MLX blank error fields mean unreported.
+inference-partitioned-integration-*-summary.json: per-case timing aggregates.
+inference-partitioned-integration-{frontend.m,accuracy.cpp}: benchmark sources.
+inference-partitioned-integration-{sweep,fp16-graph-sweep,validate,build-probes}.py:
+  recorded drivers; see reproduce.txt for restoring their scratch paths.
+inference-partitioned-integration-{workloads,fp16-graph-workloads}.json: manifests.
+inference-partitioned-integration-validation.json: final full-suite results.
+inference-partitioned-integration-provenance.json: source revisions and hashes.
+inference-partitioned-integration-raw-logs.tar.gz: complete final and labeled
+  historical logs, including the superseded is_test-gated partial run.

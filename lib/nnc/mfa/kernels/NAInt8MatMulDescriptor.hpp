@@ -37,8 +37,7 @@ struct NAInt8MatMulDescriptor {
       const std::string& pathToWrite,
       std::unordered_map<NAInt8MatMulKernelDescriptor, std::unique_ptr<NAInt8MatMulKernel>> *const libraryCache) const noexcept;
 
-private:
-  NAInt8MatMulKernelDescriptor kernelDescriptor() const noexcept;
+  NAInt8MatMulKernelDescriptor kernelDescriptor(MTL::Device* device) const noexcept;
 };
 
 template<>

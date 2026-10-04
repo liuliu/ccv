@@ -1,0 +1,192 @@
+Historical checkpoint: see handoff.txt for final validation, gating and branch status.
+Associated raw files are in research-2026-10-02-04.tar.gz; extract into a separate directory.
+
+Later validation: inference-fp32-accumulator.txt fixes the explicit-FP32 request
+on the odd-width stress case below. Its explicitly-low-precision error remains.
+See inference-partitioned-integration.txt for the latest attention changes.
+The report below records the earlier projection checkpoint.
+
+FP16 inference projection follow-up, 2026-10-03
+
+The priority FP16 projection rows are now within 1.6% of MLX or faster. The
+broad comparison contains 175 cases / 168 shapes and 1050 process results.
+A further 34-case / 204-result comparison validates the final aspect bound,
+the remainder fix, both sides of its neighboring shape boundaries, and two
+sub-millisecond timing outliers. The combined latest summary has 188 cases /
+181 distinct tensor shapes, with explicit binary-checkpoint provenance per row.
+Across comparable valid paired medians, none regresses by more than 5%.
+
+The 175-case candidate run precedes the final aspect bound and remainder fix.
+Its 28 failed records are preserved: 24 historical-baseline failures plus four
+candidate failures on two cases. The final 204-record controls have 18 historical
+baseline failures and two current failures, both repeats of the same unchanged
+odd-width stress case described below. Do not interpret either sweep's nonzero
+exit as a wholly successful run, or as 28/20 distinct failed shapes.
+
+GPU milliseconds, median of two pass medians:
+Workload                              Previous FP16   Current FP16   MLX FP16
+H3 UI 480p Q [31018,7168,5376]              22.021         19.014      19.007
+H3 UI 480p up [31018,14336,5376]            43.680         37.992      38.001
+H3 UI 480p down [31018,5376,14336]          46.382         46.528      46.277
+H3 UI 720p Q [70186,7168,5376]              49.364         42.836      42.816
+H3 UI 720p up [70186,14336,5376]            98.426         85.635      85.633
+H3 UI 720p down [70186,5376,14336]         100.379        100.276     100.107
+FLUX.2 down [4096,6144,18432]                8.802          7.887       7.881
+Krea 2 down [4352,6144,16384]                9.674          7.346       8.733
+Ideogram 4 down [4352,4608,12288]            5.349          4.202       4.700
+Qwen 2.1 down [4096,4096,12288]              3.483          3.485       5.432
+FLUX.2 down [16384,6144,18432]              38.764         38.702      48.735
+Krea 2 down [16640,6144,16384]              39.344         35.385      34.893
+Ideogram 4 down [16640,4608,12288]          23.934         17.264      17.307
+Qwen 2.1 down [16384,4096,12288]            13.511         13.514      14.940
+
+All 116 register-selected rows in the combined summary pass the sampled CPU
+check; their largest sampled relative L2 error is 0.02741%. One unchanged fallback control, M=6144/N=10923/K=24576, has relative L2
+1.1918%, above the probe's 1% FP16 threshold; all output values remain finite.
+Both old and current binaries fail identically. The existing upcast request also
+reproduces the same 1.1918% error (inference-fp16-odd-upcast.log), so requesting
+upcast is not a verified workaround. Code review found that NAMatMulKernel still
+declares its cooperative accumulator from the memory type while the requested
+register precision controls the relaxed-precision flag. Changing that path needs
+separate correctness/performance validation; it is not modified in this follow-up.
+The control lies just above the selected split-K partial-output working-set bound. This is an unresolved low-precision
+stress limitation, not a passing accuracy result. The adjacent N=10922 register
+case passes. All priority model rows pass.
+
+
+This follow-up prioritizes inference. Attention layouts and attention production
+code are unchanged. The FP16 projection selector now closes the remaining
+Q/FFN-up and medium-size FFN-down gaps in the source-derived priority models.
+Further backward tuning remains deferred; the earlier MLX VJP comparisons stand.
+
+Comparison protocol
+The production dispatcher, frozen preceding dispatcher, and actual MLX execute
+serially in two opposite orders. Each pass uses three warmup iterations plus
+at least 0.5 GPU seconds of warmup, then seven timed samples. Tables aggregate
+the two GPU medians. Shader compilation and allocation are outside GPU timing.
+Timing cases omit bias; fused bias is validated separately.
+All matrices are FP16 A[M,K] and W[N,K]; the operation is A*W^T with FP16 output.
+The new paths accumulate in FP32. Existing low-precision fallbacks may accumulate
+in half. Each process checks every output for finiteness and compares sampled
+entries against a CPU reference. Failed accuracy checks are retained as failures,
+without an invented timing or speedup.
+
+The manifest contains source-derived H3, FLUX.2, Krea 2, Ideogram 4, and Qwen Image
+2.1 projections; surrounding row/channel/reduction/working-set controls; and both
+fixed and dynamic M cases. The four additional UI H3 Q/up cases use 31018 and
+70186 tokens. See priority-report.txt for frame, spatial and conditioning-token
+assumptions and Draw Things source locations. Operator timings do not measure
+whole-model generation, nor model output quality.
+
+Implementations
+1. Moderate reductions use MLX's explicit register-fragment GEMM. The existing
+   64x128x512 profile is complemented by 128x64x512 with X/Y swizzle when N>M.
+   Both use eight SIMD groups. This orientation matches MLX's Ultra tuning and
+   matters on wide-output image projections. No new chip-name helper is added.
+2. Wide outputs with deep reductions use MLX's partition-major split-K kernel.
+   Each 4096-element K partition accumulates into FP32 scratch. A second kernel
+   sums the partial outputs, adds optional broadcast bias, and stores FP16.
+   The entire operation is timed. Its 1D grid preserves partition-major order;
+   simply applying the regular register kernel did not recover these results.
+3. The existing tensor-view split-K kernel added its global K remainder in
+   every partition. It now assigns that remainder only to the last partition.
+   K13824 with four partitions repeated 512 elements three extra times, explaining
+   the approximately 11.1% relative error in the baseline. K8191/K12287 controls
+   exposed the same error for dynamic remainder tiles. This is a correctness
+   fix in the existing path, independent of the new hardware tuning.
+4. The generic fallback uses FP32 accumulation for K>=65536. A correlated-input
+   stress control exposed finite but grossly inaccurate half accumulation there.
+   The new randomized positive-input regression exercises this boundary directly.
+
+The register GEMM source is from MLX revision
+25532871329fe4cafdada9fa0941a1cdbfb3a9f2 (MIT). The M5 Ultra tuning commit is
+2d27ab05fb7dcda69bb3c57abd74c0b3bc9a5a99 (upstream PR #4447). See the local
+3rdparty/mlx/README for imported headers, attribution, and the local epilogue.
+The external comparison uses the documented isolated D256 JIT-signature patch;
+no MLX GEMM arithmetic or tuning changes are included in that binary.
+
+Measured selector
+All new profiles reuse the existing M5 Ultra helper, and require contiguous NT
+FP16 inputs/output, one batch, M>=4096 and N>=1536. Signed-index bounds also apply.
+- Unsplit: 2048<=K<=8192, or 8192<K<=16384 with K<3*N, FP16 weights <=192 MiB, and either M<N or M>=2*N.
+- Split-K takes precedence when M<N, K>=2*N, K<=32768 and each FP32 partial output
+  is <=256 MiB. This bounds the partition count to eight and total scratch to 2 GiB.
+- Other shapes retain their previous implementation, apart from the generic
+  long-reduction accumulator precision fix.
+
+The boundaries are empirical performance bounds, not claims about physical cache
+sizes. The large-output/deep-K controls show why regular register GEMM should
+not replace every existing path. Split-K instead helps when N>M, while long tall
+outputs pay too much for its partial writes and reduction. Larger unmeasured
+partial-output working sets remain on the existing dispatcher. There are no
+model-name conditions. The original narrower register selector is superseded. The first expanded
+selector regressed a 6144-square/K16384 control by about 24%; the final selector
+retains the old implementation for deep square / moderately tall grids (N<=M<2*N).
+
+Cache and scratch correctness
+Tile orientation, integer/float operands, and split/unsplit traversal are shader
+source properties and appear in both descriptor keys. Alignment and bias are
+pipeline constants. All dimensions, strides, partition counts, swizzles and grid
+sizes are current encode-time values. The second reduction pipeline is cached
+with its bias setting. No shape-dependent dispatch is stored in the kernel object.
+The device-independent scratch-reservation API conservatively covers both old
+and new partial outputs; decoded palettized weights follow that reserved region.
+It can over-reserve on other NA devices that keep the original profile; allocation
+is needed only when that scratch is actually requested. The new split-K path
+uses up to 2 GiB of FP32 partial outputs within its current bounds.
+
+Validation
+Library build and both test binaries completed successfully after explicit
+relinking. Focused regression: 1/1 (21 internal cases). Full MPSBLAS: 296/296.
+Full MPSDNN: 126/126. Both complete suites exited 0 with the expected success
+message. The 34-case benchmark-control process exited 1 for the accuracy failures
+reported above; it is not classified as a passing test suite.
+
+Validation ran serially on the GPU. MPSBLAS completed at 2026-10-03T05:34:15.103512
+and MPSDNN at 2026-10-03T05:36:46.740466.
+The first palettized fixture used an unsupported 4-bit format and was corrected
+to supported 5-bit / 1024-element blocks before these successful runs.
+The focused randomized test compares 16 dispersed output rows against CPU GEMM
+across 21 cases, including orientation changes in one process, fixed/dynamic M,
+bias, M/N/K tails, split-K partition tails, repeated cache entries, palettized
+weights sharing MFA scratch, and the positive-input K65536 control and existing split-K remainder cases. Every output
+is checked for finiteness; sampled entries use 3e-3 absolute tolerance.
+
+Discarded INT8 attention experiments
+A per-head global centered-V scale would allow INT32 PV outputs to persist across
+KV blocks and convert only at the end. In an isolated prototype, it regressed
+H3 R14878 from 43.05 to 51.19 ms and R70186 from 1050.20 to 1216.11 ms. Changing
+only the V quantizer while retaining float accumulation measured 44.09 and
+1055.15 ms. Mapping the softmax coefficients through small integer aliases did
+not recover throughput. At Ideogram D256/R4352, the INT32 version measured
+5.71 ms versus current 5.63 ms, while global-V with float accumulation was 6.29 ms.
+These changes are not retained. Deterministic sampled errors happened to match,
+but that does not establish accuracy equivalence for the changed quantization.
+No randomized quality claim is made for these rejected variants.
+
+Removing the forward probability clamp after rint(P*127) was also measured in
+two opposite orders, without changing the layout or scale rule. Sampled errors
+were identical, but it did not provide a useful speedup:
+  R=14878, D=128: current 43.173 ms; no clamp 43.262 ms.
+  R=4352, D=256: current 5.630 ms; no clamp 5.598 ms.
+  R=70186, D=128: current 1050.859 ms; no clamp 1062.364 ms.
+It is not retained; raw results are in inference-int8-no-clamp-pilot.csv.
+
+Remaining work
+The approximately 2x MLX INT8 target is still unmet across the priority surface.
+Long H3 attention remains about 1.55-1.62x MLX, and D256 INT8 remains slower than
+CCV FP16. This projection follow-up does not claim to solve those gaps or the
+separate backward gap. No attention SHD-to-HSD transpose was introduced.
+
+Artifacts
+inference-fp16-expanded-workloads.json: complete production comparison manifest.
+inference-fp16-expanded-candidate.csv: full initial sweep, including failures.
+inference-fp16-expanded-candidate-summary.csv: aggregates before final corrections.
+inference-fp16-expanded-final-controls.csv: final correction/boundary comparisons.
+inference-fp16-expanded-final-controls.json: those cases, including changed routes.
+inference-fp16-expanded-summary.csv: latest per-case medians, routes, speedups, errors and binary provenance.
+inference-fp16-fixed-pilot.csv: initial fixed-orientation exploratory sweep.
+inference-fp16-orientation-*: alternate-orientation pilot and manifest.
+inference-fp16-bounds-*: neighboring regular-GEMM selection controls.
+inference-fp16-splitk-*: full split-K pilots and working-set controls.
+inference-int8-global-v-*: rejected global-V / INT32 attention diagnostics.

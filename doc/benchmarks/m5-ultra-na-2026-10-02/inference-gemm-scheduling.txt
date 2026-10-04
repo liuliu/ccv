@@ -1,0 +1,112 @@
+Historical checkpoint: see handoff.txt for final validation, gating and branch status.
+Associated raw files are in research-2026-10-02-04.tar.gz; extract into a separate directory.
+
+INT8 inference GEMM: inner-loop scheduling, 2026-10-03
+
+Machine: Apple M5 Ultra, 80 GPU cores, 256 GB, macOS 27.0.1.
+MLX checkout: 25532871329fe4cafdada9fa0941a1cdbfb3a9f2, including PR #4447
+(2d27ab05fb7dcda69bb3c57abd74c0b3bc9a5a99). The MLX comparison binary includes
+only the previously documented D256 attention JIT-signature fix; its GEMM
+implementation and tuning are unchanged.
+
+The retained change unrolls two successive K32 fragment iterations in the INT8
+register GEMM. It exposes more loads and multiplies to the compiler while
+retaining the 512-element outer reduction and its threadgroup barrier, the
+compiler barrier, exact INT32 accumulation, rowwise scales and optional bias.
+It does not change the output tile, activation quantization, weight format,
+shape selector, or the existing centralized hardware profile. The FP16 shader
+source is unchanged. The imported MLX file is also unchanged: only its copy
+used to generate the INT8 shader receives the pragma replacement.
+
+This improves FFN-down reductions across all priority model families. Q/up
+projections generally change by less than 1%, and remain a gap versus 2x MLX.
+No claim is made that these measurements isolate physical GPU utilization or
+prove a specific instruction-latency bottleneck.
+
+The initial seven-shape pilot compares six scheduling choices in reversed
+orders: 84 successful executions. Removing the compiler barrier, unrolling
+four iterations, and combinations of both offer mixed results. Unrolling two
+while preserving that barrier is the general choice. The following 83-case
+sweep compares previous INT8, unroll-two INT8 and actual local MLX FP16 in two
+reversed orders: 498 successful executions. It preserves the 81 distinct shapes
+and fixed/dynamic M flags in inference-int8-register-workloads.json. All 166
+previous/new sampled CPU-error pairs are identical.
+
+Four extra reversed-order passes on eight cases add 64 successful executions,
+checking noisy unchanged fallbacks, the weakest selected cases and priority
+projections. The repeat confirms about a 3.3% regression at M8193/N1537/K6145,
+with partial N and K tiles. Other selected losses are below 1% in the combined
+medians. The 6-13% priority FFN-down gains justify this small boundary tradeoff;
+no additional alignment, model-name or chip-name gate is added. The anomalous
+speedups on unchanged fallback kernels are timing variation and are not claimed
+as implementation gains. All raw samples, including those outliers, remain.
+
+Production verification uses a fresh archive and freshly linked probes. The
+13-case comparison includes the exact UI H3 Q/up/down shapes at 480p/10s and
+720p/10s, four image FFN-down shapes and three boundary controls. There are 78
+successful records: three implementations in two reversed orders, three warmup
+iterations plus at least 0.5 GPU seconds, and nine timed samples per process.
+The table is the median of the two process GPU medians, in milliseconds.
+Activation quantization is included; weights are already rowwise INT8. MLX
+executes its ordinary FP16 matmul backend and all unevaluated GPU preparation.
+These are individual operator times, not full image/video generation times.
+
+Workload                         Previous INT8  Current INT8  MLX FP16  MLX/current
+h3-480p-ui-ffn-down                    25.293        22.069     46.468       2.106x
+h3-720p-ui-ffn-down                    56.578        49.400    100.147       2.027x
+flux2-2048-ffn-down                    19.918        17.422     49.073       2.817x
+krea2-2048-ffn-down                    17.178        15.991     34.856       2.180x
+ideogram4-2048-ffn-down                 9.455         8.574     17.296       2.017x
+qwen21-2048-ffn-down                    8.324         7.547     14.917       1.976x
+4096-2048-4096                          0.334         0.336      0.577       1.714x
+int8-selection-8191-1536-6144           1.051         1.029      1.290       1.253x
+int8-selection-8193-1537-6145           1.350         1.393      1.609       1.155x
+h3-480p-ui-q                           12.196        12.284     18.987       1.546x
+h3-480p-ui-ffn-up                      23.782        23.909     37.994       1.589x
+h3-720p-ui-q                           27.316        27.512     42.834       1.557x
+h3-720p-ui-ffn-up                      53.450        53.771     85.659       1.593x
+
+H3 UI M is 31018 / 70186, using the previously documented 832x512 / 1280x768,
+240 requested frames (10s), 72 latent frames, 256 text tokens and 810 audio
+tokens, without references. Q/up K is 5376, with N7168 / N14336. FFN-down uses
+N5376/K14336. The older 29146/67306 shapes are labeled proxies in the broad
+manifest and are not substituted for these final UI rows. Source references
+are in priority-workloads.json and inference-fp16-expanded.txt.
+
+Numerical checks include 64 independent executions on eight shapes, both
+fixed/dynamic M and both FP16/INT8 arithmetic. Every one of the 32 previous/new
+full-output SHA256 pairs is identical, including K5376, K14336, K32768 and
+K32769, partial tiles, and selector fallbacks. All values are finite. The
+existing twelve-shape randomized integration test also passes: sampled full
+rows are compared with an independently quantized CPU GEMM, with bias, zero
+rows, changing cache shapes, partial M/N/K and selection boundaries. Its
+relative-L2 bound is 5e-4 against quantized inputs, with absolute bound 3e-3.
+Those checks establish equivalence to the prior quantized implementation;
+they do not establish INT8 model quality against unquantized weights.
+
+Full production validation passes: MPSBLAS 298/298 and MPSDNN 126/126, both
+exit zero. The library and both test binaries were rebuilt/relinked before
+execution. All CPU compilation finished before GPU timing. All GPU workloads
+were serial with unrestricted Metal access. git diff --check passes.
+
+An isolated D128 attention dispatch pilot accompanies this checkpoint. It
+compares the existing Morton order with compact row-major, head-major, and
+eight-query-group chunks on nine shapes in reversed orders: 72 executions.
+All full-output hashes match the baseline. It uses dynamic R and C, which
+differ from the final application timing protocol; its H3 medians must not
+replace the application table in inference-output-split.txt. Its compact-order
+gains are experimental until application-path and broader shape checks pass.
+No D128 scheduling change is included in this production checkpoint.
+
+No attention layout conversion is introduced. Backward tuning remains
+deferred; prior MLX VJP comparisons are preserved. The remaining inference
+gaps are H3 Q/up and D128 image attention. Investigations should target their
+reduction/fragment scheduling and per-tile state costs. Further shape gates
+need evidence, and the rejected staging/register prototypes remain rejected.
+
+Files prefixed inference-gemm-scheduling contain raw CSVs, exact shapes/flags,
+all medians, numerical hashes, validation outcomes, build/raw logs, source
+snapshots, the integration diff and SHA256 provenance. The D128 experiment is
+archived separately under inference-d128-grid. Prototype environment controls
+are restricted to scratch binaries; production has no experimental switches.
+All source changes remain unstaged and uncommitted.

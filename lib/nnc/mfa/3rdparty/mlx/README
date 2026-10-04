@@ -1,0 +1,81 @@
+Register-resident attention from MLX
+
+Upstream revision: 25532871329fe4cafdada9fa0941a1cdbfb3a9f2
+Repository: https://github.com/ml-explore/mlx
+License: MIT (included in attention.metal.inc).
+
+This file embeds the following upstream headers in include order, with duplicate
+includes and pragma-once directives removed:
+  mlx/backend/metal/kernels/steel/attn/kernels/steel_attention_nax.h
+  mlx/backend/metal/kernels/steel/attn/nax.h
+  mlx/backend/metal/kernels/steel/defines.h
+  mlx/backend/metal/kernels/steel/utils/integral_constant.h
+  mlx/backend/metal/kernels/steel/utils/type_traits.h
+  mlx/backend/metal/kernels/steel/attn/params.h
+  mlx/backend/metal/kernels/steel/attn/transforms.h
+  mlx/backend/metal/kernels/steel/utils.h
+
+Local changes:
+- Replace Limits<T>::finite_min with -metal::numeric_limits<T>::max() so the
+  unrelated general MLX type/utilities headers are unnecessary.
+- Store saved softmax statistics as log2 half values to match MFA backward.
+- Wrap the source in a C++ raw string. Kernel instantiations and function
+  constants live in NARegisterAttentionKernel.cpp.
+
+The integration currently selects FP16, unmasked, noncausal D=128 (R>=256)
+or D=256 (R>64) forward attention. D256 causal inference also uses this kernel
+when R<=C, with qL_off=C-R for a growing KV cache. Causal masking is a pipeline
+constant; training keeps its existing causal path. SHD strides are passed
+directly; no tensor layout conversion occurs.
+
+Register-fragment GEMM
+
+gemm.metal.inc embeds the same upstream revision's utils.h, steel/gemm/gemm_nax.h
+and steel/gemm/kernels/steel_gemm_fused_nax.h with their transitive local includes.
+Duplicate includes and pragma-once directives are removed, and the result is
+wrapped in a C++ raw string. Its embedded MIT license and upstream copyright
+notices are retained. No Metal kernel arithmetic is changed.
+
+NARegisterMatMulKernel instantiates FP16 NT 64x128x512 and 128x64x512 profiles
+with eight SIMD groups and FP32 accumulation. Bias is broadcast through the
+upstream addmm epilogue. Dimensions and strides are passed at encoding time.
+The 128x64 profile and X/Y swizzle are used when N > M, matching MLX's Ultra
+orientation. Selection uses the shared Apple10 capability predicate; no model-name gate remains.
+
+The FP16 selector requires B=1, contiguous NT input/output, N>=1536.
+It accepts M>=4096, explicit FP32 accumulation at M>=512, or half-allowed
+accumulation at M>=2048 with at least 4096*1536 output elements. Compact
+full-tile moderate reductions retain the native MPP profile.
+Unsplit traversal covers 2048<=K<=8192, or K<=16384 with K<3*N, FP16 weights
+no larger than 192 MiB, and either M<N or M>=2*N. These are measured performance bounds. The previous
+implementation remains available for narrow/small outputs and larger reductions.
+
+gemm-splitk.metal.inc embeds steel/gemm/kernels/steel_gemm_splitk_nax.h from the
+same upstream revision. It removes the duplicate align_M/align_N declarations,
+already supplied by gemm.metal.inc; otherwise the upstream kernel is unchanged.
+The local reduction sums FP32 partials and adds an optional broadcast FP16 bias.
+A partition-major 1D grid uses 4096-element K partitions. Selection additionally
+requires M<N, K>=2*N, K<=32768, and at most 256 MiB per FP32 partial output. This
+path takes precedence over unsplit traversal. The public scratch reservation
+conservatively covers both old and new partial outputs to protect decoded weights.
+
+Tile orientation and split/unsplit traversal are source-generation cache
+properties. Alignment/bias are pipeline constants; dimensions, partition count,
+strides, swizzle and grid size remain runtime values. The latest measurements
+and boundary controls are documented in inference-fp16-medium.txt and gating-review.txt in
+doc/benchmarks/m5-ultra-na-2026-10-02/.
+
+NARegisterMatMulKernel also supplies a local INT8 entry point using the same
+unchanged fragment loads, 16x32x16 register multiply, and gemm_loop traversal.
+It accumulates INT8 products in INT32 and applies MFA's existing activation and
+weight row scales, plus optional bias, before the FP16 store. The upstream
+gemm.metal.inc is unchanged; the INT8 epilogue is in the local C++ generator.
+The integer/FP16 choice is a source-generation cache property. Alignment and
+bias remain pipeline constants; matrix sizes and dispatch grids remain runtime
+values. No additional hardware-name helper is introduced.
+
+The INT8 generator unrolls pairs of K32 fragment operations and uses ordinary
+loads for complete K32 fragments inside a partial outer K512 tile. The final
+fragment retains bounds checks. Its optional Float32 store widens an already
+rounded half result, preserving the GEMM-then-cast contract. Both changes are
+local to NARegisterMatMulKernel.cpp, not edits to the embedded upstream source.

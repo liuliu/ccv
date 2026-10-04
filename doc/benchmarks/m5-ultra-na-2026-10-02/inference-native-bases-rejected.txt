@@ -1,0 +1,19 @@
+Historical checkpoint: see handoff.txt for final validation, gating and branch status.
+Associated raw files are in research-2026-10-02-04.tar.gz; extract into a separate directory.
+
+Native GEMM base-pointer experiment, 2026-10-04 UTC
+
+Rejected: retaining common A/C and/or B tensor base pointers below 4096
+rows/columns has no consistent benefit. Tiles, arithmetic and selectors are
+unchanged. Root production remains inference-fp16-medium.txt.
+
+15 cases, 150 process records, zero numerical failures; all 90 candidate
+full FP16 output hashes match their baseline in both execution orders.
+
+group-m: median candidate/current 1.0053; worst 1.0671.
+group-n: median candidate/current 1.0017; worst 1.0769.
+group-mn: median candidate/current 1.0030; worst 1.0255.
+
+The Local Code 4B M3072/N2560/K9216 FP32 gap remains. No special-case
+selector is added. This pilot does not establish general address-range safety.
+Sources, commands, outputs and hashes are in the accompanying archive.

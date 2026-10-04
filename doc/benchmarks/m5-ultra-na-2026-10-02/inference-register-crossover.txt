@@ -1,0 +1,133 @@
+Historical checkpoint: see handoff.txt for final validation, gating and branch status.
+Associated raw files are in research-2026-10-02-04.tar.gz; extract into a separate directory.
+
+INT8 register GEMM crossover, 2026-10-03
+
+Retained change: extend the current register GEMM to medium-row projections.
+The implementation changes only the scaled-GEMM selector and expands its
+existing randomized regression. FP16, attention, quantization, integer reduction,
+fragment loading, bias/store logic and backward kernels are unchanged.
+No attention transpose or new chip-name gate is introduced.
+
+Why revisit the old M4096 limit
+The register kernel now has the accepted unroll-two reduction loop and fast
+complete-fragment loads inside the K remainder. Its old small-row crossover was
+measured before those improvements. Rechecking it finds substantial gains for
+source-derived 768px image projections, but also confirms real small-grid and
+deep-reduction regressions. A blanket lower M limit is rejected.
+
+Final rule and reasoning
+- Minimum M becomes 2048; the previous minimum output area is preserved:
+  M*N >= 4096*1536, equivalent to 768 full 64x128 output tiles' worth of work.
+  This keeps the clearest narrow-output losses outside the extension. It is a
+  conservative work-size bound, not a claim about physical GPU cache capacity.
+- Below M4096, K must be <=20480. The depth sweep covers K16384/18432/20480/
+  24576/28672/32768, M2048/2304/3072 and N8192/16384/32768. The first three
+  depths improve consistently; the larger depths show substantial regressions.
+  This is an empirical crossover bound, not an architectural limit on K.
+- Existing FP16 IO, contiguous single batch, non-Hadamard activation, distinct
+  A/O, N>=1536, 4096<=K<=32768, K<=4N, integer-address bounds and hardware profile
+  requirements remain. Below M8192, M still must contain complete 64-row tiles.
+
+The previous minimum M4096/N1536 already implied the retained output-area bound.
+Thus previous selections remain selected. The extension does not change shader
+source, cache keys or shape-dependent dispatch storage. The existing runtime
+geometry and alignment constants are still derived from the current call.
+No per-model condition or extra hardware-name check was added.
+
+Exploration: 57 initial cases with actual MLX, 87 additional boundary controls,
+40 depth-boundary/768px cases with actual MLX, and 54 continuous-depth controls.
+These are 238 case occurrences (227 distinct M/N/K/flag combinations),
+1,146 measurements and 476 complete before/after output pairs. Every pair is
+bit-identical; all processes exit zero. CCV scans every output for finiteness
+and its sampled CPU checks pass. The actual-MLX timing probe checks its first
+output value for finiteness, not a full GEMM CPU reference in this sweep.
+96 distinct combinations fall in the final newly selected region.
+Both orders, every hash and all raw samples are retained, including timing
+outliers. No independent random-input equivalence is claimed for those hashes;
+the separate randomized integration test provides that additional coverage.
+
+Continuous-depth controls: previous/extended INT8 speedup across nine M/N pairs.
+K           Minimum     Median    Maximum
+ 16384       1.065x      1.125x      1.196x
+ 18432       1.115x      1.183x      1.221x
+ 20480       1.134x      1.199x      1.236x
+ 24576       0.841x      0.942x      1.245x
+ 28672       0.764x      0.834x      1.257x
+ 32768       0.833x      0.902x      1.132x
+
+Actual production confirmation
+Median of two reversed-order GPU medians, milliseconds; MLX uses FP16 matmul.
+Case                              M      N      K | Previous INT8 Current INT8 MLX FP16 | MLX/current
+flux2-768-ffn-down                2304   6144  18432 |     4.1859     2.8799     4.4839 | 1.557x
+flux2-768-projection              2304   6144   6144 |     1.0276     0.7875     1.5425 | 1.959x
+flux2-768-ffn-up                  2304  18432   6144 |     2.8804     2.3244     4.3490 | 1.871x
+krea2-768-ffn-down                2560   6144  16384 |     3.5139     2.7124     4.9549 | 1.827x
+krea2-768-projection              2560   6144   6144 |     1.0720     0.8887     1.5819 | 1.780x
+krea2-768-ffn-up                  2560  16384   6144 |     2.7684     2.2575     4.1371 | 1.833x
+ideogram4-768-ffn-down            2560   4608  12288 |     2.2868     1.4463     2.6967 | 1.865x
+ideogram4-768-projection          2560   4608   4608 |     0.6654     0.5125     0.9129 | 1.781x
+ideogram4-768-ffn-up              2560  12288   4608 |     1.4358     1.2969     2.3029 | 1.776x
+qwen21-768-ffn-down               2304   4096  12288 |     1.6011     1.2194     1.9999 | 1.640x
+qwen21-768-projection             2304   4096   4096 |     0.4294     0.3715     0.6855 | 1.845x
+qwen21-768-ffn-up                 2304  12288   4096 |     1.1629     1.0434     1.9680 | 1.886x
+h3-31018-q                       31018   7168   5376 |    10.6379    10.6364    19.0113 | 1.787x
+h3-31018-down                    31018   5376  14336 |    21.9967    22.1153    46.4205 | 2.099x
+h3-70186-q                       70186   7168   5376 |    23.7827    23.7788    42.8117 | 1.800x
+h3-70186-down                    70186   5376  14336 |    49.4081    49.4126   100.1650 | 2.027x
+
+The twelve 768px projection cases take 9.7-36.8% less GPU time.
+These use 2304 image rows for FLUX.2/Qwen and 2560 joint rows for Krea/Ideogram
+(2304 image + 256 text tokens). N/K come from the same Draw Things model
+definitions used by the earlier manifests. FFN-up denotes each Dense projection
+of that geometry, not the entire gated feed-forward block. Text length is a
+stated scenario, not a measured universal default.
+
+This remains a tuning tradeoff. Some narrow controls around M3072/N2048 are
+essentially unchanged or a few percent slower, depending on run. The complete
+paired results preserve them; no extra exception was added for that small cost.
+Outside the selected medium-row region, the implementation is unchanged.
+The confirmation includes small-row, uneven-M, minimum-area and K-limit controls,
+four long H3 projections and four large image FFN-down controls. Apparent changes
+on unchanged paths are run variation rather than gains from the new selector.
+
+Rejections and excluded opportunity
+The aggressive extension to M64 is rejected. It can improve a few tiny cases
+but loses on multiple shallow/wide and deep reductions. Even M2048 or M3072 alone
+does not solve this: large K can still lose by more than 10%. K24576 and higher
+therefore keep the old row threshold. M1024/1280 FFN cases contain useful wins,
+but extending that far requires more selective rules than this evidence supports.
+They remain open; the 512px inference gap is not reported as solved.
+
+Protocol and numerical contract
+CPU compilation finishes before serial GPU work. Each process uses three warm
+iterations, >=.5 GPU seconds warmup and seven samples. Confirmation: 33 cases,
+previous/current INT8 plus actual MLX, two reversed orders = 198 measurements.
+All 66 CCV full-output pairs are bit-identical; CCV output finiteness and
+sampled CPU reference checks pass. Timing includes activation quantization and GEMM; INT8
+weights are prepared offline. It excludes following casts, gating and residual
+arithmetic. See inference-projection-cast.txt for the separate conversion cost.
+
+MLX is commit 25532871329fe4cafdada9fa0941a1cdbfb3a9f2, linked from the local
+checkout with the previously documented D256 SDPA JIT-signature fix. Its matmul
+code is unchanged. Measurements use actual MLX execution, not just the imported
+register implementation in CCV. Local Code-specific non-image paths retain their
+earlier coverage; 768px labels describe Draw Things-derived geometry.
+
+Validation
+The existing randomized register GEMM test expands from 16 to 30 shapes,
+covering the new M, area and K boundaries, biased/unbiased results, zero rows,
+fixed/dynamic M and partial tiles. It compares 16 sampled rows/all columns to an
+independently quantized CPU GEMM reference, with relative L2 <5e-4, absolute
+tolerance 3e-3 and every-output finiteness. Full MPSBLAS 298/298 and MPSDNN 126/126
+pass after explicitly rebuilding and relinking both binaries. These full suites
+include the existing backward tests; no new backward optimization was made.
+  confirmation: exit 0, 182.15 seconds
+  mpsblas: exit 0, 765.36 seconds
+  mpsdnn: exit 0, 167.05 seconds
+
+git diff --check passes. Exact manifests, per-process logs, before/current source
+snapshots, build commands, measured-binary hashes and test logs are archived.
+Nothing is staged or committed. Large-image attention and several smaller
+projections remain below the approximate 2x target; this is a measured inference
+improvement, not full model-generation latency or rendered-quality validation.

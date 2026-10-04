@@ -1,0 +1,99 @@
+NA selection review, 2026-10-04
+
+Hardware scope
+The five uses of the previous exact "Apple M5 Ultra" GEMM predicate now use one
+shared Apple10 Metal-family predicate, identical to MFA's NA capability check.
+There are no chip-name checks in the added attention paths. Existing dtype,
+layout, index-range, alias and inference/training constraints remain in place.
+On the tested Ultra the predicate has the same value, so generated shaders and
+shape selection should remain identical; paired regression checks verify this.
+Other M5 devices share the required operations. Their throughput is unmeasured:
+feature compatibility does not prove that these crossover thresholds are optimal.
+
+Mechanisms and bounds
+1. Native FP16 wide tile: 64x128x512 amortizes MPP invocation overhead across
+   more K work. Complete N128/K512 tiles avoid expensive remainder handling.
+   At least 512 output tiles provide multiple waves even on the tested 80-core
+   device; fewer cores still have enough independent work. Suppressing split-K
+   for K<=8192 avoids partial-output writes and a reduction dispatch. The upper
+   16384-output-tile bound is empirical; it is not a hardware cache-size claim.
+
+2. FP16 register GEMM: direct fragments remove tensor-view staging and keep
+   FP32 accumulation in registers. N>=1536 excludes narrow outputs. FP32 requests
+   use M>=512; half-allowed requests need M>=2048 and >=4096*1536 output elements,
+   retaining native full-tile moderate reductions. Existing M>=4096 selections
+   are preserved. Both tile orientations are 256-thread groups; runtime shape,
+   strides and grid size are never stored in the kernel-object cache.
+   Deep K raises live state/work per tile. Split-K is restricted to wide outputs
+   (M<N, K>=2N), K<=32768 and <=256 MiB per partial; at most eight partitions
+   bound scratch to 2 GiB. Unsplit deeper-K cases keep aspect and <=192 MiB
+   weight-footprint bounds. These crossovers are empirically conservative.
+   Removing the aspect bounds globally regressed 19/87 new cases, up to 30%,
+   despite helping one Local Code matrix; that experiment was rejected.
+
+3. INT8 register GEMM: INT32 accumulation is exact within K<=32768 for signed
+   INT8 products, then the existing row scales and bias are applied. Minimum
+   output area supplies parallel work; medium M uses moderate K to limit long
+   per-group reductions. Complete rows below M8192 avoid inefficient sparse
+   tails. The K<=4N aspect bound preserves native wins for narrow deep reductions.
+   Unrolling two fragment operations exposes independent loads/multiplies;
+   complete K32 pieces of an outer remainder use fast loads while the last
+   short fragment remains masked. Neither change adds a shape-specific branch.
+
+4. Native INT8 fallback: the 64-row tile for K<=8192 lowers per-group state on
+   moderate reductions. Large-workload row chunking bounds live activation data
+   and consumes it soon after quantization. It needs at least two 8192-row
+   chunks, large activation/weight footprints and K<=3N; extra dispatches lose
+   when these costs cannot be amortized. Footprint values are measured bounds,
+   not an assumption about any M5 cache. Aliased A/output, batching and strided
+   views retain their established paths.
+
+5. FP16 attention: register Q/score/output fragments remove staging; D256 keeps
+   Q across KV tiles and splits its output accumulator. D128 needs >=4 query
+   tiles, D256 >1 query tile. Heads/strides remain B/S/H/D. D256 causal inference
+   uses the same split accumulators with a triangular KV traversal and the
+   right-aligned C-R query offset. R<=C avoids empty leading causal rows;
+   C<=INT32_MAX-96 covers padded tile arithmetic. Masked, causal-training,
+   varlen and sliding-window requests keep existing paths. Saved LSE uses MFA's
+   expected log2 convention; inference and training state are distinct keys.
+
+6. INT8 attention: D256 output splitting halves accumulator state, at the cost
+   of repeated QK. R,C>=4096 amortizes the extra work; smaller inference ranges
+   prefer the FP16 register kernel. Supported D256 causal inference also prefers
+   FP16 because the INT8 output partitioner cannot apply causal masks; split
+   FP32 accumulators reduce live state without that missing feature. This
+   fallback is explicitly identified in benchmark results. D128 compact
+   dispatch avoids padded inactive
+   groups when >=1/3 of the Morton grid is waste, or groups adjacent query tiles
+   for C>=8192. This is geometry/traffic reasoning, not a head-count whitelist.
+   Long D128 KV partitioning bounds half-accumulator lifetime and shortens V
+   centering ranges. R>=4096, C>=24576 and C*Hq>=2^20 amortize partial stores and
+   merging. Partial scratch is capped at 512 MiB by query chunking. Saved-forward
+   training retains the globally centered V expected by backward. Backward was
+   not retuned during the final inference phase.
+
+7. GEMM-to-Float32 epilogue: store float(half(value)), preserving the original
+   rounding while eliminating a full half-output write/read and conversion
+   dispatch. The graph rewrite is after allocation, no-gradient only, with
+   reader/writer/alias/exposure/dependency checks and restoration before reinit.
+   The custom command falls back to ordinary GEMM+cast before encoding anything
+   unsupported. Decoded weights and bias may not overlap the destination;
+   activation reuse requires a private sole-reader input and full quantization
+   before output writes. No chip-specific performance condition is necessary.
+
+Cache/safety review
+Kernel-object keys carry source-generation properties (head width, integer vs
+half, tile orientation, split output/K, Float32 epilogue). Pipeline constants
+carry alignment/bias/saved-statistic choices; dynamic dimensions and dispatch
+sizes are derived at encode time. Dynamic-M/C selection changes are keyed by
+the selected kernel descriptors. Integer ABI bounds, conservative GEMM scratch
+reservation before decoded weights, and attention partial-buffer limits remain.
+Randomized integration tests cover transitions, partial tiles, bias, decoded
+weights, gradient consumers, aliases, graph reinitialization and fusion fallback.
+
+Portability validation
+Run the permanent smoke, inference, coverage and backward suites on each new
+M5 machine, against its own MLX build. Retain device/protocol metadata. A shape
+threshold measured on Ultra can still move on another device; no universal 2x
+claim or guessed core/cache scaling is made. If there is a broad regression,
+prefer a capability/resource or geometric explanation before a SKU exception.

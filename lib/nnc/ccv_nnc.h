@@ -89,6 +89,7 @@ enum {
 enum {
 	CCV_NNC_ACCUMULATE_OUTPUT = 0x01, /**< Enable accumulate outputs (unsupported). */
 	CCV_NNC_ZERO_MEMORY_ALLOC = 0x02, /**< Don't allocate any extra memory for this operation. */
+	CCV_NNC_NO_BACKWARD = 0x04, /**< Forward only. Saved intermediates will not be consumed by backward; permits inference-specific algorithms. */
 };
 
 enum {

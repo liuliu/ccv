@@ -1,0 +1,9 @@
+/na_application_bench
+/mlx_na_bench
+/na_attention_backward_bench
+/na_gemm_splitk_bench
+/na_int8_attention_backward_probe
+/na_int8_attention_bench
+/na_int8_matmul_bench
+/__pycache__/
+/*.dSYM/

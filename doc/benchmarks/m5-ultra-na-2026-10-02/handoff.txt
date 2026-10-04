@@ -1,0 +1,149 @@
+M5 NA inference handoff, 2026-10-04
+
+Branch: m5-na-inference-benchmarks. Commit: see git history for this report.
+Measured device: Apple M5 Ultra, 80 GPU cores, 256 GiB, macOS 27.0.1.
+MLX: 25532871329fe4cafdada9fa0941a1cdbfb3a9f2, static Metal-JIT build with
+the documented D256 template-signature fix only. Draw Things geometry revision:
+afed99ce5981875e3b3aa7d19059a516c73c5f2f. CCV starting revision:
+6a611be1aab6470ae279115ae4eaf7e01bc87135. Work is committed locally, not pushed.
+
+The retained implementation combines register-fragment FP16 GEMM and attention,
+INT8 register GEMM/remainder improvements, compact attention dispatch, D256
+output partitioning, and long D128 KV partitioning. Inference GEMM followed by
+a Float32 conversion can store a half-rounded Float32 result directly; the CNNP
+rewrite preserves allocation, alias/dependency checks and reinitialization.
+The final performance phase extends medium-row FP16 register selection while
+retaining native wins for compact moderate reductions. It also enables D256
+causal inference using split accumulators and a right-aligned KV-cache offset.
+Two broader GEMM experiments were rejected after neighborhood sweeps.
+
+All five former exact-Ultra GEMM gates now share the Apple10 capability check.
+There is no new model-name attention gate or attention storage transpose.
+Geometry, precision, layout, index and scratch limits are in gating-review.txt.
+Other M5 devices share the required capability; their throughput is unmeasured.
+Thresholds are measured bounds with resource/geometry explanations, not claims
+about physical cache sizes or guaranteed cross-device performance.
+
+Selected final comparisons (GPU milliseconds; lower is better)
+Case | FP16 | INT8 request | MLX | MLX / INT8 request | INT8 uses FP16
+h3-480p-ui-10s | 301.0329 | 157.8040 | 306.0130 | 1.939x | False
+h3-720p-ui-10s | 1607.5833 | 768.2126 | 1604.0900 | 2.088x | False
+h3-480p-ui-10s-output-cast | 19.8598 | 10.8404 | 19.8154 | 1.828x | False
+h3-720p-ui-10s-output-cast | 44.5621 | 24.1923 | 44.5570 | 1.842x | False
+h3-480p-ui-10s-ffn-down-cast | 47.4316 | 22.1620 | 47.3211 | 2.135x | False
+h3-720p-ui-10s-ffn-down-cast | 102.7227 | 49.5055 | 103.0325 | 2.081x | False
+flux2-512-attention | 0.6145 | 0.4723 | 0.6275 | 1.329x | False
+flux2-1024-attention | 4.9292 | 3.2907 | 4.9607 | 1.507x | False
+flux2-2048-attention | 68.3477 | 39.1795 | 68.4333 | 1.747x | False
+ideogram4-512-attention | 0.4895 | 0.4908 | 0.5319 | 1.084x | True
+ideogram4-1024-attention | 4.7877 | 3.6393 | 6.0260 | 1.656x | False
+ideogram4-2048-attention | 68.4086 | 48.5182 | 87.7391 | 1.808x | False
+krea2-1024-ffn-down | 7.3533 | 4.4306 | 8.7127 | 1.967x | False
+qwen21-1024-attention | 2.8332 | 1.9195 | 2.9375 | 1.530x | False
+local-qwen35-4b-m3072-down | 1.4743 | 0.7560 | 1.3267 | 1.755x | False
+local-gqa-r2048-c8192 | 3.3371 | 3.3342 | 3.3809 | 1.014x | True
+local-27b-gqa-r2048-c8192 | 4.5711 | 4.5517 | 4.6559 | 1.023x | True
+
+D256 causal Local Code Hq24/Hkv4, R2048/C8192 drops from 8.9774 to 4.5711 ms
+FP16, versus actual MLX 4.6559 ms. R4096/C8192 drops from 18.4725 to 8.1431 ms
+versus MLX 8.0499 ms. INT8 preferences use FP16 here; these gains are not
+INT8 arithmetic speedups. See inference-causal-d256.txt for bounds and tests.
+
+Actual MLX SDPA VJP (saved forward excluded, GPU milliseconds)
+Case | CCV FP16 | CCV INT8 request | MLX VJP
+flux2-1024-vjp | 22.4624 | 24.9806 | 29.1013
+krea2-1024-vjp | 22.4955 | 25.5229 | 23.9706
+ideogram4-1024-vjp | 43.4091 | 43.3669 | 15.6973
+qwen21-1024-vjp | 12.7737 | 13.7151 | 15.7359
+h3-short-vjp | 420.5017 | 243.9171 | 127.9310
+vjp-d64 | 0.3322 | 0.5592 | 0.1295
+vjp-d128 | 0.7995 | 0.6087 | 0.1662
+vjp-d256 | 1.8857 | 1.8856 | 0.2636
+
+Backward optimization remains deferred. There are substantial D256 and H3
+backward gaps; no universal parity or 2x INT8 claim is made. D256 backward
+uses the existing generic MFA fallback even for INT8 requests. MLX is verified
+as the three-output ScaledDotProductAttentionVJP primitive, including its
+internal layout copies. A guard rejects unexpected lowering or command-buffer
+changes that would otherwise omit work from GPU timestamps.
+
+The permanent manifest has 527 distinct requests: 257 source-derived application
+cases plus overlapping geometric coverage, eight backward requests and two
+known stress cases. Image models cover five resolutions; Local Code covers
+Qwen3.5 4B/9B/27B projections and causal growing-cache attention. All shapes,
+source references, protocol, precision and fallback labels are retained.
+
+H3 UI geometry is R=C=31018 for 832x512 and 70186 for 1280x768, 56 heads, D128,
+including 256 text + 810 audio tokens and no references. The requested 240
+frames round to 72 latent / 243 decoded frames. Video tokens are
+72*(height/32)*(width/32). These are dense SDPA comparisons, not Sol attention.
+Inputs remain in B/S/H/D storage in both probes. MLX gets metadata views;
+no explicit S/H storage copy is introduced by the benchmark.
+
+The matmul matrix uses B=1; integration tests cover batched/broadcast correctness.
+FP16 and FP32-accumulator columns both have half inputs/output. Cast cases
+include half-rounded Float32 output. INT8 includes activation quantization,
+with persistent weights already expanded. Packed-weight decoding and full
+generation are outside these timings. D256 short or supported causal INT8
+requests can use the FP16 fallback, recorded explicitly in the result tables.
+
+Validation and regression checks
+final-mpsblas: 302/302, exit 0.
+final-mpsdnn: 126/126, exit 0.
+CNNP core: 61/61 at the fusion checkpoint; unchanged core code since that run.
+Benchmark harness CPU tests: 5/5. Completed smoke resume succeeds without rerunning GPU work.
+Primary and causal matrices: 6656 records across 527 distinct requests.
+Numerical failures: 8 records, all from the two pre-existing FP16 stress shapes.
+Actual MLX VJP: 192 dQ/dK/dV checks including frozen/current CCV; largest normalized L2 1.07215%.
+final-smoke: 142 records, 0 numerical failures, 0 timing flags.
+final-long: 76 records, 0 numerical failures, 0 timing flags.
+regression-repeat: 164 records, 0 numerical failures, 0 timing flags.
+Seven original timing flags are retained. Longer confirmation uses four
+reversed orders, 31 samples/order and two GPU seconds warmup per process.
+The complete shape table labels these confirmation rows and preserves the
+initial values. Final-long separately rechecks both exact long H3 attention
+cases, selected cast projections and medium/deep GEMM controls.
+
+The Apple10-gate/cleanup checkpoint matched 2666 full forward output hashes
+against its frozen optimized baseline (including the known stress cases).
+The subsequent causal algorithm changes rounding within the CPU tolerances;
+bitwise identity is not claimed for changed causal outputs.
+
+The paired cleanup baseline is the optimized checkpoint before the hardware
+predicate cleanup and final causal change, not the initial repository.
+Earlier improvement measurements and rejected trials remain in the historical
+reports and verified research archive.
+
+The original coverage manifest labeled some Local Code hidden-size squares as
+projections. Source review corrected Q/KV/output dimensions and retained those
+squares as synthetic controls. The source supplement runs all 76 added shapes.
+Consolidated records map IDs by exact geometry/flags. Causal-final adds twelve
+new boundaries and supersedes eleven existing timing rows; all older results
+remain in the CSV and raw archive.
+
+Known numerical limit: M512/N12287 or N12289/K24576 native half accumulation
+exceeds the 1% sampled CPU-L2 check (1.1554% and 1.0620%). Current and baseline
+fail identically in both orders; FP32 accumulation, INT8 and MLX pass. These
+rows are marked failed, excluded from speedups, and remain in --suite stress.
+No tolerance was relaxed or numerical repair claimed for those two shapes.
+
+Benchmarks use reproducible periodic data and sampled independent CPU checks
+(1% FP16 / 5% INT8 normalized L2). VJP checks sample 16384 positions per
+gradient; probes scan full outputs/gradients for finiteness. Randomized, shifted,
+larger-magnitude, bias, decoded-weight, alias, dynamic-cache and graph-reinit
+checks are in mpsblas.tests.c. These checks do not establish generated-media
+quality. BF16 and every mask/training mode are outside the performance matrix.
+
+Use bin/mfa/README.na-benchmarks.txt to build and run smoke, inference, coverage
+and backward on the next M5, against its actual MLX. Retain metadata. The
+stress suite intentionally exposes known failures; --suite all includes it.
+Do not compile or run other GPU work concurrently with timing.
+
+handoff-all-shapes.txt / handoff-summary.json: complete comparison matrix.
+handoff-results.csv: original orders, checks, hashes, source and phase mapping.
+handoff-validation-raw.tar.gz: exact commands, logs, source snapshots and builds.
+handoff-validation-index.json: verified per-file and archive SHA256 values.
+research-2026-10-02-04.tar.gz / research-index.json: 629 preceding exploration
+files, including rejected and noisy trials. Extract into separate directories.
+Historical reports describe their checkpoints; this handoff supersedes their
+commit-status and exact-Ultra gating statements.

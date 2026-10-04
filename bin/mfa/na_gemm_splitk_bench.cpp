@@ -30,6 +30,9 @@ struct BenchmarkCase {
   uint32_t M = 32768;
   uint32_t N = 4096;
   uint32_t K = 4096;
+  uint32_t batch = 1;
+  bool transpose_a = false;
+  bool transpose_b = true;
 };
 
 struct PipelineBundle {
@@ -64,10 +67,11 @@ PipelineBundle create_pipeline_bundle(
     bool load_m,
     uint32_t group_m,
     uint32_t group_n,
-    int forced_thread_barrier)
+    int forced_thread_barrier,
+    simd::ushort3 block_dimensions)
 {
   PipelineBundle bundle;
-  bundle.descriptor.batchDimension = 1;
+  bundle.descriptor.batchDimension = bench.batch;
   bundle.descriptor.matrixDimensions =
       simd::uint3{bench.M, bench.N, bench.K};
   bundle.descriptor.memoryPrecisions = {
@@ -78,7 +82,7 @@ PipelineBundle create_pipeline_bundle(
   };
   bundle.descriptor.registerPrecisionC = std::nullopt;
   bundle.descriptor.batchStrides = std::nullopt;
-  bundle.descriptor.transposeState = simd::uchar3{0, 1, 0};
+  bundle.descriptor.transposeState = simd::uchar3{(uint8_t)bench.transpose_a, (uint8_t)bench.transpose_b, 0};
   bundle.descriptor.useBias = false;
   bundle.descriptor.loadM = load_m;
   bundle.descriptor.supportIndirectCommandBuffers = false;
@@ -93,7 +97,7 @@ PipelineBundle create_pipeline_bundle(
       (forced_thread_barrier != 0) :
       NAMatMulDescriptor::threadBarrierOverK(bench.K, forced_split_k);
   const NAMatMulKernelDescriptor kernel_descriptor(
-      simd::ushort3{128, 64, 64},
+      block_dimensions,
       bundle.descriptor.memoryPrecisions,
       register_precisions,
       forced_split_k,
@@ -107,16 +111,21 @@ PipelineBundle create_pipeline_bundle(
   bundle.kernel = std::make_unique<NAMatMulKernel>(kernel_descriptor, device);
 
   auto constants = NS::TransferPtr(MTL::FunctionConstantValues::alloc()->init());
+  if (!load_m) {
+    uint32_t M = bench.M;
+    constants->setConstantValue(&M, MTL::DataTypeUInt, NS::UInteger(0));
+  }
   uint32_t N = bench.N;
   uint32_t K = bench.K;
   constants->setConstantValue(&N, MTL::DataTypeUInt, 1);
   constants->setConstantValue(&K, MTL::DataTypeUInt, 2);
-  bool batched = false;
+  bool batched = bench.batch > 1;
   uint32_t zero = 0;
+  uint32_t a_stride = bench.M * bench.K, b_stride = bench.N * bench.K, c_stride = bench.M * bench.N;
   constants->setConstantValue(&batched, MTL::DataTypeBool, 11);
-  constants->setConstantValue(&zero, MTL::DataTypeUInt, 15);
-  constants->setConstantValue(&zero, MTL::DataTypeUInt, 16);
-  constants->setConstantValue(&zero, MTL::DataTypeUInt, 17);
+  constants->setConstantValue(&a_stride, MTL::DataTypeUInt, 15);
+  constants->setConstantValue(&b_stride, MTL::DataTypeUInt, 16);
+  constants->setConstantValue(&c_stride, MTL::DataTypeUInt, 17);
   constants->setConstantValue(&zero, MTL::DataTypeUInt, 18);
 
   NS::Error* error = nil;
@@ -161,6 +170,7 @@ double run_once(
     MTL::Buffer* scratch)
 {
   auto command_buffer = NS::TransferPtr(command_queue->commandBuffer());
+  uint32_t params[] = {bench.M, bench.M * bench.K, bench.N * bench.K, bench.M * bench.N, 0};
 
   {
     auto encoder = NS::TransferPtr(command_buffer->computeCommandEncoder());
@@ -175,7 +185,7 @@ double run_once(
     encoder->setBuffer(buffer_a, 0, 0);
     encoder->setBuffer(buffer_b, 0, 1);
     encoder->setBuffer(bundle.kernel->splitK > 1 ? scratch : buffer_c, 0, 2);
-    encoder->setBytes(&bench.M, sizeof(bench.M), 3);
+    encoder->setBytes(params, sizeof(params), 3);
     const auto grid_size = bundle.kernel->threadgroupsPerGrid(bundle.descriptor);
     const auto group_size = MTL::Size(
         int64_t(bundle.kernel->threadgroupSize(
@@ -191,16 +201,16 @@ double run_once(
     encoder->setComputePipelineState(bundle.reduction_pipeline.get());
     encoder->setBuffer(scratch, 0, 0);
     encoder->setBuffer(buffer_c, 0, 1);
-    encoder->setBytes(&bench.M, sizeof(bench.M), 2);
+    encoder->setBytes(params, sizeof(params), 2);
     encoder->useResource(scratch, MTL::ResourceUsageRead);
     encoder->useResource(buffer_c, MTL::ResourceUsageWrite);
     if ((bench.N % 2) == 0) {
       encoder->dispatchThreadgroups(
-          MTL::Size((bench.M * bench.N / 2 + 255) / 256, 1, 1),
+          MTL::Size((bench.M * bench.N / 2 + 255) / 256, bench.batch, 1),
           MTL::Size(256, 1, 1));
     } else {
       encoder->dispatchThreadgroups(
-          MTL::Size((bench.M * bench.N + 255) / 256, 1, 1),
+          MTL::Size((bench.M * bench.N + 255) / 256, bench.batch, 1),
           MTL::Size(256, 1, 1));
     }
     encoder->endEncoding();
@@ -245,13 +255,18 @@ bool benchmark_variant(
 {
   std::vector<double> samples;
   samples.reserve(config.timed_iterations);
-  for (int i = 0; i < config.warmup_iterations + config.timed_iterations; ++i) {
+  // A fixed iteration count under-warms small dispatches after shader compilation.
+  const double minimum_warmup = std::getenv("CCV_NA_WARMUP_SECONDS") ?
+      std::atof(std::getenv("CCV_NA_WARMUP_SECONDS")) : 0;
+  double warmup_seconds = 0;
+  for (int i = 0; samples.size() < (size_t)config.timed_iterations; ++i) {
     const double seconds =
         run_once(command_queue, bundle, bench, buffer_a, buffer_b, buffer_c, scratch);
     if (std::isnan(seconds)) {
       return false;
     }
-    if (i >= config.warmup_iterations) {
+    warmup_seconds += seconds;
+    if (i >= config.warmup_iterations && warmup_seconds >= minimum_warmup) {
       samples.push_back(seconds);
     }
   }
@@ -312,7 +327,19 @@ int main(int argc, char** argv)
   if (argc >= 9) {
     forced_thread_barrier = std::atoi(argv[8]);
   }
+  simd::ushort3 block_dimensions {128, 64, 64};
+  if (argc >= 12) {
+    block_dimensions = simd::ushort3 {
+      (uint16_t)std::strtoul(argv[9], nullptr, 10),
+      (uint16_t)std::strtoul(argv[10], nullptr, 10),
+      (uint16_t)std::strtoul(argv[11], nullptr, 10)};
+  }
 
+  if (argc >= 15) {
+    bench.batch = std::strtoul(argv[12], nullptr, 10);
+    bench.transpose_a = std::atoi(argv[13]) != 0;
+    bench.transpose_b = std::atoi(argv[14]) != 0;
+  }
   auto* pool = NS::AutoreleasePool::alloc()->init();
   auto device = NS::TransferPtr(MTL::CreateSystemDefaultDevice());
   if (!device) {
@@ -335,26 +362,30 @@ int main(int argc, char** argv)
             << " loadM=" << (load_m ? 1 : 0)
             << '\n';
 
-  const size_t a_count = static_cast<size_t>(bench.M) * bench.K;
-  const size_t b_count = static_cast<size_t>(bench.N) * bench.K;
-  const size_t c_count = static_cast<size_t>(bench.M) * bench.N;
+  const size_t a_count = static_cast<size_t>(bench.M) * bench.K * bench.batch;
+  const size_t b_count = static_cast<size_t>(bench.N) * bench.K * bench.batch;
+  const size_t c_count = static_cast<size_t>(bench.M) * bench.N * bench.batch;
   auto buffer_a = NS::TransferPtr(
-      device->newBuffer(a_count * sizeof(half_float), kPrivateResourceOptions));
+      device->newBuffer(a_count * sizeof(half_float), MTL::ResourceStorageModeShared));
   auto buffer_b = NS::TransferPtr(
-      device->newBuffer(b_count * sizeof(half_float), kPrivateResourceOptions));
+      device->newBuffer(b_count * sizeof(half_float), MTL::ResourceStorageModeShared));
   auto buffer_c = NS::TransferPtr(
-      device->newBuffer(c_count * sizeof(half_float), kPrivateResourceOptions));
+      device->newBuffer(c_count * sizeof(half_float), MTL::ResourceStorageModeShared));
   auto scratch = NS::TransferPtr(
-      device->newBuffer(c_count * 8 * sizeof(half_float), kPrivateResourceOptions));
+      device->newBuffer(c_count * 8 * sizeof(half_float), MTL::ResourceStorageModeShared));
   if (!buffer_a || !buffer_b || !buffer_c || !scratch) {
     std::cerr << "Failed to allocate benchmark buffers.\n";
     pool->drain();
     return 1;
   }
 
+  for (size_t i = 0; i < a_count; ++i)
+    ((half_float*)buffer_a->contents())[i] = half_float(float(int((i * 17 + 31) % 127) - 63) / 128);
+  for (size_t i = 0; i < b_count; ++i)
+    ((half_float*)buffer_b->contents())[i] = half_float(float(int((i * 29 + 13) % 127) - 63) / 128);
   const uint32_t group_m = (bench.M >= 4096) ? 4096 : 0;
   std::vector<uint32_t> group_ns = {0};
-  if (bench.N >= 4096) {
+  if (bench.N >= 4096 && bench.transpose_b) {
     group_ns.push_back(4096);
   }
   std::vector<VariantResult> results;
@@ -379,9 +410,9 @@ int main(int argc, char** argv)
                 << " groupN=" << group_n << std::endl;
       auto bundle = create_pipeline_bundle(
           device.get(), bench, split_k, load_m, group_m, group_n,
-          forced_thread_barrier);
+          forced_thread_barrier, block_dimensions);
       Stats stats;
-      const bool valid = benchmark_variant(
+      bool valid = benchmark_variant(
           command_queue.get(),
           bundle,
           bench,
@@ -391,6 +422,25 @@ int main(int argc, char** argv)
           buffer_c.get(),
           split_k > 1 ? scratch.get() : nullptr,
           &stats);
+      // Check batch offsets, transpose layouts and split reduction against CPU FP32.
+      double max_error = 0;
+      for (uint32_t z = 0; z < bench.batch; ++z) {
+        for (uint32_t sample = 0; sample < 32; ++sample) {
+          const uint32_t row = sample == 0 ? bench.M - 1 : (sample * 997) % bench.M;
+          const uint32_t col = sample == 0 ? bench.N - 1 : (sample * 293) % bench.N;
+          float expected = 0;
+          for (uint32_t k = 0; k < bench.K; ++k) {
+            const size_t ai = size_t(z) * bench.M * bench.K + (bench.transpose_a ? size_t(k) * bench.M + row : size_t(row) * bench.K + k);
+            const size_t bi = size_t(z) * bench.N * bench.K + (bench.transpose_b ? size_t(col) * bench.K + k : size_t(k) * bench.N + col);
+            expected += float(((half_float*)buffer_a->contents())[ai]) * float(((half_float*)buffer_b->contents())[bi]);
+          }
+          const float actual = float(((half_float*)buffer_c->contents())[(size_t(z) * bench.M + row) * bench.N + col]);
+          if (!std::isfinite(actual)) valid = false;
+          max_error = std::max(max_error, double(std::abs(actual - expected) / std::max(1.0f, std::abs(expected))));
+        }
+      }
+      valid = valid && max_error < 0.03;
+      std::cout << "validation max_relative_error=" << max_error << " passed=" << valid << '\n';
       results.push_back(VariantResult{
           .split_k = split_k,
           .group_n = group_n,
@@ -421,5 +471,5 @@ int main(int argc, char** argv)
 
   fflush(stdout);
   fflush(stderr);
-  std::_Exit(0);
+  std::_Exit(std::all_of(results.begin(), results.end(), [](const auto& r) { return r.valid; }) ? 0 : 2);
 }

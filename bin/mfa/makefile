@@ -7,7 +7,7 @@ TARGETS = dynamic_m_bench gemm_scaffold int8_matmul_bench gemv_thin_tensorop_ben
 
 MPSGRAPH_LDFLAGS := $(LDFLAGS) -framework Foundation -framework MetalPerformanceShaders -framework MetalPerformanceShadersGraph
 TARGETS += moe_routing_bench scaled_dot_product_arg_partition_candidates_bench
-TARGETS += na_int8_convrot_bench na_int8_sol_attention_bench
+TARGETS += na_int8_convrot_bench na_int8_sol_attention_bench na_application_bench
 ANE_LDFLAGS := $(LDFLAGS) -framework IOSurface -ldl
 ANE_ROWWISE_LDFLAGS := $(LDFLAGS) -framework Foundation -framework CoreML -framework CoreVideo -framework IOSurface -framework MetalPerformanceShaders
 
@@ -101,6 +101,7 @@ dynamic_m_bench: dynamic_m_bench.o libccv.a
 	$(CC) -o $@ dynamic_m_bench.o ../../lib/libccv.a $(MPSGRAPH_LDFLAGS)
 
 clean:
+	rm -f na_application_bench.o mlx_na_bench
 	rm -f na_int8_convrot_bench.o na_int8_sol_attention_bench.o
 	rm -f moe_routing_bench.o MoERoutingKernel.local.o
 	rm -f dynamic_m_bench.o dump_attention_source.o dump_na_source.o dump_na_attention_source.o dump_na_int8_attention_source.o gemm_scaffold.o int8_matmul_bench.o gemv_thin_tensorop_bench.o scaled_gemv_bench.o index_select_bench.o transpose_bench.o na_gemm_splitk_bench.o na_int8_attention_bench.o na_attention_causal_bench.o na_attention_decode1_bench.o na_scaled_dot_product_arg_partition_bench.o na_sparse_indexed_attention_bench.o na_int8_attention_backward_probe.o na_attention_backward_bench.o attention_backward_compare_probe.o sdpa_backward_compare_bench.o rotate_half_bench.o walsh_hadamard_transform_bench.o gated_delta_bench.o hyper_connection_bench.o na_int8_matmul_bench.o na_int8_rowwise_x_bench.o ane_fp16_matmul_harness.o ane_int8_matmul_probe.o ane_int8_conv_matmul_harness.o ane_int8_rowwise_conv_harness.o ane_na_int8_matmul_harness.o ane_coreml_split_matmul_bench.o conv3d_layout_scaffold.o implicit_conv3d_scaffold.o gemm_kernel_introspect.o implicit_conv3d_bench.o conv3d_kernel_bench.o conv3d_branch_validate.o $(COMMON_OBJS) $(GEMV_OBJS) $(INT8_GEMV_OBJS) $(NA_GEMM_OBJS) $(ANE_ROWWISE_OBJS) $(NA_CONV_OBJS) $(NA_ATTENTION_OBJS) $(NA_BASELINE_ATTENTION_OBJS) $(GENERIC_ATTENTION_OBJS) $(ROTATE_HALF_OBJS) $(WALSH_HADAMARD_TRANSFORM_OBJS) $(GATED_DELTA_OBJS) $(HYPER_CONNECTION_OBJS) $(TARGETS) dump_na_source
@@ -231,9 +232,9 @@ index_select_bench.o: index_select_bench.cpp
 transpose_bench.o: transpose_bench.cpp
 	$(CC) $< -o $@ -c $(subst -std=c++17,-std=gnu++17,$(CFLAGS)) -O3
 
-na_gemm_splitk_bench.o: na_gemm_splitk_bench.cpp
+na_gemm_splitk_bench.o: na_gemm_splitk_bench.cpp ../../lib/nnc/mfa/kernels/NAMatMulDescriptor.hpp ../../lib/nnc/mfa/kernels/NAMatMulKernel.hpp
 	$(CC) $< -o $@ -c $(CFLAGS)
-na_int8_attention_bench.o: na_int8_attention_bench.cpp
+na_int8_attention_bench.o: na_int8_attention_bench.cpp ../../lib/nnc/mfa/kernels/NAInt8AttentionKernel.hpp ../../lib/nnc/mfa/kernels/NAInt8AttentionKernelDescriptor.hpp ../../lib/nnc/mfa/kernels/NAAttentionKernel.hpp
 	$(CC) $< -o $@ -c $(CFLAGS)
 na_attention_causal_bench.o: na_attention_causal_bench.cpp
 	$(CC) $< -o $@ -c $(CFLAGS)
@@ -243,9 +244,9 @@ na_scaled_dot_product_arg_partition_bench.o: na_scaled_dot_product_arg_partition
 	$(CC) $< -o $@ -c $(subst -std=c++17,-std=gnu++17,$(CFLAGS))
 na_sparse_indexed_attention_bench.o: na_sparse_indexed_attention_bench.cpp
 	$(CC) $< -o $@ -c $(subst -std=c++17,-std=gnu++17,$(CFLAGS))
-na_int8_attention_backward_probe.o: na_int8_attention_backward_probe.cpp
+na_int8_attention_backward_probe.o: na_int8_attention_backward_probe.cpp ../../lib/nnc/mfa/kernels/NAInt8AttentionKernel.hpp ../../lib/nnc/mfa/kernels/NAInt8AttentionKernelDescriptor.hpp
 	$(CC) $< -o $@ -c $(subst -std=c++17,-std=gnu++17,$(CFLAGS))
-na_attention_backward_bench.o: na_attention_backward_bench.cpp
+na_attention_backward_bench.o: na_attention_backward_bench.cpp ../../lib/nnc/mfa/kernels/NAAttentionKernel.hpp ../../lib/nnc/mfa/kernels/NAAttentionDescriptor.hpp
 	$(CC) $< -o $@ -c $(CFLAGS)
 attention_backward_compare_probe.o: attention_backward_compare_probe.cpp
 	$(CC) $< -o $@ -c $(CFLAGS)
@@ -259,7 +260,7 @@ gated_delta_bench.o: gated_delta_bench.cpp
 	$(CC) $< -o $@ -c $(CFLAGS)
 hyper_connection_bench.o: hyper_connection_bench.cpp
 	$(CC) $< -o $@ -c $(CFLAGS)
-na_int8_matmul_bench.o: na_int8_matmul_bench.cpp
+na_int8_matmul_bench.o: na_int8_matmul_bench.cpp ../../lib/nnc/mfa/kernels/NAInt8MatMulDescriptor.hpp ../../lib/nnc/mfa/kernels/NAInt8MatMulKernel.hpp
 	$(CC) $< -o $@ -c $(CFLAGS)
 na_int8_rowwise_x_bench.o: na_int8_rowwise_x_bench.cpp
 	$(CC) $< -o $@ -c $(CFLAGS)
@@ -479,3 +480,17 @@ na_int8_sol_attention_bench: na_int8_sol_attention_bench.o libccv.a
 	$(CC) -o $@ na_int8_sol_attention_bench.o ../../lib/libccv.a $(MPSGRAPH_LDFLAGS)
 na_int8_sol_attention_bench.o: na_int8_sol_attention_bench.cpp ../../lib/nnc/mfa/ccv_nnc_mfa_sol_attention.hpp
 	$(CC) $< -o $@ -c $(CFLAGS) -O3
+
+# Shipping-dispatch application benchmark. Build lib first; do not compile
+# concurrently with GPU timing. The MLX probe is deliberately opt-in.
+na_application_bench: na_application_bench.cpp libccv.a
+	$(CXX) -std=c++17 -O2 -g -Wno-deprecated-declarations $(filter-out -std=c++17 -O0,$(CFLAGS)) -DCCV_NNC_MFA $< ../../lib/libccv.a $(MPSGRAPH_LDFLAGS) -lsqlite3 -lz -o $@
+
+MLX_ROOT ?= $(HOME)/workspace/mlx
+MLX_BUILD ?= $(MLX_ROOT)/build
+MLX_LIBRARY ?= $(MLX_BUILD)/libmlx.a
+MLX_METAL_CPP ?= $(MLX_BUILD)/_deps/metal_cpp-src
+MLX_FMT ?= $(MLX_BUILD)/_deps/fmt-src/include
+.PHONY: mlx_na_bench
+mlx_na_bench: mlx_na_bench.cpp
+	$(CXX) -std=c++20 -O2 -g -DFMT_HEADER_ONLY=1 -DMLX_STATIC -I"$(MLX_ROOT)" -I"$(MLX_METAL_CPP)" -I"$(MLX_FMT)" $< "$(MLX_LIBRARY)" -framework Metal -framework Foundation -framework Accelerate -o $@

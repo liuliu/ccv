@@ -58,6 +58,12 @@ int ccv_nnc_mps_tensor_fast_fence_pending(const ccv_nnc_tensor_t* const tensor);
 void ccv_nnc_mps_tensor_fast_fence_clear(ccv_nnc_tensor_t* const tensor);
 void ccv_nnc_mps_tensor_fast_fence_wait(ccv_nnc_tensor_t* const tensor);
 ccv_nnc_mfa_context_t* ccv_nnc_default_mfa_context(void);
+// Internal inference composite. Output 0 retains the half GEMM workspace for
+// fallback; output 1 is its Float32 conversion. The half output is otherwise
+// dead. These commands must only be installed after checking graph lifetimes.
+// Activation overlap additionally requires a private, sole-use graph input.
+ccv_nnc_cmd_t ccv_nnc_mps_gemm_cast_cmd(ccv_nnc_cmd_t gemm, int allow_activation_alias);
+int ccv_nnc_mps_is_gemm_cast_cmd(ccv_nnc_cmd_t cmd);
 
 #ifdef __OBJC__
 

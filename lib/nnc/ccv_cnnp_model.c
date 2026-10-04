@@ -493,6 +493,169 @@ static int _ccv_nnc_tensor_symbol_check_dim(const ccv_nnc_symbolic_graph_t* cons
 	return memcmp(src_params.dim, dest_params.dim, sizeof(src_params.dim)) == 0;
 }
 
+#ifdef HAVE_MPS
+static void _ccv_cnnp_model_unfuse_gemm_cast(ccv_nnc_graph_t* const graph)
+{
+	int i;
+	for (i = 0; i < graph->exec_info->rnum; i++)
+	{
+		ccv_nnc_graph_exec_info_t* const node = (ccv_nnc_graph_exec_info_t*)ccv_array_get(graph->exec_info, i);
+		if (!ccv_nnc_mps_is_gemm_cast_cmd(node->cmd))
+			continue;
+		assert(node->input_size <= 3 && node->output_size == 2 && node->outgoings && node->outgoings->rnum == 1);
+		const int cast_d = *(int*)ccv_array_get(node->outgoings, 0);
+		ccv_nnc_tensor_t* inputs[3];
+		memcpy(inputs, node->inputs, sizeof(ccv_nnc_tensor_t*) * node->input_size);
+		ccv_nnc_tensor_t* const output = node->outputs[0];
+		ccv_nnc_cmd_t gemm = node->cmd;
+		gemm.cmd = CCV_NNC_GEMM_FORWARD;
+		gemm.backend = CCV_NNC_BACKEND_MPS;
+		gemm.isa = 0;
+		ccv_nnc_graph_exec_set_io(graph, (ccv_nnc_graph_exec_t){ .d = i, .graph = graph }, inputs, node->input_size, TENSOR_LIST(output));
+		ccv_nnc_graph_exec_set(graph, (ccv_nnc_graph_exec_t){ .d = i, .graph = graph }, gemm);
+		ccv_nnc_cmd_t cast = CMD_DATATYPE_CONVERSION_FORWARD();
+		cast.backend = CCV_NNC_BACKEND_MPS;
+		ccv_nnc_graph_exec_set(graph, (ccv_nnc_graph_exec_t){ .d = cast_d, .graph = graph }, cast);
+	}
+}
+
+static void _ccv_cnnp_model_fuse_gemm_cast(ccv_cnnp_model_t* const model)
+{
+	ccv_cnnp_compiled_data_t* const compiled_data = model->compiled_data;
+	ccv_nnc_symbolic_graph_t* const symbolic_graph = model->graph;
+	ccv_nnc_graph_t* const graph = compiled_data->graph;
+	// Leave symbolic commands / tensors intact so switching to training builds
+	// the original graph. Control flow and parallel copies need separate proofs.
+	if (compiled_data->graph_mode != CCV_CNNP_MODEL_GRAPH_MULTISTAGE_MODE_NO_GRAD ||
+		model->parallel_count > 1 || symbolic_graph->sub_graphs || graph->sub_graphs)
+		return;
+	const int tensor_size = symbolic_graph->tensor_symbol_info->rnum;
+	int* const readers = cccalloc(tensor_size * 4 + graph->exec_info->rnum, sizeof(int));
+	int* const writers = readers + tensor_size;
+	int* const protected = writers + tensor_size;
+	int* const roots = protected + tensor_size;
+	int* const predecessors = roots + tensor_size;
+	int i, j;
+	for (i = 0; i < tensor_size; i++)
+	{
+		const ccv_nnc_tensor_symbol_info_t* const info = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(symbolic_graph->tensor_symbol_info, i);
+		roots[i] = i;
+		if (CCV_NNC_TENSOR_SYMBOL_IS_DEAD(info->flags))
+		{
+			protected[i] |= 1;
+			continue;
+		}
+		const ccv_nnc_tensor_symbol_t root = ccv_nnc_tensor_symbol_alias_to(symbolic_graph, (ccv_nnc_tensor_symbol_t){ .d = i, .graph = symbolic_graph });
+		if (root.graph)
+			roots[i] = root.d;
+		protected[roots[i]] |= !!(info->flags || info->assign_ref || info->r_assign_ref || info->bypass_ref || info->r_bypass_ref || info->p_ref || info->pair_ref || info->s_ref);
+		// Bit 2 prevents eliding a half result with views, while a private,
+		// sole-read activation may be consumed through a contiguous reshape.
+		if (info->alias_ref)
+		{
+			protected[i] |= 2;
+			protected[roots[i]] |= 2;
+		}
+	}
+	for (i = 0; i < model->input_size; i++)
+		if (model->inputs[i].d >= 0)
+			protected[roots[model->inputs[i].d]] |= 1;
+	for (i = 0; i < model->output_size; i++)
+		if (model->outputs[i].d >= 0)
+			protected[roots[model->outputs[i].d]] |= 1;
+	for (i = 0; i < compiled_data->parameters->rnum; i++)
+	{
+		const int d = ((ccv_nnc_tensor_symbol_t*)ccv_array_get(compiled_data->parameters, i))->d;
+		if (d >= 0)
+			protected[roots[d]] |= 1;
+	}
+	for (i = 0; i < compiled_data->internals->rnum; i++)
+	{
+		const int d = ((ccv_nnc_tensor_symbol_t*)ccv_array_get(compiled_data->internals, i))->d;
+		if (d >= 0)
+			protected[roots[d]] |= 1;
+	}
+	for (i = 0; i < symbolic_graph->exec_symbol_info->rnum; i++)
+	{
+		const ccv_nnc_graph_exec_symbol_info_t* const node = (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(symbolic_graph->exec_symbol_info, i);
+		if (CCV_NNC_GRAPH_EXEC_IS_DEAD(node->flags))
+			continue;
+		for (j = 0; j < node->input_size; j++)
+			if (node->inputs[j] >= 0)
+				++readers[roots[node->inputs[j]]];
+		for (j = 0; j < node->output_size; j++)
+			if (node->outputs[j] >= 0)
+				++writers[roots[node->outputs[j]]];
+	}
+	for (i = 0; i < graph->exec_info->rnum; i++)
+	{
+		const ccv_nnc_graph_exec_info_t* const node = (ccv_nnc_graph_exec_info_t*)ccv_array_get(graph->exec_info, i);
+		if (node->outgoings)
+			for (j = 0; j < node->outgoings->rnum; j++)
+				++predecessors[*(int*)ccv_array_get(node->outgoings, j)];
+	}
+	for (i = 0; i < symbolic_graph->exec_symbol_info->rnum; i++)
+	{
+		const ccv_nnc_graph_exec_symbol_info_t* const gemm_symbol = (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(symbolic_graph->exec_symbol_info, i);
+		if (gemm_symbol->flags || gemm_symbol->cmd.cmd != CCV_NNC_GEMM_FORWARD || gemm_symbol->output_size != 1 ||
+			!gemm_symbol->outgoings || gemm_symbol->outgoings->rnum != 1)
+			continue;
+		const int half_d = gemm_symbol->outputs[0];
+		if (half_d < 0 || readers[half_d] != 1 || writers[half_d] != 1 || protected[half_d])
+			continue;
+		const int cast_d = *(int*)ccv_array_get(gemm_symbol->outgoings, 0);
+		const ccv_nnc_graph_exec_symbol_info_t* const cast_symbol = (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(symbolic_graph->exec_symbol_info, cast_d);
+		if (cast_symbol->flags || cast_symbol->cmd.cmd != CCV_NNC_DATATYPE_CONVERSION_FORWARD ||
+			cast_symbol->input_size != 1 || cast_symbol->output_size != 1 || cast_symbol->inputs[0] != half_d)
+			continue;
+		const ccv_nnc_graph_exec_t gemm_exec = ccv_nnc_graph_exec_from_symbol(compiled_data->graph_exec_arena, (ccv_nnc_graph_exec_symbol_t){ .d = i, .graph = symbolic_graph });
+		const ccv_nnc_graph_exec_t cast_exec = ccv_nnc_graph_exec_from_symbol(compiled_data->graph_exec_arena, (ccv_nnc_graph_exec_symbol_t){ .d = cast_d, .graph = symbolic_graph });
+		if (gemm_exec.d < 0 || cast_exec.d < 0)
+			continue;
+		ccv_nnc_graph_exec_info_t* const gemm = (ccv_nnc_graph_exec_info_t*)ccv_array_get(graph->exec_info, gemm_exec.d);
+		ccv_nnc_graph_exec_info_t* const cast = (ccv_nnc_graph_exec_info_t*)ccv_array_get(graph->exec_info, cast_exec.d);
+		// Check compiled edges too: allocation may add ordering dependencies.
+		// No other work can end between GEMM and its sole-successor cast. Keep
+		// both nodes / edges, so all later consumers retain the original ordering.
+		if (gemm->cmd.cmd != CCV_NNC_GEMM_FORWARD || gemm->cmd.backend != CCV_NNC_BACKEND_MPS ||
+			cast->cmd.cmd != CCV_NNC_DATATYPE_CONVERSION_FORWARD || cast->cmd.backend != CCV_NNC_BACKEND_MPS ||
+			gemm->input_size < 2 || gemm->input_size > 3 || gemm->output_size != 1 || cast->input_size != 1 || cast->output_size != 1 ||
+			gemm->tensor_wraps_ref || cast->tensor_wraps_ref ||
+			!gemm->outgoings || gemm->outgoings->rnum != 1 || *(int*)ccv_array_get(gemm->outgoings, 0) != cast_exec.d || predecessors[cast_exec.d] != 1)
+			continue;
+		int io_flags = 0;
+		if (gemm->input_flags)
+			for (j = 0; j < gemm->input_size + gemm->output_size; j++)
+				io_flags |= gemm->input_flags[j];
+		if (cast->input_flags)
+			for (j = 0; j < cast->input_size + cast->output_size; j++)
+				io_flags |= cast->input_flags[j];
+		if (io_flags)
+			continue;
+		ccv_nnc_tensor_t* const half_output = gemm->outputs[0];
+		ccv_nnc_tensor_t* const float_output = cast->outputs[0];
+		if (!half_output || !float_output || cast->inputs[0] != half_output ||
+			CCV_IS_TENSOR_MULTIVIEW(half_output) || CCV_IS_TENSOR_MULTIVIEW(float_output) ||
+			half_output->info.datatype != CCV_16F || float_output->info.datatype != CCV_32F ||
+			memcmp(half_output->info.dim, float_output->info.dim, sizeof(half_output->info.dim)) != 0 ||
+			half_output->info.type != float_output->info.type || half_output->info.format != float_output->info.format)
+			continue;
+		ccv_nnc_tensor_t* inputs[3];
+		memcpy(inputs, gemm->inputs, sizeof(ccv_nnc_tensor_t*) * gemm->input_size);
+		const int input_size = gemm->input_size;
+		// A rebound output can alias a caller-owned input. Permit earlier A
+		// reuse only for a private intermediate with no other readers or exposed aliases.
+		const int a_d = gemm_symbol->inputs[0] >= 0 ? roots[gemm_symbol->inputs[0]] : -1;
+		const int allow_activation_alias = a_d >= 0 && readers[a_d] == 1 && writers[a_d] == 1 && !(protected[a_d] & 1);
+		const ccv_nnc_cmd_t command = ccv_nnc_mps_gemm_cast_cmd(gemm->cmd, allow_activation_alias);
+		ccv_nnc_graph_exec_set(graph, gemm_exec, command);
+		ccv_nnc_graph_exec_set_io(graph, gemm_exec, inputs, input_size, TENSOR_LIST(half_output, float_output));
+		ccv_nnc_graph_exec_set(graph, cast_exec, CMD_NOOP());
+	}
+	ccfree(readers);
+}
+#endif
+
 static void _ccv_cnnp_model_gradient_init(ccv_cnnp_model_t* const model, const int gradient_mode, const uint64_t disable_outgrad, ccv_nnc_tensor_t* const* const fits, const int fit_size);
 static void _ccv_cnnp_compiled_data_graph_free(ccv_cnnp_compiled_data_t* const compiled_data);
 
@@ -652,6 +815,9 @@ void ccv_cnnp_model_absorb(ccv_cnnp_model_t* const model, ccv_cnnp_model_t* cons
 		const int flag = ccv_nnc_tensor_arena_reinit(compiled_data->tensor_arena, model->graph);
 		if (flag == 0 && compiled_data->graph_exec_arena)
 		{
+#ifdef HAVE_MPS
+			_ccv_cnnp_model_unfuse_gemm_cast(compiled_data->graph);
+#endif
 			ccv_nnc_graph_exec_reinit(compiled_data->graph_exec_arena, compiled_data->graph, model->graph);
 			// Since we will reinit, if we previously set is_test, we need to set it again.
 			if (compiled_data->is_test)
@@ -664,6 +830,9 @@ void ccv_cnnp_model_absorb(ccv_cnnp_model_t* const model, ccv_cnnp_model_t* cons
 				};
 				ccv_cnnp_model_set_is_test(model, 1, _ccv_cnnp_cmd_update_for_execs, &update);
 			}
+#ifdef HAVE_MPS
+			_ccv_cnnp_model_fuse_gemm_cast(model);
+#endif
 		} else
 			// Free-up tensor arena & graph exec arena.
 			_ccv_cnnp_compiled_data_graph_free(compiled_data);
@@ -1809,6 +1978,9 @@ static void _ccv_cnnp_model_multistage_no_grad_jit(ccv_cnnp_model_t* const model
 		.graph_exec_arena = compiled_data->graph_exec_arena,
 	};
 	ccv_cnnp_model_set_is_test(model, 1, _ccv_cnnp_cmd_update_for_execs, &update);
+#ifdef HAVE_MPS
+	_ccv_cnnp_model_fuse_gemm_cast(model);
+#endif
 	ccv_nnc_graph_set_default_static_schedule(compiled_data->graph, compiled_data->stream_type, model->max_stream_count);
 	ccv_nnc_graph_autotune(compiled_data->graph, model->workspace_size, 0, TRAVERSE_FULL);
 }
@@ -2056,12 +2228,15 @@ void ccv_cnnp_model_evaluate(ccv_cnnp_model_t* const model, const ccv_cnnp_evalu
 	ccv_cnnp_compiled_data_t* const compiled_data = model->compiled_data;
 	assert(compiled_data);
 	ccv_cnnp_model_dry_run(model, params, inputs, input_size, outputs, output_size);
+	// No-gradient evaluation may still use training behavior for dropout / BN.
+	// Carry the backward requirement separately from the model's is_test mode.
+	const int flags = params.requires_grad ? 0 : CCV_NNC_NO_BACKWARD;
 	if (compiled_data->graph_mode == CCV_CNNP_MODEL_GRAPH_MULTISTAGE_MODE_NO_GRAD)
-		ccv_nnc_graph_run_with_schedule(compiled_data->graph, 0, 0, tensor_tape, stream_context);
+		ccv_nnc_graph_run_with_schedule(compiled_data->graph, flags, 0, tensor_tape, stream_context);
 	else {
 		if (!compiled_data->evaluate.schedule)
 			compiled_data->evaluate.schedule = ccv_nnc_graph_static_schedule_new(compiled_data->graph, compiled_data->stream_type, model->max_stream_count, 0, 0, compiled_data->evaluate.to_ops, compiled_data->evaluate.to_op_size);
-		ccv_nnc_graph_run_with_schedule(compiled_data->graph, 0, compiled_data->evaluate.schedule, tensor_tape, stream_context);
+		ccv_nnc_graph_run_with_schedule(compiled_data->graph, flags, compiled_data->evaluate.schedule, tensor_tape, stream_context);
 	}
 }
 

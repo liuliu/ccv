@@ -121,15 +121,33 @@ simd::ushort3 NAAttentionDescriptor::blockDimensions() const noexcept {
   }
 }
 
+bool NAAttentionDescriptor::bypassThreadgroupMemory() const noexcept {
+  // A 64-wide low-precision head fits a single register tile. Avoid staging
+  // it through threadgroup memory; larger heads need the existing tiled path.
+  return type.value != AttentionKernelType::forward &&
+      lowPrecisionInputs && lowPrecisionIntermediates && matrixDimensions[2] == 64;
+}
+
 uint16_t NAAttentionDescriptor::executionSIMDGroups() const noexcept {
-  const unsigned short headDimension = matrixDimensions[2];
-  if (type.value == AttentionKernelType::backwardQuery &&
-      lowPrecisionInputs && headDimension >= 128) {
-    return 6;
+  if (bypassThreadgroupMemory()) {
+    return 4;
   }
-  if (type.value == AttentionKernelType::backwardKeyValue &&
+  const unsigned short headDimension = matrixDimensions[2];
+  // Deep heads keep multiple accumulators live. Four groups reduce register
+  // and threadgroup-memory pressure for prefill; preserve decode / split-KV
+  // scheduling when there are at most four query tiles.
+  if (type.value == AttentionKernelType::forward &&
+      lowPrecisionInputs && lowPrecisionIntermediates && headDimension == 256 &&
+      matrixDimensions[0] > 64 && !isCausal && !masked && !isVarlen &&
+      !attentionSinks && slidingWindow == 0) {
+    return 4;
+  }
+  if (type.value != AttentionKernelType::forward &&
       lowPrecisionInputs && headDimension >= 128) {
-    return 6;
+    // Each SIMD group stages two full 16-row heads. Keep the existing
+    // 48 KiB budget as D grows; six groups at D=256 require 96 KiB.
+    const uint32_t bytesPerGroup = uint32_t(headDimension) * 16 * 2 * sizeof(uint16_t);
+    return std::min<uint32_t>(6, std::max<uint32_t>(1, (48 * 1024) / bytesPerGroup));
   }
   if (type.value == AttentionKernelType::forward && isCausal) {
     return 8;
@@ -142,14 +160,10 @@ bool NAAttentionDescriptor::checkCEdge1(simd::ushort3 blockDimensions) const noe
 }
 
 NAAttentionKernelDescriptor NAAttentionDescriptor::kernelDescriptor(MTL::Device *const device, const DeviceProperties &dprops) const noexcept {
-  auto createBypassThreadgroupMemory =
-  [=]() -> bool {
-    return false;
-  };
   auto blockDimensions = this->blockDimensions();
   const uint16_t executionSIMDGroups = this->executionSIMDGroups();
   const bool checkCEdge1 = this->checkCEdge1(blockDimensions);
-  auto descriptor = NAAttentionKernelDescriptor(blockDimensions, matrixDimensions[2], Hq, Hk, executionSIMDGroups, checkCEdge1, createMemoryPrecisions(), type, scale, createBypassThreadgroupMemory(), isCausal, masked, isVarlen, splitKV(blockDimensions, executionSIMDGroups), loadC, attentionSinks, slidingWindow);
+  auto descriptor = NAAttentionKernelDescriptor(blockDimensions, matrixDimensions[2], Hq, Hk, executionSIMDGroups, checkCEdge1, createMemoryPrecisions(), type, scale, bypassThreadgroupMemory(), isCausal, masked, isVarlen, splitKV(blockDimensions, executionSIMDGroups), loadC, attentionSinks, slidingWindow);
   descriptor.loadR = loadR;
   descriptor.hasRemainderR = !loadR || isVarlen || matrixDimensions[0] % blockDimensions[0] != 0;
   descriptor.hasRemainderC = !loadC || isVarlen || matrixDimensions[1] % (blockDimensions[1] * ((isCausal || masked) ? 1 : 2)) != 0;

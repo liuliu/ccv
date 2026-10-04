@@ -1,0 +1,147 @@
+Historical checkpoint: see handoff.txt for final validation, gating and branch status.
+Associated raw files are in research-2026-10-02-04.tar.gz; extract into a separate directory.
+
+Inference INT8 GEMM / Float32-store fusion integration, 2026-10-03
+
+Retained: the previous fused-store prototype now runs through the production
+MPS GEMM frontend and compiled CNNP inference graphs. The original half rounding
+is preserved, and graph arena allocation does not grow. This is an inference
+improvement beyond tile tuning; the broader approximately-2x target remains open.
+
+Implementation and reasoning
+- Explicit castOutputToFloat is included in both the kernel-source and pipeline
+  cache descriptors. INT8 output still rounds into a half fragment before its
+  Float32 store. Dimensions and dispatch geometry remain runtime-derived.
+- The new try-encode entry point uses the existing register INT8 selector. It
+  returns without encoding when unsupported. No new chip-name, per-model, or
+  shape tuning gate is added. Normal GEMM selection is unchanged.
+- The compiled no-gradient graph recognizes a sole-use GEMM -> Float32 cast.
+  It keeps the original symbolic graph, half allocation, edges and cast node.
+  A guarded composite executes the widened store when supported; otherwise it
+  executes the original half GEMM followed by the cast. The cast node is a NOOP.
+- Compiled dependency checks require GEMM to have only the cast successor and
+  the cast to have only GEMM as predecessor. Exposed half outputs, half aliases,
+  extra consumers, IO flags, control flow, parallel copies and multiviews are
+  excluded. Absent tensor symbols are skipped. Graph reinitialization restores
+  the original pair before rebinding and then reapplies the guarded composite.
+- Heap ranges and offsets are checked against weights and bias. Activation
+  overlap is allowed only for a private sole-read intermediate, including a
+  contiguous reshape. This INT8 path quantizes the entire activation into
+  separate scratch before writing the result. FP16, chunked quantization and
+  Hadamard paths use the original pair. Caller-owned/exposed activations do not
+  receive the early-overwrite allowance. The original half allocation remains.
+- Switching to a gradient graph retains the original commands. Returning to
+  no-gradient evaluation can reuse that training graph and stays unfused, as
+  required by the existing model lifecycle. No backward optimization is added.
+
+A fallback regression also exposed an existing decoded-weight offset bug:
+MPSGraph described a decoded scratch operand using its packed source offset.
+The fallback now uses matching decoded buffer, offset and dtype metadata for
+the cache key, placeholder and runtime tensor. A nonzero-offset randomized
+packed-weight case matches the independent CPU GEMM reference.
+
+Source applicability
+Draw Things MiniMaxH3.swift:230-238 reshapes attention output to [1,S,7168],
+applies a no-bias output Dense, and immediately converts to Float32.
+MiniMaxH3.swift:284-294 does the same conversion after the no-bias FFN-down
+projection. These exact dimensions, no-bias setting and private activation
+reshape are represented here. The surrounding scalar operations are synthetic
+producers/consumers, not complete attention or FFN blocks. No attention transpose
+is implemented. The 480p/10s and 720p/10s UI scenarios use S31018 and S70186.
+FLUX.2 has the cast adjacency with scaleFactor configured (Flux2.swift:151-164).
+Other image graph cases are shape controls, not claims of adjacency or complete
+model timing. 768px/2048px image grids use M2304/M16384; Krea/Ideogram include
+a stated 256-text-token scenario, giving M2560/M16640. Local Code-specific
+non-image workloads retain prior coverage and are not remeasured here.
+
+Operator comparison against actual MLX
+Median of two reversed-order GPU medians, milliseconds. Each side includes the
+GEMM and following Float32 conversion (or half-rounded fused store). MLX uses
+FP16 matmul then astype(float32). INT8 includes activation quantization; weights
+are prepared offline. No bias. This compares different arithmetic precisions.
+Case                                 M      N      K | CCV FP16 INT8 before after | MLX FP16 | MLX/INT8
+h3-5s-attention-output              14878   5376   7168 |   9.6031   5.8631   5.4214 |   9.6343 | 1.777x
+h3-5s-ffn-down                      14878   5376  14336 |  24.9770  11.5167  11.0821 |  24.7054 | 2.229x
+h3-480-ui-10s-attention-output      31018   5376   7168 |  19.8283  11.7381  10.8276 |  19.8328 | 1.832x
+h3-480-ui-10s-ffn-down              31018   5376  14336 |  47.2529  23.0411  22.1066 |  47.6232 | 2.154x
+h3-720-ui-10s-attention-output      70186   5376   7168 |  44.6069  26.2754  24.2198 |  44.5598 | 1.840x
+h3-720-ui-10s-ffn-down              70186   5376  14336 | 102.1115  51.5361  49.5543 | 102.3460 | 2.065x
+flux2-768-ffn-down                   2304   6144  18432 |   6.4989   2.9771   2.8767 |   4.5494 | 1.581x
+krea2-768-ffn-down                   2560   6144  16384 |   4.7073   2.7964   2.7284 |   4.9669 | 1.820x
+ideogram4-768-ffn-down               2560   4608  12288 |   3.2297   1.5263   1.4753 |   2.7435 | 1.860x
+qwen-image21-768-ffn-down            2304   4096  12288 |   2.1679   1.2571   1.2131 |   2.0358 | 1.678x
+flux2-2048-ffn-down                 16384   6144  18432 |  39.2669  17.9644  17.3848 |  49.7839 | 2.864x
+krea2-2048-ffn-down                 16640   6144  16384 |  35.3494  16.6087  16.0855 |  35.3528 | 2.198x
+ideogram4-2048-ffn-down             16640   4608  12288 |  17.7179   9.0243   8.6340 |  17.7037 | 2.050x
+qwen-image21-2048-ffn-down          16384   4096  12288 |  13.8692   7.9218   7.5795 |  15.2778 | 2.016x
+flux2-1024-ffn-down                  4096   6144  18432 |   8.0157   5.0051   4.9164 |   8.0183 | 1.631x
+qwen-image21-512-fallback            1024   4096  12288 |   0.8759   0.6920   0.6901 |   0.9258 | 1.342x
+partial-mnk                          8193   1537   4097 |   1.1245   1.0073   0.9405 |   1.1127 | 1.183x
+same-buffer                          4096   2048   4096 |   0.5998   0.3873   0.3549 |   0.5882 | 1.657x
+
+The newly covered 768px FP16 FFN-down rows expose remaining gaps: FLUX.2 is
+about 43% slower than actual MLX, Ideogram about 18%, and Qwen about 6.5%.
+Both orders show the FLUX/Ideogram gaps. These paths are unchanged by this
+integration. H3 FP16 remains within about 1.1% of MLX in this sweep. Earlier
+FP16 parity statements applied to the earlier listed shapes, not all 768px
+projections. The FP16 register selector still starts at M4096, excluding these
+medium-row cases. The next experiment should compare existing register split
+and unsplit paths below that bound with neighboring shapes before changing it.
+
+Compiled CNNP graph confirmation
+Actual model evaluation includes scalar producer, optional contiguous reshape,
+GEMM, Float32 conversion, and scalar consumer. GPU time sums every submitted
+command buffer; the default queue policy is unchanged. The selected INT8 path
+uses three buffers instead of four. FP16 and small-row fallback retain four.
+Both precisions preserve complete output hashes. Arena sizes are identical
+before/after; arena accounting excludes bound external tensors and MFA scratch.
+Do not compare these graph timings directly with the MLX operator table.
+Case                               FP16 pair composite | INT8 pair fused | INT8 saved | Arena MiB
+h3-480-ui-10s-attention-output      21.8453  21.8318 |  13.7825  12.8583 |    6.71% |   954.188
+h3-480-ui-10s-ffn-down              50.3926  50.3261 |  25.8510  24.9441 |    3.51% |  1166.219
+h3-720-ui-10s-attention-output      49.1728  49.1549 |  30.8625  28.8134 |    6.64% |  2159.062
+h3-720-ui-10s-ffn-down             108.7748 109.0970 |  57.9679  55.9203 |    3.53% |  2638.844
+flux2-768-ffn-down                   5.7417   5.7625 |   3.2253   3.1425 |    2.57% |   108.000
+krea2-768-ffn-down                   5.4630   5.4683 |   3.0811   3.0053 |    2.46% |   110.000
+ideogram4-768-ffn-down               3.2566   3.2287 |   1.6811   1.6344 |    2.78% |    82.500
+qwen-image21-768-ffn-down            2.5528   2.5017 |   1.3584   1.3398 |    1.37% |    72.000
+flux2-2048-ffn-down                 38.4549  38.4585 |  19.6872  19.2611 |    2.16% |   768.000
+krea2-2048-ffn-down                 37.0877  37.1748 |  18.3986  17.8250 |    3.12% |   715.000
+ideogram4-2048-ffn-down             19.0442  19.0542 |  10.3615   9.9404 |    4.06% |   536.250
+qwen-image21-2048-ffn-down          17.3647  17.0222 |   9.1845   8.8476 |    3.67% |   512.000
+flux2-1024-ffn-down                  8.4572   8.4535 |   5.5161   5.3707 |    2.64% |   192.000
+qwen-image21-512-fallback            1.1111   1.1115 |   0.7368   0.7405 |   -0.49% |    32.000
+partial-mnk                          1.3395   1.3416 |   1.1948   1.1338 |    5.11% |    88.062
+same-buffer                          0.6926   0.6899 |   0.4502   0.4238 |    5.87% |    48.000
+
+Validation and limits
+- 18 operator shapes x 4 variants x 2 orders = 144 records, including actual MLX.
+- 16 compiled graph shapes x 4 variants x 2 orders = 128 records.
+- All 272 processes succeed. All 100 same-precision full-output pairs are
+  bit-identical; graph arena allocations match in every pair. Output scans
+  are finite. Operator probes include sampled CPU-reference checks and exact
+  half representability; graph probes use separately randomized input data.
+- Three warm iterations, at least .5 GPU seconds warmup, seven samples, two
+  reversed orders. All CPU compilation precedes serial GPU jobs. Raw orders
+  and timing variation are retained. Wall times and GPU spans are in graph.csv.
+- Three new regression cases cover full output equality, biased/unbiased
+  execution, nonzero offsets, same/partial buffer overlap, packed Q5_K decode,
+  rowwise-X, Hadamard fallback, disabled MFA, cache separation, model shrinking
+  and growth, output rebinding, private reshapes, exposed half tensors, multiple
+  consumers and inference/training transitions. They pass in the full suite.
+- Final rebuilt MPSBLAS 301/301, MPSDNN 126/126 and CNNP core 61/61 pass.
+- The earlier interrupted
+  MPSBLAS run was stopped for the absent-symbol guard; it is not counted.
+  sweep: exit 0, 542.21 seconds
+  mpsblas-full: exit 0, 757.14 seconds
+  mpsdnn-full: exit 0, 170.44 seconds
+  cnnp-core-full: exit 0, 7.24 seconds
+- git diff --check passes. Nothing is staged or committed. Before/current
+  source snapshots, exact commands, binary hashes and test logs are archived.
+
+This checkpoint validates the production integration, not full model generation
+latency or rendered quality. FP16 uses its existing kernel and separate cast;
+the FP16 composite is a fallback control. Small projections and several image
+attention cases still miss approximately 2x. Latest attention measurements are
+in inference-probability-bounds.txt; actual MLX VJP comparisons remain in the
+earlier priority-report.txt. Inference remains the current priority.
