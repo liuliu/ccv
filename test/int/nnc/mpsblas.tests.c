@@ -4986,7 +4986,7 @@ TEST_CASE("mps large rowwise int8 gemm preserves dynamic rows and fused bias")
 	ccv_nnc_tensor_free(ref_bias);
 }
 
-TEST_CASE("mps rowwise int8 register gemm preserves selection boundaries and partial tiles")
+TEST_CASE("mps rowwise int8 gemm preserves tuning boundaries and partial tiles")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_MPS));
 	const uint64_t old_flags = ccv_nnc_flags();

@@ -1,0 +1,6 @@
+{
+  "source_patch_sha256": "f8f6296000189869b7d4abdb502d2776035e1e188b294e9701c91bf85843eb4f",
+  "mac_binary_sha256": "de2b8013602401398ea1061419ffb6d319c15da2cb7f0f5fd6a8f280f45e65c4",
+  "ipad_binary_sha256": "ac5b85b6cc01e0f7f2bc4861f59cdd17505a0a371909b8d3d5e502a7d0654ce2",
+  "selector": "core40 native K<=8192; eligible deeper K register; sub40 original native; >40 existing policy; wide-index register fallback"
+}

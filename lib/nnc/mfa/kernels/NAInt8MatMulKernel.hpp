@@ -16,6 +16,7 @@ struct NAInt8MatMulKernel {
   uint16_t executionSIMDGroups;
   GEMMOperandPrecision ioPrecision;
   bool useBias;
+  bool castOutputToFloat;
   bool loadM;
   bool useLeadingDimensions;
   uint16_t activationQuantizeThreads;

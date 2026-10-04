@@ -43,6 +43,8 @@ bool NAInt8MatMulDescriptor::operator==(const NAInt8MatMulDescriptor& rhs) const
     (loadM || packedABatchStride == rhs.packedABatchStride) &&
     (loadM || aScaleBatchStride == rhs.aScaleBatchStride) &&
     useBias == rhs.useBias &&
+    preferSmallTile == rhs.preferSmallTile &&
+    castOutputToFloat == rhs.castOutputToFloat &&
     activationHadamard256 == rhs.activationHadamard256 &&
     loadM == rhs.loadM &&
     supportIndirectCommandBuffers == rhs.supportIndirectCommandBuffers &&
@@ -70,6 +72,8 @@ std::size_t std::hash<NAInt8MatMulDescriptor>::operator()(const NAInt8MatMulDesc
   combine_32(seed, hash.loadM ? 0 : hash.packedABatchStride.value_or(0));
   combine_32(seed, hash.loadM ? 0 : hash.aScaleBatchStride.value_or(0));
   combine_32(seed, hash.useBias ? 1 : 0);
+  combine_32(seed, hash.preferSmallTile ? 1 : 0);
+  combine_32(seed, hash.castOutputToFloat ? 1 : 0);
   combine_32(seed, hash.activationHadamard256 ? 1 : 0);
   combine_32(seed, hash.loadM ? 1 : 0);
   combine_32(seed, hash.supportIndirectCommandBuffers ? 1 : 0);
@@ -77,11 +81,10 @@ std::size_t std::hash<NAInt8MatMulDescriptor>::operator()(const NAInt8MatMulDesc
 }
 
 NAInt8MatMulKernelDescriptor NAInt8MatMulDescriptor::kernelDescriptor(MTL::Device* device) const noexcept {
-  // Halving M and the SIMD-group count reduces per-threadgroup resources.
-  // Keep the larger tile for long reductions: its extra operand reuse wins
-  // on several large working sets, and the crossover is not uniform in M/N.
-  // This decision is independent of dynamic M, preserving pipeline sharing.
-  const bool smallTile = useNeuralAcceleratorMatMulTuning(device) && matrixDimensions[2] <= 8192;
+  // The frontend selects the profile using core count and shape. Keep this
+  // choice in the descriptor key when M is supplied dynamically.
+  const bool smallTile = useNeuralAcceleratorMatMulTuning(device) &&
+      preferSmallTile && matrixDimensions[2] <= 8192;
   return NAInt8MatMulKernelDescriptor(
       simd::ushort3 { (uint16_t)(smallTile ? 64 : 128), 128, 128 },
       smallTile ? 4 : 8,
@@ -92,7 +95,8 @@ NAInt8MatMulKernelDescriptor NAInt8MatMulDescriptor::kernelDescriptor(MTL::Devic
       groupM(matrixDimensions[0]),
       groupN(matrixDimensions[1]),
       leadingDimensions.has_value(),
-      activationHadamard256);
+      activationHadamard256,
+      castOutputToFloat);
 }
 
 std::pair<NAInt8MatMulKernelDescriptor, PipelineValue<NAInt8MatMulKernel> *> NAInt8MatMulDescriptor::findKernel(

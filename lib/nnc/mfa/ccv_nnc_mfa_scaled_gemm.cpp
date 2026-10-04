@@ -158,13 +158,10 @@ size_t ccv_nnc_mfa_scaled_gemm_reserved_scratch_size(ccv_nnc_mfa_scaled_gemm_par
   return a_layout.scratch_bytes;
 }
 
-static bool use_register_matmul(mfa::context* context, const ccv_nnc_mfa_scaled_gemm_params_t params)
+static bool supports_tuned_matmul(mfa::context* context, const ccv_nnc_mfa_scaled_gemm_params_t params)
 {
-  // Register operands also help medium-row projections after the reduction
-  // loop improvements. Preserve the previous minimum output area (768 full
-  // 64x128 tiles) and keep deeper reductions on the native path below M4096:
-  // K24576 and above still lost in the crossover sweep. Smaller selected
-  // outputs have complete 64-row tiles; larger outputs amortize partial tiles.
+  // Keep the established large-output surface for tuned dispatch and fused
+  // casts. Core count and reduction length choose the implementation below.
   return params.use_neural_accelerators &&
       params.data_type == MTL::DataTypeHalf && params.batch_dimension == 1 &&
       !params.leading_dimension_a && !params.leading_dimension_c &&
@@ -186,9 +183,18 @@ static void encode_scaled_gemm(mfa::context* context, ccv_nnc_mfa_scaled_gemm_pa
     ++num_tensors;
   CCV_NNC_MFA_PRECONDITION((num_tensors == 3) || (num_tensors == 4));
   CCV_NNC_MFA_PRECONDITION(params.use_neural_accelerators || !params.activation_hadamard_256);
-  const bool useRegisterMatMul = use_register_matmul(context, params) &&
+  const bool tunedShape = supports_tuned_matmul(context, params);
+  const bool useTunedMatMul = tunedShape && context->device_properties.coreCount >= 40;
+  // The 40-core Max reaches register throughput with the native four-group
+  // tile for K <= 8192. Long reductions still favor explicit register loads.
+  // Preserve the larger-GPU profile and wider register-kernel address arithmetic.
+  const bool useRegisterMatMul = tunedShape &&
+      ((context->device_properties.coreCount >= 40 &&
+        (context->device_properties.coreCount > 40 || params.K > 8192)) ||
+       uint64_t(params.N) * params.K > UINT32_MAX ||
+       uint64_t(params.M) * params.N > UINT32_MAX) &&
       (cast_output_to_float || tensors[0] != tensors[2]);
-  CCV_NNC_MFA_PRECONDITION(!cast_output_to_float || useRegisterMatMul);
+  CCV_NNC_MFA_PRECONDITION(!cast_output_to_float || useTunedMatMul);
   // Quantize and consume a bounded row range before moving to the next one.
   // Large activation and weight working sets benefit from this ordering; small
   // weight matrices and nearly single-chunk inputs can regress from the extra
@@ -199,7 +205,7 @@ static void encode_scaled_gemm(mfa::context* context, ccv_nnc_mfa_scaled_gemm_pa
   // The K <= 8192 profile already uses a smaller 64-row kernel tile and does
   // not consistently benefit from adding this second level of partitioning.
   // Keep batching, strided views and rotated activations on their existing path.
-  if (!useRegisterMatMul && params.use_neural_accelerators && params.data_type == MTL::DataTypeHalf &&
+  if (context->device_properties.coreCount >= 40 && !useTunedMatMul && params.use_neural_accelerators && params.data_type == MTL::DataTypeHalf &&
       params.batch_dimension == 1 && !params.leading_dimension_a && !params.leading_dimension_c &&
       !params.activation_hadamard_256 && params.M >= 16384 && params.K > 8192 &&
       uint64_t(params.K) <= uint64_t(3) * params.N &&
@@ -318,6 +324,9 @@ static void encode_scaled_gemm(mfa::context* context, ccv_nnc_mfa_scaled_gemm_pa
     matmulDesc.batchStrides = std::nullopt;
   }
   matmulDesc.useBias = params.fused_bias;
+  matmulDesc.preferSmallTile = context->device_properties.coreCount >= 40 &&
+      params.K <= 8192;
+  matmulDesc.castOutputToFloat = cast_output_to_float && !useRegisterMatMul;
   // Source / output batches may be interleaved; packed activations are contiguous.
   const uint32_t dimensions[] = {
     params.M, params.batch_stride_a, params.batch_stride_c, params.M * params.K, params.M,
@@ -325,7 +334,7 @@ static void encode_scaled_gemm(mfa::context* context, ccv_nnc_mfa_scaled_gemm_pa
 
   auto pool = NS::AutoreleasePool::alloc()->init();
   auto &shaderCache = context->kernel_cache;
-  DeviceProperties dprops = DeviceProperties();
+  const DeviceProperties& dprops = context->device_properties;
   auto pipelineValue = shaderCache.findKernel<NAInt8MatMulKernel, NAInt8MatMulDescriptor, NAInt8MatMulKernelDescriptor>(matmulDesc, context->device.get(), dprops);
   pool->drain();
   auto kernel = pipelineValue->kernel;
@@ -486,7 +495,7 @@ void ccv_nnc_mfa_encode_scaled_gemm(mfa::context* context, ccv_nnc_mfa_scaled_ge
 
 int ccv_nnc_mfa_encode_scaled_gemm_cast(mfa::context* context, ccv_nnc_mfa_scaled_gemm_params_t params, MTL::CommandBatch* command_batch, MTL::Buffer** tensors, size_t* tensor_offsets)
 {
-  if (!use_register_matmul(context, params))
+  if (context->device_properties.coreCount < 40 || !supports_tuned_matmul(context, params))
     return 0;
   // Unlike chunked GEMM, this path consumes the entire A into separate INT8
   // scratch before writing C. This remains safe when widening C reuses A.

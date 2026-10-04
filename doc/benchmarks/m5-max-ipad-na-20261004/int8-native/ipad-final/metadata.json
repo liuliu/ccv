@@ -1,0 +1,317 @@
+{
+  "shapes": [
+    {
+      "id": "gemm-rows-512-6144-6144",
+      "aliases": [],
+      "operation": "matmul",
+      "shape": [
+        512,
+        6144,
+        6144,
+        1,
+        1,
+        1
+      ],
+      "dispatch_flags": 0,
+      "causal": false,
+      "output_cast": false,
+      "variants": [
+        "fp16",
+        "fp32",
+        "int8",
+        "mlx"
+      ],
+      "tags": [
+        "coverage"
+      ],
+      "source": "",
+      "description": ""
+    },
+    {
+      "id": "gemm-rows-2048-6144-6144",
+      "aliases": [],
+      "operation": "matmul",
+      "shape": [
+        2048,
+        6144,
+        6144,
+        1,
+        1,
+        1
+      ],
+      "dispatch_flags": 0,
+      "causal": false,
+      "output_cast": false,
+      "variants": [
+        "fp16",
+        "fp32",
+        "int8",
+        "mlx"
+      ],
+      "tags": [
+        "coverage"
+      ],
+      "source": "",
+      "description": ""
+    },
+    {
+      "id": "flux2-1024-projection",
+      "aliases": [
+        "gemm-rows-4096-6144-6144"
+      ],
+      "operation": "matmul",
+      "shape": [
+        4096,
+        6144,
+        6144,
+        1,
+        1,
+        1
+      ],
+      "dispatch_flags": 0,
+      "causal": false,
+      "output_cast": false,
+      "variants": [
+        "fp16",
+        "fp32",
+        "int8",
+        "mlx"
+      ],
+      "tags": [
+        "coverage",
+        "inference"
+      ],
+      "source": "Libraries/SwiftDiffusion/Sources/Models/Flux2.swift",
+      "description": "Image stream for FLUX/Qwen; joint stream for Krea/Ideogram"
+    },
+    {
+      "id": "flux2-1024-ffn-down",
+      "aliases": [
+        "gemm-rows-4096-6144-18432"
+      ],
+      "operation": "matmul",
+      "shape": [
+        4096,
+        6144,
+        18432,
+        1,
+        1,
+        1
+      ],
+      "dispatch_flags": 0,
+      "causal": false,
+      "output_cast": false,
+      "variants": [
+        "fp16",
+        "fp32",
+        "int8",
+        "mlx"
+      ],
+      "tags": [
+        "coverage",
+        "inference"
+      ],
+      "source": "Libraries/SwiftDiffusion/Sources/Models/Flux2.swift",
+      "description": "Image stream for FLUX/Qwen; joint stream for Krea/Ideogram"
+    },
+    {
+      "id": "gemm-edges-n4097-k8193",
+      "aliases": [],
+      "operation": "matmul",
+      "shape": [
+        4097,
+        4097,
+        8193,
+        1,
+        1,
+        1
+      ],
+      "dispatch_flags": 0,
+      "causal": false,
+      "output_cast": false,
+      "variants": [
+        "fp32",
+        "int8",
+        "mlx"
+      ],
+      "tags": [
+        "coverage"
+      ],
+      "source": "",
+      "description": ""
+    },
+    {
+      "id": "attn-d256-r4096-c4096",
+      "aliases": [],
+      "operation": "attention",
+      "shape": [
+        4096,
+        4096,
+        256,
+        1,
+        8,
+        8
+      ],
+      "dispatch_flags": 0,
+      "causal": false,
+      "output_cast": false,
+      "variants": [
+        "fp16",
+        "int8",
+        "mlx"
+      ],
+      "tags": [
+        "coverage"
+      ],
+      "source": "",
+      "description": ""
+    },
+    {
+      "id": "flux2-512-attention",
+      "aliases": [],
+      "operation": "attention",
+      "shape": [
+        1536,
+        1536,
+        128,
+        1,
+        48,
+        48
+      ],
+      "dispatch_flags": 0,
+      "causal": false,
+      "output_cast": false,
+      "variants": [
+        "fp16",
+        "int8",
+        "mlx"
+      ],
+      "tags": [
+        "inference",
+        "smoke"
+      ],
+      "source": "Libraries/SwiftDiffusion/Sources/Models/Flux2.swift",
+      "description": "512px square; 512 assumed text tokens; exact dense SDPA"
+    },
+    {
+      "id": "qwen21-1024-attention",
+      "aliases": [
+        "qwen21-last-image-only"
+      ],
+      "operation": "attention",
+      "shape": [
+        4096,
+        4352,
+        128,
+        1,
+        32,
+        32
+      ],
+      "dispatch_flags": 0,
+      "causal": false,
+      "output_cast": false,
+      "variants": [
+        "fp16",
+        "int8",
+        "mlx"
+      ],
+      "tags": [
+        "inference"
+      ],
+      "source": "Libraries/SwiftDiffusion/Sources/Models/QwenImage2_1.swift",
+      "description": "1024px square; 256 assumed text tokens; exact dense SDPA"
+    },
+    {
+      "id": "attn-partition-r4096-c24576-h48",
+      "aliases": [],
+      "operation": "attention",
+      "shape": [
+        4096,
+        24576,
+        128,
+        1,
+        48,
+        48
+      ],
+      "dispatch_flags": 0,
+      "causal": false,
+      "output_cast": false,
+      "variants": [
+        "fp16",
+        "int8",
+        "mlx"
+      ],
+      "tags": [
+        "coverage"
+      ],
+      "source": "",
+      "description": ""
+    },
+    {
+      "id": "attn-d128-r4097-c4097",
+      "aliases": [],
+      "operation": "attention",
+      "shape": [
+        4097,
+        4097,
+        128,
+        1,
+        8,
+        8
+      ],
+      "dispatch_flags": 0,
+      "causal": false,
+      "output_cast": false,
+      "variants": [
+        "fp16",
+        "int8",
+        "mlx"
+      ],
+      "tags": [
+        "coverage"
+      ],
+      "source": "",
+      "description": ""
+    },
+    {
+      "id": "attn-dynamic-d256",
+      "aliases": [],
+      "operation": "attention",
+      "shape": [
+        4097,
+        8193,
+        256,
+        1,
+        8,
+        2
+      ],
+      "dispatch_flags": 3,
+      "causal": false,
+      "output_cast": false,
+      "variants": [
+        "fp16",
+        "int8",
+        "mlx"
+      ],
+      "tags": [
+        "coverage"
+      ],
+      "source": "",
+      "description": ""
+    }
+  ],
+  "sha256": {
+    "base": "91335f574cb744fb9f7ee45bcc069982169a3f289de2948685739b51bf32ba98",
+    "native": "ac5b85b6cc01e0f7f2bc4861f59cdd17505a0a371909b8d3d5e502a7d0654ce2"
+  },
+  "warmup": 0.5,
+  "samples": 21,
+  "cooldown": 20,
+  "large_case_cooldown": 45,
+  "order": [
+    "base",
+    "native",
+    "native",
+    "base"
+  ]
+}

@@ -1,0 +1,73 @@
+NAInt8MatMul native consolidation, M5 Max first
+
+Base: 6a611be1. Untouched remote branch: b821dc8e.
+Candidate: working-tree changes on m5-na-inference-benchmarks.
+Mac: Apple M5 Max. IOKit registry lookup returns 40 GPU cores.
+iOS policy: core count defaults to 10, as requested.
+
+Exploration (Max only):
+- Existing native 128x128x128/8-group and 64x128x128/4-group tiles.
+- 64x128 with 8 groups, K512 tiles, and 128x64 with 4 groups.
+- A native cooperative-register prototype, versus the MLX register reference.
+- Full, paired, and disabled K-loop unrolling; K32 reduction tiles.
+- Probe reports quantization-only, GEMM-only, and combined command-buffer times.
+- Same CPU-generated rowwise INT8 weights and GPU activation quantizer for all arms.
+- Each process validates activation quantization and output against CPU calculations.
+- Screening logs retain controls, min/max timings and thermal state. They are
+  exploratory, not replacements for the final production-dispatcher comparison.
+
+A probe-reference defect was corrected during exploration: the old nominal
+"exact" reference accumulated products in FP32 and used unrounded scales.
+The updated reference uses INT64 accumulation and the actual half scales.
+The old small-case "full" reference label was also misleading: only a few
+sample points were checked. Small cases now compare all output elements.
+Every output is now checked for finiteness; large CPU comparisons remain sampled.
+
+Candidate design:
+- Cache GPU core count once in the MFA context, using the supplied IOKit query
+  on macOS. Failed lookup remains zero and selects the conservative profile.
+- Keep <=10-core and other unvalidated sub-40-core GPUs on the original native tile.
+- Use the 40-core Max's native four-group tile for K <= 8192. Keep the
+  existing register selection for eligible deeper reductions and above 40 cores.
+- Include tile-profile selection in the pipeline descriptor key, especially
+  across dynamic-M selection boundaries.
+- Native fused float output must preserve float(half(result)) semantics.
+- Do not modify INT8 backward attention or floating-point operator selection.
+
+Final Max protocol:
+- Production frontend: identical input generator, CPU checks and timing harness
+  for base, untouched branch, and candidate.
+- 120 seconds initial idle; at least 8 seconds between processes.
+- Require nominal thermal state before launches; record state afterward.
+- 0.5 GPU-second warmup; 21 timestamp samples.
+- Per shape: base, branch, candidate, candidate, branch, base.
+- Inspect both control drift and repeated candidate spread. Nominal thermal state
+  alone does not guarantee a thermally stable performance comparison.
+- Separate compilation/correctness suites from timed sweeps.
+- iPad is reserved for final validation, after the Max candidate is settled.
+
+The first 16-shape pass (mac-candidate-1) additionally tried native dispatch for
+eligible K > 8192 shapes. That experiment was rejected: Qwen-27B FFN-down was
+about 10% slower than register dispatch. The eight-arm mac-paired-loop pass
+compares parent/branch/original-native/paired-native in reversed order and
+confirms that paired unrolling does not close the gap. The final selector
+retains register dispatch on these deep reductions. The final arm name "native"
+is historical: in mac-settled and ipad-final it means this mixed final selector.
+Unchanged short-K generated kernels reuse the mac-candidate-1 measurements;
+mac-settled checks projection and all three affected long-reduction shapes.
+
+Attention validation uses six workloads, parent/candidate/candidate/parent:
+D128 FLUX and Qwen, D256 split output, long-KV partitioning, ragged D128 queries,
+and dynamic grouped-head D256. INT8 backward is unchanged.
+
+Final iPad protocol: 120 seconds initial idle; at least 20 seconds per process,
+45 seconds for selected large cases; 0.5 GPU-second warmup; 21 samples;
+parent/candidate/candidate/parent order. Require nominal state before and after,
+inspect control and candidate drift, and stop on a numerical or thermal failure.
+
+Source-review preservation: final-source.patch restores the pre-existing default
+profile for other direct descriptor callers. The measured scaled GEMM frontend
+sets its preference explicitly, so all measured generated kernels are unchanged.
+The timing binary hashes remain in settled-build-metadata.json and the rebuilt
+final source hashes in final-source-build-metadata.json. Final-source Mac cast
+and iPad smoke checks pass; the iPad smoke output SHA256 matches the timed run.

@@ -10,6 +10,7 @@ struct NAInt8MatMulKernelDescriptor {
   uint16_t executionSIMDGroups;
   GEMMOperandPrecision ioPrecision;
   bool useBias;
+  bool castOutputToFloat;
   bool loadM;
   bool useLeadingDimensions;
   uint16_t activationQuantizeThreads;
@@ -28,7 +29,8 @@ struct NAInt8MatMulKernelDescriptor {
       uint32_t groupM,
       uint32_t groupN,
       bool useLeadingDimensions = false,
-      bool activationHadamard256 = false) noexcept;
+      bool activationHadamard256 = false,
+      bool castOutputToFloat = false) noexcept;
 
   bool operator==(const NAInt8MatMulKernelDescriptor& rhs) const;
 };

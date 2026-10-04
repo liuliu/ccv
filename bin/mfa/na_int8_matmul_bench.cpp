@@ -17,6 +17,7 @@
 #include "nnc/mfa/kernels/NAMatMulKernel.hpp"
 #include "nnc/mfa/kernels/NAMatMulKernelDescriptor.hpp"
 #include "nnc/mfa/kernels/NAInt8MatMulKernel.hpp"
+#include "nnc/mfa/kernels/NARegisterMatMulKernel.hpp"
 #include "nnc/mfa/kernels/NAInt8MatMulDescriptor.hpp"
 #include "nnc/mfa/kernels/NAInt8MatMulKernelDescriptor.hpp"
 #include "nnc/mfa/kernels/NAInt8MatMulSmallMDescriptor.hpp"
@@ -83,6 +84,7 @@ struct BaselinePipeline {
 };
 
 struct DynamicPipeline {
+  std::unique_ptr<NARegisterMatMulKernel> reference;
   std::unique_ptr<NAInt8MatMulKernel> kernel;
   NS::SharedPtr<MTL::ComputePipelineState> pipeline;
   bool load_m = false;
@@ -282,6 +284,34 @@ DynamicPipeline create_dynamic_pipeline(
       groupN(bench, variant));
   bundle.kernel = std::make_unique<NAInt8MatMulKernel>(kernel_descriptor, device);
   bundle.load_m = variant.load_m;
+  if (const char* unroll = std::getenv("CCV_NA_K_UNROLL")) {
+    const std::string old = "#pragma clang loop unroll(full)\n    for (uint k =";
+    const std::string replacement = std::string("#pragma clang loop ") +
+        (atoi(unroll) ? "unroll_count(" + std::to_string(atoi(unroll)) + ")" : "unroll(disable)") + "\n    for (uint k =";
+    auto source = bundle.kernel->source;
+    auto pos = source.find(old);
+    CCV_NNC_MFA_PRECONDITION(pos != std::string::npos);
+    source.replace(pos, old.size(), replacement);
+    NS::Error* error = nil;
+    bundle.kernel->library = NS::TransferPtr(device->newLibrary(NS::String::string(source.c_str(), NS::UTF8StringEncoding), nil, &error));
+    CCV_NNC_MFA_CHECK_ERROR(error);
+  }
+  if (std::getenv("CCV_NA_REGISTER_REFERENCE")) {
+    bundle.reference = std::make_unique<NARegisterMatMulKernel>(NARegisterMatMulKernelDescriptor {true, false, false, false}, device);
+    auto constants = NS::TransferPtr(MTL::FunctionConstantValues::alloc()->init());
+    const bool disabled = false, am = bench.M % 64 == 0, an = bench.N % 128 == 0, ak = bench.K % 512 == 0;
+    for (auto index : {10, 100, 110})
+      constants->setConstantValue(&disabled, MTL::DataTypeBool, NS::UInteger(index));
+    constants->setConstantValue(&am, MTL::DataTypeBool, NS::UInteger(200));
+    constants->setConstantValue(&an, MTL::DataTypeBool, NS::UInteger(201));
+    constants->setConstantValue(&ak, MTL::DataTypeBool, NS::UInteger(202));
+    NS::Error* error = nil;
+    auto function = NS::TransferPtr(bundle.reference->library->newFunction(NS::String::string("matmul_register", NS::UTF8StringEncoding), constants.get(), &error));
+    CCV_NNC_MFA_CHECK_ERROR(error);
+    bundle.pipeline = NS::TransferPtr(device->newComputePipelineState(function.get(), &error));
+    CCV_NNC_MFA_CHECK_ERROR(error);
+    return bundle;
+  }
 
   auto constants = NS::TransferPtr(MTL::FunctionConstantValues::alloc()->init());
   const uint32_t M = bench.M;
@@ -978,6 +1008,33 @@ double run_quantize_once(
   return command_buffer->GPUEndTime() - command_buffer->GPUStartTime();
 }
 
+void encode_dynamic(MTL::ComputeCommandEncoder* encoder, const BenchmarkCase& bench,
+    const DynamicPipeline& bundle, MTL::Buffer* buffer_a_q, MTL::Buffer* buffer_b_q,
+    MTL::Buffer* buffer_c, MTL::Buffer* buffer_a_scale, MTL::Buffer* buffer_b_scale,
+    MTL::Buffer* buffer_load_m)
+{
+  encoder->setComputePipelineState(bundle.pipeline.get());
+  encoder->setBuffer(buffer_a_q, 0, 0);
+  encoder->setBuffer(buffer_b_q, 0, 1);
+  if (bundle.reference) {
+    const int32_t M = bench.M, N = bench.N, K = bench.K;
+    const NARegisterMatMulParams args {M,N,K,K,K,N,(N+127)/128,(M+63)/64,0,0,0,0,K/512,1};
+    encoder->setBuffer(buffer_c, 0, 3);
+    encoder->setBytes(&args, sizeof(args), 4);
+    encoder->setBuffer(buffer_a_scale, 0, 8);
+    encoder->setBuffer(buffer_b_scale, 0, 9);
+    encoder->dispatchThreadgroups(MTL::Size((N+127)/128,(M+63)/64,1), MTL::Size(256,1,1));
+  } else {
+    encoder->setBuffer(buffer_c, 0, 2);
+    encoder->setBuffer(buffer_a_scale, 0, 3);
+    encoder->setBuffer(buffer_b_scale, 0, 4);
+    if (bundle.load_m)
+      encoder->setBuffer(buffer_load_m, 0, 5);
+    encoder->dispatchThreadgroups(bundle.kernel->threadgroupsPerGrid(bench.M, bench.N, 1),
+        MTL::Size(bundle.kernel->threadgroupSize(bundle.pipeline.get()), 1, 1));
+  }
+}
+
 double run_dynamic_once(
     MTL::CommandQueue* command_queue,
     const BenchmarkCase& bench,
@@ -991,17 +1048,7 @@ double run_dynamic_once(
 {
   auto command_buffer = NS::TransferPtr(command_queue->commandBuffer());
   auto encoder = NS::TransferPtr(command_buffer->computeCommandEncoder());
-  encoder->setComputePipelineState(bundle.pipeline.get());
-  encoder->setBuffer(buffer_a_q, 0, 0);
-  encoder->setBuffer(buffer_b_q, 0, 1);
-  encoder->setBuffer(buffer_c, 0, 2);
-  encoder->setBuffer(buffer_a_scale, 0, 3);
-  encoder->setBuffer(buffer_b_scale, 0, 4);
-  if (bundle.load_m)
-    encoder->setBuffer(buffer_load_m, 0, 5);
-  encoder->dispatchThreadgroups(
-      bundle.kernel->threadgroupsPerGrid(bench.M, bench.N, 1),
-      MTL::Size(bundle.kernel->threadgroupSize(bundle.pipeline.get()), 1, 1));
+  encode_dynamic(encoder.get(), bench, bundle, buffer_a_q, buffer_b_q, buffer_c, buffer_a_scale, buffer_b_scale, buffer_load_m);
   encoder->endEncoding();
   command_buffer->commit();
   command_buffer->waitUntilCompleted();
@@ -1106,17 +1153,7 @@ double run_quantize_and_dynamic_once(
   }
   {
     auto encoder = NS::TransferPtr(command_buffer->computeCommandEncoder());
-    encoder->setComputePipelineState(dynamic.pipeline.get());
-    encoder->setBuffer(buffer_a_q, 0, 0);
-    encoder->setBuffer(buffer_b_q, 0, 1);
-    encoder->setBuffer(buffer_c, 0, 2);
-    encoder->setBuffer(buffer_a_scale, 0, 3);
-    encoder->setBuffer(buffer_b_scale, 0, 4);
-    if (dynamic.load_m)
-      encoder->setBuffer(buffer_load_m, 0, 5);
-    encoder->dispatchThreadgroups(
-        dynamic.kernel->threadgroupsPerGrid(bench.M, bench.N, 1),
-        MTL::Size(dynamic.kernel->threadgroupSize(dynamic.pipeline.get()), 1, 1));
+    encode_dynamic(encoder.get(), bench, dynamic, buffer_a_q, buffer_b_q, buffer_c, buffer_a_scale, buffer_b_scale, buffer_load_m);
     encoder->endEncoding();
   }
   command_buffer->commit();
@@ -1293,13 +1330,12 @@ float compute_quantized_reference_value(
     uint32_t row,
     uint32_t col)
 {
-  float accumulator = 0;
+  int64_t accumulator = 0;
   for (uint32_t k = 0; k < bench.K; ++k)
     accumulator +=
         (int32_t)a_quantized.values[a_index(bench, row, k)] *
         (int32_t)b_quantized.values[b_index(bench, col, k)];
-  accumulator *= a_quantized.scales[row] * b_quantized.scales[col];
-  return accumulator;
+  return float(accumulator) * float(half_float(a_quantized.scales[row])) * float(half_float(b_quantized.scales[col]));
 }
 
 int32_t compute_quantized_reference_accumulator(
@@ -1345,8 +1381,14 @@ ValidationStats validate_output(
   ValidationStats stats;
   const uint64_t reference_work = (uint64_t)bench.M * bench.N * bench.K;
   stats.full_reference = reference_work <= (1ull << 26);
-  const auto row_points = stats.full_reference ? make_sample_points(bench.M, {}) : make_sample_points(bench.M, { 0, 1, 127, 128, 1023, 1024, 4095, 4096 });
-  const auto col_points = stats.full_reference ? make_sample_points(bench.N, {}) : make_sample_points(bench.N, { 0, 1, 63, 64, 1023, 1024, 4095, 4096 });
+  auto row_points = stats.full_reference ? make_sample_points(bench.M, {}) : make_sample_points(bench.M, { 0, 1, 127, 128, 1023, 1024, 4095, 4096 });
+  auto col_points = stats.full_reference ? make_sample_points(bench.N, {}) : make_sample_points(bench.N, { 0, 1, 63, 64, 1023, 1024, 4095, 4096 });
+  if (stats.full_reference) {
+    row_points.resize(bench.M); std::iota(row_points.begin(), row_points.end(), 0);
+    col_points.resize(bench.N); std::iota(col_points.begin(), col_points.end(), 0);
+  }
+  for (size_t i = 0; i < size_t(bench.M) * bench.N; ++i)
+    if (!std::isfinite(output[i])) stats.max_abs = stats.max_rel = std::numeric_limits<double>::infinity();
   for (const auto row : row_points) {
     for (const auto col : col_points) {
       const float reference = quantized_reference ?

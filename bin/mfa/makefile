@@ -161,7 +161,7 @@ gated_delta_bench: gated_delta_bench.o Metal.local.o Dispatch.local.o ccv_nnc_mf
 	$(CC) -o $@ $^ $(LDFLAGS)
 hyper_connection_bench: hyper_connection_bench.o Metal.local.o Dispatch.local.o ccv_nnc_mfa_error.local.o $(HYPER_CONNECTION_OBJS)
 	$(CC) -o $@ $^ $(LDFLAGS)
-na_int8_matmul_bench: na_int8_matmul_bench.o $(COMMON_OBJS) $(NA_GEMM_OBJS)
+na_int8_matmul_bench: na_int8_matmul_bench.o $(COMMON_OBJS) $(NA_GEMM_OBJS) NARegisterMatMulKernel.local.o
 	$(CC) -o $@ $^ $(LDFLAGS)
 na_int8_convrot_bench: na_int8_convrot_bench.o libccv.a
 	$(CC) -o $@ na_int8_convrot_bench.o ../../lib/libccv.a $(MPSGRAPH_LDFLAGS)
@@ -494,3 +494,9 @@ MLX_FMT ?= $(MLX_BUILD)/_deps/fmt-src/include
 .PHONY: mlx_na_bench
 mlx_na_bench: mlx_na_bench.cpp
 	$(CXX) -std=c++20 -O2 -g -DFMT_HEADER_ONLY=1 -DMLX_STATIC -I"$(MLX_ROOT)" -I"$(MLX_METAL_CPP)" -I"$(MLX_FMT)" $< "$(MLX_LIBRARY)" -framework Metal -framework Foundation -framework Accelerate -o $@
+
+NARegisterMatMulKernel.local.o: ../../lib/nnc/mfa/kernels/NARegisterMatMulKernel.cpp
+	$(CC) $(CFLAGS) -c $< -o $@
+
+# CPU input preparation and independent references must not dominate cooled GPU probes.
+na_int8_matmul_bench.o: CFLAGS += -O2

@@ -20,6 +20,9 @@ struct NAInt8MatMulDescriptor {
   std::optional<uint32_t> packedABatchStride;
   std::optional<uint32_t> aScaleBatchStride;
   bool useBias = false;
+  // Preserve existing direct callers; scaled GEMM supplies its hardware gate.
+  bool preferSmallTile = true;
+  bool castOutputToFloat = false;
   // Rotate contiguous groups along K with (H4 / 2) ^ tensor 4 before
   // row-wise quantization. K must be divisible by 256 and <= 65536;
   // weights must be rotated too (this is not the Sylvester WHT).

@@ -1,0 +1,6 @@
+{
+  "patch_sha256": "315b94a0eac28e40290e237c617561cacfc26b126eec384e11889ab4020c9a1f",
+  "mac_sha256": "e9fa21b31ce01392affbda7d54085f9639de591d6d06d988223ea351b71df812",
+  "ios_sha256": "3ea0e472d3649d7270e095ab2a0cf4fc5236baee978908945492482f2e80ecea",
+  "difference_from_measured_build": "Restore legacy small-tile default for direct descriptor callers; scaled GEMM sets profile explicitly, so all timed workload kernels are unchanged."
+}

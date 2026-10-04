@@ -205,6 +205,14 @@ if test "$mps_support" = yes; then
 	AC_MSG_RESULT(yes)
 	AC_SUBST(DEFINE_MACROS, ["$DEFINE_MACROS-D HAVE_MPS "])
 	AC_SUBST(MKLDFLAGS, ["$MKLDFLAGS-framework MetalPerformanceShaders -framework MetalPerformanceShadersGraph -framework CoreVideo -framework CoreML -framework IOSurface -framework Metal -lc++ "])
+	# IOKit core-count discovery is macOS-only, including when cross compiling.
+	AC_COMPILE_IFELSE([AC_LANG_SOURCE([[
+#include <TargetConditionals.h>
+#if !TARGET_OS_OSX
+#error IOKit core counts require macOS
+#endif
+int main(void) { return 0; }
+]])], [MKLDFLAGS="$MKLDFLAGS-framework IOKit "])
 	AC_SUBST(CUDA_SRCS, [""])
 	AC_SUBST(CUDA_COMPAT_LIB, [""])
 	AC_SUBST(CUDA_CMD_LIB, [""])

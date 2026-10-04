@@ -51,6 +51,7 @@ int main(int argc, char** argv)
       uint64_t(m)*b > INT32_MAX || m > INT32_MAX - 128 || n > INT32_MAX - 128)
     return 2;
   auto context = ccv_nnc_init_mfa_context(device.get());
+  printf("gpu_core_count=%u\n", context->device_properties.coreCount);
   if (!ccv_nnc_mfa_has_neural_accelerators(context)) return 2;
   if (flags & 1) ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M);
   if (flags & 2) ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA_ATTENTION_SPECIALIZING_C);

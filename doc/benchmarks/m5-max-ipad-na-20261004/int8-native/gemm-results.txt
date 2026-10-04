@@ -1,0 +1,54 @@
+
+/tmp/ccv-int8-tuning/mac-final/records.jsonl
+flux2-1024-projection | base 3.3018 ms (spread 0.0%, n=2) | branch 2.6732 ms (spread 0.0%, n=2) | native 2.6828 ms (spread 0.0%, n=2)
+  changes vs parent: branch -19.0%, native -18.7%
+flux2-1024-ffn-up | base 9.0481 ms (spread 0.7%, n=2) | branch 7.7410 ms (spread 0.1%, n=2) | native 7.6420 ms (spread 0.2%, n=2)
+  changes vs parent: branch -14.4%, native -15.5%
+flux2-1024-ffn-down | base 11.7995 ms (spread 0.4%, n=2) | branch 8.2013 ms (spread 0.4%, n=2) | native 8.5357 ms (spread 1.2%, n=2)
+  changes vs parent: branch -30.5%, native -27.7%
+qwen21-1024-projection | base 1.4667 ms (spread 0.6%, n=2) | branch 1.2572 ms (spread 0.1%, n=2) | native 1.2299 ms (spread 0.0%, n=2)
+  changes vs parent: branch -14.3%, native -16.1%
+gemm-rows-512-6144-6144 | base 0.4420 ms (spread 0.2%, n=2) | branch 0.3537 ms (spread 0.0%, n=2) | native 0.3552 ms (spread 0.5%, n=2)
+  changes vs parent: branch -20.0%, native -19.6%
+gemm-rows-2048-6144-6144 | base 1.5875 ms (spread 0.1%, n=2) | branch 1.3579 ms (spread 0.1%, n=2) | native 1.3821 ms (spread 0.5%, n=2)
+  changes vs parent: branch -14.5%, native -12.9%
+gemm-rows-4097-6144-6144 | base 3.5231 ms (spread 0.1%, n=2) | branch 2.7786 ms (spread 1.3%, n=2) | native 2.7721 ms (spread 0.3%, n=2)
+  changes vs parent: branch -21.1%, native -21.3%
+gemm-aspect-4096-6144-16384 | base 10.3443 ms (spread 0.2%, n=2) | branch 7.2356 ms (spread 2.4%, n=2) | native 7.4887 ms (spread 4.7%, n=2)
+  changes vs parent: branch -30.1%, native -27.6%
+gemm-aspect-2048-2048-8192 | base 0.8421 ms (spread 0.1%, n=2) | branch 0.6814 ms (spread 0.1%, n=2) | native 0.6831 ms (spread 0.8%, n=2)
+  changes vs parent: branch -19.1%, native -18.9%
+gemm-rows-8192-1536-4096 | base 1.3097 ms (spread 0.4%, n=2) | branch 1.1032 ms (spread 8.0%, n=2) | native 1.0894 ms (spread 0.0%, n=2)
+  changes vs parent: branch -15.8%, native -16.8%
+gemm-edges-n4097-k8193 | base 3.9858 ms (spread 0.4%, n=2) | branch 4.0010 ms (spread 0.0%, n=2) | native 4.0055 ms (spread 0.6%, n=2)
+  changes vs parent: branch +0.4%, native +0.5%
+gemm-edges-n1536-k32768 | base 6.6899 ms (spread 2.2%, n=2) | branch 7.0464 ms (spread 4.6%, n=2) | native 7.0386 ms (spread 3.7%, n=2)
+  changes vs parent: branch +5.3%, native +5.2%
+local-qwen35-4b-m1-up | base 0.0265 ms (spread 0.8%, n=2) | branch 0.0265 ms (spread 0.9%, n=2) | native 0.0264 ms (spread 0.9%, n=2)
+  changes vs parent: branch -0.1%, native -0.5%
+local-qwen35-4b-m128-up | base 0.1290 ms (spread 1.0%, n=2) | branch 0.0604 ms (spread 0.5%, n=2) | native 0.0610 ms (spread 0.3%, n=2)
+  changes vs parent: branch -53.2%, native -52.8%
+local-qwen35-4b-m2048-up | base 1.2832 ms (spread 0.3%, n=2) | branch 0.8470 ms (spread 0.4%, n=2) | native 0.8461 ms (spread 0.1%, n=2)
+  changes vs parent: branch -34.0%, native -34.1%
+local-qwen35-27b-m2048-down | base 4.6793 ms (spread 0.1%, n=2) | branch 3.3339 ms (spread 0.2%, n=2) | native 3.6706 ms (spread 1.8%, n=2)
+  changes vs parent: branch -28.8%, native -21.6%
+
+/tmp/ccv-int8-tuning/mac-paired-loop/records.jsonl
+flux2-1024-ffn-down | base 11.8651 ms (spread 0.1%, n=2) | branch 8.3453 ms (spread 0.7%, n=2) | original 8.6106 ms (spread 1.7%, n=2) | paired 8.5350 ms (spread 2.2%, n=2)
+  changes vs parent: branch -29.7%, original -27.4%, paired -28.1%
+gemm-aspect-4096-6144-16384 | base 10.4898 ms (spread 1.4%, n=2) | branch 7.1557 ms (spread 0.8%, n=2) | original 7.3570 ms (spread 3.3%, n=2) | paired 7.7972 ms (spread 10.6%, n=2)
+  changes vs parent: branch -31.8%, original -29.9%, paired -25.7%
+local-qwen35-27b-m2048-down | base 4.6717 ms (spread 0.5%, n=2) | branch 3.3328 ms (spread 0.1%, n=2) | original 3.6706 ms (spread 1.5%, n=2) | paired 3.6592 ms (spread 0.3%, n=2)
+  changes vs parent: branch -28.7%, original -21.4%, paired -21.7%
+gemm-edges-n1536-k32768 | base 7.2310 ms (spread 0.3%, n=2) | branch 7.0846 ms (spread 3.4%, n=2) | original 7.0937 ms (spread 5.6%, n=2) | paired 7.0791 ms (spread 2.8%, n=2)
+  changes vs parent: branch -2.0%, original -1.9%, paired -2.1%
+
+/tmp/ccv-int8-tuning/mac-settled/records.jsonl
+flux2-1024-projection | base 3.3211 ms (spread 1.7%, n=2) | branch 2.6727 ms (spread 0.0%, n=2) | native 2.6756 ms (spread 0.6%, n=2)
+  changes vs parent: branch -19.5%, native -19.4%
+flux2-1024-ffn-down | base 11.7454 ms (spread 0.1%, n=2) | branch 8.2206 ms (spread 0.7%, n=2) | native 8.3554 ms (spread 2.5%, n=2)
+  changes vs parent: branch -30.0%, native -28.9%
+gemm-aspect-4096-6144-16384 | base 10.4643 ms (spread 0.6%, n=2) | branch 7.1347 ms (spread 0.4%, n=2) | native 7.2567 ms (spread 3.0%, n=2)
+  changes vs parent: branch -31.8%, native -30.7%
+local-qwen35-27b-m2048-down | base 4.6558 ms (spread 0.6%, n=2) | branch 3.3337 ms (spread 0.0%, n=2) | native 3.3313 ms (spread 0.2%, n=2)
+  changes vs parent: branch -28.4%, native -28.4%

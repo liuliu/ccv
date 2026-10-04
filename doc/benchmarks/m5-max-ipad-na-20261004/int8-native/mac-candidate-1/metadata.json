@@ -1,0 +1,460 @@
+{
+  "shapes": [
+    {
+      "id": "flux2-1024-projection",
+      "aliases": [
+        "gemm-rows-4096-6144-6144"
+      ],
+      "operation": "matmul",
+      "shape": [
+        4096,
+        6144,
+        6144,
+        1,
+        1,
+        1
+      ],
+      "dispatch_flags": 0,
+      "causal": false,
+      "output_cast": false,
+      "variants": [
+        "fp16",
+        "fp32",
+        "int8",
+        "mlx"
+      ],
+      "tags": [
+        "coverage",
+        "inference"
+      ],
+      "source": "Libraries/SwiftDiffusion/Sources/Models/Flux2.swift",
+      "description": "Image stream for FLUX/Qwen; joint stream for Krea/Ideogram"
+    },
+    {
+      "id": "flux2-1024-ffn-up",
+      "aliases": [],
+      "operation": "matmul",
+      "shape": [
+        4096,
+        18432,
+        6144,
+        1,
+        1,
+        1
+      ],
+      "dispatch_flags": 0,
+      "causal": false,
+      "output_cast": false,
+      "variants": [
+        "fp16",
+        "fp32",
+        "int8",
+        "mlx"
+      ],
+      "tags": [
+        "inference"
+      ],
+      "source": "Libraries/SwiftDiffusion/Sources/Models/Flux2.swift",
+      "description": "Image stream for FLUX/Qwen; joint stream for Krea/Ideogram"
+    },
+    {
+      "id": "flux2-1024-ffn-down",
+      "aliases": [
+        "gemm-rows-4096-6144-18432"
+      ],
+      "operation": "matmul",
+      "shape": [
+        4096,
+        6144,
+        18432,
+        1,
+        1,
+        1
+      ],
+      "dispatch_flags": 0,
+      "causal": false,
+      "output_cast": false,
+      "variants": [
+        "fp16",
+        "fp32",
+        "int8",
+        "mlx"
+      ],
+      "tags": [
+        "coverage",
+        "inference"
+      ],
+      "source": "Libraries/SwiftDiffusion/Sources/Models/Flux2.swift",
+      "description": "Image stream for FLUX/Qwen; joint stream for Krea/Ideogram"
+    },
+    {
+      "id": "qwen21-1024-projection",
+      "aliases": [
+        "smoke-gemm-m4096"
+      ],
+      "operation": "matmul",
+      "shape": [
+        4096,
+        4096,
+        4096,
+        1,
+        1,
+        1
+      ],
+      "dispatch_flags": 0,
+      "causal": false,
+      "output_cast": false,
+      "variants": [
+        "fp16",
+        "fp32",
+        "int8",
+        "mlx"
+      ],
+      "tags": [
+        "coverage",
+        "inference",
+        "smoke"
+      ],
+      "source": "Libraries/SwiftDiffusion/Sources/Models/QwenImage2_1.swift",
+      "description": "Image stream for FLUX/Qwen; joint stream for Krea/Ideogram"
+    },
+    {
+      "id": "gemm-rows-512-6144-6144",
+      "aliases": [],
+      "operation": "matmul",
+      "shape": [
+        512,
+        6144,
+        6144,
+        1,
+        1,
+        1
+      ],
+      "dispatch_flags": 0,
+      "causal": false,
+      "output_cast": false,
+      "variants": [
+        "fp16",
+        "fp32",
+        "int8",
+        "mlx"
+      ],
+      "tags": [
+        "coverage"
+      ],
+      "source": "",
+      "description": ""
+    },
+    {
+      "id": "gemm-rows-2048-6144-6144",
+      "aliases": [],
+      "operation": "matmul",
+      "shape": [
+        2048,
+        6144,
+        6144,
+        1,
+        1,
+        1
+      ],
+      "dispatch_flags": 0,
+      "causal": false,
+      "output_cast": false,
+      "variants": [
+        "fp16",
+        "fp32",
+        "int8",
+        "mlx"
+      ],
+      "tags": [
+        "coverage"
+      ],
+      "source": "",
+      "description": ""
+    },
+    {
+      "id": "gemm-rows-4097-6144-6144",
+      "aliases": [],
+      "operation": "matmul",
+      "shape": [
+        4097,
+        6144,
+        6144,
+        1,
+        1,
+        1
+      ],
+      "dispatch_flags": 0,
+      "causal": false,
+      "output_cast": false,
+      "variants": [
+        "fp16",
+        "fp32",
+        "int8",
+        "mlx"
+      ],
+      "tags": [
+        "coverage"
+      ],
+      "source": "",
+      "description": ""
+    },
+    {
+      "id": "gemm-aspect-4096-6144-16384",
+      "aliases": [],
+      "operation": "matmul",
+      "shape": [
+        4096,
+        6144,
+        16384,
+        1,
+        1,
+        1
+      ],
+      "dispatch_flags": 0,
+      "causal": false,
+      "output_cast": false,
+      "variants": [
+        "fp16",
+        "fp32",
+        "int8",
+        "mlx"
+      ],
+      "tags": [
+        "coverage"
+      ],
+      "source": "",
+      "description": ""
+    },
+    {
+      "id": "gemm-aspect-2048-2048-8192",
+      "aliases": [],
+      "operation": "matmul",
+      "shape": [
+        2048,
+        2048,
+        8192,
+        1,
+        1,
+        1
+      ],
+      "dispatch_flags": 0,
+      "causal": false,
+      "output_cast": false,
+      "variants": [
+        "fp16",
+        "fp32",
+        "int8",
+        "mlx"
+      ],
+      "tags": [
+        "coverage"
+      ],
+      "source": "",
+      "description": ""
+    },
+    {
+      "id": "gemm-rows-8192-1536-4096",
+      "aliases": [],
+      "operation": "matmul",
+      "shape": [
+        8192,
+        1536,
+        4096,
+        1,
+        1,
+        1
+      ],
+      "dispatch_flags": 0,
+      "causal": false,
+      "output_cast": false,
+      "variants": [
+        "fp16",
+        "fp32",
+        "int8",
+        "mlx"
+      ],
+      "tags": [
+        "coverage"
+      ],
+      "source": "",
+      "description": ""
+    },
+    {
+      "id": "gemm-edges-n4097-k8193",
+      "aliases": [],
+      "operation": "matmul",
+      "shape": [
+        4097,
+        4097,
+        8193,
+        1,
+        1,
+        1
+      ],
+      "dispatch_flags": 0,
+      "causal": false,
+      "output_cast": false,
+      "variants": [
+        "fp32",
+        "int8",
+        "mlx"
+      ],
+      "tags": [
+        "coverage"
+      ],
+      "source": "",
+      "description": ""
+    },
+    {
+      "id": "gemm-edges-n1536-k32768",
+      "aliases": [],
+      "operation": "matmul",
+      "shape": [
+        4097,
+        1536,
+        32768,
+        1,
+        1,
+        1
+      ],
+      "dispatch_flags": 0,
+      "causal": false,
+      "output_cast": false,
+      "variants": [
+        "fp32",
+        "int8",
+        "mlx"
+      ],
+      "tags": [
+        "coverage"
+      ],
+      "source": "",
+      "description": ""
+    },
+    {
+      "id": "local-qwen35-4b-m1-up",
+      "aliases": [],
+      "operation": "matmul",
+      "shape": [
+        1,
+        9216,
+        2560,
+        1,
+        1,
+        1
+      ],
+      "dispatch_flags": 1,
+      "causal": false,
+      "output_cast": false,
+      "variants": [
+        "fp16",
+        "fp32",
+        "int8",
+        "mlx"
+      ],
+      "tags": [
+        "inference"
+      ],
+      "source": "Libraries/SwiftLLM/Sources/Models/Qwen3_5.swift:60,69,77,299; Apps/LocalCode/Sources/Models/Qwen3_5TextGenerator.swift:338,407,692",
+      "description": "Dynamic-M prefill/decode; dense half or rowwise INT8 weights already expanded"
+    },
+    {
+      "id": "local-qwen35-4b-m128-up",
+      "aliases": [],
+      "operation": "matmul",
+      "shape": [
+        128,
+        9216,
+        2560,
+        1,
+        1,
+        1
+      ],
+      "dispatch_flags": 1,
+      "causal": false,
+      "output_cast": false,
+      "variants": [
+        "fp16",
+        "fp32",
+        "int8",
+        "mlx"
+      ],
+      "tags": [
+        "inference"
+      ],
+      "source": "Libraries/SwiftLLM/Sources/Models/Qwen3_5.swift:60,69,77,299; Apps/LocalCode/Sources/Models/Qwen3_5TextGenerator.swift:338,407,692",
+      "description": "Dynamic-M prefill/decode; dense half or rowwise INT8 weights already expanded"
+    },
+    {
+      "id": "local-qwen35-4b-m2048-up",
+      "aliases": [],
+      "operation": "matmul",
+      "shape": [
+        2048,
+        9216,
+        2560,
+        1,
+        1,
+        1
+      ],
+      "dispatch_flags": 1,
+      "causal": false,
+      "output_cast": false,
+      "variants": [
+        "fp16",
+        "fp32",
+        "int8",
+        "mlx"
+      ],
+      "tags": [
+        "inference"
+      ],
+      "source": "Libraries/SwiftLLM/Sources/Models/Qwen3_5.swift:60,69,77,299; Apps/LocalCode/Sources/Models/Qwen3_5TextGenerator.swift:338,407,692",
+      "description": "Dynamic-M prefill/decode; dense half or rowwise INT8 weights already expanded"
+    },
+    {
+      "id": "local-qwen35-27b-m2048-down",
+      "aliases": [],
+      "operation": "matmul",
+      "shape": [
+        2048,
+        5120,
+        17408,
+        1,
+        1,
+        1
+      ],
+      "dispatch_flags": 1,
+      "causal": false,
+      "output_cast": false,
+      "variants": [
+        "fp16",
+        "fp32",
+        "int8",
+        "mlx"
+      ],
+      "tags": [
+        "inference"
+      ],
+      "source": "Libraries/SwiftLLM/Sources/Models/Qwen3_5.swift:60,69,77,299; Apps/LocalCode/Sources/Models/Qwen3_5TextGenerator.swift:338,407,692",
+      "description": "Dynamic-M prefill/decode; dense half or rowwise INT8 weights already expanded"
+    }
+  ],
+  "sha256": {
+    "base": "5359a2e248a8b7091d80aecb855dfc6f2eac38fe4a1b775f1d30c763ec5a4bfb",
+    "branch": "ee26129782756cfc03f421a8f45f4c8540e12770a0c2ccc8ffc812792fe9a094",
+    "native": "2b4e9bbafb93bbc9fbcec9000267373cdbd195fa8c7282b6e00a9c387836e06c"
+  },
+  "warmup": 0.5,
+  "cooldown": 8,
+  "order": [
+    "base",
+    "branch",
+    "native",
+    "native",
+    "branch",
+    "base"
+  ],
+  "candidate_patch_sha256": "32c06f70abf03010acd6e29a6aa08e3f5648092c0a9a084e76026aeb3d40d65f"
+}

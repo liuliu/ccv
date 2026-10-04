@@ -1,0 +1,176 @@
+INT8 inference tuning, M5 Max first; iPad final validation
+
+Source baseline: remote branch m5-na-inference-benchmarks at b821dc8e,
+parent 6a611be1. Prepared for publication on m5-na-int8-core-gating.
+
+Outcome: retain the Max INT8 gains while gating the GEMM profiles away from
+smaller GPUs. Final iPad GEMM is within 3% of parent across five tested shapes;
+all six tested native INT8 attention cases improve on both devices. The full
+mixed branch is still not a universal performance improvement: floating-point
+regressions identified in the earlier report remain outside this work.
+
+Final comparisons (mean of two process medians; 21 GPU samples per process):
+Workload | Max parent -> final ms (change) | iPad parent -> final ms (change)
+gemm-rows-512-6144-6144 | 0.442 -> 0.355 (-19.6%) | 1.609 -> 1.622 (+0.8%)
+gemm-rows-2048-6144-6144 | 1.588 -> 1.382 (-12.9%) | 6.487 -> 6.675 (+2.9%)
+flux2-1024-projection | 3.321 -> 2.676 (-19.4%) | 13.279 -> 13.218 (-0.5%)
+flux2-1024-ffn-down | 11.745 -> 8.355 (-28.9%) | 50.051 -> 48.943 (-2.2%)
+gemm-edges-n4097-k8193 | 3.986 -> 4.005 (+0.5%) | 18.264 -> 18.456 (+1.1%)
+attn-d256-r4096-c4096 | 5.232 -> 2.628 (-49.8%) | 17.464 -> 10.614 (-39.2%)
+flux2-512-attention | 1.080 -> 0.912 (-15.5%) | 4.035 -> 3.624 (-10.2%)
+qwen21-1024-attention | 4.141 -> 3.755 (-9.3%) | 17.407 -> 15.770 (-9.4%)
+attn-partition-r4096-c24576-h48 | 35.691 -> 30.286 (-15.1%) | 147.041 -> 131.162 (-10.8%)
+attn-d128-r4097-c4097 | 1.131 -> 1.098 (-3.0%) | 4.233 -> 3.890 (-8.1%)
+attn-dynamic-d256 | 12.829 -> 5.293 (-58.7%) | 40.059 -> 20.479 (-48.9%)
+
+All workloads above use FP16 IO and INT8 computation. GEMM shape names encode
+M/N/K; FLUX projection is 4096/6144/6144 and FFN-down is 4096/6144/18432.
+Attention shapes and exact flags are recorded in each metadata.json. All six
+attention cases logged attention_fp16_fallback=0. Short-K Max rows reuse the
+unchanged kernels from mac-candidate-1; affected deep reductions and projection
+were rechecked in mac-settled. See protocol.txt for candidate lineage.
+
+The MLX register implementation is not required to reach projection throughput:
+the existing native MPP implementation with a 64x128x128 tile and four SIMD
+groups matches it on the tested short/moderate reductions. This is a scheduling
+win, not a change to quantization or accumulation precision. Both retain INT32
+products/sums and the existing row scales. Long reductions remain on register dispatch when admitted by the existing shape bounds.
+
+The register kernel explicitly assigns each SIMD group a 32x32 output fragment,
+loads INT8 register fragments in K32 steps, groups them under a K512 traversal,
+and pairs the integer reduction loop. Native passes device tensor slices into
+MPP with K128 steps and lets its compiler manage operand loading. Equivalent
+macro tiles do not imply equivalent register use or scheduling. A native
+cooperative-register prototype was correct but about 4-5x slower; its code and
+measurements are archived, not in the production change. Simply copying paired
+unrolling did not close the gap in the controlled production-operator pass. There is no semantic reason
+the two source generators must be separate classes; integrating the faster
+long-reduction algorithm requires preserving these scheduling details, rather
+than assuming class consolidation itself yields performance parity.
+
+Cached hardware policy: query gpu-core-count once per MFA context with IOKit
+on macOS, default to 10 on iOS. This Max returns 40. A missing macOS property
+remains zero. Apple10 capability remains a separate condition. Only endpoints
+10 and 40 are measured here; the threshold is a conservative rollout policy,
+not proof of a universal core-count performance law. Larger GPUs retain their
+existing register dispatch pending measurements. Within the scaled GEMM frontend, smaller/unknown GPUs keep the original
+native INT8 tile and avoid the branch's row chunking. Other direct descriptor
+callers (for example fused SwiGLU/ANE hybrids) retain their pre-existing tile
+defaults and are outside this performance gate.
+
+Native fused FP32 output preserves float(half(value)) rounding, so replacing
+a GEMM-then-cast graph does not silently change numerical behavior. Profile
+selection is in the pipeline descriptor key, including dynamic-M boundaries;
+output type is in the kernel source key. Keep the existing register kernel's
+wider address arithmetic for eligible tensors beyond native uint32 offsets.
+
+The six NAInt8Attention forward cases improved on both devices, as listed above. INT8 backward fixes,
+NAMatMul and floating-point NAAttention/NARegisterAttention tuning are deferred.
+The earlier whole-branch report records material floating-point regressions;
+this INT8 work does not establish that the entire mixed branch is ready.
+
+Scope: GPU operator times, including activation quantization, using expanded
+rowwise weights. No complete-model latency or quantized-model quality claim.
+Mac integration tests cover the full backend; iPad tests exercise production
+MFA operators through a signed on-device probe, not the full MPSGraph suite.
+
+Settled GEMM policy and evidence:
+- For the measured 40-core Max: native 64x128x128 / four SIMD groups for
+  K <= 8192. Eligible K > 8192 reductions keep the register kernel. The original
+  small-M path is unchanged; its gains belong to the incoming branch.
+- Native projection: final 2.676 ms vs branch/register 2.673 ms, parent 3.321 ms.
+- Native-only Qwen-27B FFN-down: 3.671 ms vs register 3.333 ms; paired unrolling
+  3.659 ms still loses. Final production dispatch therefore keeps register.
+- FLUX FFN-down final: 8.355 ms vs branch 8.221 ms, parent 11.745 ms.
+- K16384 final: 7.257 ms vs branch 7.135 ms, parent 10.464 ms.
+- The N1536/K32768 unmodified control changed relative direction between passes
+  (candidate +5.2% then -1.9% vs parent), with nominal thermal state throughout.
+  No performance regression or additional gate is inferred from that case.
+
+Thermal protocol:
+- Max tests run sequentially, with no compilation during timed sweeps.
+- Final GEMM: 120 s initial idle, >=8 s between processes, 0.5 GPU-second
+  warmup, 21 samples, parent/branch/candidate/candidate/branch/parent order.
+- Native-loop experiment: parent/branch/original/paired/paired/original/branch/
+  parent, same cooling and timing. Paired loop was rejected and removed.
+- Forward attention: parent/candidate/candidate/parent, 30 s initial idle,
+  >=8 s between calls. iPad: 120 s initial idle, >=20 s between calls and 45 s
+  for selected larger cases. Same warmup and samples.
+- Inspect repeat spread and surrounding parent controls in addition to OS
+  thermal state. Nominal state is necessary but not sufficient for repeatability.
+- Treat >5% control drift or >10% repeated-candidate spread as inconclusive;
+  these are practical screening bounds, not statistical confidence intervals.
+
+Correctness and build validation:
+- Debug build succeeded. Full mpsdnn 126/126 and mpsblas 302/302 passed for the
+  native candidate; after settling the selector, rowwise INT8 2/2 and fused
+  cast 3/3 passed again. Includes dynamic rows, partial tiles, fused bias,
+  half-rounding preservation, aliasing, graph reinitialization and training
+  fallback. No backward correctness fix was attempted.
+- Native and MLX-reference 129x257x513 probes checked every output against CPU.
+- Improved microbenchmark checker: INT64 CPU accumulation and actual half row
+  scales; small cases now genuinely check all outputs, large cases sample CPU
+  references and check every output for finiteness.
+- Swift package manifest validation and macOS/iOS compilation/signing passed.
+
+Final source-review adjustment: preserve the descriptor's old small-tile default
+for direct callers, bounded by K <= 8192. The scaled GEMM frontend explicitly
+sets preferSmallTile, so this adjustment changes neither selected kernels nor
+numerical behavior for any measured workload. Raw timing binaries precede this
+caller-default preservation; final-source build/smoke checks are recorded
+separately. Do not apply these GEMM performance conclusions to fused SwiGLU,
+ANE hybrids, or segmented operators without separate measurements.
+
+Attribution within the mixed incoming commit:
+- NAInt8MatMul: native four-SIMD-group tile reaches register throughput on the
+  tested K <= 8192 surface. Keep register fragment loading for admitted deeper
+  reductions. Core-count gating is needed for the GEMM profiles on the iPad.
+- NAInt8Attention: retain its native forward changes, including compact query/
+  head dispatch, bulk/tail query ranges, split D256 outputs and long-KV
+  partitioning. The measurements compare the bundle against the parent; they
+  do not independently isolate each optimization. These six selected cases
+  execute quantized attention, not NARegisterAttention/FP16 fallback.
+- NAMatMul: its explicit FP32 accumulator correction must remain a correctness
+  change even where it costs time. Floating-point tile tuning is deferred.
+- NAAttention / NARegisterAttention: the earlier report found regressions on
+  Qwen and long-KV FP16 shapes, including on the Max. A core-count gate alone
+  is not yet a demonstrated solution for that separate shape-selection problem.
+- No INT8 backward fixes or new backward performance claims are included.
+
+Final validation status:
+- 176 cooled Max calls and 44 cooled iPad calls completed with passing sampled
+  CPU checks, full-output finite scans and nominal thermal state before/after.
+- Every final iPad comparison passed the drift screening bounds: parent spread
+  <=1.0%; candidate spread <=6.4% (the M2048 GEMM). Other iPad candidate spreads
+  were <=2.2%. The 2.9% M2048 difference is treated as parity, not a material loss.
+- Final-source rebuild passed on macOS and iOS. Final-source fused-cast tests
+  passed 3/3 again. The final iPad smoke check passed, reported core count 10,
+  and produced the identical full-output SHA256 as its controlled timing run.
+- Both temporary iPad apps were uninstalled after validation.
+- Measurements were captured before publication; the source changes are now
+  published on the m5-na-int8-core-gating branch for M5 Ultra validation.
+
+Artifact index:
+The repository includes reports, summaries, run records/metadata, binary hashes
+and timing scripts. Full per-call logs, build logs, candidate patches and iOS
+project snapshots listed below remain in the original validation workspace.
+- report.txt and protocol.txt: conclusions, scope, methodology and limitations.
+- gemm-results.txt, attention-results.txt, ipad-results.txt: full repeat summaries.
+- mac-candidate-1/: 16-shape native-only experiment (deep-K substitution rejected).
+- mac-paired-loop/: rejected paired-loop experiment and controls.
+- mac-settled/: final four-shape GEMM selector confirmation.
+- mac-attention/ and ipad-final/: final forward attention and device results.
+- exploration/: tile/register/loop screening and rejected register prototype.
+- validation/: build, full integration, focused final and on-device smoke logs.
+- reproduction/: exact scripts, candidate patches, final-source.patch, binary
+  hashes and iOS probe/project source. settled-source.patch matches the timing
+  binaries; final-source.patch adds only the caller-default preservation noted
+  above. final-source-build-metadata.json distinguishes the rebuilt binaries.
+
+Source entry points:
+  lib/nnc/mfa/ccv_nnc_mfa.cpp: cached macOS IOKit / iOS default core count.
+  lib/nnc/mfa/ccv_nnc_mfa_scaled_gemm.cpp: hardware and reduction-length policy.
+  lib/nnc/mfa/kernels/NAInt8MatMulDescriptor.*: profile/output cache keys.
+  lib/nnc/mfa/kernels/NAInt8MatMulKernel*: native float output with half rounding.
+  bin/mfa/na_int8_matmul_bench.cpp: MLX reference and corrected CPU checks.
+  Package.swift and lib/configure*: macOS-only IOKit linkage.

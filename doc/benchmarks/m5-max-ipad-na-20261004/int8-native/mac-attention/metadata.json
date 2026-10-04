@@ -1,0 +1,176 @@
+{
+  "shapes": [
+    {
+      "id": "flux2-512-attention",
+      "aliases": [],
+      "operation": "attention",
+      "shape": [
+        1536,
+        1536,
+        128,
+        1,
+        48,
+        48
+      ],
+      "dispatch_flags": 0,
+      "causal": false,
+      "output_cast": false,
+      "variants": [
+        "fp16",
+        "int8",
+        "mlx"
+      ],
+      "tags": [
+        "inference",
+        "smoke"
+      ],
+      "source": "Libraries/SwiftDiffusion/Sources/Models/Flux2.swift",
+      "description": "512px square; 512 assumed text tokens; exact dense SDPA"
+    },
+    {
+      "id": "qwen21-1024-attention",
+      "aliases": [
+        "qwen21-last-image-only"
+      ],
+      "operation": "attention",
+      "shape": [
+        4096,
+        4352,
+        128,
+        1,
+        32,
+        32
+      ],
+      "dispatch_flags": 0,
+      "causal": false,
+      "output_cast": false,
+      "variants": [
+        "fp16",
+        "int8",
+        "mlx"
+      ],
+      "tags": [
+        "inference"
+      ],
+      "source": "Libraries/SwiftDiffusion/Sources/Models/QwenImage2_1.swift",
+      "description": "1024px square; 256 assumed text tokens; exact dense SDPA"
+    },
+    {
+      "id": "attn-d256-r4096-c4096",
+      "aliases": [],
+      "operation": "attention",
+      "shape": [
+        4096,
+        4096,
+        256,
+        1,
+        8,
+        8
+      ],
+      "dispatch_flags": 0,
+      "causal": false,
+      "output_cast": false,
+      "variants": [
+        "fp16",
+        "int8",
+        "mlx"
+      ],
+      "tags": [
+        "coverage"
+      ],
+      "source": "",
+      "description": ""
+    },
+    {
+      "id": "attn-partition-r4096-c24576-h48",
+      "aliases": [],
+      "operation": "attention",
+      "shape": [
+        4096,
+        24576,
+        128,
+        1,
+        48,
+        48
+      ],
+      "dispatch_flags": 0,
+      "causal": false,
+      "output_cast": false,
+      "variants": [
+        "fp16",
+        "int8",
+        "mlx"
+      ],
+      "tags": [
+        "coverage"
+      ],
+      "source": "",
+      "description": ""
+    },
+    {
+      "id": "attn-d128-r4097-c4097",
+      "aliases": [],
+      "operation": "attention",
+      "shape": [
+        4097,
+        4097,
+        128,
+        1,
+        8,
+        8
+      ],
+      "dispatch_flags": 0,
+      "causal": false,
+      "output_cast": false,
+      "variants": [
+        "fp16",
+        "int8",
+        "mlx"
+      ],
+      "tags": [
+        "coverage"
+      ],
+      "source": "",
+      "description": ""
+    },
+    {
+      "id": "attn-dynamic-d256",
+      "aliases": [],
+      "operation": "attention",
+      "shape": [
+        4097,
+        8193,
+        256,
+        1,
+        8,
+        2
+      ],
+      "dispatch_flags": 3,
+      "causal": false,
+      "output_cast": false,
+      "variants": [
+        "fp16",
+        "int8",
+        "mlx"
+      ],
+      "tags": [
+        "coverage"
+      ],
+      "source": "",
+      "description": ""
+    }
+  ],
+  "sha256": {
+    "base": "5359a2e248a8b7091d80aecb855dfc6f2eac38fe4a1b775f1d30c763ec5a4bfb",
+    "branch": "ee26129782756cfc03f421a8f45f4c8540e12770a0c2ccc8ffc812792fe9a094",
+    "native": "de2b8013602401398ea1061419ffb6d319c15da2cb7f0f5fd6a8f280f45e65c4"
+  },
+  "warmup": 0.5,
+  "cooldown": 8,
+  "order": [
+    "base",
+    "native",
+    "native",
+    "base"
+  ]
+}

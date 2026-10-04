@@ -28,6 +28,8 @@ NAInt8MatMulKernel::NAInt8MatMulKernel(
   executionSIMDGroups = descriptor.executionSIMDGroups;
   ioPrecision = descriptor.ioPrecision;
   useBias = descriptor.useBias;
+  castOutputToFloat = descriptor.castOutputToFloat;
+  CCV_NNC_MFA_PRECONDITION(!castOutputToFloat || ioPrecision == GEMMOperandPrecision::FP16);
   loadM = descriptor.loadM;
   useLeadingDimensions = descriptor.useLeadingDimensions;
   activationQuantizeThreads = descriptor.activationQuantizeThreads;
@@ -70,6 +72,7 @@ std::string NAInt8MatMulKernel::createSource() const noexcept {
   source.SetValue("GROUP_M", std::to_string(groupM));
   source.SetValue("GROUP_N", std::to_string(groupN));
   source.SetValue("IO_TYPE", ioPrecision.name());
+  source.SetValue("OUTPUT_TYPE", castOutputToFloat ? "float" : ioPrecision.name());
   source.SetValue("LEADING_DIMENSION_CONSTANTS", useLeadingDimensions ? "constant uint A_leading_dimension [[function_constant(22)]];\nconstant uint C_leading_dimension [[function_constant(23)]];\n" : "");
   source.SetValue("QUANTIZATION_BASES", useLeadingDimensions ? "  const uint src_base = row * A_leading_dimension;\n  const uint dst_base = row * K;\n" : "  const uint base = row * K;\n");
   source.SetValue("QUANTIZATION_VECTOR_BASES", useLeadingDimensions ? "    const uint src_vector_base = src_base / 4;\n    const uint dst_vector_base = dst_base / 4;\n" : "    const uint vector_base = row * vectors_per_row;\n");
@@ -307,7 +310,7 @@ kernel void quantize_activation(
 kernel void int8_matmul(
     device int8_t *A_buf [[buffer(0)]],
     device int8_t *B_buf [[buffer(1)]],
-    device {{IO_TYPE}} *C_buf [[buffer(2)]],
+    device {{OUTPUT_TYPE}} *C_buf [[buffer(2)]],
     device const {{IO_TYPE}} *A_scale_buf [[buffer(3)]],
     device const {{IO_TYPE}} *B_scale_buf [[buffer(4)]],
 )";

@@ -1,0 +1,14 @@
+
+/tmp/ccv-int8-tuning/attention-final/records.jsonl
+flux2-512-attention | base 1.0799 ms (spread 0.3%, n=2) | native 0.9123 ms (spread 0.4%, n=2)
+  changes vs parent: native -15.5%
+qwen21-1024-attention | base 4.1412 ms (spread 0.2%, n=2) | native 3.7550 ms (spread 0.0%, n=2)
+  changes vs parent: native -9.3%
+attn-d256-r4096-c4096 | base 5.2319 ms (spread 0.1%, n=2) | native 2.6280 ms (spread 0.0%, n=2)
+  changes vs parent: native -49.8%
+attn-partition-r4096-c24576-h48 | base 35.6914 ms (spread 0.2%, n=2) | native 30.2863 ms (spread 0.0%, n=2)
+  changes vs parent: native -15.1%
+attn-d128-r4097-c4097 | base 1.1315 ms (spread 0.4%, n=2) | native 1.0977 ms (spread 1.4%, n=2)
+  changes vs parent: native -3.0%
+attn-dynamic-d256 | base 12.8292 ms (spread 2.2%, n=2) | native 5.2929 ms (spread 0.2%, n=2)
+  changes vs parent: native -58.7%
