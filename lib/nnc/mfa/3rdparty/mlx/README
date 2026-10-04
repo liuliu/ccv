@@ -1,0 +1,20 @@
+INT8 GEMM fragment loads and reduction traversal from MLX
+
+Upstream revision: 25532871329fe4cafdada9fa0941a1cdbfb3a9f2
+Repository: https://github.com/ml-explore/mlx
+License: MIT (included in gemm.metal.inc).
+
+gemm.metal.inc embeds utils.h, steel/gemm/gemm_nax.h and
+steel/gemm/kernels/steel_gemm_fused_nax.h with their transitive local includes.
+Duplicate includes and pragma-once directives were removed and the result
+wrapped in a C++ raw string. Unused GEMM entry points were omitted. Upstream copyright notices are retained.
+
+NAInt8MatMulKernel uses the integer fragment implementation with its existing
+activation quantizer and row scales. Its local generator unrolls pairs of K32
+operations and removes masked loads for complete K32 fragments inside a K512
+tail. The final partial fragment retains bounds checks. INT32 accumulation,
+FP16 row scales, bias and output match the existing INT8 operator.
+
+Implementation choice is a kernel-source property; alignment is specialized
+at pipeline creation. Matrix dimensions and grid sizes are supplied at encode
+time. No FP16 GEMM or attention operator is instantiated from this source.

@@ -59,6 +59,9 @@ NAInt8AttentionKernel::NAInt8AttentionKernel(
   threadBarrierEveryC = descriptor.threadBarrierEveryC;
   ioPrecision = descriptor.ioPrecision;
   lowPrecisionIntermediates = descriptor.lowPrecisionIntermediates;
+  partitioned = descriptor.partitioned;
+  splitOutput = descriptor.splitOutput;
+  compactGrid = descriptor.compactGrid;
   scale = descriptor.scale;
   isCausal = descriptor.isCausal;
   masked = descriptor.masked;
@@ -68,6 +71,17 @@ NAInt8AttentionKernel::NAInt8AttentionKernel(
   loadR = descriptor.loadR;
   hasRRemainder = descriptor.hasRRemainder;
   loadC = descriptor.loadC;
+
+  CCV_NNC_MFA_PRECONDITION(!compactGrid || type == AttentionKernelType::forward);
+
+  CCV_NNC_MFA_PRECONDITION(!partitioned || (type == AttentionKernelType::forward &&
+      ioPrecision == GEMMOperandPrecision::FP16 && lowPrecisionIntermediates &&
+      headDimension == 128 && !isCausal && !masked && !isVarlen && !attentionSinks));
+  CCV_NNC_MFA_PRECONDITION(!splitOutput || (type == AttentionKernelType::forward &&
+      ioPrecision == GEMMOperandPrecision::FP16 && lowPrecisionIntermediates &&
+      headDimension == 256 && blockDimensions[0] == 16 && blockDimensions[1] == 64 &&
+      blockDimensions[2] == 64 && executionSIMDGroups == 8 && compactGrid && !partitioned &&
+      !isCausal && !masked && !isVarlen && !attentionSinks));
 
   source = createSource();
 
@@ -79,7 +93,7 @@ NAInt8AttentionKernel::NAInt8AttentionKernel(
 
 uint32_t NAInt8AttentionKernel::threadgroupMemoryAllocation() const noexcept {
   if (type == AttentionKernelType::forward) {
-    if (!hasCRemainder) {
+    if (!hasCRemainder || splitOutput) {
       return 0;
     }
     return blockDimensions[0] * blockDimensions[1] * executionSIMDGroups * sizeof(int8_t);
@@ -94,15 +108,19 @@ uint16_t NAInt8AttentionKernel::threadgroupSize(MTL::ComputePipelineState *const
   return pipelineState->threadExecutionWidth() * executionSIMDGroups;
 }
 
-MTL::Size NAInt8AttentionKernel::threadgroupsPerGrid(uint32_t batchDimension, uint32_t rowDimension) const noexcept {
+MTL::Size NAInt8AttentionKernel::threadgroupsPerGrid(uint32_t batchDimension, uint32_t rowDimension, uint16_t queryRange) const noexcept {
   auto ceilDivide =
     [=](int64_t target, uint16_t granularity) -> int64_t {
       return (target + int64_t(granularity) - 1) / int64_t(granularity);
     };
-  const int64_t row_groups = ceilDivide(rowDimension, blockDimensions[0] * executionSIMDGroups);
+  const int64_t row_groups = queryRange == 2 ? 1 :
+      (queryRange == 1 ? rowDimension / (blockDimensions[0] * executionSIMDGroups) :
+          ceilDivide(rowDimension, blockDimensions[0] * executionSIMDGroups));
   const uint32_t row_bits = ceilLog2(row_groups);
   const uint32_t heads =
       type == AttentionKernelType::backwardKeyValue ? Hk : Hq;
+  if (compactGrid)
+    return MTL::Size(row_groups * heads, 1, batchDimension * (splitOutput ? 2 : 1));
   const uint32_t head_bits = ceilLog2(heads);
   return MTL::Size(int64_t(1) << (row_bits + head_bits), 1, batchDimension);
 }
@@ -131,6 +149,17 @@ MTL::Size NAInt8AttentionKernel::vMeanThreadgroupsPerGrid(uint32_t batchDimensio
 }
 
 void NAInt8AttentionKernel::createVMean(CodeWriter& source) const noexcept {
+  source.SetValue("PARTITION_ARGUMENT", partitioned ? "    constant uint& partition_size [[buffer(22)]],\n" : "");
+  source.SetValue("V_MEAN_PARTITION", partitioned ? R"(
+  const uint partition_start = tgid.z * partition_size;
+  const uint partition_end = min(QUANTIZE_KV_SEQUENCE, partition_start + partition_size);
+  const uint partition_length = partition_end - partition_start;
+  mean += tgid.z * QUANTIZE_KV_HEADS * )" + std::to_string(headDimension) + ";\n" : "");
+  source.SetValue("V_MEAN_BATCH", partitioned ? "0" : "tgid.z");
+  source.SetValue("V_MEAN_BEGIN", partitioned ? "partition_start + row" : "row");
+  source.SetValue("V_MEAN_END", partitioned ? "partition_end" : source.GetValue("V_SEQUENCE_LENGTH"));
+  if (partitioned)
+    source.SetValue("V_SEQUENCE_DIVISOR", "partition_length");
   const bool vectorized = (headDimension % 4) == 0;
   source.SetValue("V_MEAN_VECTORS", std::to_string(vectorized ? headDimension / 4 : headDimension));
   source.SetValue("V_MEAN_TILE", std::to_string(vMeanVectorsPerTile()));
@@ -148,15 +177,15 @@ void NAInt8AttentionKernel::createVMean(CodeWriter& source) const noexcept {
 kernel void compute_v_mean(
 {{RUNTIME_ARGUMENT}}    device const {{IO_MEMORY_NAME}} *src [[buffer(0)]],
     device {{V_MEAN_MEMORY_NAME}} *mean [[buffer(1)]],
-    uint tid [[thread_index_in_threadgroup]],
+{{PARTITION_ARGUMENT}}    uint tid [[thread_index_in_threadgroup]],
     ushort lane_id [[thread_index_in_simdgroup]],
     uint3 tgid [[threadgroup_position_in_grid]]{{QUANTIZE_VARLEN_BUFFER}}
   ) {
-{{QUANTIZE_RUNTIME_CONSTANTS}}{{V_MEAN_ALIASES}}
+{{QUANTIZE_RUNTIME_CONSTANTS}}{{V_MEAN_PARTITION}}{{V_MEAN_ALIASES}}
   const uint mean_tiles = ({{V_MEAN_VECTORS}} + {{V_MEAN_TILE}} - 1) / {{V_MEAN_TILE}};
   const uint2 morton = morton_decode_rectangular_2d(tgid.x,
       ceil_log2_u32(mean_tiles), ceil_log2_u32(QUANTIZE_KV_HEADS));
-  const uint head = morton.y, batch = tgid.z;
+  const uint head = morton.y, batch = {{V_MEAN_BATCH}};
   if (morton.x >= mean_tiles || head >= QUANTIZE_KV_HEADS)
     return;{{V_VARLEN_SEQUENCE_SETUP}}
   // Adjacent vectors keep input reads coalesced. Transpose the partials in
@@ -169,7 +198,7 @@ kernel void compute_v_mean(
     const uint row = tid / {{V_MEAN_TILE}} + part * rows_per_part;
     float4 local_sum = float4(0.0f);
     if (vec_dim < {{V_MEAN_VECTORS}}) {
-      for (uint column = row; column < {{V_SEQUENCE_LENGTH}}; column += QUANTIZE_V_MEAN_THREADS) {
+      for (uint column = {{V_MEAN_BEGIN}}; column < {{V_MEAN_END}}; column += QUANTIZE_V_MEAN_THREADS) {
         {{V_MEAN_LOAD}}
       }
     }
@@ -228,7 +257,7 @@ using namespace mpp::tensor_ops;
 
   )";
   source.SetValue("IO_MEMORY_NAME", ioPrecision.name());
-  source.SetValue("L_MEMORY_NAME", lPrecision.name());
+  source.SetValue("L_MEMORY_NAME", partitioned ? "float" : lPrecision.name());
   source.SetValue("D_MEMORY_NAME", dPrecision.name());
   source.SetValue("V_MEAN_MEMORY_NAME", "float");
   source.SetValue("ACCUM_MEMORY_NAME", ioPrecision == GEMMOperandPrecision::FP32 ? "float" : "half");
@@ -618,6 +647,7 @@ inline uint ceil_log2_u32(uint x) {
       "((sequence_start + row) * QUANTIZE_KV_HEADS + head) * " + headDimensionString + " + dim" :
       "batch * QUANTIZE_V_BATCH_STRIDE + ((row * QUANTIZE_KV_HEADS + head) * " + headDimensionString + " + dim)");
   createVMean(source);
+  source.SetValue("V_QUANTIZE_PARTITION", partitioned ? "mean += (start / partition_size) * QUANTIZE_KV_HEADS * " + std::to_string(headDimension) + ";" : "");
   if (vectorizeQuantize) {
     source += R"(
 kernel void quantize_v(
@@ -625,6 +655,7 @@ kernel void quantize_v(
     device int8_t *dst [[buffer(1)]],
     device float *scales [[buffer(2)]],
     device const {{V_MEAN_MEMORY_NAME}} *mean [[buffer(3)]],
+{{PARTITION_ARGUMENT}}
     uint tid [[thread_index_in_threadgroup]],
     ushort sgid [[simdgroup_index_in_threadgroup]],
     ushort lane_id [[thread_index_in_simdgroup]],
@@ -636,6 +667,7 @@ kernel void quantize_v(
   const uint batch = tgid.z;
   const uint start = tile * QUANTIZE_KV_TILE_SIZE;{{V_VARLEN_SEQUENCE_SETUP}}
   {{V_QUANTIZE_EXTENT}}
+  {{V_QUANTIZE_PARTITION}}
   const uint vectors_per_row = {{HEAD_DIMENSION}} / 4;
   const uint total_vectors = extent * vectors_per_row;
   device const io_vec4 *src4 = reinterpret_cast<device const io_vec4 *>(src);
@@ -675,6 +707,7 @@ kernel void quantize_v(
     device int8_t *dst [[buffer(1)]],
     device float *scales [[buffer(2)]],
     device const {{V_MEAN_MEMORY_NAME}} *mean [[buffer(3)]],
+{{PARTITION_ARGUMENT}}
     uint tid [[thread_index_in_threadgroup]],
     ushort sgid [[simdgroup_index_in_threadgroup]],
     ushort lane_id [[thread_index_in_simdgroup]],
@@ -686,6 +719,7 @@ kernel void quantize_v(
   const uint batch = tgid.z;
   const uint start = tile * QUANTIZE_KV_TILE_SIZE;{{V_VARLEN_SEQUENCE_SETUP}}
   {{V_QUANTIZE_EXTENT}}
+  {{V_QUANTIZE_PARTITION}}
   const uint total = extent * {{HEAD_DIMENSION}};
   float local_max = 0;
   for (uint i = tid; i < total; i += QUANTIZE_KV_THREADS) {
@@ -773,10 +807,30 @@ kernel void generate_int8_attention_block_mask(
   }
   switch (type.value) {
   case AttentionKernelType::forward:
+    source.SetValue("QUERY_CHUNK_ROWS", partitioned ? "(kv_range.w - kv_range.z)" : "uint(R)");
+    source.SetValue("OUTPUT_PARTITION", splitOutput ?
+        "  const uint output_part = tgid.z & 1;\n  tgid.z >>= 1;\n" : "");
+    // Visit only live query/head groups, keeping a head's query groups adjacent.
+    // The descriptor chooses this for split outputs and the measured D128
+    // long-KV / padded-grid surface. Grid dimensions still use the current call.
+    source.SetValue("ROW_HEAD_MAPPING", compactGrid ? R"(
+  tgid = uint3(tgid.x % row_group_count, tgid.x / row_group_count, tgid.z);
+)" : R"(
+  const uint row_group_bits = ceil_log2_u32(row_group_count);
+  const uint head_bits = ceil_log2_u32(Hq);
+  const uint tile_code = tgid.x;
+  const uint2 morton_tile = morton_decode_rectangular_2d(tile_code, row_group_bits, head_bits);
+  tgid = uint3(morton_tile.x, morton_tile.y, tgid.z);
+)");
+    source.SetValue("QUERY_CHUNK_BEGIN", partitioned ? "kv_range.z / " + std::to_string(blockDimensions[0] * executionSIMDGroups) + " + " : "");
+    source.SetValue("KV_RANGE_ARGUMENT", partitioned ? ",\n    constant uint4& kv_range [[buffer(22)]]" : "");
     source.SetValue("MAIN_KERNEL_NAME", "int8_attention");
+    source.SetValue("QUERY_ROW_TILE", std::to_string(blockDimensions[0] * executionSIMDGroups));
     source.SetValue("ROW_DIMENSION_SYMBOL", "R");
     source.SetValue("GRID_HEADS", std::to_string(Hq));
     source += R"(
+constant ushort QUERY_RANGE_VALUE [[function_constant(40)]];
+constant ushort QUERY_RANGE = is_function_constant_defined(QUERY_RANGE_VALUE) ? QUERY_RANGE_VALUE : 0;
 kernel void {{MAIN_KERNEL_NAME}}(
 {{RUNTIME_ARGUMENT}})";
     source += createBufferBindings();
@@ -788,18 +842,16 @@ kernel void {{MAIN_KERNEL_NAME}}(
 	    source += R"(
 	    threadgroup uchar *threadgroup_block [[threadgroup(0)]],
 {{THREAD_INDEX_PARAMETER}}	    ushort sgid [[simdgroup_index_in_threadgroup]],
-	    uint3 tgid [[threadgroup_position_in_grid]]
+	    uint3 tgid [[threadgroup_position_in_grid]]{{KV_RANGE_ARGUMENT}}
 	  ) {
-{{ATTENTION_RUNTIME_CONSTANTS}}  const uint row_group_count = ({{ROW_DIMENSION_SYMBOL}} + {{BLOCK_DIMENSIONS_PARALLELIZATION}} * {{EXECUTION_SIMD_GROUPS}} - 1) / ({{BLOCK_DIMENSIONS_PARALLELIZATION}} * {{EXECUTION_SIMD_GROUPS}});
-  const uint row_group_bits = ceil_log2_u32(row_group_count);
-  const uint head_bits = ceil_log2_u32({{GRID_HEADS}});
-  const uint tile_code = tgid.x;
-  const uint2 morton_tile = morton_decode_rectangular_2d(tile_code, row_group_bits, head_bits);
-  tgid = uint3(morton_tile.x, morton_tile.y, tgid.z);
+{{ATTENTION_RUNTIME_CONSTANTS}}{{OUTPUT_PARTITION}}  const uint row_group_count = QUERY_RANGE == 2 ? 1u :
+      (QUERY_RANGE == 1 ? {{QUERY_CHUNK_ROWS}} / {{QUERY_ROW_TILE}} :
+          ({{QUERY_CHUNK_ROWS}} + {{QUERY_ROW_TILE}} - 1) / {{QUERY_ROW_TILE}});
+{{ROW_HEAD_MAPPING}}
   if (tgid.y >= {{GRID_HEADS}} || tgid.x >= row_group_count) {
     return;
   }
-  tgid.x = tgid.x * {{EXECUTION_SIMD_GROUPS}} + sgid;
+  tgid.x = ({{QUERY_CHUNK_BEGIN}}tgid.x + (QUERY_RANGE == 2 ? {{QUERY_CHUNK_ROWS}} / {{QUERY_ROW_TILE}} : 0u)) * {{EXECUTION_SIMD_GROUPS}} + sgid;
   if (tgid.x * {{BLOCK_DIMENSIONS_PARALLELIZATION}} >= {{ROW_DIMENSION_SYMBOL}}) {
     return;
   }
@@ -807,6 +859,29 @@ kernel void {{MAIN_KERNEL_NAME}}(
     source += createAdjustOffsets();
     loopForward(source);
     source += "}\n";
+    if (partitioned)
+      source += R"(
+kernel void merge_int8_attention_partitions(const device half* partial [[buffer(0)]], const device float* stats [[buffer(1)]], device half* output [[buffer(2)]], constant uint4& p [[buffer(3)]], const device float* means [[buffer(4)]], constant uint& hk [[buffer(5)]], device half* lse [[buffer(6)]], constant uint2& lshape [[buffer(7)]], uint gid [[thread_position_in_grid]]) {
+  const size_t count = size_t(p.x) * p.y * p.z;
+  const size_t index = size_t(gid) * 4;
+  if (index >= count) return;
+  const uint r = index / (p.y * p.z), h = (index / p.z) % p.y;
+  const uint lindex = h * p.x + r, lstride = p.x * p.y;
+  float maximum = -INFINITY;
+  for (uint s = 0; s < p.w; ++s) maximum = max(maximum, stats[size_t(s) * lstride + lindex]);
+  float total = 0; float4 value = 0;
+  for (uint s = 0; s < p.w; ++s) {
+    const float weight = exp2(stats[size_t(s) * lstride + lindex] - maximum);
+    const float4 centered = 4.0f * float4(*reinterpret_cast<const device half4*>(partial + size_t(s) * count + index));
+    const float4 mean = *reinterpret_cast<const device float4*>(means + (size_t(s) * hk + h / (p.y / hk)) * p.z + index % p.z);
+    value += weight * (centered + mean);
+    total += weight;
+  }
+  *reinterpret_cast<device half4*>(output + index) = half4(value / total);
+  if (index % p.z == 0)
+    lse[size_t(h) * lshape.x + lshape.y + r] = half(maximum + log2(total));
+}
+)";
     break;
   case AttentionKernelType::backwardQuery:
     source.SetValue("MAIN_KERNEL_NAME", "int8_backward_query");
@@ -1024,7 +1099,7 @@ std::string NAInt8AttentionKernel::createBufferBindings() const noexcept {
       (ioPrecision == GEMMOperandPrecision::FP32 ? GEMMOperandPrecision::FP32 : GEMMOperandPrecision::BF16) :
       GEMMOperandPrecision::FP32;
   source.SetValue("IO_MEMORY_NAME", ioPrecision.name());
-  source.SetValue("L_MEMORY_NAME", lPrecision.name());
+  source.SetValue("L_MEMORY_NAME", partitioned ? "float" : lPrecision.name());
   source.SetValue("D_MEMORY_NAME", dPrecision.name());
   source.SetValue("V_MEAN_MEMORY_NAME", "float");
   source.SetValue("QK_MEMORY_NAME", "int8_t");
@@ -1100,6 +1175,7 @@ std::string NAInt8AttentionKernel::createBufferBindings() const noexcept {
 
 std::string NAInt8AttentionKernel::createAdjustOffsets() const noexcept {
   CodeWriter source;
+  source.SetValue("L_ROW_STRIDE", partitioned ? "(kv_range.w - kv_range.z)" : "R");
   source.SetValue("HEAD_DIMENSION", std::to_string(headDimension));
   source.SetValue("BLOCK_DIMENSIONS_PARALLELIZATION", std::to_string(blockDimensions[0]));
   source.SetValue("BLOCK_DIMENSIONS_TRAVERSAL", std::to_string(blockDimensions[1]));
@@ -1130,7 +1206,7 @@ std::string NAInt8AttentionKernel::createAdjustOffsets() const noexcept {
   K_buf += kv_start * K_Hk;
   V_buf += kv_start * K_Hk;
   O_buf += q_start * K_Hq;
-  L_buf += (tgid.z * Hq + tgid.y) * R;
+  L_buf += (tgid.z * Hq + tgid.y) * {{L_ROW_STRIDE}};
   Q_scale_buf += tgid.z * Q_scale_batch_stride + tgid.y * Q_scale_tiles + (tgid.x * {{BLOCK_DIMENSIONS_PARALLELIZATION}}) / Q_scale_tile_size;
   K_scale_buf += tgid.z * K_scale_batch_stride + (tgid.y {{H_HK_RATIO}}) * K_scale_tiles;
   V_scale_buf += tgid.z * V_scale_batch_stride + (tgid.y {{H_HK_RATIO}}) * K_scale_tiles;
@@ -1143,12 +1219,21 @@ std::string NAInt8AttentionKernel::createAdjustOffsets() const noexcept {
   K_buf += tgid.z * K_batch_stride;
   V_buf += tgid.z * V_batch_stride;
   O_buf += tgid.z * O_batch_stride;
-  L_buf += (tgid.z * Hq + tgid.y) * R;
+  L_buf += (tgid.z * Hq + tgid.y) * {{L_ROW_STRIDE}};
   Q_scale_buf += tgid.z * Q_scale_batch_stride + tgid.y * Q_scale_tiles + (tgid.x * {{BLOCK_DIMENSIONS_PARALLELIZATION}}) / Q_scale_tile_size;
   K_scale_buf += tgid.z * K_scale_batch_stride + (tgid.y {{H_HK_RATIO}}) * K_scale_tiles;
   V_scale_buf += tgid.z * V_scale_batch_stride + (tgid.y {{H_HK_RATIO}}) * K_scale_tiles;
   V_mean_buf += tgid.z * V_mean_batch_stride + (tgid.y {{H_HK_RATIO}}) * {{HEAD_DIMENSION}};
 )";
+    if (splitOutput) {
+      // Each partition computes the full QK product, but owns only half of O.
+      // Quantized Q/K and all original SHD strides remain shared and unchanged.
+      source += R"(
+  V_buf += output_part * 128;
+  O_buf += output_part * 128;
+  V_mean_buf += output_part * 128;
+)";
+    }
     if (masked) {
       source += R"(
   Mask_buf += tgid.z * Mask_batch_stride;
@@ -1163,7 +1248,7 @@ std::string NAInt8AttentionKernel::createAdjustOffsets() const noexcept {
   V_buf += tgid.z * V_batch_stride;
   dO_buf += tgid.z * dO_batch_stride;
   dQ_buf += tgid.z * dQ_batch_stride;
-  L_buf += (tgid.z * Hq + tgid.y) * R;
+  L_buf += (tgid.z * Hq + tgid.y) * {{L_ROW_STRIDE}};
   D_buf += (tgid.z * Hq + tgid.y) * R;
   Q_scale_buf += tgid.z * Q_scale_batch_stride + tgid.y * Q_scale_tiles + (tgid.x * {{BLOCK_DIMENSIONS_PARALLELIZATION}}) / Q_scale_tile_size;
   K_scale_buf += tgid.z * K_scale_batch_stride + (tgid.y {{H_HK_RATIO}}) * K_scale_tiles;
@@ -2006,8 +2091,37 @@ void NAInt8AttentionKernel::loopForward(CodeWriter& source) const noexcept {
   } else {
     source.SetValue("BLOCK_DIMENSIONS_TRAVERSAL_OR_DYNAMIC_LENGTH_V", "dynamic_length_v<int>");
   }
+  source.SetValue("OUTPUT_INDEX", partitioned ? "output_index" : "cO_0");
+  source.SetValue("OUTPUT_RECIPROCAL", partitioned ? "1.0f" : "fast::divide(1, *dst_it)");
+  source.SetValue("QUERY_OFFSET", partitioned ? " - kv_range.z" : "");
+  source.SetValue("KV_BEGIN", partitioned ? "kv_range.x" : "0");
+  source.SetValue("KV_END", partitioned ? "min(C, kv_range.y)" : (isVarlen ? "C_seq" : "C"));
+  source.SetValue("KV_EDGE", partitioned ? "min(C_edge, kv_range.y)" : (isVarlen ? "C_edge_seq" : "C_edge"));
+  // Finite softmax probabilities are exp2(score - running_max) in [0, 1],
+  // so rounding after multiplication by 127 already fits in signed INT8.
+  // Eliding the clamp helps the normalized-half partitioned loop; retain it
+  // for the FP32 output loop, where the changed code generation can regress.
+  source.SetValue("PROBABILITY_QUANTIZED", partitioned ? "quantized" : "clamp(quantized, 0, 127)");
+  // Fuse rescaling into the PV update to shorten the live output state and
+  // avoid a separate traversal of every FP32 accumulator. This preserves the
+  // quantization / saved-statistics contract; partitioned half state has its
+  // own normalized update. Keep masked / causal / packed paths unchanged.
+  const bool fuseOutputUpdate = !partitioned && !isCausal && !masked &&
+      !isVarlen && !attentionSinks;
+  const unsigned short outputHeadDimension = splitOutput ? headDimension / 2 : headDimension;
   const unsigned short kBlocks =
-      (headDimension + blockDimensions[2] - 1) / blockDimensions[2];
+      (outputHeadDimension + blockDimensions[2] - 1) / blockDimensions[2];
+  source.SetValue("L_STORE", splitOutput ?
+      "if (output_part == 0) { L[idx[0]] = cM[k] + fast::log2(cL[k]); }" :
+      "L[idx[0]] = cM[k] + fast::log2(cL[k]);");
+  // The split-output selector requires long KV sequences. Make the unused
+  // short-KV fallback dead at compile time even when C is supplied at runtime;
+  // retaining its dynamic matmul / shared-memory state slows the main loop.
+  source.SetValue("SHORT_KV_ALLOWED", splitOutput ? "false" : "true");
+  // Wide outputs amortize the branch needed to skip identity rescaling. The
+  // running maximum changes infrequently later in a long KV traversal, so
+  // avoid multiplying every live output fragment by one on those iterations.
+  const bool skipIdentityRescale = kBlocks > 4;
   if (Hq != Hk) {
     source.SetValue("H_HK_RATIO", "/ " + std::to_string(Hq / Hk));
   } else {
@@ -2016,13 +2130,13 @@ void NAInt8AttentionKernel::loopForward(CodeWriter& source) const noexcept {
   source.SetValue("R_LENGTH", isVarlen ? "R_seq" : "R");
   source.SetValue("C_LENGTH", isVarlen ? "C_seq" : "C");
   source.SetValue("R_EDGE", isVarlen ? "R_edge_seq" : "R_edge");
-  source.SetValue("R_REMAINDER", isVarlen ? "R_remainder_seq" : "R_remainder");
+  source.SetValue("R_REMAINDER", isVarlen ? "R_remainder_seq" : "(QUERY_RANGE == 1 ? 0u : uint(R_remainder))");
   source.SetValue("C_EDGE", isVarlen ? "C_edge_seq" : "C_edge");
   source.SetValue("C_REMAINDER", isVarlen ? "C_remainder_seq" : "C_remainder");
   source.SetValue("MASK_SCALE", dot_product_scale(1.0f));
 
   source += R"(
-  auto Q = tensor<device int8_t, dextents<int32_t, 2>, tensor_inline>(Q_buf, dextents<int32_t, 2>(K_Hq, {{R_LENGTH}}));
+  auto Q = tensor<device int8_t, dextents<int32_t, 2>, tensor_inline>(Q_buf, dextents<int32_t, 2>(K_Hq, QUERY_RANGE == 1 ? {{R_LENGTH}} / {{QUERY_ROW_TILE}} * {{QUERY_ROW_TILE}} : {{R_LENGTH}}));
   auto K = tensor<device int8_t, dextents<int32_t, 2>, tensor_inline>(K_buf, dextents<int32_t, 2>(K_Hk, {{C_LENGTH}}));
   auto V = tensor<device {{PV_RIGHT_MEMORY_NAME}}, dextents<int32_t, 2>, tensor_inline>(V_buf, dextents<int32_t, 2>(K_Hk, {{C_LENGTH}}));
   constexpr auto qk_desc = matmul2d_descriptor({{BLOCK_DIMENSIONS_PARALLELIZATION}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}, {{BLOCK_DIMENSIONS_HEAD_OR_DYNAMIC_LENGTH_V}}, false, true, true, matmul2d_descriptor::mode::multiply_accumulate);
@@ -2083,13 +2197,21 @@ void NAInt8AttentionKernel::loopForward(CodeWriter& source) const noexcept {
 )";
   for (unsigned short i = 0; i < kBlocks; ++i) {
     source.SetValue("LOOP_INDEX", std::to_string(i));
+    if (partitioned) {
+      // Half state uses the FP32 cooperative tensor only for index mapping.
+      if (i == 0)
+        source += "  auto output_index = matmul_pv_op.get_destination_cooperative_tensor<pv_float_left_tensor_t, decltype(mV), float>();\n";
+      source.SetValue("OUTPUT_CAPACITY", std::to_string(blockDimensions[0] * blockDimensions[2] / 32));
+      source += "  half cO_{{LOOP_INDEX}}[{{OUTPUT_CAPACITY}}];\n";
+    } else {
     source += "  auto cO_{{LOOP_INDEX}} = matmul_pv_op.get_destination_cooperative_tensor<pv_float_left_tensor_t, decltype(mV), float>();\n";
+    }
   }
-  if (attentionSinks && !isCausal && !masked) {
+  if (fuseOutputUpdate || partitioned || (attentionSinks && !isCausal && !masked)) {
     source += R"(
   #pragma clang loop unroll(full)
-  for (unsigned short k = 0; k < cO_0.get_capacity(); ++k) {
-    if (cO_0.is_valid_element(k)) {
+  for (unsigned short k = 0; k < {{OUTPUT_INDEX}}.get_capacity(); ++k) {
+    if ({{OUTPUT_INDEX}}.is_valid_element(k)) {
 )";
     for (unsigned short i = 0; i < kBlocks; ++i) {
       source.SetValue("LOOP_INDEX", std::to_string(i));
@@ -2108,8 +2230,8 @@ void NAInt8AttentionKernel::loopForward(CodeWriter& source) const noexcept {
   const int causal_first_column_limit = causal_row_start + causal_column_offset;
   const uint causal_c_edge = causal_last_column < 0 ? 0 : min({{C_EDGE}}, uint(causal_last_column) + 1);
   #pragma clang loop unroll(full)
-  for (unsigned short k = 0; k < cO_0.get_capacity(); ++k) {
-    if (cO_0.is_valid_element(k)) {
+  for (unsigned short k = 0; k < {{OUTPUT_INDEX}}.get_capacity(); ++k) {
+    if ({{OUTPUT_INDEX}}.is_valid_element(k)) {
 )";
     for (unsigned short i = 0; i < kBlocks; ++i) {
       source.SetValue("LOOP_INDEX", std::to_string(i));
@@ -2133,8 +2255,8 @@ void NAInt8AttentionKernel::loopForward(CodeWriter& source) const noexcept {
     }
     source += R"(
   #pragma clang loop unroll(full)
-  for (unsigned short k = 0; k < cO_0.get_capacity(); ++k) {
-    if (cO_0.is_valid_element(k)) {
+  for (unsigned short k = 0; k < {{OUTPUT_INDEX}}.get_capacity(); ++k) {
+    if ({{OUTPUT_INDEX}}.is_valid_element(k)) {
 )";
     for (unsigned short i = 0; i < kBlocks; ++i) {
       source.SetValue("LOOP_INDEX", std::to_string(i));
@@ -2156,11 +2278,11 @@ void NAInt8AttentionKernel::loopForward(CodeWriter& source) const noexcept {
     // Fold the tail into the main loop to avoid slowing down its full tiles.
     // Short sequences still need the dynamic-K PV multiply below.
     source += R"(
-  for (uint c = 0; c < {{C_LENGTH}} && {{C_LENGTH}} >= {{BLOCK_DIMENSIONS_TRAVERSAL}}; c += {{BLOCK_DIMENSIONS_TRAVERSAL}}) {
+  for (uint c = {{KV_BEGIN}}; c < {{KV_END}} && {{C_LENGTH}} >= {{BLOCK_DIMENSIONS_TRAVERSAL}}; c += {{BLOCK_DIMENSIONS_TRAVERSAL}}) {
 )";
   } else {
     source += R"(
-  for (uint c = 0; c < {{C_EDGE}}; c += {{BLOCK_DIMENSIONS_TRAVERSAL}}) {
+  for (uint c = {{KV_BEGIN}}; c < {{KV_EDGE}}; c += {{BLOCK_DIMENSIONS_TRAVERSAL}}) {
 )";
   }
   if (masked) {
@@ -2305,28 +2427,28 @@ void NAInt8AttentionKernel::loopForward(CodeWriter& source) const noexcept {
       }
     }
 )";
-  if (isCausal) {
+  if (!fuseOutputUpdate && !partitioned && isCausal) {
     source += R"(
     #pragma clang loop unroll(full)
-    for (unsigned short k = 0; k < cO_0.get_capacity(); ++k) {
-      if (cO_0.is_valid_element(k)) {
-        auto it = cO_0.get_iterator(k);
+    for (unsigned short k = 0; k < {{OUTPUT_INDEX}}.get_capacity(); ++k) {
+      if ({{OUTPUT_INDEX}}.is_valid_element(k)) {
+        auto it = {{OUTPUT_INDEX}}.get_iterator(k);
         auto dst_it = correction.map_iterator(it);
 )";
     for (unsigned short i = 0; i < kBlocks; ++i) {
       source.SetValue("LOOP_INDEX", std::to_string(i));
-      source += "        cO_{{LOOP_INDEX}}[k] *= *dst_it;\n";
+      source += skipIdentityRescale ? "        if (*dst_it != 1) { cO_{{LOOP_INDEX}}[k] *= *dst_it; }\n" : "        cO_{{LOOP_INDEX}}[k] *= *dst_it;\n";
     }
     source += R"(
       }
     }
 )";
-  } else {
+  } else if (!fuseOutputUpdate && !partitioned) {
     source += R"(
     if (c == 0) {
       #pragma clang loop unroll(full)
-      for (unsigned short k = 0; k < cO_0.get_capacity(); ++k) {
-        if (cO_0.is_valid_element(k)) {
+      for (unsigned short k = 0; k < {{OUTPUT_INDEX}}.get_capacity(); ++k) {
+        if ({{OUTPUT_INDEX}}.is_valid_element(k)) {
 )";
   for (unsigned short i = 0; i < kBlocks; ++i) {
     source.SetValue("LOOP_INDEX", std::to_string(i));
@@ -2337,14 +2459,14 @@ void NAInt8AttentionKernel::loopForward(CodeWriter& source) const noexcept {
       }
     } else {
       #pragma clang loop unroll(full)
-      for (unsigned short k = 0; k < cO_0.get_capacity(); ++k) {
-        if (cO_0.is_valid_element(k)) {
-          auto it = cO_0.get_iterator(k);
+      for (unsigned short k = 0; k < {{OUTPUT_INDEX}}.get_capacity(); ++k) {
+        if ({{OUTPUT_INDEX}}.is_valid_element(k)) {
+          auto it = {{OUTPUT_INDEX}}.get_iterator(k);
           auto dst_it = correction.map_iterator(it);
 )";
   for (unsigned short i = 0; i < kBlocks; ++i) {
     source.SetValue("LOOP_INDEX", std::to_string(i));
-    source += "          cO_{{LOOP_INDEX}}[k] *= *dst_it;\n";
+    source += skipIdentityRescale ? "          if (*dst_it != 1) { cO_{{LOOP_INDEX}}[k] *= *dst_it; }\n" : "          cO_{{LOOP_INDEX}}[k] *= *dst_it;\n";
   }
   source += R"(
         }
@@ -2397,7 +2519,21 @@ void NAInt8AttentionKernel::loopForward(CodeWriter& source) const noexcept {
     #pragma clang loop unroll(full)
     for (unsigned short k = 0; k < cL.get_capacity(); ++k) {
       if (cL.is_valid_element(k)) {
+)";
+  if (partitioned) {
+    // Keep one quarter of the normalized mean. Both terms are fused in FP32
+    // before the single half rounding, so large V cannot overflow a raw sum.
+    // Partial outputs retain this factor; only the FP32 merge restores it.
+    source += R"(
+        const float previous_L = cL[k];
         cL[k] += cL_new[k];
+        correction[k] = fast::divide(previous_L, cL[k]);
+        cL_new[k] = fast::divide(0.25f * v_scale_recip_127, cL[k]);
+)";
+  } else {
+    source += "        cL[k] += cL_new[k];\n";
+  }
+  source += R"(
       }
     }
     thread pv_int8_left_tensor_t& cP_q_0 = reinterpret_cast<thread pv_int8_left_tensor_t&>(cS_0);
@@ -2405,20 +2541,40 @@ void NAInt8AttentionKernel::loopForward(CodeWriter& source) const noexcept {
     for (unsigned short k = 0; k < cP_0.get_capacity(); ++k) {
       if (cP_0.is_valid_element(k)) {
         const int quantized = (int)rint(cP_0[k] * 127.0f);
-        cP_q_0[k] = (int8_t)clamp(quantized, 0, 127);
+        cP_q_0[k] = (int8_t){{PROBABILITY_QUANTIZED}};
       }
     }
 )";
   for (unsigned short i = 0; i < kBlocks; ++i) {
     source.SetValue("LOOP_INDEX", std::to_string(i));
     source.SetValue("LOOP_INDEX_BLOCK_DIMENSIONS_HEAD", std::to_string(i * blockDimensions[2]));
+    source.SetValue("OUTPUT_V_MEAN", partitioned ? "0.0f" : "(float)V_mean_buf[idx[0] + " + std::to_string(i * blockDimensions[2]) + "]");
     source += R"(
     auto mV_0_{{LOOP_INDEX}} = V.slice<{{BLOCK_DIMENSIONS_HEAD}}, {{BLOCK_DIMENSIONS_TRAVERSAL}}>(tgid.y {{H_HK_RATIO}}* {{HEAD_DIMENSION}} + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}}, c);
     matmul_pv_int8_op.run(cP_q_0, mV_0_{{LOOP_INDEX}}, cOq);
     #pragma clang loop unroll(full)
     for (unsigned short k = 0; k < cOq.get_capacity(); ++k) {
       if (cOq.is_valid_element(k)) {
-        cO_{{LOOP_INDEX}}[k] += (float)cOq[k] * v_scale_recip_127;
+)";
+    if (partitioned) {
+      source += R"(
+        auto it = output_index.get_iterator(k);
+        auto l_it = cL_new.map_iterator(it);
+        auto correction_it = correction.map_iterator(it);
+        cO_{{LOOP_INDEX}}[k] = fma((float)cO_{{LOOP_INDEX}}[k], *correction_it, (float)cOq[k] * *l_it);
+)";
+    } else {
+      if (fuseOutputUpdate) {
+        source += R"(
+        auto it = cO_0.get_iterator(k);
+        auto factor = correction.map_iterator(it);
+)";
+        source += "        cO_{{LOOP_INDEX}}[k] = fma(cO_{{LOOP_INDEX}}[k], *factor, (float)cOq[k] * v_scale_recip_127);\n";
+      } else {
+        source += "        cO_{{LOOP_INDEX}}[k] += (float)cOq[k] * v_scale_recip_127;\n";
+      }
+    }
+    source += R"(
       }
     }
 )";
@@ -2441,7 +2597,7 @@ void NAInt8AttentionKernel::loopForward(CodeWriter& source) const noexcept {
 )";
   } else {
     source += R"(
-  if ({{C_REMAINDER}} > 0 && {{C_LENGTH}} < {{BLOCK_DIMENSIONS_TRAVERSAL}}) {
+  if ({{SHORT_KV_ALLOWED}} && {{C_REMAINDER}} > 0 && {{C_LENGTH}} < {{BLOCK_DIMENSIONS_TRAVERSAL}}) {
 )";
   }
   source += R"(
@@ -2544,28 +2700,28 @@ void NAInt8AttentionKernel::loopForward(CodeWriter& source) const noexcept {
       }
     }
 )";
-  if (isCausal) {
+  if (!fuseOutputUpdate && isCausal) {
     source += R"(
     #pragma clang loop unroll(full)
-    for (unsigned short k = 0; k < cO_0.get_capacity(); ++k) {
-      if (cO_0.is_valid_element(k)) {
-        auto it = cO_0.get_iterator(k);
+    for (unsigned short k = 0; k < {{OUTPUT_INDEX}}.get_capacity(); ++k) {
+      if ({{OUTPUT_INDEX}}.is_valid_element(k)) {
+        auto it = {{OUTPUT_INDEX}}.get_iterator(k);
         auto dst_it = correction.map_iterator(it);
 )";
     for (unsigned short i = 0; i < kBlocks; ++i) {
       source.SetValue("LOOP_INDEX", std::to_string(i));
-      source += "        cO_{{LOOP_INDEX}}[k] *= *dst_it;\n";
+      source += skipIdentityRescale ? "        if (*dst_it != 1) { cO_{{LOOP_INDEX}}[k] *= *dst_it; }\n" : "        cO_{{LOOP_INDEX}}[k] *= *dst_it;\n";
     }
     source += R"(
       }
     }
 )";
-  } else {
+  } else if (!fuseOutputUpdate) {
     source += R"(
     if (c == 0) {
       #pragma clang loop unroll(full)
-      for (unsigned short k = 0; k < cO_0.get_capacity(); ++k) {
-        if (cO_0.is_valid_element(k)) {
+      for (unsigned short k = 0; k < {{OUTPUT_INDEX}}.get_capacity(); ++k) {
+        if ({{OUTPUT_INDEX}}.is_valid_element(k)) {
 )";
   for (unsigned short i = 0; i < kBlocks; ++i) {
     source.SetValue("LOOP_INDEX", std::to_string(i));
@@ -2576,14 +2732,14 @@ void NAInt8AttentionKernel::loopForward(CodeWriter& source) const noexcept {
       }
     } else {
       #pragma clang loop unroll(full)
-      for (unsigned short k = 0; k < cO_0.get_capacity(); ++k) {
-        if (cO_0.is_valid_element(k)) {
-          auto it = cO_0.get_iterator(k);
+      for (unsigned short k = 0; k < {{OUTPUT_INDEX}}.get_capacity(); ++k) {
+        if ({{OUTPUT_INDEX}}.is_valid_element(k)) {
+          auto it = {{OUTPUT_INDEX}}.get_iterator(k);
           auto dst_it = correction.map_iterator(it);
 )";
   for (unsigned short i = 0; i < kBlocks; ++i) {
     source.SetValue("LOOP_INDEX", std::to_string(i));
-    source += "          cO_{{LOOP_INDEX}}[k] *= *dst_it;\n";
+    source += skipIdentityRescale ? "          if (*dst_it != 1) { cO_{{LOOP_INDEX}}[k] *= *dst_it; }\n" : "          cO_{{LOOP_INDEX}}[k] *= *dst_it;\n";
   }
   source += R"(
         }
@@ -2644,13 +2800,24 @@ void NAInt8AttentionKernel::loopForward(CodeWriter& source) const noexcept {
   for (unsigned short i = 0; i < kBlocks; ++i) {
     source.SetValue("LOOP_INDEX", std::to_string(i));
     source.SetValue("LOOP_INDEX_BLOCK_DIMENSIONS_HEAD", std::to_string(i * blockDimensions[2]));
+    source.SetValue("OUTPUT_V_MEAN", partitioned ? "0.0f" : "(float)V_mean_buf[idx[0] + " + std::to_string(i * blockDimensions[2]) + "]");
     source += R"(
     auto mV_0_{{LOOP_INDEX}} = V.slice<{{BLOCK_DIMENSIONS_HEAD}}, dynamic_extent>(tgid.y {{H_HK_RATIO}}* {{HEAD_DIMENSION}} + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}}, c);
     matmul_pv_int8_op_remainder.run(mP_q, mV_0_{{LOOP_INDEX}}, cOq_remainder);
     #pragma clang loop unroll(full)
     for (unsigned short k = 0; k < cOq_remainder.get_capacity(); ++k) {
       if (cOq_remainder.is_valid_element(k)) {
-        cO_{{LOOP_INDEX}}[k] += (float)cOq_remainder[k] * v_scale_recip_127;
+)";
+    if (fuseOutputUpdate) {
+      source += R"(
+        auto it = cO_0.get_iterator(k);
+        auto factor = correction.map_iterator(it);
+        cO_{{LOOP_INDEX}}[k] = fma(cO_{{LOOP_INDEX}}[k], *factor, (float)cOq_remainder[k] * v_scale_recip_127);
+)";
+    } else {
+      source += "        cO_{{LOOP_INDEX}}[k] += (float)cOq_remainder[k] * v_scale_recip_127;\n";
+    }
+    source += R"(
       }
     }
 )";
@@ -2662,15 +2829,15 @@ void NAInt8AttentionKernel::loopForward(CodeWriter& source) const noexcept {
   }
   source += R"(
   }
-  auto O = O_buf + tgid.x * ({{BLOCK_DIMENSIONS_PARALLELIZATION}} * K_Hq) + tgid.y * {{HEAD_DIMENSION}};
-  auto L = L_buf + tgid.x * {{BLOCK_DIMENSIONS_PARALLELIZATION}};
+  auto O = O_buf + (tgid.x * {{BLOCK_DIMENSIONS_PARALLELIZATION}}{{QUERY_OFFSET}}) * K_Hq + tgid.y * {{HEAD_DIMENSION}};
+  auto L = L_buf + tgid.x * {{BLOCK_DIMENSIONS_PARALLELIZATION}}{{QUERY_OFFSET}};
   if ({{R_REMAINDER}} > 0 && tgid.x * {{BLOCK_DIMENSIONS_PARALLELIZATION}} >= {{R_EDGE}}) {
     #pragma clang loop unroll(full)
-    for (unsigned short k = 0; k < cO_0.get_capacity(); ++k) {
-      if (cO_0.is_valid_element(k)) {
-        auto idx = cO_0.get_multidimensional_index(k);
+    for (unsigned short k = 0; k < {{OUTPUT_INDEX}}.get_capacity(); ++k) {
+      if ({{OUTPUT_INDEX}}.is_valid_element(k)) {
+        auto idx = {{OUTPUT_INDEX}}.get_multidimensional_index(k);
         if (idx[1] < (int){{R_REMAINDER}}) {
-          auto it = cO_0.get_iterator(k);
+          auto it = {{OUTPUT_INDEX}}.get_iterator(k);
 \)";
           if (masked) {
             source += R"(
@@ -2685,33 +2852,34 @@ void NAInt8AttentionKernel::loopForward(CodeWriter& source) const noexcept {
           if (masked || hasCausalEmptyRows) {
             source += R"(
           auto dst_it = cL.map_iterator(it);
-          auto L_reciprocal = valid_output_row ? fast::divide(1, *dst_it) : 0.0f;
+          auto L_reciprocal = valid_output_row ? {{OUTPUT_RECIPROCAL}} : 0.0f;
 )";
           } else {
             source += R"(          auto dst_it = cL.map_iterator(it);
-          auto L_reciprocal = fast::divide(1, *dst_it);
+          auto L_reciprocal = {{OUTPUT_RECIPROCAL}};
 )";
           }
   for (unsigned short i = 0; i < kBlocks; ++i) {
     source.SetValue("LOOP_INDEX", std::to_string(i));
     source.SetValue("LOOP_INDEX_BLOCK_DIMENSIONS_HEAD", std::to_string(i * blockDimensions[2]));
+    source.SetValue("OUTPUT_V_MEAN", partitioned ? "0.0f" : "(float)V_mean_buf[idx[0] + " + std::to_string(i * blockDimensions[2]) + "]");
     if ((i < kBlocks - 1) || (headDimension % blockDimensions[2] == 0)) {
       if (masked || hasCausalEmptyRows) {
         source += R"(
-          const float output_{{LOOP_INDEX}} = valid_output_row ? cO_{{LOOP_INDEX}}[k] * L_reciprocal + (float)V_mean_buf[idx[0] + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}}] : 0.0f;
+          const float output_{{LOOP_INDEX}} = valid_output_row ? cO_{{LOOP_INDEX}}[k] * L_reciprocal + {{OUTPUT_V_MEAN}} : 0.0f;
           O[idx[0] + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}} + idx[1] * K_Hq] = ({{IO_MEMORY_NAME}})output_{{LOOP_INDEX}};
 )";
       } else {
         source += R"(
           O[idx[0] + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}} + idx[1] * K_Hq] = ({{IO_MEMORY_NAME}})(cO_{{LOOP_INDEX}}[k] * L_reciprocal)";
-        source += " + (float)V_mean_buf[idx[0] + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}}]";
+        source += " + {{OUTPUT_V_MEAN}}";
         source += ");\n";
       }
     } else {
       if (masked || hasCausalEmptyRows) {
         source += R"(
           if (idx[0] + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}} < {{HEAD_DIMENSION}}) {
-            const float output_{{LOOP_INDEX}} = valid_output_row ? cO_{{LOOP_INDEX}}[k] * L_reciprocal + (float)V_mean_buf[idx[0] + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}}] : 0.0f;
+            const float output_{{LOOP_INDEX}} = valid_output_row ? cO_{{LOOP_INDEX}}[k] * L_reciprocal + {{OUTPUT_V_MEAN}} : 0.0f;
             O[idx[0] + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}} + idx[1] * K_Hq] = ({{IO_MEMORY_NAME}})output_{{LOOP_INDEX}};
           }
 )";
@@ -2719,7 +2887,7 @@ void NAInt8AttentionKernel::loopForward(CodeWriter& source) const noexcept {
         source += R"(
           if (idx[0] + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}} < {{HEAD_DIMENSION}}) {
             O[idx[0] + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}} + idx[1] * K_Hq] = ({{IO_MEMORY_NAME}})(cO_{{LOOP_INDEX}}[k] * L_reciprocal)";
-        source += " + (float)V_mean_buf[idx[0] + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}}]";
+        source += " + {{OUTPUT_V_MEAN}}";
         source += ");\n";
         source += R"(
           }
@@ -2736,19 +2904,19 @@ void NAInt8AttentionKernel::loopForward(CodeWriter& source) const noexcept {
       if (cM.is_valid_element(k)) {
         auto idx = cM.get_multidimensional_index(k);
         if (idx[0] < (int){{R_REMAINDER}}) {
-          L[idx[0]] = cM[k] + fast::log2(cL[k]);
+          {{L_STORE}}
         }
       }
     }
   } else {
     #pragma clang loop unroll(full)
-    for (unsigned short k = 0; k < cO_0.get_capacity(); ++k) {
-      if (cO_0.is_valid_element(k)) {
-        auto it = cO_0.get_iterator(k);
+    for (unsigned short k = 0; k < {{OUTPUT_INDEX}}.get_capacity(); ++k) {
+      if ({{OUTPUT_INDEX}}.is_valid_element(k)) {
+        auto it = {{OUTPUT_INDEX}}.get_iterator(k);
 \)";
         if (masked || hasCausalEmptyRows) {
           source += R"(
-        auto idx = cO_0.get_multidimensional_index(k);
+        auto idx = {{OUTPUT_INDEX}}.get_multidimensional_index(k);
 )";
         }
         if (masked) {
@@ -2764,34 +2932,35 @@ void NAInt8AttentionKernel::loopForward(CodeWriter& source) const noexcept {
         if (masked || hasCausalEmptyRows) {
           source += R"(
         auto dst_it = cL.map_iterator(it);
-        auto L_reciprocal = valid_output_row ? fast::divide(1, *dst_it) : 0.0f;
+        auto L_reciprocal = valid_output_row ? {{OUTPUT_RECIPROCAL}} : 0.0f;
 )";
         } else {
           source += R"(        auto dst_it = cL.map_iterator(it);
-        auto L_reciprocal = fast::divide(1, *dst_it);
-        auto idx = cO_0.get_multidimensional_index(k);
+        auto L_reciprocal = {{OUTPUT_RECIPROCAL}};
+        auto idx = {{OUTPUT_INDEX}}.get_multidimensional_index(k);
 )";
         }
   for (unsigned short i = 0; i < kBlocks; ++i) {
     source.SetValue("LOOP_INDEX", std::to_string(i));
     source.SetValue("LOOP_INDEX_BLOCK_DIMENSIONS_HEAD", std::to_string(i * blockDimensions[2]));
+    source.SetValue("OUTPUT_V_MEAN", partitioned ? "0.0f" : "(float)V_mean_buf[idx[0] + " + std::to_string(i * blockDimensions[2]) + "]");
     if ((i < kBlocks - 1) || (headDimension % blockDimensions[2] == 0)) {
       if (masked || hasCausalEmptyRows) {
         source += R"(
-        const float output_{{LOOP_INDEX}} = valid_output_row ? cO_{{LOOP_INDEX}}[k] * L_reciprocal + (float)V_mean_buf[idx[0] + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}}] : 0.0f;
+        const float output_{{LOOP_INDEX}} = valid_output_row ? cO_{{LOOP_INDEX}}[k] * L_reciprocal + {{OUTPUT_V_MEAN}} : 0.0f;
         O[idx[0] + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}} + idx[1] * K_Hq] = ({{IO_MEMORY_NAME}})output_{{LOOP_INDEX}};
 )";
       } else {
         source += R"(
         O[idx[0] + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}} + idx[1] * K_Hq] = ({{IO_MEMORY_NAME}})(cO_{{LOOP_INDEX}}[k] * L_reciprocal)";
-      source += " + (float)V_mean_buf[idx[0] + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}}]";
+      source += " + {{OUTPUT_V_MEAN}}";
       source += ");\n";
       }
     } else {
       if (masked || hasCausalEmptyRows) {
         source += R"(
         if (idx[0] + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}} < {{HEAD_DIMENSION}}) {
-          const float output_{{LOOP_INDEX}} = valid_output_row ? cO_{{LOOP_INDEX}}[k] * L_reciprocal + (float)V_mean_buf[idx[0] + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}}] : 0.0f;
+          const float output_{{LOOP_INDEX}} = valid_output_row ? cO_{{LOOP_INDEX}}[k] * L_reciprocal + {{OUTPUT_V_MEAN}} : 0.0f;
           O[idx[0] + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}} + idx[1] * K_Hq] = ({{IO_MEMORY_NAME}})output_{{LOOP_INDEX}};
         }
 )";
@@ -2799,7 +2968,7 @@ void NAInt8AttentionKernel::loopForward(CodeWriter& source) const noexcept {
         source += R"(
         if (idx[0] + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}} < {{HEAD_DIMENSION}}) {
           O[idx[0] + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}} + idx[1] * K_Hq] = ({{IO_MEMORY_NAME}})(cO_{{LOOP_INDEX}}[k] * L_reciprocal)";
-      source += " + (float)V_mean_buf[idx[0] + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}}]";
+      source += " + {{OUTPUT_V_MEAN}}";
       source += ");\n";
       source += R"(
         }
@@ -2814,7 +2983,7 @@ void NAInt8AttentionKernel::loopForward(CodeWriter& source) const noexcept {
     for (unsigned short k = 0; k < cM.get_capacity(); ++k) {
       if (cM.is_valid_element(k)) {
         auto idx = cM.get_multidimensional_index(k);
-        L[idx[0]] = cM[k] + fast::log2(cL[k]);
+        {{L_STORE}}
       }
     }
   }

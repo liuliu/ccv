@@ -6,6 +6,7 @@ bool NAInt8MatMulKernelDescriptor::operator==(const NAInt8MatMulKernelDescriptor
       simd_all(blockDimensions == rhs.blockDimensions) &&
       executionSIMDGroups == rhs.executionSIMDGroups &&
       ioPrecision == rhs.ioPrecision &&
+      useRegisterOperands == rhs.useRegisterOperands &&
       useBias == rhs.useBias &&
       loadM == rhs.loadM &&
       useLeadingDimensions == rhs.useLeadingDimensions &&
@@ -25,6 +26,7 @@ std::size_t std::hash<NAInt8MatMulKernelDescriptor>::operator()(const NAInt8MatM
   combine_32(seed, hash.groupM);
   combine_32(seed, hash.groupN);
   combine_32(seed, hash.activationHadamard256 ? 1 : 0);
+  combine_32(seed, hash.useRegisterOperands);
   return seed;
 }
 
@@ -38,11 +40,13 @@ NAInt8MatMulKernelDescriptor::NAInt8MatMulKernelDescriptor(
     uint32_t groupM,
     uint32_t groupN,
     bool useLeadingDimensions,
-    bool activationHadamard256) noexcept
+    bool activationHadamard256,
+    bool useRegisterOperands) noexcept
 {
   this->blockDimensions = blockDimensions;
   this->executionSIMDGroups = executionSIMDGroups;
   this->ioPrecision = ioPrecision;
+  this->useRegisterOperands = useRegisterOperands;
   this->useBias = useBias;
   this->loadM = loadM;
   this->useLeadingDimensions = useLeadingDimensions;

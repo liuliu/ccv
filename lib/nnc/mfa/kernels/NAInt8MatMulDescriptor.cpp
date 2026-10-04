@@ -42,6 +42,9 @@ bool NAInt8MatMulDescriptor::operator==(const NAInt8MatMulDescriptor& rhs) const
     simd_all(leadingDimensions.value_or(simd::uint2(UINT32_MAX)) == rhs.leadingDimensions.value_or(simd::uint2(UINT32_MAX))) &&
     (loadM || packedABatchStride == rhs.packedABatchStride) &&
     (loadM || aScaleBatchStride == rhs.aScaleBatchStride) &&
+    preferSmallTile == rhs.preferSmallTile &&
+    useRegisterOperands == rhs.useRegisterOperands &&
+    (!useRegisterOperands || (matrixDimensions[0] % 64 == 0) == (rhs.matrixDimensions[0] % 64 == 0)) &&
     useBias == rhs.useBias &&
     activationHadamard256 == rhs.activationHadamard256 &&
     loadM == rhs.loadM &&
@@ -69,6 +72,9 @@ std::size_t std::hash<NAInt8MatMulDescriptor>::operator()(const NAInt8MatMulDesc
   }
   combine_32(seed, hash.loadM ? 0 : hash.packedABatchStride.value_or(0));
   combine_32(seed, hash.loadM ? 0 : hash.aScaleBatchStride.value_or(0));
+  combine_32(seed, hash.preferSmallTile);
+  combine_32(seed, hash.useRegisterOperands);
+  combine_32(seed, hash.useRegisterOperands && hash.matrixDimensions[0] % 64 == 0);
   combine_32(seed, hash.useBias ? 1 : 0);
   combine_32(seed, hash.activationHadamard256 ? 1 : 0);
   combine_32(seed, hash.loadM ? 1 : 0);
@@ -78,8 +84,8 @@ std::size_t std::hash<NAInt8MatMulDescriptor>::operator()(const NAInt8MatMulDesc
 
 NAInt8MatMulKernelDescriptor NAInt8MatMulDescriptor::kernelDescriptor() const noexcept {
   return NAInt8MatMulKernelDescriptor(
-      simd::ushort3 { 128, 128, 128 },
-      8,
+      simd::ushort3 { uint16_t(preferSmallTile ? 64 : 128), 128, 128 },
+      preferSmallTile ? 4 : 8,
       ioPrecision,
       useBias,
       loadM,
@@ -87,7 +93,8 @@ NAInt8MatMulKernelDescriptor NAInt8MatMulDescriptor::kernelDescriptor() const no
       groupM(matrixDimensions[0]),
       groupN(matrixDimensions[1]),
       leadingDimensions.has_value(),
-      activationHadamard256);
+      activationHadamard256,
+      useRegisterOperands);
 }
 
 std::pair<NAInt8MatMulKernelDescriptor, PipelineValue<NAInt8MatMulKernel> *> NAInt8MatMulDescriptor::findKernel(
@@ -150,9 +157,19 @@ std::pair<NAInt8MatMulKernelDescriptor, PipelineValue<NAInt8MatMulKernel> *> NAI
       constants->setConstantValue(&leadingDimensionA, MTL::DataTypeUInt, NS::UInteger(22));
       constants->setConstantValue(&leadingDimensionC, MTL::DataTypeUInt, NS::UInteger(23));
     }
+    if (useRegisterOperands && !quantizeActivation) {
+      const bool disabled = false;
+      const bool alignedM = M % 64 == 0, alignedN = N % 128 == 0, alignedK = K % 512 == 0;
+      constants->setConstantValue(&disabled, MTL::DataTypeBool, NS::UInteger(10));
+      constants->setConstantValue(&useBias, MTL::DataTypeBool, NS::UInteger(100));
+      constants->setConstantValue(&disabled, MTL::DataTypeBool, NS::UInteger(110));
+      constants->setConstantValue(&alignedM, MTL::DataTypeBool, NS::UInteger(200));
+      constants->setConstantValue(&alignedN, MTL::DataTypeBool, NS::UInteger(201));
+      constants->setConstantValue(&alignedK, MTL::DataTypeBool, NS::UInteger(202));
+    }
     NS::Error* error = nil;
     auto functionName = NS::String::string(functionNameString, NS::UTF8StringEncoding);
-    auto function = NS::TransferPtr(kernel->library->newFunction(functionName, constants.get(), &error));
+    auto function = NS::TransferPtr((useRegisterOperands && !quantizeActivation ? kernel->registerLibrary : kernel->library)->newFunction(functionName, constants.get(), &error));
     CCV_NNC_MFA_CHECK_ERROR(error);
     auto pipelineDescriptor = NS::TransferPtr(MTL::ComputePipelineDescriptor::alloc()->init());
     pipelineDescriptor->setComputeFunction(function.get());
@@ -177,7 +194,7 @@ std::pair<NAInt8MatMulKernelDescriptor, PipelineValue<NAInt8MatMulKernel> *> NAI
 
   auto kernelDesc = kernelDescriptor();
   auto kernel = createKernel(kernelDesc);
-  auto pipeline = NS::TransferPtr(createPipeline(kernel, "int8_matmul"));
+  auto pipeline = NS::TransferPtr(createPipeline(kernel, useRegisterOperands ? "int8_matmul_register" : "int8_matmul"));
   auto quantize = NS::TransferPtr(createPipeline(kernel, "quantize_activation"));
 
   PipelineValue<NAInt8MatMulKernel>* output = new PipelineValue<NAInt8MatMulKernel> { kernel, pipeline };

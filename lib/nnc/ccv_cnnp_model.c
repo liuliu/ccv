@@ -2056,12 +2056,14 @@ void ccv_cnnp_model_evaluate(ccv_cnnp_model_t* const model, const ccv_cnnp_evalu
 	ccv_cnnp_compiled_data_t* const compiled_data = model->compiled_data;
 	assert(compiled_data);
 	ccv_cnnp_model_dry_run(model, params, inputs, input_size, outputs, output_size);
+	// Saved attention intermediates are not consumed during no-gradient evaluation.
+	const int flags = params.requires_grad ? 0 : CCV_NNC_NO_BACKWARD;
 	if (compiled_data->graph_mode == CCV_CNNP_MODEL_GRAPH_MULTISTAGE_MODE_NO_GRAD)
-		ccv_nnc_graph_run_with_schedule(compiled_data->graph, 0, 0, tensor_tape, stream_context);
+		ccv_nnc_graph_run_with_schedule(compiled_data->graph, flags, 0, tensor_tape, stream_context);
 	else {
 		if (!compiled_data->evaluate.schedule)
 			compiled_data->evaluate.schedule = ccv_nnc_graph_static_schedule_new(compiled_data->graph, compiled_data->stream_type, model->max_stream_count, 0, 0, compiled_data->evaluate.to_ops, compiled_data->evaluate.to_op_size);
-		ccv_nnc_graph_run_with_schedule(compiled_data->graph, 0, compiled_data->evaluate.schedule, tensor_tape, stream_context);
+		ccv_nnc_graph_run_with_schedule(compiled_data->graph, flags, compiled_data->evaluate.schedule, tensor_tape, stream_context);
 	}
 }
 

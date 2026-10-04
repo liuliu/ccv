@@ -187,6 +187,7 @@ let package = Package(
             linkerSettings: [
                 .linkedFramework("Accelerate"),
                 .linkedFramework("Metal"),
+                .linkedFramework("IOKit", .when(platforms: [.macOS, .macCatalyst])),
                 .linkedFramework("MetalPerformanceShaders"),
                 .linkedFramework("MetalPerformanceShadersGraph"),
                 .linkedFramework("CoreVideo"),

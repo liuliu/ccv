@@ -17,6 +17,10 @@ struct NAInt8AttentionDescriptor {
   unsigned short Hq = 1;
   unsigned short Hk = 1;
   GEMMOperandPrecision ioPrecision = GEMMOperandPrecision::FP16;
+  bool partitioned = false;
+  bool splitOutput = false;
+  bool preferSplitQueryRanges = true;
+  bool preferSmallQueryTiles = false;
   bool lowPrecisionIntermediates = false;
   simd::uint3 matrixDimensions;
   AttentionOperands<unsigned int> batchStrides;
@@ -42,6 +46,7 @@ struct NAInt8AttentionDescriptor {
 
   // Includes the existing length-dependent source variants.
   NAInt8AttentionKernelDescriptor kernelDescriptor() const noexcept;
+  bool splitQueryRanges() const noexcept;
 };
 
 template<>

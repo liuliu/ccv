@@ -17,6 +17,9 @@ bool NAInt8AttentionKernelDescriptor::operator==(const NAInt8AttentionKernelDesc
     hasCRemainder == rhs.hasCRemainder &&
     threadBarrierEveryC == rhs.threadBarrierEveryC &&
     ioPrecision == rhs.ioPrecision &&
+    partitioned == rhs.partitioned &&
+    splitOutput == rhs.splitOutput &&
+    compactGrid == rhs.compactGrid &&
     lowPrecisionIntermediates == rhs.lowPrecisionIntermediates &&
     isCausal == rhs.isCausal &&
     masked == rhs.masked &&
@@ -51,6 +54,9 @@ std::size_t std::hash<NAInt8AttentionKernelDescriptor>::operator()(const NAInt8A
       (uint16_t)(hash.hasCausalEmptyRows ? 1 : 0) }));
   combine_32(seed, hash.isVarlen ? 1 : 0);
   combine_32(seed, hash.attentionSinks ? 1 : 0);
+  combine_32(seed, hash.partitioned ? 1 : 0);
+  combine_32(seed, hash.splitOutput ? 1 : 0);
+  combine_32(seed, hash.compactGrid ? 1 : 0);
   combine_32(seed, *reinterpret_cast<const uint32_t*>(&hash.scale));
   return seed;
 }

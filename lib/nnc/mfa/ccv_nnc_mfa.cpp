@@ -10,6 +10,10 @@ using namespace ccv::nnc;
 #include <new>
 #include <utility>
 #include <vector>
+#include <TargetConditionals.h>
+#if TARGET_OS_OSX || TARGET_OS_MACCATALYST
+#include <IOKit/IOKitLib.h>
+#endif
 
 namespace ccv {
 namespace nnc {
@@ -251,6 +255,25 @@ mfa::context::context(MTL::Device* device)
 #endif
   
   this->device = NS::RetainPtr(device);
+  // Query once per device context; dispatch selection must not query IOKit.
+  this->device_properties = DeviceProperties();
+#if TARGET_OS_OSX || TARGET_OS_MACCATALYST
+  const io_service_t service = IOServiceGetMatchingService(kIOMainPortDefault,
+      IORegistryEntryIDMatching(device->registryID()));
+  if (service) {
+    CFTypeRef value = IORegistryEntryCreateCFProperty(service,
+        CFSTR("gpu-core-count"), kCFAllocatorDefault, 0);
+    int cores = 0;
+    if (value && CFGetTypeID(value) == CFNumberGetTypeID() &&
+        CFNumberGetValue((CFNumberRef)value, kCFNumberIntType, &cores) && cores > 0)
+      this->device_properties.coreCount = cores;
+    if (value)
+      CFRelease(value);
+    IOObjectRelease(service);
+  }
+#elif TARGET_OS_IOS
+  this->device_properties.coreCount = 10;
+#endif
 
   this->scratch = NS::TransferPtr(device->newBuffer(65536, 0));
   this->durable_scratch = std::make_shared<mfa::durable_scratch_pool>();

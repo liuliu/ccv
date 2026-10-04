@@ -35,6 +35,9 @@ struct NAInt8AttentionKernel {
   bool hasCRemainder;
   uint16_t threadBarrierEveryC;
   GEMMOperandPrecision ioPrecision;
+  bool partitioned = false;
+  bool splitOutput = false;
+  bool compactGrid = false;
   bool lowPrecisionIntermediates;
   float scale;
   bool isCausal;
@@ -53,7 +56,8 @@ struct NAInt8AttentionKernel {
 
   uint32_t threadgroupMemoryAllocation() const noexcept;
   uint16_t threadgroupSize(MTL::ComputePipelineState *const pipelineState) const noexcept;
-  MTL::Size threadgroupsPerGrid(uint32_t batchDimension, uint32_t rowDimension) const noexcept;
+  // queryRange: 0 = full sequence, 1 = complete query groups, 2 = final group.
+  MTL::Size threadgroupsPerGrid(uint32_t batchDimension, uint32_t rowDimension, uint16_t queryRange = 0) const noexcept;
 
 private:
   uint16_t vMeanVectorsPerTile() const noexcept;

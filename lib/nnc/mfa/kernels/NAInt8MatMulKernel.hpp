@@ -10,11 +10,13 @@ class CodeWriter;
 
 struct NAInt8MatMulKernel {
   NS::SharedPtr<MTL::Library> library;
+  NS::SharedPtr<MTL::Library> registerLibrary;
   std::string source;
 
   simd::ushort3 blockDimensions;
   uint16_t executionSIMDGroups;
   GEMMOperandPrecision ioPrecision;
+  bool useRegisterOperands;
   bool useBias;
   bool loadM;
   bool useLeadingDimensions;
@@ -30,6 +32,14 @@ struct NAInt8MatMulKernel {
 
 private:
   std::string createSource() const noexcept;
+  std::string createRegisterSource() const noexcept;
 };
+
+struct NAInt8MatMulRegisterParams {
+  int32_t M, N, K, lda, ldb, ldd, tiles_n, tiles_m;
+  int64_t batch_stride_a, batch_stride_b, batch_stride_d;
+  int32_t swizzle_log, gemm_k_iterations_aligned, batch_ndim;
+};
+static_assert(sizeof(NAInt8MatMulRegisterParams) == 72, "Metal GEMM parameter ABI");
 
 #endif

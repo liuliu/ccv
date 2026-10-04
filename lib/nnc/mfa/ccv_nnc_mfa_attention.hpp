@@ -14,6 +14,7 @@ typedef struct {
   uint8_t type;
   uint8_t use_neural_accelerators;
   uint8_t use_quantized_attention;
+  uint8_t is_inference;
   uint8_t attention_sinks;
   uint32_t sliding_window;
   uint32_t sink_head_stride;
@@ -31,6 +32,14 @@ typedef struct {
   uint32_t batch_dims_q[CCV_NNC_MAX_DIM_ALLOC];
   uint32_t batch_dims_mask[CCV_NNC_MAX_DIM_ALLOC];
 } ccv_nnc_mfa_attention_params_t;
+
+// Splitting a wide output reduces each group's FP32 accumulator state, at the
+// cost of computing QK twice. Long query and KV ranges amortize the extra
+// quantization / dispatch work.
+static inline int ccv_nnc_mfa_attention_split_output_shape(const uint32_t R, const uint32_t C, const uint32_t D)
+{
+  return D == 256 && R >= 4096 && C >= 4096;
+}
 
 #ifdef __cplusplus
 #include <functional>
@@ -54,6 +63,7 @@ public:
   uint8_t upcast;
   uint8_t type;
   uint8_t use_quantized_attention;
+  uint8_t is_inference;
   uint8_t attention_sinks;
   uint32_t sliding_window;
   uint32_t R;

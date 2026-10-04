@@ -1,0 +1,80 @@
+M5 Max validation, 2026-10-04
+Base: 6a611be1
+
+Build: make debug -j4 passed.
+iPhoneOS app: xcodebuild Release passed.
+
+mpsdnn.tests: 126 passed
+
+rowwise-int8-gemm: 2 passed
+[1/2] [PASS] mps large rowwise int8 gemm preserves dynamic rows and fused bias
+[2/2] [PASS] mps rowwise int8 gemm preserves tuning boundaries and partial tiles
+
+quantized-NA-query-ranges: 1 passed
+[1/1] [PASS] scaled dot product attention quantized NA query ranges and compact grids preserve layout and saved statistics
+
+quantized-NA-split-output: 1 passed
+[1/1] [PASS] scaled dot product attention quantized NA split output inference preserves layout and saved statistics
+
+quantized-NA-partitioned: 1 passed
+[1/1] [PASS] scaled dot product attention quantized NA partitioned inference preserves tails and saved statistics
+
+with-quantized-NA-mps: 7 passed
+[1/11] [PASS] scaled dot product attention with quantized NA mps
+[2/11] [PASS] scaled dot product attention with quantized NA mps and zero mask
+[3/11] [PASS] scaled dot product attention with quantized NA mps and numeric mask
+[4/11] [PASS] scaled dot product attention with quantized NA mps batched
+[5/11] [PASS] scaled dot product attention with quantized NA mps for non-multiple-of-64 sequence
+[6/11] [PASS] scaled dot product attention with quantized NA mps across every key tail
+[7/11] [PASS] scaled dot product attention with quantized NA mps across V-mean reduction sizes
+
+baseline-generic reproduces the clean branch failure:
+[1/1] [RUN] mps H256 rowwise-x GEMM dense fallback preserves logical weights ...[Metal] Encountered unexpected error in: GEMMKernel
+kernels/GEMMKernel.cpp:247: error: program_source:198:21: error: cannot initialize object parameter of type 'thread metal::simdgroup_matrix_storage<float>' with an expression of type 'metal::simdgroup_matrix_storage<float>'
+        ((thread T*)thread_elements())[0] = T(memoryForm0);
+                    ^~~~~~~~~~~~~~~
+program_source:418:6: note: in instantiation of function template specialization 'metal::simdgroup_matrix_storage<float>::load<float>' requested here
+
+baseline-backward reproduces the clean branch failure:
+[1/3] [RUN] scaled dot product attention gradient with quantized NA mps ...[Metal] Encountered unexpected error in: NAInt8AttentionKernel
+kernels/NAInt8AttentionKernel.cpp:77: error: program_source:472:28: error: no matching member function for call to 'get_destination_cooperative_tensor'
+  auto cDK = matmul_pdo_op.get_destination_cooperative_tensor<decltype(cDS), decltype(mQ), float>();
+             ~~~~~~~~~~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/System/Library/Frameworks/MetalPerformancePrimitives.framework/Headers/MPPTensorOpsMatMul2d.h:562:3: note: candidate template ignored: requirement 'false' was not satisfied [with LeftOperandType = thread metal::cooperative_tensor<bfloat, metal::extents<int, 18446744073709551615, 18446744073709551615>, mpp::tensor_ops::__mutmul2d_detail::__operand_layout<{16, 64, 16, false, false, true, 1}, mpp::tensor_ops::__mutmul2d_detail::__matmul2d_cooperative_operand_index::left, metal::execution_simdgroups<1>, bfloat, signed char, float, int>>, RightOperandType = thread metal::tensor<device signed char, metal::extents<int, 64, 16>, metal::tensor_inline>, ElementType = float, CoordType = int]
+
+loopBackwardKeyValue body: identical to unstable.
+loopBackwardQuery body: identical to unstable.
+NAMatMulKernel.cpp: unchanged.
+NAMatMulDescriptor.cpp: unchanged.
+NAAttentionKernel.cpp: unchanged.
+NAAttentionDescriptor.cpp: unchanged.
+GEMMHeaders.cpp: unchanged.
+
+Ultra-feedback update validation:
+scaled dot product attention with quantized NA mps: PASS
+scaled dot product attention with quantized NA mps and zero mask: PASS
+scaled dot product attention with quantized NA mps and numeric mask: PASS
+scaled dot product attention with quantized NA mps batched: PASS
+scaled dot product attention with quantized NA mps for non-multiple-of-64 sequence: PASS
+scaled dot product attention with quantized NA mps across every key tail: PASS
+scaled dot product attention with quantized NA mps across V-mean reduction sizes: PASS
+mps large rowwise int8 gemm preserves dynamic rows and fused bias: PASS
+mps rowwise int8 gemm preserves tuning boundaries and partial tiles: PASS
+scaled dot product attention quantized NA query ranges and compact grids preserve layout and saved statistics: PASS
+scaled dot product attention quantized NA split output inference preserves layout and saved statistics: PASS
+scaled dot product attention quantized NA partitioned inference preserves tails and saved statistics: PASS
+scaled dot product attention quantized NA short causal prefill preserves grouped query layout: PASS
+13/13 forward test cases passed.
+
+SwiftPM dump-package: PASS with macOS and Catalyst IOKit conditions.
+Bazel 7.4.1 framework query: //lib:nnc_mps_compat includes IOKit.
+Catalyst and iPhoneOS linker reproductions using Bazel framework list: PASS.
+Full Bazel build was not run.
+Extracted production platform conditional compiled as Catalyst: OSX=0 Catalyst=1 iOS=1 cores=40.
+Forced 80-core policy on M5 Max: seven CPU-checked probes passed (not Ultra timings).
+Updated iPhoneOS app: Release build/signing passed.
+
+Final short-causal integration test after tightening the head-count gate: PASS.
+Final Max and iPhoneOS Release builds: PASS.
+Final iPad: seven workloads, 28 paired runs; all CPU checks and output hashes passed,
+with nominal thermal state before and after every run and GPU core policy 10.

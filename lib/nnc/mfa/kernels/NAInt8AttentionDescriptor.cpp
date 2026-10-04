@@ -20,12 +20,16 @@ bool NAInt8AttentionDescriptor::operator==(const NAInt8AttentionDescriptor& rhs)
   if (loadC) lhsDimensions[1] = rhsDimensions[1] = 0;
   return
     loadR == rhs.loadR && loadC == rhs.loadC &&
+    splitQueryRanges() == rhs.splitQueryRanges() &&
+    preferSmallQueryTiles == rhs.preferSmallQueryTiles &&
     (!(loadR || loadC) || kernelDescriptor() == rhs.kernelDescriptor()) &&
     batchDimension == rhs.batchDimension &&
     Hq == rhs.Hq &&
     Hk == rhs.Hk &&
     type == rhs.type &&
     ioPrecision == rhs.ioPrecision &&
+    partitioned == rhs.partitioned &&
+    splitOutput == rhs.splitOutput &&
     lowPrecisionIntermediates == rhs.lowPrecisionIntermediates &&
     scale == rhs.scale &&
     isCausal == rhs.isCausal &&
@@ -52,6 +56,10 @@ std::size_t std::hash<NAInt8AttentionDescriptor>::operator()(const NAInt8Attenti
       (uint16_t)(hash.masked ? 1 : 0) }));
   combine_32(seed, hash.isVarlen ? 1 : 0);
   combine_32(seed, hash.attentionSinks ? 1 : 0);
+  combine_32(seed, hash.partitioned ? 1 : 0);
+  combine_32(seed, hash.splitOutput ? 1 : 0);
+  combine_32(seed, hash.splitQueryRanges() ? 1 : 0);
+  combine_32(seed, hash.preferSmallQueryTiles ? 1 : 0);
   combine_32(seed, (hash.loadR || hash.loadC) ? 0 : hash.maskBatchStride);
   combine_32(seed, hash.loadR ? 0 : hash.matrixDimensions[0]);
   combine_32(seed, hash.loadC ? 0 : hash.matrixDimensions[1]);
@@ -63,10 +71,32 @@ std::size_t std::hash<NAInt8AttentionDescriptor>::operator()(const NAInt8Attenti
   return seed;
 }
 
+bool NAInt8AttentionDescriptor::splitQueryRanges() const noexcept {
+  // Compiling the bulk without partial-row stores avoids the measured uneven-R
+  // throughput penalty. The measured surface starts at 64 complete query
+  // groups and 64 KV tiles; smaller workloads keep their single dispatch.
+  return preferSplitQueryRanges && type == AttentionKernelType::forward &&
+      ioPrecision == GEMMOperandPrecision::FP16 && lowPrecisionIntermediates &&
+      matrixDimensions[2] == 128 && matrixDimensions[0] >= 4096 &&
+      matrixDimensions[1] >= 4096 && matrixDimensions[0] % 16 != 0 &&
+      !isCausal && !masked && !isVarlen && !attentionSinks;
+}
+
 NAInt8AttentionKernelDescriptor NAInt8AttentionDescriptor::kernelDescriptor() const noexcept {
+  // Split outputs fold the KV tail into the main loop and omit the separate
+  // short-sequence path. This is a support constraint, below the tuning cutoff.
+  CCV_NNC_MFA_PRECONDITION(!splitOutput || matrixDimensions[1] >= 64);
+  // A deep head increases register pressure. Use fewer SIMD groups and a
+  // shallower D tile, amortizing Q loads across twice as many unmasked keys.
+  // Quantization must use the same key tile: each traversal consumes one scale.
+  // Preserve decode tuning when there are at most four query tiles.
+  const bool wideForward = type == AttentionKernelType::forward &&
+      matrixDimensions[2] == 256 && matrixDimensions[0] > 64 &&
+      ioPrecision != GEMMOperandPrecision::FP32 &&
+      lowPrecisionIntermediates && !isCausal && !masked && !isVarlen && !attentionSinks;
   const uint16_t qScaleTileSize =
       type == AttentionKernelType::forward ? 16 : 32;
-  const uint16_t kvScaleTileSize = 64;
+  const uint16_t kvScaleTileSize = wideForward ? 128 : 64;
   const bool lowPrecisionBackward =
       type != AttentionKernelType::forward &&
       ioPrecision != GEMMOperandPrecision::FP32;
@@ -74,20 +104,21 @@ NAInt8AttentionKernelDescriptor NAInt8AttentionDescriptor::kernelDescriptor() co
   const bool splitHeadBackwardKeyValue =
       type == AttentionKernelType::backwardKeyValue && splitHeadBackward;
   const uint16_t blockD =
-      type == AttentionKernelType::forward ?
-      (matrixDimensions[2] >= 192 ? 64 : 32) :
+      splitOutput ? 64 : type == AttentionKernelType::forward ?
+      (matrixDimensions[2] >= 192 && !wideForward ? 64 : 32) :
       (type == AttentionKernelType::backwardQuery && splitHeadBackward ?
           32 :
           (splitHeadBackward ? 64 : (uint16_t)matrixDimensions[2]));
   const uint16_t blockC =
-      type == AttentionKernelType::backwardKeyValue ?
-      (splitHeadBackward ? 32 : 16) : 64;
+      splitOutput ? 64 : type == AttentionKernelType::backwardKeyValue ?
+      (splitHeadBackward ? 32 : 16) : (wideForward ? 128 : 64);
   const uint16_t queryBlockC =
       type == AttentionKernelType::backwardQuery && splitHeadBackward ? 32 : blockC;
   const simd::ushort3 blockDimensions { 16, queryBlockC, blockD };
   const uint16_t executionSIMDGroups =
-      type == AttentionKernelType::forward ?
-      (matrixDimensions[2] > 192 ? 16 : 4) :
+      preferSmallQueryTiles && type == AttentionKernelType::forward ? 1 :
+      splitOutput ? 8 : type == AttentionKernelType::forward ?
+      (matrixDimensions[2] > 192 && !wideForward ? 16 : 4) :
       (splitHeadBackwardKeyValue ?
           (Hq > Hk ? 8 : 16) :
           4);
@@ -123,6 +154,25 @@ NAInt8AttentionKernelDescriptor NAInt8AttentionDescriptor::kernelDescriptor() co
       has_causal_empty_rows,
       isVarlen,
       attentionSinks);
+  descriptor.partitioned = partitioned;
+  descriptor.splitOutput = splitOutput;
+  descriptor.compactGrid = splitOutput;
+  if (type == AttentionKernelType::forward &&
+      ioPrecision == GEMMOperandPrecision::FP16 && lowPrecisionIntermediates &&
+      matrixDimensions[2] == 128 && !isCausal && !masked && !isVarlen && !attentionSinks) {
+    const uint64_t queryTile = blockDimensions[0] * executionSIMDGroups;
+    const uint64_t queryGroups = splitQueryRanges() ? matrixDimensions[0] / queryTile :
+        (uint64_t(matrixDimensions[0]) + queryTile - 1) / queryTile;
+    uint64_t paddedQueries = 1, paddedHeads = 1;
+    while (paddedQueries < queryGroups) paddedQueries <<= 1;
+    while (paddedHeads < Hq) paddedHeads <<= 1;
+    // Adjacent query groups for a head help long KV traversals. On shorter
+    // sequences, retain Morton order unless at least a third of its padded
+    // grid is inactive; dense short grids regressed in the shape sweep.
+    // These are measured dispatch bounds, not assumptions about cache size.
+    descriptor.compactGrid = matrixDimensions[1] >= 8192 ||
+        2 * paddedQueries * paddedHeads >= 3 * queryGroups * Hq;
+  }
   descriptor.loadR = loadR;
   descriptor.hasRRemainder = !loadR || isVarlen || matrixDimensions[0] % blockDimensions[0] != 0;
   descriptor.loadC = loadC;
@@ -260,7 +310,9 @@ std::pair<NAInt8AttentionKernelDescriptor, PipelineValue<NAInt8AttentionKernel> 
   NS::SharedPtr<MTL::ComputePipelineState> fifth;
   NS::SharedPtr<MTL::ComputePipelineState> sixth;
   switch (type.value) {
-  case AttentionKernelType::forward:
+  case AttentionKernelType::forward: {
+    const uint16_t queryRange = splitQueryRanges() ? 1 : 0;
+    attentionConstants->setConstantValue(&queryRange, MTL::DataTypeUShort, NS::UInteger(40));
     pipeline = NS::TransferPtr(createPipeline(kernel, attentionConstants.get(), "int8_attention"));
     second = NS::TransferPtr(createPipeline(kernel, quantizeConstants.get(), "quantize_q"));
     third = NS::TransferPtr(createPipeline(kernel, quantizeConstants.get(), "quantize_k"));
@@ -270,8 +322,15 @@ std::pair<NAInt8AttentionKernelDescriptor, PipelineValue<NAInt8AttentionKernel> 
     CCV_NNC_MFA_PRECONDITION(kernel->vMeanThreadgroupSize() <= fifth->maxTotalThreadsPerThreadgroup());
     if (masked) {
       sixth = NS::TransferPtr(createPipeline(kernel, attentionConstants.get(), "generate_int8_attention_block_mask"));
+    } else if (splitQueryRanges()) {
+      // Unmasked forward uses the otherwise-empty mask-pipeline slot for its
+      // tail. Both pipelines retain the original quantization/batch strides.
+      const uint16_t tailRange = 2;
+      attentionConstants->setConstantValue(&tailRange, MTL::DataTypeUShort, NS::UInteger(40));
+      sixth = NS::TransferPtr(createPipeline(kernel, attentionConstants.get(), "int8_attention"));
     }
     break;
+  }
   case AttentionKernelType::backwardQuery:
     pipeline = NS::TransferPtr(createPipeline(kernel, attentionConstants.get(), "int8_backward_query"));
     second = NS::TransferPtr(createPipeline(kernel, attentionConstants.get(), "compute_d"));
@@ -288,5 +347,7 @@ std::pair<NAInt8AttentionKernelDescriptor, PipelineValue<NAInt8AttentionKernel> 
   output->fourth = fourth;
   output->fifth = fifth;
   output->sixth = sixth;
+  if (partitioned)
+    output->seventh = NS::TransferPtr(createPipeline(kernel, attentionConstants.get(), "merge_int8_attention_partitions"));
   return std::make_pair(kernelDesc, output);
 }

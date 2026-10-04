@@ -1,0 +1,282 @@
+Clean INT8 forward performance changes on unstable 6a611be1
+
+Scope
+- NAInt8MatMul: hardware-gated native tile selection and an internal alternative
+  multiply loop using MLX integer fragments. Existing activation quantization,
+  INT32 reduction, row scales, bias and FP16 output are retained.
+- NAInt8Attention: forward tile sizes, compact query/head scheduling, split
+  query tails, split D256 outputs, bounded long-KV inference partitions, and
+  smaller query groups for low-parallelism short causal prefill.
+- GPU core count is cached from IOKit on macOS and Catalyst; physical iOS defaults to 10. Unknown
+  core counts retain the conservative GEMM configuration.
+- The NO_BACKWARD execution flag supplies inference eligibility when a caller
+  also requests saved attention statistics. CNNP no-gradient evaluation sets
+  it; evaluation requiring gradients does not. No graph fusion is included.
+- NAMatMul and NAAttention are unchanged. No accumulator-precision correction,
+  INT8 backward correction, castOutputToFloat, GEMM/cast fusion, separate
+  NARegisterMatMul operator, or FP16 attention fallback is included.
+
+GEMM policy
+On Apple10-family GPUs, 40 or more cores enable the native 64x128x128 tile
+with four SIMD groups for K <= 8192. Smaller/unknown devices retain the
+128x128x128, eight-group tile. Other callers of the descriptor retain the
+unstable default unless they explicitly request the smaller tile.
+On the measured large-output and medium-row long-reduction surfaces, the 40-core Max uses
+the integer-fragment loop for K > 8192; larger GPUs retain that loop for the
+full eligible surface pending the user's Ultra check. The native path remains
+available for batches, strided layouts, rotated activations, and smaller or
+unsupported shapes. Existing large-address and row-chunk guards are retained.
+
+Why a separate NARegisterMatMul operator is unnecessary
+The clean implementation keeps both multiply strategies in NAInt8MatMul.
+The fragment path uses a 64x128 threadgroup tile with eight SIMD groups, each
+owning 32x32 output elements. It traverses K32 fragments inside K512 blocks,
+unrolls pairs of fragment operations, and uses unmasked loads for complete
+K32 fragments in a partial K512 tail. Alignment is a pipeline property;
+dimensions and dispatch geometry are supplied at encode time. Both strategies
+share the existing activation quantizer.
+
+What remains unresolved about the native-only alternative
+Earlier controlled Max measurements found a native-only substitution about
+10% slower for 2048x5120x17408, and about 3-4% slower for 4096x6144x18432 and
+4096x6144x16384. Paired unrolling alone did not close these gaps. The paths also
+differ in per-SIMD output ownership, reduction scheduling, bounds handling,
+and grid ordering. No isolated experiment has established which difference
+causes the remaining gap. This commit retains the faster measured loop; it
+does not claim that 'register based' alone explains the result.
+
+Reproduce on M5 Ultra
+From test/int/nnc: make debug -j4
+From bin/mfa: make na_int8_forward_bench
+The probe measures GPU command-buffer time including activation quantization,
+uses shared input buffers and production dispatch, checks every output for
+finiteness, and checks sampled outputs against a CPU reference. Weight packing
+is outside the timed region. It prints the complete output SHA256.
+
+Example commands (run separately with cooling between them):
+CCV_NA_WARMUP_SECONDS=0.5 ./na_int8_forward_bench matmul 4096 6144 6144 1 1 1 3 21 0 1
+CCV_NA_WARMUP_SECONDS=0.5 ./na_int8_forward_bench matmul 2048 5120 17408 1 1 1 3 21 0 1
+CCV_NA_WARMUP_SECONDS=0.5 ./na_int8_forward_bench attention 4096 4096 256 1 8 8 3 21 0 0
+CCV_NA_WARMUP_SECONDS=0.5 ./na_int8_forward_bench attention 4096 24576 128 1 48 48 3 21 0 0
+
+Functional validation on M5 Max / macOS 27.0.1
+- make debug -j4: passed.
+- mpsdnn.tests: 126/126 passed.
+- Six focused INT8 forward tests passed (two GEMM and four attention).
+  These cover quantized CPU GEMM references, bias, dynamic-M reuse, partial
+  tiles, compact grids, query tails, split output, KV partitioning and short
+  causal grouped-query attention with dynamic dimensions.
+- Seven existing quantized-attention forward tests passed, including D256
+  added to the batched and uneven-sequence cases. Existing tolerances unchanged.
+- Full mpsblas.tests cannot complete on this baseline/SDK combination: the
+  generic GEMM fallback fails Metal compilation because its simdgroup-storage
+  methods lack a thread address-space qualifier. The unchanged unstable
+  library reproduces the same failure in the same test.
+- The INT8 backward BF16/INT8 operand combination also fails Metal compilation
+  in get_destination_cooperative_tensor; the unchanged unstable library
+  reproduces this failure. Backward loop source is identical to unstable.
+  Neither fix is included. Do not interpret the forward validation as a
+  passing full BLAS/backward suite.
+- iPhoneOS validation app builds and signs successfully.
+
+Detailed run medians, output hashes, CPU errors and binary hashes are in
+performance-results.json. Positive timing deltas denote regressions.
+
+Ultra feedback follow-up (reported measurements, not locally reproduced Ultra data)
+The user validated be445250 on an 80-core M5 Ultra: numerical validation passed,
+302 BLAS / 126 DNN tests and 866 benchmark runs. Native performance stayed within
+-2.7% to +1.9% of its parent. Catalyst incorrectly selected the ten-core profile;
+H3 down-projection rose from 49.4 to 107.6 ms under that selection. Bazel lacked
+IOKit linkage. Both integration defects are addressed here. The conditional
+extracted from production was compiled and run as Catalyst on this Max:
+OSX=0 Catalyst=1 iOS=1 cores=40. SwiftPM manifest validation passed.
+
+Remaining reported gaps and disposition:
+- Partial-row GEMM: 4097x6144x18432 was 7.50 ms on be445250 versus 4.86 ms in
+  the reviewer's paused prototype. The old selector required M%64==0 below
+  M8192; that excluded the existing masked-load/store fragment implementation.
+  This update removes that alignment restriction. Quantization is unchanged.
+- Medium-row GEMM: Qwen 4B M512,N2560,K9216 was 0.206 versus 0.128 ms in that
+  prototype. The old M2048 / output-area minimum excluded it. The selector
+  now admits M>=512 long reductions when the 64x128 tile yields at least two
+  threadgroups per GPU core. This is a scheduling threshold, not an assertion
+  that core count alone determines the crossover.
+- D128 R=C4097 H8 attention: Ultra regressed 14%, whereas H32/H56 improved.
+  The isolated tail has only B*Hq threadgroups. Above 40 GPU cores, a separate
+  tail now requires B*Hq*8 >= coreCount. On Ultra this retains H32/H56 and uses
+  one dispatch for H8. The exact threshold remains to be checked on Ultra,
+  especially H8/9/10/12/16 and larger batches. Max and iPad retain their policy.
+- Short causal prefill R64,C8192,D256,Hq16,Hkv4: reported INT8 1.027 ms versus
+  MLX FP16 0.302 ms (3.40x). Existing 256-row groups launch 16 SIMD groups but
+  only four have query rows; each independently traverses the long KV axis.
+  A one-SIMD, 16-row strategy exposes 64 threadgroups instead of 16 without
+  changing quantization or reduction order. It is restricted to R32..64,
+  C>=4096, FP16, and an original grid with at most half as many threadgroups
+  as GPU cores, on devices with at least 40 cores. It improves the static Max
+  R64/H16 case by 3.45%; this is not an explanation for most of the MLX gap.
+
+H3 long-KV partitioning is preserved. Reported Ultra dense-attention times:
+                    be445250 INT8   unstable INT8   MLX FP16
+S31018, 480p/10s         157.75 ms       225.45 ms    306.04 ms
+S70186, 720p/10s         768.14 ms      1189.24 ms   1609.17 ms
+Fused GEMM/output casts remain excluded by explicit user clarification. Those
+casts preserve FP16 rounding while eliminating an intermediate memory pass;
+they are separate from the rejected accumulator-precision correction. This
+clean commit does not claim to retain graph-level cast-fusion gains.
+The reviewer's full artifacts and prototype have not been available locally;
+the supplied report is the source for Ultra figures, not an inspected prototype.
+
+Max GEMM follow-up; mean of two run medians, milliseconds
+Shape / case                         Before     After      Change
+partial-down-4095                     12.0394    9.4024    -21.90%
+partial-down-4097                     11.6311    8.7780    -24.53%
+partial-down-4161                     11.7811    8.9287    -24.21%
+partial-proj                           2.7835    2.7678     -0.56%
+partial-both                           3.9926    3.4803    -12.83%
+medium-qwen-512                        0.3926    0.2306    -41.25%
+medium-qwen-513                        0.4500    0.4250     -5.55%
+medium-qwen-1024                       0.6480    0.4708    -27.35%
+medium-qwen-2048                       1.2016    0.9429    -21.54%
+medium-wide                            1.5912    1.1460    -27.98%
+
+Short-query diagnosis
+The one-SIMD experiment changes only query scheduling; the per-query arithmetic,
+64-wide head tile, quantizers and reduction order are unchanged. The first full
+static-shape pair improved about 3%; the second paired sweep measured 3.45%
+for static R64/H16, 1.86% for dynamic R64/H16, and 1.18% for R32/H16. H32
+improved only 0.57%, so the final gate keeps its existing path on the Max.
+The smallest gains are close to measurement variation. This does not explain most of the
+reported 3.40x Ultra gap to MLX FP16.
+Holding that scheduling fixed, increasing the head tile from 64 to 128 or 256
+made the Max case slower. Two cooled run medians per candidate were:
+  D tile 64: 0.9729, 0.9676 ms
+  D tile 128: 0.9978, 0.9965 ms (+2.8%)
+  D tile 256: 1.0794, 1.0798 ms (+11.3%)
+All six output hashes were identical. The wider tiles are not included.
+This rejects 'fewer head pieces must be faster' for this measured case. It does
+not isolate instruction latency, memory traffic or probability quantization as
+the remaining dominant cost. A causal KV-partitioned strategy is still a separate
+algorithmic investigation; the existing H3 noncausal partition cannot be enabled
+for this workload by simply dropping its causal guard.
+
+Next Ultra validation targets
+- Check native and Catalyst both report 80 GPU cores; repeat the H3 projection.
+- GEMM: 4095/4096/4097/4161 x 6144 x 18432, plus neighboring N/K tails.
+- Medium GEMM: M=511/512/513/1024/2048, N=2560, K=9216; include dynamic-M reuse.
+- Tail attention: R=C4097,D128,Hq=Hkv=8/9/10/12/16/32/56, B=1 and B=2.
+  The cutoff is a candidate interpolation of the reported small-/large-head
+  behavior, not a measured universal boundary.
+- Short causal attention: R32/64/128,C8192,D256,Hq16/32/64,Hkv4, static and
+  dynamic R/C. The core-count gate may select additional head counts on Ultra.
+- Preserve H3: S31018 and S70186 dense attention, and existing projection cases.
+- Run forward numerical tests and the full platform suite available on Ultra;
+  this Mac's baseline SDK failures are documented separately in validation.txt.
+
+Additional probe examples (one invocation at a time, with cooling):
+CCV_NA_WARMUP_SECONDS=0.5 ./na_int8_forward_bench matmul 4097 6144 18432 1 1 1 3 21 0 1
+CCV_NA_WARMUP_SECONDS=0.5 ./na_int8_forward_bench matmul 512 2560 9216 1 1 1 3 21 0 1
+CCV_NA_WARMUP_SECONDS=0.5 ./na_int8_forward_bench attention 4097 4097 128 1 8 8 3 21 0 0
+CCV_NA_WARMUP_SECONDS=0.5 ./na_int8_forward_bench attention 64 8192 256 1 16 4 3 21 1 3
+
+Measurement interpretation
+Pre-feedback reconstruction measurements compare the clean INT8 implementation
+with the retained be445250 profile. They cover 16 Max GEMM shapes and six Max
+attention shapes. GEMM means ranged from -3.01% to +0.72%; the largest apparent
+GEMM gain had 7.3% within-arm spread and should not be claimed as an improvement.
+Five attention cases were within 0.36%. An initial +3.00% long-KV result was
+repeated in reverse order with longer cooling and became +0.60%, within the
+observed spread. All paired outputs matched bit-for-bit. These measurements
+establish reconstruction parity, not universal speedups.
+The Ultra-feedback follow-up separately measures the newly selected GEMM paths
+and short causal query scheduling. Its comparator is the clean pre-feedback
+checkpoint, which had retained the old selectors. The H32 short-query experiment
+is recorded but excluded by the final selector; a final boundary comparison
+checks the restored path. Source changes for the follow-up leave the long-KV
+H3 partitioning and the previously measured noncausal attention paths intact.
+
+Protocol: one GPU timing process at a time; 0.5 seconds of GPU warmup, then
+21 command-buffer samples per run; compare means of two run medians in ABBA
+order. Reconstruction runs used 120 seconds initial cooling and 12 seconds
+between Max runs; the long-KV repeat used 30 seconds between runs. Follow-up
+Max runs used 90 seconds initial cooling and 15 seconds between runs. The
+final iPad run uses 120 seconds initial cooling, 20 seconds between runs, and
+45 seconds for the large down projection / partitioned attention. Every accepted
+run requires nominal thermal state before and after and a passing CPU check.
+Nominal thermal state alone cannot exclude clock drift; paired ordering,
+cooldowns and the control cases limit that uncertainty.
+
+The pre-feedback iPad run was interrupted when the new Ultra feedback arrived.
+Only its two complete paired cases are summarized; the unfinished projection
+case is excluded. The final iPad run targets the added gating boundaries and
+the retained split-output / query-tail / partitioned-attention paths.
+
+Final H32 gate check: 0.9921 ms retained versus 0.9933 ms final (+0.13%),
+with identical outputs. The final small-query gate is B*Hq*2 <= GPU cores;
+the original R<=64 grid contains one threadgroup per query head / batch.
+
+Final iPad validation: seven workloads / 28 runs passed CPU checks, with
+identical retained/new output hashes and nominal thermal state throughout.
+Mean timing differences ranged from -0.72% to +0.84%; these show parity,
+not an iPad speedup. The ten-core policy was selected in every run.
+
+Complete paired tables (milliseconds; positive change means slower)
+
+mac
+Case                                               Before     After      Change
+flux2-1024-projection                                 2.7160    2.6841     -1.18%
+flux2-1024-ffn-up                                     7.8912    7.6540     -3.01%
+flux2-1024-ffn-down                                   8.2529    8.2837     +0.37%
+qwen21-1024-projection                                1.2319    1.2114     -1.66%
+gemm-rows-512-6144-6144                               0.3554    0.3547     -0.18%
+gemm-rows-2048-6144-6144                              1.3851    1.3881     +0.22%
+gemm-rows-4097-6144-6144                              2.7764    2.7689     -0.27%
+gemm-aspect-4096-6144-16384                           7.1578    7.2094     +0.72%
+gemm-aspect-2048-2048-8192                            0.6815    0.6838     +0.33%
+gemm-rows-8192-1536-4096                              1.0901    1.0849     -0.47%
+gemm-edges-n4097-k8193                                4.0213    4.0058     -0.39%
+gemm-edges-n1536-k32768                               6.8251    6.8108     -0.21%
+local-qwen35-4b-m1-up                                 0.0264    0.0266     +0.71%
+local-qwen35-4b-m128-up                               0.0607    0.0604     -0.52%
+local-qwen35-4b-m2048-up                              0.8470    0.8468     -0.03%
+local-qwen35-27b-m2048-down                           3.3284    3.3270     -0.04%
+
+mac-attention
+Case                                               Before     After      Change
+flux2-512-attention                                   0.9086    0.9081     -0.06%
+qwen21-1024-attention                                 3.7566    3.7551     -0.04%
+attn-d256-r4096-c4096                                 2.6274    2.6262     -0.04%
+attn-partition-r4096-c24576-h48                      30.6447   31.5636     +3.00%
+attn-d128-r4097-c4097                                 1.0967    1.0928     -0.36%
+attn-dynamic-d256                                     5.2953    5.2963     +0.02%
+
+mac-repeat
+Case                                               Before     After      Change
+attn-partition-r4096-c24576-h48                      30.7353   30.9200     +0.60%
+
+short-query
+Case                                               Before     After      Change
+causal-r64-h16                                        0.9958    0.9615     -3.45%
+causal-r64-h16-dynamic                                1.0064    0.9877     -1.86%
+causal-r32-h16                                        0.9746    0.9631     -1.18%
+causal-r64-h32                                        0.9941    0.9884     -0.57% (experiment, not final selection)
+causal-r64-h64                                        1.4338    1.4415     +0.54%
+causal-r128-h16                                       1.4532    1.4533     +0.01%
+
+short-query-gate
+Case                                               Before     After      Change
+causal-r64-h32-final-gate                             0.9921    0.9933     +0.13%
+
+ipad-before-ultra-feedback
+Case                                               Before     After      Change
+gemm-rows-512-6144-6144                               1.6020    1.6156     +0.85%
+gemm-rows-2048-6144-6144                              6.5116    6.5390     +0.42%
+
+ipad
+Case                                               Before     After      Change
+medium-qwen-512                                       1.1290    1.1304     +0.12%
+partial-down-4097                                    46.8165   46.6463     -0.36%
+causal-r64-h16                                        1.6968    1.7053     +0.50%
+attn-d256-r4096-c4096                                10.6090   10.6987     +0.84%
+attn-partition-r4096-c24576-h48                     131.1997  131.1761     -0.02%
+attn-d128-r4097-c4097                                 3.8938    3.8913     -0.06%
+attn-dynamic-d256                                    20.6358   20.4876     -0.72%

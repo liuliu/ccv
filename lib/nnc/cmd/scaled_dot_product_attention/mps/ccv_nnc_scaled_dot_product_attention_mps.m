@@ -396,6 +396,7 @@ static int _ccv_nnc_scaled_dot_product_attention_forw_mps(const ccv_nnc_cmd_t cm
 			.upcast = !is_downcast,
 			.use_neural_accelerators = use_neural_accelerators,
 			.use_quantized_attention = use_quantized_attention,
+			.is_inference = (flags & CCV_NNC_NO_BACKWARD) != 0,
 			.attention_sinks = attention_sinks,
 			.sliding_window = (uint32_t)sliding_window,
 			.sink_head_stride = sink_head_stride,
