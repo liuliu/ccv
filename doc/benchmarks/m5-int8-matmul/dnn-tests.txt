@@ -1,0 +1,129 @@
+./mpsdnn.tests (M5 Max, extracted branch)
+exit: 0
+[1/126] [PASS] mps forward convolution
+[2/126] [PASS] mps forward convolution in nchw format
+[3/126] [PASS] mps forward grouped convolution falls back with mfa enabled
+[4/126] [PASS] mps forward convolution with 1x1 kernel
+[5/126] [PASS] mps forward convolution in nchw format with 1x1 kernel
+[6/126] [PASS] mps forward convolution in nchw format with row-wise 8i weight
+[7/126] [PASS] mps forward convolution in nchw format with 1x1 kernel and no bias
+[8/126] [PASS] mps forward convolution in nchw format with 1x1 kernel on edge tiles
+[9/126] [PASS] mps forward convolution in nchw format with 1x1 kernel on edge tiles and no bias
+[10/126] [PASS] mps forward convolution in half precision
+[11/126] [PASS] mps forward convolution in bfloat precision
+[12/126] [PASS] mps forward convolution in bfloat precision with 1x1 kernel
+[13/126] [PASS] mps forward convolution with dilation 2, 3
+[14/126] [PASS] mps forward convolution 3d
+[15/126] [PASS] mps forward convolution 3d via mfa conv3d
+[16/126] [PASS] mps forward convolution 3d via mfa conv3d with bias
+[17/126] [PASS] mps forward convolution 3d via mfa conv3d with no padding on 17x17 spatial dimensions
+[18/126] [PASS] mps forward convolution 3d via mfa conv3d with no padding on 65x65 spatial dimensions
+[19/126] [PASS] mps forward convolution 3d via mfa conv3d with no padding on 129x129 spatial dimensions
+[20/126] [PASS] mps forward convolution 3d via mfa conv3d 5x5
+[21/126] [PASS] mps forward convolution 3d via mfa conv3d 7x7
+[22/126] [PASS] mps forward convolution 3d via mfa conv3d with padding
+[23/126] [PASS] mps forward convolution 3d via mfa conv3d with asymmetric padding
+[24/126] [PASS] mps forward convolution 3d via mfa conv3d with padding on small spatial dimensions
+[25/126] [PASS] mps forward convolution 3d via mfa conv3d with padding and bias
+[26/126] [PASS] mps forward convolution 3d via mfa conv3d with one point padding on tile boundary and bias
+[27/126] [PASS] mps forward convolution 3d via mfa conv3d with one point padding on tile boundary
+[28/126] [PASS] mps forward convolution 3d via mfa conv3d with one point padding on small rectangular spatial dimensions
+[29/126] [PASS] mps forward convolution 3d via mfa conv3d with one point padding on 9x9 spatial dimensions
+[30/126] [PASS] mps forward convolution 3d via mfa conv3d with one point padding on 8x9 spatial dimensions
+[31/126] [PASS] mps forward convolution 3d via mfa conv3d with one point padding on 9x8 spatial dimensions
+[32/126] [PASS] mps forward convolution 3d via mfa conv3d with one point padding on 17x19 spatial dimensions
+[33/126] [PASS] mps forward convolution 3d via mfa conv3d with one point padding on 33x35 spatial dimensions
+[34/126] [PASS] mps forward convolution 3d via mfa conv3d with one point padding on 9x65 spatial dimensions
+[35/126] [PASS] mps forward convolution 3d via mfa conv3d with partial output channel tile and bias
+[36/126] [PASS] mps forward convolution 3d via mfa conv3d with 48 channels and partial output channel tile
+[37/126] [PASS] mps forward convolution 3d in nchw format
+[38/126] [PASS] compare softmax with mps
+[39/126] [PASS] compare softmax with mps in half precision
+[40/126] [PASS] compare softmax gradient with mps
+[41/126] [PASS] compare sigmoid with mps
+[42/126] [PASS] compare sigmoid with mps in half precision
+[43/126] [PASS] compare sigmoid with mps and more vectorization cases
+[44/126] [PASS] compare sigmoid gradient with mps
+[45/126] [PASS] compare relu with mps
+[46/126] [PASS] compare relu with mps in half precision
+[47/126] [PASS] compare layer norm with mps
+[48/126] [PASS] compare layer norm with mps without scale / bias
+[49/126] [PASS] mps mfa layer norm is deterministic for wide rows
+[50/126] [PASS] compare group norm with mps
+[51/126] [PASS] compare group norm with mps without scale / bias
+[52/126] [PASS] compare rmsnorm with mps
+[53/126] [PASS] compare rmsnorm with mps without scale
+[54/126] [PASS] compare rmsnorm with mps in half precision for qwen shape
+[55/126] [PASS] compare layer norm with mps in bfloat precision through mfa and graph
+[56/126] [PASS] compare rmsnorm with mps in bfloat precision through mfa and graph
+[57/126] [PASS] compare rmsnorm cmul with affine weight using cpu ref
+[58/126] [PASS] compare rmsnorm cmul with affine weight at rank-4 production shape through mfa and graph
+[59/126] [PASS] compare rmsnorm cmul with mps through two-row reuse
+[60/126] [PASS] compare rmsnorm gated with cpu ref
+[61/126] [PASS] compare rmsnorm gated with mps in mixed bfloat precision through mfa and graph
+[62/126] [PASS] compare rmsnorm gated with mps across non-last axis without scale
+[63/126] [PASS] compare rmsnorm gated with mps in half precision in-place
+[64/126] [PASS] compare add with mps
+[65/126] [PASS] compare add with mps in half precision
+[66/126] [PASS] compare add gradient with mps
+[67/126] [PASS] compare add gradient with mps no dyt
+[68/126] [PASS] broadcasting semantics for add backward mps (a,b)
+[69/126] [PASS] broadcasting semantics for add backward mps (a, nil)
+[70/126] [PASS] broadcasting semantics for add backward mps (nil,b)
+[71/126] [PASS] compare ewsum with mps
+[72/126] [PASS] compare ewsum with mps in half precision
+[73/126] [PASS] compare ewsum with mps in bfloat precision
+[74/126] [PASS] compare ewsum with mps in bfloat precision with MFA disabled
+[75/126] [PASS] compare transpose two tensor views
+[76/126] [PASS] broadcasting semantics for add [[1, 2, 3], [4, 5, 6]] + [7, 8, 9]
+[77/126] [PASS] broadcasting semantics for add [[1], [2], [3], [4]] + [5, 6]
+[78/126] [PASS] broadcasting semantics for mul [[1, 2, 3], [4, 5, 6]] * [7, 8, 9]
+[79/126] [PASS] broadcasting semantics for mul [[1], [2], [3], [4]] * [5, 6]
+[80/126] [PASS] scalar mul [[1, 2, 3], [4, 5, 6]] * 0.3
+[81/126] [PASS] scalar mul [[1, 2, 3], [4, 5, 6]] * 0.5, int
+[82/126] [PASS] compare average pooling with mps
+[83/126] [PASS] compare average pooling with mps in half precision
+[84/126] [PASS] compare max pooling with mps
+[85/126] [PASS] compare max pooling with mps in half precision
+[86/126] [PASS] compare max pooling 2x2 with mps
+[87/126] [PASS] compare max pooling 2x2 with mps in half precision
+[88/126] [PASS] mps mse mean loss forward
+[89/126] [PASS] mps mse sum loss forward
+[90/126] [PASS] mps mse mean loss backward
+[91/126] [PASS] mps mse sum loss backward
+[92/126] [PASS] mps mse sum loss backward (no output db)
+[93/126] [PASS] mps leaky relu gradient in float
+[94/126] [PASS] compare layer norm gradient with mps
+[95/126] [PASS] compare layer norm gradient with mps (no bias)
+[96/126] [PASS] compare layer norm gradient with mps without scale / bias
+[97/126] [PASS] compare layer norm gradient with mps (no bias) without scale / bias
+[98/126] [PASS] compare rmsnorm gradient with mps
+[99/126] [PASS] compare rmsnorm gradient with mps without scale
+[100/126] [PASS] mps backward convolution in nchw format
+[101/126] [PASS] mps backward convolution in nhwc format
+[102/126] [PASS] mps backward convolution in bfloat precision
+[103/126] [PASS] mps backward convolution in nchw format with dilation 2, 3
+[104/126] [PASS] compare group norm gradient with mps
+[105/126] [PASS] compare group norm gradient with mps, variant 1
+[106/126] [PASS] compare group norm gradient with mps (no dbias)
+[107/126] [PASS] compare group norm gradient with mps without scale / bias
+[108/126] [PASS] compare group norm gradient with mps, variant 1 without scale / bias
+[109/126] [PASS] compare group norm gradient with mps (no dbias) without scale / bias
+[110/126] [PASS] broadcasting semantics for mul backward (a,b)
+[111/126] [PASS] broadcasting semantics for mul backward (a, nil)
+[112/126] [PASS] broadcasting semantics for mul backward (nil,b)
+[113/126] [PASS] broadcasting semantics for mul backward (no output db)
+[114/126] [PASS] broadcasting semantics for mul backward (no input grad)
+[115/126] [PASS] broadcasting semantics for mul backward (no input grad) for b
+[116/126] [PASS] broadcasting semantics for mul backward (no input grad) for a
+[117/126] [PASS] mps scalar mul forward
+[118/126] [PASS] mps scalar mul backward
+[119/126] [PASS] mps scalar mul backward, no input
+[120/126] [PASS] mps forward convolution transpose
+[121/126] [PASS] mps forward convolution transpose in nchw format
+[122/126] [PASS] mps forward convolution transpose in half precision
+[123/126] [PASS] compare tanh with mps
+[124/126] [PASS] compare tanh with mps in half precision
+[125/126] [PASS] compare tanh gradient with mps
+[126/126] [PASS] compare tanh gradient with mps in half precision
+all test case(s) passed, congratulations!

@@ -1,0 +1,122 @@
+NAInt8MatMul production cleanup and Ultra follow-up, 2026-10-04
+
+Parent: ece05fbcf6f798a400aba67542bb6a6b31ed0178 (m5-na-int8-matmul).
+Baseline of this branch remains unstable 6a611be1. This is a follow-up to ece05fbc.
+
+Changes
+- One library, one createSource(), and one int8_matmul entry-point name.
+  The library contains the shared activation quantizer and the selected multiply
+  implementation. It no longer compiles an unused native multiply alongside
+  a separate register library.
+- Register scalar IO uses ioPrecision for scales, bias, and output. FP16, BF16,
+  and FP32 use the same INT8 operands / INT32 reduction. H256 remains entirely
+  in the existing activation quantizer. Its exclusion from register selection
+  and the FP16-only restriction are removed; contiguous inputs/outputs and
+  single-batch selection remain required.
+- Preserve existing arithmetic compilation behavior: quantization retains its
+  default math mode, and the multiply section has the existing safe math mode
+  expressed as an MSL source pragma. There is no accumulator-format change.
+- Medium-row selection now compares useful threadgroups between implementations.
+  Let G64=ceil(M/64)*ceil(N/128), G128=ceil(M/128)*ceil(N/128), and C=GPU cores.
+  The parallelism gate is G64 >= 2*C OR min(G64,C) > min(G128,C). Other size,
+  reduction, core-count and address-range conditions are unchanged.
+  At 512x2432x9216 on an 80-core profile, G64=152 and G128=76. The old 160-group
+  floor rejected this case; the new comparison admits it. These counts model
+  available independent work, not measured hardware occupancy or residency.
+- New forward boundary cases and a --validate-register mode in the existing
+  rotation validation harness cover the newly admitted support surface.
+
+Scope
+No attention, backward, native FP16 MatMul, fused-output-cast, or numerical
+correctness fixes. The large-row partition policy is unchanged, including its
+existing FP16 / non-H256 footprint guard; that guard is independent of register
+kernel compatibility. No K-tail experiment is retained in production.
+
+M5 Max (40 physical GPU cores)
+Fresh debug build succeeded. Forward integration: 2/2 cases, comprising 51
+boundary shapes plus four large-row calls. DNN integration: 126/126 passed.
+Direct register validation: 18 configurations x plain/H256 = 36 forward checks,
+covering all three scalar types, partial tiles, bias, static/dynamic M, inactive
+output rows, and source-cache reuse against independent CPU references.
+Full BLAS / INT8 backward tests were not rerun; the known baseline compilation
+failures and precision work remain outside this change.
+
+Paired timings include activation quantization. Two medians per arm, order
+parent/candidate/candidate/parent, 15 samples, >=0.3 GPU seconds of warmup,
+30 seconds initial cooling, 10 seconds between calls. All 48 runs passed
+CPU sampling / finite-output checks, with identical full hashes between arms
+for every case. Thermal state was nominal before and after every call.
+GPU milliseconds (mean of the two run medians):
+case                         parent     candidate   change   policy cores
+aligned                      0.231417  0.272208  +17.63%    40
+column-tail                  0.300438  0.300646   +0.07%    40
+column-k-tail                0.348188  0.346063   -0.61%    40
+row-tail                     0.526583  0.523708   -0.55%    40
+retained-large               8.330042  8.386021   +0.67%    40
+gate2432                     0.402979  0.229646  -43.01%    80
+gate2304                     0.233396  0.229062   -1.86%    80
+scalar-fp16-h256             0.416438  0.240021  -42.36%    40
+scalar-bf16                  0.405500  0.232146  -42.75%    40
+scalar-bf16-h256             0.416187  0.244333  -41.29%    40
+scalar-fp32                  0.442250  0.252792  -42.84%    40
+scalar-fp32-h256             0.434542  0.255646  -41.17%    40
+
+All scalar-* cases are 512x2560x9216. See results.json for other shapes and
+individual samples. The 80-core rows are selector tests on the physical Max,
+not Ultra hardware measurements. gate2432 selects native in the parent and
+register in the candidate; gate2304 makes the same transition.
+
+One aligned candidate run was a repeatability outlier: 0.312625 ms, versus
+0.231792 ms for the other candidate run. It is retained above and in the raw
+data. With unchanged binaries, reverse order and longer cooling (60 seconds
+initial, 20 seconds between calls, >=0.5 GPU-second warmup, 21 samples), the
+four run medians were candidate 0.230583, parent 0.230750, parent 0.230750,
+candidate 0.231458 ms. The repeated mean delta is +0.12%. Hashes match.
+Nominal thermal state alone does not establish constant clocks. The cause
+of the isolated slow run was not established; no frequency trace was captured.
+
+Remaining partial-column / K-tail issue (deferred to Ultra investigation)
+The provided Ultra review measured 512x2559x9248 at 0.258 ms, versus unstable
+0.238 ms and the prototype 0.210 ms; width 2560 was 0.124 ms. This update does
+not claim to fix that gap. The Max also retains a column-alignment cliff:
+512x2559x9248 is ~0.346 ms, while 512x2560x9248 is ~0.230 ms. Both dispatch
+8x20 threadgroups; an extra column does not change the grid dimensions.
+
+Isolated experiments on the unified source, 15 samples / >=0.3-second warmup:
+  variant                      512x2559x9248   512x2560x9248
+  unified                      0.346125          0.230042
+  fragment                     0.348667          0.230000
+  unroll                       0.347375          0.230875
+  separate                     0.347000          0.231000
+All 16 diagnostic calls passed CPU checks and matched hashes per shape,
+with nominal thermal state. Specializing only K32 alignment, unrolling the
+remainder by two, and separating its short fragment did not remove the cliff.
+This does not establish a register-spill or instruction-level explanation.
+The alignment-dependent generated path remains the investigation target.
+The revised parallelism gate can also admit neighboring partial-column / K-tail
+cases that previously used native tiles. Their Ultra profitability is unverified;
+include 512x2431x9248 in the next round alongside aligned 2432 and K=9216.
+The three diagnostic patches are supplied for optional Ultra experiments;
+they are not included in the shipping kernel. See README.txt.
+
+M5 iPad final validation
+Completed after unlocking the device. All 14 launches passed; initial
+locked-device launch failure was infrastructure-only and is preserved in data.
+18 direct register configurations x plain/H256 = 36 CPU-reference checks passed.
+Production-dispatch comparisons used the default 10-core policy, with 60 seconds
+initial cooling, 20 seconds between launches, >=0.5 GPU-second warmup and 21
+samples. These shapes retain the native kernel on iPad in both revisions.
+  gate2432: parent 1.072812 ms, candidate 1.074896 ms (+0.19%).
+  column-k-tail: parent 1.248646 ms, candidate 1.232750 ms (-1.27%).
+All eight paired runs had matching parent/candidate whole-output hashes.
+Five additional FP16-H256, BF16 plain/H256, and FP32 plain/H256 forward runs
+passed CPU sampling and finite-output checks. These used seven timed samples
+each and are correctness smoke checks, not paired performance claims.
+Thermal state was nominal before and after all successful launches.
+This is direct MFA device validation, not the full iOS BLAS/DNN suite. The
+register validation explicitly selects that kernel only to test correctness;
+it does not broaden the iPad production policy.
+
+Artifacts: results.json retains run medians, individual GPU samples, hashes,
+source hashes and repeatability data. Full local build/run logs and scripts:
+/private/tmp/ccv-matmul-production-20261004

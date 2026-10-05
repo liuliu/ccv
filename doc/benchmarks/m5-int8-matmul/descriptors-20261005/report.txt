@@ -1,0 +1,143 @@
+NAInt8MatMul descriptor separation, 2026-10-05
+Baseline: f1628fe5628b884c81605b9fcf3729bbf31be225
+Branch: m5-na-int8-matmul
+
+Implementation
+
+NAInt8MatMulDescriptor records execution facts: dimensions, scalar precision,
+strides, bias, rotation, dynamic M, indirect-command support and whether A/C
+share a buffer allocation. It no longer carries tile or register preferences.
+NAInt8MatMulKernelDescriptor derives register operands, tile dimensions, SIMD
+group count and traversal grouping from those facts and DeviceProperties.
+The existing shader generator consumes that configuration unchanged.
+
+The existing two cache layers remain intact. Execution descriptors key the
+pipeline cache; kernel descriptors key source objects. There is no new
+PipelineCacheKey type and no change to shared ShaderCache.hpp.
+
+For loadM=true, register selection always returns false, as requested. M and
+runtime A/C/packed-activation/scale strides do not participate in the pipeline
+lookup. Native groupM is always zero for dynamic M, eliminating the previous
+4096-row source boundary. Dispatch still uses the current execution dimensions.
+This permits one dynamic pipeline across M=511/512/513/1023/4095/4096/4097.
+
+The renamed moreNumberOfTiles predicate is coreCount >= 36 && K <= 8192.
+36 is the agreed estimate between measured 10-core and 40-core devices, not a
+measured hardware crossover. See core-count-estimates.txt for both models.
+Other register and host row-partition thresholds remain unchanged. In
+particular, the register admission threshold, the 40-core short-K exception,
+and the separate host row-partition gate still need their own evidence before
+changing. The medium-row occupancy comparison already uses actual core count.
+
+All callers sharing a context cache now supply its actual device properties.
+Full GEMM dispatchers use threadsPerThreadgroup(), preserving the register
+kernel's multidimensional thread layout. Quantization-only segmented callers
+retain their existing quantization dispatch. The low-level findKernel overload
+accepts an explicit kernel descriptor for direct kernel validation.
+
+No NAInt8Attention, accumulator precision, backward, or fused output-cast
+changes are included.
+
+M5 Max performance
+
+Physical device: M5 Max, 40 GPU cores. Baseline/current/current/baseline order,
+15 measured GPU samples per launch, at least 0.3 GPU-second warmup, 10-second
+idle gaps and an initial 30-second cool-down. All 36 launches began and ended
+at nominal thermal state. GPU time includes activation quantization plus GEMM.
+Each number below is the median of the two per-launch medians for that arm.
+
+Mode       M x N x K              Baseline ms   Update ms    Change
+fixed       512 x 2560 x 9216         0.232000    0.231458     -0.23%
+fixed       512 x 2559 x 9216         0.310854    0.309500     -0.44%
+fixed       512 x 2559 x 9248         0.353479    0.357063     +1.01%
+fixed      4097 x 6144 x 18432        8.925375    8.946021     +0.23%
+fixed*      512 x 2432 x 9216         0.228750    0.229250     +0.22%
+fixed      4097 x 1536 x 6144         0.866125    0.864187     -0.22%
+dynamic     512 x 2560 x 9216         0.232021    0.405042    +74.57%
+dynamic    4097 x 6144 x 18432        8.949521   11.977417    +33.83%
+dynamic    4097 x 1536 x 6144         0.892625    0.915937     +2.61%
+
+* Uses an 80-core policy override on the physical 40-core Max to exercise
+  the occupancy gate. These are not Ultra timings.
+
+Fixed-M results preserve performance within about 1% on these cases. Baseline
+repeat drift was at most 1.25%; candidate repeat spread was at most 1.89%.
+All paired full-output SHA-256 hashes match and all CPU sample checks pass.
+The two large dynamic regressions follow the explicitly requested native
+fallback; the already-native dynamic case also changes groupM to zero for
+M-independent caching. This update does not preserve dynamic-M performance
+universally. It should not be described as an across-the-board speedup.
+
+Measurement provenance: the exact timed candidate binary is retained as
+io-after-timed in the temporary reproduction directory. These paired timings
+preceded the final cutoff change from 40 to 36. The selected configurations at
+the timed 40/80-core profiles are identical. The final source was rebuilt and
+checked at the 35/36 boundary; the final iPad app uses the actual 36 cutoff.
+io-after is the rebuilt final binary, not the preserved timed binary.
+
+M5 Max correctness and build checks
+
+- Final make debug -j4 build passed.
+- 3,701,376 CPU configuration comparisons passed: fixed-M decisions match
+  f1628fe5 except the approved 36-core tile threshold, and dynamic M always
+  has the invariant native configuration.
+- Final --validate-register: cache checks for 10/35/36/40/80-core profiles,
+  plus 18 scalar/K/dynamic configurations passed. Each configuration compares
+  both plain and rotated GEMM with independent CPU references (36 GEMMs);
+  dynamic configurations additionally exercise three reused row counts for
+  both modes (54 GEMMs). These are 90 checked GEMMs, not 90 independent shapes.
+  Dynamic register execution here is a direct kernel capability test; the
+  production selector intentionally does not choose it.
+- dynamic_m_bench 1: 21 combinations (seven M values, three layouts) passed
+  with exact static/dynamic output parity and reuse across the 4096 boundary.
+- Focused rowwise INT8 GEMM integration tests: 2/2 passed, including the
+  51-shape tuning-boundary sweep and large dynamic rows with fused bias.
+- Two NA rowwise SwiGLU tests, grouped rowwise segmented SwiGLU, static and
+  dynamic rowwise segmented GEMM, and rowwise INT8 convolution passed.
+
+The non-NA float Int8MatMul SwiGLU test fails with the existing Metal
+simdgroup_matrix_storage compilation error. The same failure reproduces when
+the test is linked against the retained ece05fbc baseline library. The shader
+is unchanged. Full BLAS/backward testing is not claimed for this update.
+Only the focused DNN result above is claimed for the final source.
+
+M5 iPad final validation
+
+The final signed app passed the same descriptor-cache and 90-GEMM direct
+register checks. All 18 launches completed successfully at nominal thermal
+state before and after. The standalone harness exercises scaled GEMM and
+the kernel directly; it does not run the full iOS integration suite or the
+ANE/SwiGLU/segmented frontends. Max integration coverage is listed above;
+the ANE helper changes were build-checked, not exercised through ANE hardware.
+
+Production paired runs use the 10-core policy and loadM=true, ABBA order,
+21 measured samples per launch, at least 0.5 GPU-second warmup and 20-second
+idle gaps. Baseline and update full-output hashes match for every pair.
+
+M x N x K                  Baseline ms   Update ms    Change
+512 x 2432 x 9216              1.079854    1.076000     -0.36%
+512 x 2559 x 9248              1.223500    1.222042     -0.12%
+4097 x 1536 x 6144             4.173187    4.210146     +0.89%
+
+Maximum baseline repeat drift: 2.77%;
+maximum candidate repeat spread: 1.53%.
+Small measured changes within that spread should not be interpreted as
+established improvements or regressions.
+
+Five additional production smokes passed at 512 x 2560 x 9216: FP16 with
+rotation, BF16 with/without rotation, FP32 with/without rotation. Plain
+FP16 is covered by the paired cases. These are correctness checks, not
+paired performance claims for the additional scalar types.
+
+Harness correction: the first device attempt accidentally linked the
+previous archive through absolute paths in a copied Xcode project. The
+required cache-validation marker was absent, so that attempt was rejected.
+After correcting the paths, the link command and executable marker were
+verified, and all compiled MFA source/header inputs were compared with
+the current workspace before accepting this complete rerun. The rejected
+attempt is retained separately in results.json and the temporary logs.
+
+Remaining work for Ultra: measure this commit on physical 80-core hardware,
+including the existing partial-column/K-tail cliff. The policy override
+on Max is not evidence of Ultra performance. Register/row-partition core
+crossovers remain separate investigations; attention work remains deferred.

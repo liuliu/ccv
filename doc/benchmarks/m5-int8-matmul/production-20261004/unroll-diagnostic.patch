@@ -1,0 +1,13 @@
+--- a/lib/nnc/mfa/kernels/NAInt8MatMulKernel.cpp
++++ b/lib/nnc/mfa/kernels/NAInt8MatMulKernel.cpp
+@@ -357,6 +357,10 @@
+         Btile.load_safe(B + B_offset, ldb, Bklims);
+       }
+ )");
++    const std::string tailLoop = "STEEL_PRAGMA_NO_UNROLL\n    for (int kk1 = 0; kk1 < rem_bk; kk1 += SK)";
++    const auto tailLoopOffset = matmulSource.find(tailLoop);
++    CCV_NNC_MFA_PRECONDITION(tailLoopOffset != std::string::npos);
++    matmulSource.replace(tailLoopOffset, tailLoop.size(), "#pragma clang loop unroll_count(2)\n    for (int kk1 = 0; kk1 < rem_bk; kk1 += SK)");
+     // Reuse MLX's fragment loads and reduction traversal with integer operands.
+     // Apply the existing rowwise scales only after the exact INT32 reduction.
+     source.SetValue("MATMUL_SOURCE", matmulSource);

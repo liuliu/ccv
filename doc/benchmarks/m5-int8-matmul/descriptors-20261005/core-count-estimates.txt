@@ -1,0 +1,74 @@
+Core-count interpolation from measured 10-core iPad and 40-core Max timings
+
+These are estimates between measured devices, not measurements of intermediate
+SKUs. The user selected >=36 for moreNumberOfTiles based on these estimates.
+Register and row-partition thresholds are unchanged.
+
+Native tile comparison (includes activation quantization, milliseconds)
+M x N x K            iPad 128-row  iPad 64-row  Max 128-row  Max 64-row
+512 x 6144 x 6144          1.61758      3.35285      0.44171     0.35519
+4096 x 6144 x 6144        13.35223     24.47715      3.34250     2.76300
+
+128-row: 128x128x128, 8 SIMD groups.
+64-row:   64x128x128, 4 SIMD groups (moreNumberOfTiles).
+The 512-row Max values are paired controlled timings. The 4096-row Max values
+are the native-only tile exploration (median of two 128-row controls, one
+64-row run); its evidence is weaker than the paired 512-row comparison.
+iPad compares diagnostic all-old versus no-register arms to isolate the tile.
+All retained runs report nominal thermal state. Raw inputs are preserved.
+
+Let D(C) = T64(C) - T128(C); negative means the 64-row tile wins.
+For inverse-core interpolation D(C) = A + B/C:
+  B = (D(10) - D(40)) / (1/10 - 1/40)
+  A = (4*D(40) - D(10)) / 3
+  crossing C = -B/A
+
+Shape                  Inverse-core crossing   Linear latency-gap crossing
+512 x 6144 x 6144                35.01                      38.58
+4096 x 6144 x 6144               34.83                      38.51
+
+The second model interpolates D linearly in core count rather than in 1/C.
+The 35-39 range is model sensitivity, NOT a statistical confidence interval.
+Strict proportional throughput (T=b/C with no intercept) cannot produce a
+crossover: the ranking would be identical at every core count. The affine
+fits for the 64-row path have negative time intercepts, so they must not be
+interpreted as physical fixed-overhead estimates or extrapolated to 80 cores.
+
+Inverse-core model: estimated 64-row latency change vs 128-row
+Core count         512-row shape          4096-row shape
+16                    +80.1%                 +63.2%
+20                    +62.5%                 +49.7%
+24                    +45.3%                 +36.3%
+28                    +28.5%                 +22.9%
+32                    +12.1%                  +9.5%
+36                     -3.9%                  -3.9%
+40                    -19.6%                 -17.3%
+
+Both interpolations favor retaining the 128-row path at 32 cores; they disagree
+about a small win/loss at 36 cores. A cutoff in the high 30s is plausible;
+40 remains the first measured winning endpoint. The new >=36 predicate is an
+explicitly estimated cutoff; no 36-core hardware was tested. It applies across
+core counts rather than matching SKU names.
+Two devices also differ in memory bandwidth, clocks, cache, and thermal limits;
+these inputs cannot isolate GPU core count as the sole cause of the crossover.
+
+Historical register-path estimate, not a cutoff for the current shader
+M4096 N6144 K18432:
+  iPad native 52.46017 ms, register 70.19950 ms
+  Max  native 11.72935 ms, register 8.20069 ms
+  inverse-core crossing 26.71; linear latency-gap crossing 35.02
+
+These register timings come from the earlier mixed b821dc8e implementation.
+The iPad native repetitions range 50.77-54.15 ms. The current register source
+has since been repaired and integrated, and medium-row / partial-tile shapes
+have separate behavior. Thus 27-35 cores is a historical investigation range,
+not evidence for globally changing the current register admission threshold.
+It also says nothing about the native-64 vs register choice above 40 cores.
+
+Source artifacts (repository root relative):
+  doc/benchmarks/m5-max-ipad-na-20261004/mac-first/records.jsonl
+  doc/benchmarks/m5-max-ipad-na-20261004/ipad-gates/records.jsonl
+  doc/benchmarks/m5-max-ipad-na-20261004/int8-native/exploration/tiles.jsonl
+
+Do not transfer this estimate to attention. Dynamic-M register selection is
+explicitly disabled in this refactor at the user's request.

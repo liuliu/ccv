@@ -84,6 +84,7 @@ class context {
 public:
   bool supported;
   uint16_t log_level;
+  DeviceProperties device_properties;
   
   NS::SharedPtr<MTL::Device> device;
   NS::SharedPtr<MTL::Buffer> scratch;

@@ -327,7 +327,7 @@ void ccv_nnc_mfa_encode_scaled_swiglu(
   descriptor.supportIndirectCommandBuffers = false;
   auto pipelineValue = context->kernel_cache.findKernel<
     NAInt8MatMulKernel, NAInt8MatMulDescriptor, NAInt8MatMulKernelDescriptor>(
-      descriptor, context->device.get(), DeviceProperties());
+      descriptor, context->device.get(), context->device_properties);
   auto* const kernel = pipelineValue->kernel;
   const ccv_nnc_mfa_swiglu_activation_layout_t a_layout =
     activation_layout(params);
@@ -396,8 +396,7 @@ void ccv_nnc_mfa_encode_scaled_swiglu(
       encoder->setBytes(&params.M, sizeof(params.M), 5);
     encoder->dispatchThreadgroups(
       kernel->threadgroupsPerGrid(params.M, params.N, 1),
-      MTL::Size(
-        kernel->threadgroupSize(pipelineValue->pipeline.get()), 1, 1));
+      kernel->threadsPerThreadgroup(pipelineValue->pipeline.get()));
     command_batch->finishCommand(encoder);
   }
 

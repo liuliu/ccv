@@ -1,0 +1,18 @@
+NAInt8MatMul register fragment implementation derived from MLX Steel
+
+Upstream revision: 25532871329fe4cafdada9fa0941a1cdbfb3a9f2
+Repository: https://github.com/ml-explore/mlx
+Source: mlx/backend/metal/kernels/steel/gemm/gemm_nax.h
+License: MIT (see LICENSE).
+
+NAInt8MatMulKernel.cpp adapts Steel's 16x16 fragment coordinates, contiguous
+loads, and M16/N32/K16 cooperative-tensor assembly. Each SIMD group computes
+32x32 with INT8 operands and INT32 accumulators. Eight SIMD groups cover a
+64x128 output tile; K advances by 32, with threadgroup synchronization every
+512 and pairs of K32 steps exposed to the compiler. Partial output tiles mask
+rows; the final short K step additionally masks reduction coordinates.
+
+The generator implements this traversal directly, using NAInt8MatMul's buffer
+bindings, shape function constants, runtime M, typed row scales, bias and output.
+It does not import Steel's GEMM entry point, parameter ABI, generic traversal,
+function constants, or textually rewrite external shader source.

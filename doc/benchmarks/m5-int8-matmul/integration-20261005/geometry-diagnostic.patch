@@ -1,0 +1,10 @@
+diff --git a/lib/nnc/mfa/kernels/NAInt8MatMulKernel.cpp b/lib/nnc/mfa/kernels/NAInt8MatMulKernel.cpp
+--- a/lib/nnc/mfa/kernels/NAInt8MatMulKernel.cpp
++++ b/lib/nnc/mfa/kernels/NAInt8MatMulKernel.cpp
+@@ -58,5 +58,5 @@
+   // output-row groups along z. Flattening this layout regresses large GEMMs.
+   if (useRegisterOperands)
+-    return MTL::Size(pipelineState->threadExecutionWidth(), 4, 2);
++    return MTL::Size(threadgroupSize(pipelineState), 1, 1);
+   return MTL::Size(threadgroupSize(pipelineState), 1, 1);
+ }

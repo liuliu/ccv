@@ -12333,4 +12333,299 @@ TEST_CASE("MFA durable scratch retirement follows its owning command batch")
 
 #endif
 
+TEST_CASE("mps large rowwise int8 gemm preserves dynamic rows and fused bias")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_MPS));
+	const int n = 5376, k = 14336, samples = 16;
+	const int row_counts[] = {16384, 16401, 16383, 16401};
+	dsfmt_t dsfmt;
+	dsfmt_init_gen_rand(&dsfmt, 917);
+	ccv_nnc_tensor_t* const hw = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, n, k), 0);
+	ccv_nnc_tensor_t* const hwq = ccv_nnc_tensor_new(0, ccv_nnc_tensor_8i_rowwise(CPU_TENSOR_NHWC(16F, n, k)), 0);
+	ccv_nnc_tensor_t* const w = ccv_nnc_tensor_new(0, ccv_nnc_tensor_8i_rowwise(GPU_TENSOR_NHWC(000, 16F, n, k)), 0);
+	ccv_nnc_tensor_t* const ref_w = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, n, k), 0);
+	ccv_nnc_tensor_t* const hbias = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, n), 0);
+	ccv_nnc_tensor_t* const bias = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, n), 0);
+	ccv_nnc_tensor_t* const ref_bias = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, n), 0);
+	float row_values[k];
+	for (int row = 0; row < n; ++row)
+	{
+		for (int d = 0; d < k; ++d)
+			row_values[d] = (dsfmt_genrand_open_close(&dsfmt) - 0.5) * 0.25;
+		ccv_float_to_half_precision(row_values, (uint16_t*)hw->data.f16 + (size_t)row * k, k);
+		ref_bias->data.f32[row] = (dsfmt_genrand_open_close(&dsfmt) - 0.5) * 0.25;
+	}
+	ccv_float_to_half_precision(ref_bias->data.f32, (uint16_t*)hbias->data.f16, n);
+	ccv_half_precision_to_float((uint16_t*)hbias->data.f16, ref_bias->data.f32, n);
+	const size_t qsize = ccv_nnc_quantize_8i_rowwise(hw->data.f16, CCV_16F, CCV_TENSOR_CPU_MEMORY, (size_t)n * k, k, 0, 0, hwq->data.u8, ccv_nnc_tensor_data_size_without_padding(hwq->info));
+	REQUIRE(qsize == ccv_nnc_tensor_data_size_without_padding(hwq->info), "rowwise weights should encode completely");
+	const uint16_t* const weight_scales = (const uint16_t*)(hwq->data.u8 + (((size_t)n * k + 127) & ~(size_t)127));
+	for (int row = 0; row < n; ++row)
+	{
+		float scale;
+		ccv_half_precision_to_float(weight_scales + row, &scale, 1);
+		for (int d = 0; d < k; ++d)
+			ref_w->data.f32[(size_t)row * k + d] = ((int8_t*)hwq->data.u8)[(size_t)row * k + d] * scale;
+	}
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(hwq, hbias), TENSOR_LIST(w, bias), 0);
+	const uint64_t old_flags = ccv_nnc_flags();
+	ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA_ANE);
+	ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA | CCV_NNC_DISABLE_MFA_GEMM | CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS);
+	for (int trial = 0; trial < 4; ++trial)
+	{
+		const int m = row_counts[trial];
+		ccv_nnc_tensor_t* const ha = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, m, k), 0);
+		ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, m, k), 0);
+		ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, m, n), 0);
+		ccv_nnc_tensor_t* const hb = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, m, n), 0);
+		ccv_nnc_tensor_t* const sample_a = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, samples, k), 0);
+		ccv_nnc_tensor_t* const ref_a = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, samples, k), 0);
+		ccv_nnc_tensor_t* const expected = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, samples, n), 0);
+		ccv_nnc_tensor_t* const actual = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, samples, n), 0);
+		for (int row = 0; row < m; ++row)
+		{
+			for (int d = 0; d < k; ++d)
+				row_values[d] = (dsfmt_genrand_open_close(&dsfmt) - 0.5) * 0.25;
+			ccv_float_to_half_precision(row_values, (uint16_t*)ha->data.f16 + (size_t)row * k, k);
+		}
+		int rows[samples];
+		const int boundaries[] = {0, 8191, 8192, 16383, 16384};
+		for (int s = 0; s < samples; ++s)
+		{
+			rows[s] = s < 5 ? ccv_min(boundaries[s], m - 1) : (s - 5) * (m - 1) / (samples - 6);
+			memcpy(sample_a->data.f16 + s * k, ha->data.f16 + (size_t)rows[s] * k, sizeof(uint16_t) * k);
+		}
+		// Runtime activations use abs-max scaling; the offline weight quantizer
+		// also refits its scale, so it is not an activation reference.
+		for (int s = 0; s < samples; ++s)
+		{
+			float* const values = ref_a->data.f32 + s * k;
+			ccv_half_precision_to_float((uint16_t*)sample_a->data.f16 + s * k, values, k);
+			float maximum = 0;
+			for (int d = 0; d < k; ++d)
+				maximum = ccv_max(maximum, fabsf(values[d]));
+			const float inv_scale = maximum > 0 ? 127.0f / maximum : 127.0f;
+			float scale = maximum > 0 ? maximum / 127.0f : 1.0f / 127.0f;
+			uint16_t stored_scale;
+			ccv_float_to_half_precision(&scale, &stored_scale, 1);
+			// The CPU conversion truncates; Metal's half store rounds to nearest.
+			float lower, upper;
+			const uint16_t next_scale = stored_scale + 1;
+			ccv_half_precision_to_float(&stored_scale, &lower, 1);
+			ccv_half_precision_to_float(&next_scale, &upper, 1);
+			if (scale - lower > upper - scale || (scale - lower == upper - scale && (stored_scale & 1)))
+				stored_scale = next_scale;
+			ccv_half_precision_to_float(&stored_scale, &scale, 1);
+			for (int d = 0; d < k; ++d)
+				values[d] = ccv_max(-127, ccv_min(127, (int)lrintf(values[d] * inv_scale))) * scale;
+		}
+		ccv_nnc_cmd_exec(CMD_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(0, 1)), ccv_nnc_no_hint, 0, TENSOR_LIST(ref_a, ref_w, trial ? ref_bias : 0), TENSOR_LIST(expected), 0);
+		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha), TENSOR_LIST(a), 0);
+		if (trial)
+			ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M);
+		else
+			ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M);
+		ccv_nnc_cmd_exec(CMD_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(0, 1)), ccv_nnc_no_hint, 0, TENSOR_LIST(a, w, trial ? bias : 0), TENSOR_LIST(b), 0);
+		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(b), TENSOR_LIST(hb), 0);
+		int all_finite = 1;
+		for (size_t i = 0; i < (size_t)m * n; ++i)
+			if ((((uint16_t*)hb->data.f16)[i] & 0x7c00) == 0x7c00)
+				all_finite = 0;
+		REQUIRE(all_finite, "every chunk output should be finite");
+		for (int s = 0; s < samples; ++s)
+			ccv_half_precision_to_float((uint16_t*)hb->data.f16 + (size_t)rows[s] * n, actual->data.f32 + s * n, n);
+		double error = 0, norm = 0, max_error = 0;
+		for (int i = 0; i < samples * n; ++i)
+		{
+			const double diff = actual->data.f32[i] - expected->data.f32[i];
+			error += diff * diff;
+			norm += (double)expected->data.f32[i] * expected->data.f32[i];
+			max_error = ccv_max(max_error, fabs(diff));
+		}
+		REQUIRE(sqrt(error / norm) < 5e-4, "quantized CPU GEMM relative L2=%g max_abs=%g at trial %d", sqrt(error / norm), max_error, trial);
+		REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, actual->data.f32, expected->data.f32, samples * n, 3e-3, "chunk boundaries, tail rows and fused bias should match quantized CPU GEMM");
+		ccv_nnc_tensor_free(ha);
+		ccv_nnc_tensor_free(a);
+		ccv_nnc_tensor_free(b);
+		ccv_nnc_tensor_free(hb);
+		ccv_nnc_tensor_free(sample_a);
+		ccv_nnc_tensor_free(ref_a);
+		ccv_nnc_tensor_free(expected);
+		ccv_nnc_tensor_free(actual);
+	}
+	const uint64_t flags[] = {CCV_NNC_DISABLE_MFA_ANE, CCV_NNC_DISABLE_MFA, CCV_NNC_DISABLE_MFA_GEMM, CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS, CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M};
+	for (int i = 0; i < 5; ++i)
+		if (old_flags & flags[i])
+			ccv_nnc_enable_flag(flags[i]);
+		else
+			ccv_nnc_disable_flag(flags[i]);
+	ccv_nnc_tensor_free(hw);
+	ccv_nnc_tensor_free(hwq);
+	ccv_nnc_tensor_free(w);
+	ccv_nnc_tensor_free(ref_w);
+	ccv_nnc_tensor_free(hbias);
+	ccv_nnc_tensor_free(bias);
+	ccv_nnc_tensor_free(ref_bias);
+}
+
+TEST_CASE("mps rowwise int8 gemm preserves tuning boundaries and partial tiles")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_MPS));
+	const uint64_t old_flags = ccv_nnc_flags();
+	ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA_ANE);
+	ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA | CCV_NNC_DISABLE_MFA_GEMM | CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS);
+	const int shapes[][3] = {
+		{4096, 1536, 6144}, {4097, 1536, 6144}, {8191, 1536, 6144},
+		{8192, 1536, 6144}, {8193, 1536, 6144}, {8193, 1537, 6145},
+		{8193, 1535, 6144}, {8193, 1536, 6145}, {8193, 1536, 4095},
+		{8193, 1536, 4096}, {8192, 1536, 4096}, {8193, 1537, 6145},
+		{8193, 1537, 4127}, {8193, 1537, 4128}, {8193, 1537, 4129},
+		{8192, 7168, 5376},
+		// Medium-row crossover: output area and reduction depth.
+		{1984, 4096, 12288}, {2048, 4096, 12288}, {2049, 4096, 12288},
+		{2048, 3071, 8193}, {2048, 3072, 8193}, {2112, 4097, 12289},
+		{2048, 5121, 20480}, {2048, 5121, 20481}, {4096, 5121, 20481},
+		{2048, 2048, 4096}, {3072, 2048, 4096}, {2560, 6144, 16384},
+		{2304, 6144, 18432}, {2304, 4096, 12288},
+		// Reuse dynamic-M long-reduction pipelines across full and partial rows.
+		{8192, 3072, 12288}, {8193, 3072, 12288}, {8192, 3072, 12288},
+		// Partial and medium-row long reductions, including dynamic-M cache reuse.
+		{4095, 3072, 12288}, {4097, 3072, 12288},
+		{511, 2560, 9216}, {512, 2560, 9216}, {513, 2560, 9216},
+		{512, 2560, 9216}, {1024, 2560, 9216},
+		// Ultra review: partial columns, partial rows, and both axes.
+		{512, 2559, 9216}, {1023, 2560, 9216}, {1023, 4096, 12288},
+		{4095, 4097, 8193}, {513, 2559, 9247}, {513, 2559, 9248},
+		// Underfilled native grids and the combined column / reduction tail.
+		{512, 2304, 9216}, {512, 2432, 9216}, {512, 2431, 9216},
+		{512, 2559, 9248}, {512, 2560, 9248},
+	};
+	for (int trial = 0; trial < sizeof(shapes) / sizeof(shapes[0]); ++trial)
+	{
+		const int m = shapes[trial][0], n = shapes[trial][1], k = shapes[trial][2], samples = 16;
+		const int use_bias = trial % 3 != 0;
+		dsfmt_t dsfmt;
+		dsfmt_init_gen_rand(&dsfmt, 918 + trial);
+		ccv_nnc_tensor_t* const hw = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, n, k), 0);
+		ccv_nnc_tensor_t* const hwq = ccv_nnc_tensor_new(0, ccv_nnc_tensor_8i_rowwise(CPU_TENSOR_NHWC(16F, n, k)), 0);
+		ccv_nnc_tensor_t* const w = ccv_nnc_tensor_new(0, ccv_nnc_tensor_8i_rowwise(GPU_TENSOR_NHWC(000, 16F, n, k)), 0);
+		ccv_nnc_tensor_t* const ref_w = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, n, k), 0);
+		ccv_nnc_tensor_t* const hbias = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, n), 0);
+		ccv_nnc_tensor_t* const bias = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, n), 0);
+		ccv_nnc_tensor_t* const ref_bias = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, n), 0);
+		float row_values[k];
+		for (int row = 0; row < n; ++row)
+		{
+			for (int d = 0; d < k; ++d)
+				row_values[d] = row == 0 ? 0 : (dsfmt_genrand_open_close(&dsfmt) - 0.5) * 0.25;
+			ccv_float_to_half_precision(row_values, (uint16_t*)hw->data.f16 + (size_t)row * k, k);
+			ref_bias->data.f32[row] = (dsfmt_genrand_open_close(&dsfmt) - 0.5) * 0.25;
+		}
+		ccv_float_to_half_precision(ref_bias->data.f32, (uint16_t*)hbias->data.f16, n);
+		ccv_half_precision_to_float((uint16_t*)hbias->data.f16, ref_bias->data.f32, n);
+		const size_t qsize = ccv_nnc_quantize_8i_rowwise(hw->data.f16, CCV_16F, CCV_TENSOR_CPU_MEMORY, (size_t)n * k, k, 0, 0, hwq->data.u8, ccv_nnc_tensor_data_size_without_padding(hwq->info));
+		REQUIRE(qsize == ccv_nnc_tensor_data_size_without_padding(hwq->info), "rowwise weights should encode completely");
+		const uint16_t* const weight_scales = (const uint16_t*)(hwq->data.u8 + (((size_t)n * k + 127) & ~(size_t)127));
+		for (int row = 0; row < n; ++row)
+		{
+			float scale;
+			ccv_half_precision_to_float(weight_scales + row, &scale, 1);
+			for (int d = 0; d < k; ++d)
+				ref_w->data.f32[(size_t)row * k + d] = ((int8_t*)hwq->data.u8)[(size_t)row * k + d] * scale;
+		}
+		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(hwq, hbias), TENSOR_LIST(w, bias), 0);
+		ccv_nnc_tensor_t* const ha = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, m, k), 0);
+		ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, m, k), 0);
+		ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, m, n), 0);
+		ccv_nnc_tensor_t* const hb = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, m, n), 0);
+		ccv_nnc_tensor_t* const sample_a = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, samples, k), 0);
+		ccv_nnc_tensor_t* const ref_a = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, samples, k), 0);
+		ccv_nnc_tensor_t* const expected = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, samples, n), 0);
+		ccv_nnc_tensor_t* const actual = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, samples, n), 0);
+		for (int row = 0; row < m; ++row)
+		{
+			for (int d = 0; d < k; ++d)
+				row_values[d] = row == 0 ? 0 : (dsfmt_genrand_open_close(&dsfmt) - 0.5) * 0.25;
+			ccv_float_to_half_precision(row_values, (uint16_t*)ha->data.f16 + (size_t)row * k, k);
+		}
+		int rows[samples];
+		const int boundaries[] = {0, 63, 64, m - 2, m - 1};
+		for (int s = 0; s < samples; ++s)
+		{
+			rows[s] = s < 5 ? ccv_min(boundaries[s], m - 1) : (s - 5) * (m - 1) / (samples - 6);
+			memcpy(sample_a->data.f16 + s * k, ha->data.f16 + (size_t)rows[s] * k, sizeof(uint16_t) * k);
+		}
+		// Runtime activations use abs-max scaling; the offline weight quantizer
+		// also refits its scale, so it is not an activation reference.
+		for (int s = 0; s < samples; ++s)
+		{
+			float* const values = ref_a->data.f32 + s * k;
+			ccv_half_precision_to_float((uint16_t*)sample_a->data.f16 + s * k, values, k);
+			float maximum = 0;
+			for (int d = 0; d < k; ++d)
+				maximum = ccv_max(maximum, fabsf(values[d]));
+			const float inv_scale = maximum > 0 ? 127.0f / maximum : 127.0f;
+			float scale = maximum > 0 ? maximum / 127.0f : 1.0f / 127.0f;
+			uint16_t stored_scale;
+			ccv_float_to_half_precision(&scale, &stored_scale, 1);
+			// The CPU conversion truncates; Metal's half store rounds to nearest.
+			float lower, upper;
+			const uint16_t next_scale = stored_scale + 1;
+			ccv_half_precision_to_float(&stored_scale, &lower, 1);
+			ccv_half_precision_to_float(&next_scale, &upper, 1);
+			if (scale - lower > upper - scale || (scale - lower == upper - scale && (stored_scale & 1)))
+				stored_scale = next_scale;
+			ccv_half_precision_to_float(&stored_scale, &scale, 1);
+			for (int d = 0; d < k; ++d)
+				values[d] = ccv_max(-127, ccv_min(127, (int)lrintf(values[d] * inv_scale))) * scale;
+		}
+		ccv_nnc_cmd_exec(CMD_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(0, 1)), ccv_nnc_no_hint, 0, TENSOR_LIST(ref_a, ref_w, use_bias ? ref_bias : 0), TENSOR_LIST(expected), 0);
+		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha), TENSOR_LIST(a), 0);
+		if (trial % 2 || (m >= 8192 && k > 8192) || k == 9216)
+			ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M);
+		else
+			ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M);
+		ccv_nnc_cmd_exec(CMD_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(0, 1)), ccv_nnc_no_hint, 0, TENSOR_LIST(a, w, use_bias ? bias : 0), TENSOR_LIST(b), 0);
+		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(b), TENSOR_LIST(hb), 0);
+		int all_finite = 1;
+		for (size_t i = 0; i < (size_t)m * n; ++i)
+			if ((((uint16_t*)hb->data.f16)[i] & 0x7c00) == 0x7c00)
+				all_finite = 0;
+		REQUIRE(all_finite, "every selected and fallback output should be finite");
+		for (int s = 0; s < samples; ++s)
+			ccv_half_precision_to_float((uint16_t*)hb->data.f16 + (size_t)rows[s] * n, actual->data.f32 + s * n, n);
+		double error = 0, norm = 0, max_error = 0;
+		for (int i = 0; i < samples * n; ++i)
+		{
+			const double diff = actual->data.f32[i] - expected->data.f32[i];
+			error += diff * diff;
+			norm += (double)expected->data.f32[i] * expected->data.f32[i];
+			max_error = ccv_max(max_error, fabs(diff));
+		}
+		REQUIRE(sqrt(error / norm) < 5e-4, "quantized CPU GEMM relative L2=%g max_abs=%g at trial %d", sqrt(error / norm), max_error, trial);
+		REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, actual->data.f32, expected->data.f32, samples * n, 3e-3, "register tiles, tail rows and fused bias should match quantized CPU GEMM");
+		ccv_nnc_tensor_free(ha);
+		ccv_nnc_tensor_free(a);
+		ccv_nnc_tensor_free(b);
+		ccv_nnc_tensor_free(hb);
+		ccv_nnc_tensor_free(sample_a);
+		ccv_nnc_tensor_free(ref_a);
+		ccv_nnc_tensor_free(expected);
+		ccv_nnc_tensor_free(actual);
+		ccv_nnc_tensor_free(hw);
+		ccv_nnc_tensor_free(hwq);
+		ccv_nnc_tensor_free(w);
+		ccv_nnc_tensor_free(ref_w);
+		ccv_nnc_tensor_free(hbias);
+		ccv_nnc_tensor_free(bias);
+		ccv_nnc_tensor_free(ref_bias);
+	}
+	const uint64_t flags[] = {CCV_NNC_DISABLE_MFA_ANE, CCV_NNC_DISABLE_MFA, CCV_NNC_DISABLE_MFA_GEMM, CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS, CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M};
+	for (int i = 0; i < 5; ++i)
+		if (old_flags & flags[i])
+			ccv_nnc_enable_flag(flags[i]);
+		else
+			ccv_nnc_disable_flag(flags[i]);
+}
+
 #include "case_main.h"

@@ -1,6 +1,7 @@
 // Fused regular H256 activation quantization: correctness and paired GPU timings.
 // See na_int8_convrot_bench.md for the transform contract and shape sources.
 #include <algorithm>
+#include <climits>
 #include <cmath>
 #include <cstdint>
 #include <cstring>
@@ -63,9 +64,110 @@ NS::SharedPtr<MTL::Buffer> buffer(MTL::Device* device, size_t bytes)
   return b;
 }
 
-std::unique_ptr<Pipeline> pipeline(MTL::Device* device, Cache& cache, const NAInt8MatMulDescriptor& d)
+std::unique_ptr<Pipeline> pipeline(MTL::Device* device, Cache& cache, const NAInt8MatMulDescriptor& d, bool register_operands = false)
 {
-  return std::unique_ptr<Pipeline>(d.findKernel(device, DeviceProperties(), nullptr, nullptr, "", &cache).second);
+  auto kernel = NAInt8MatMulKernelDescriptor(d, DeviceProperties());
+  if (register_operands) {
+    kernel.useRegisterOperands = true;
+    kernel.blockDimensions = simd::ushort3 {64, 128, 32};
+    kernel.executionSIMDGroups = 8;
+    kernel.groupM = kernel.groupN = 0;
+  }
+  return std::unique_ptr<Pipeline>(d.findKernel(device, kernel, nullptr, nullptr, "", &cache).second);
+}
+
+void validate_cache(MTL::Device* device)
+{
+  // Equal dynamic descriptors must select the same source configuration on
+  // every device profile, including the M-dependent address admission limits.
+  size_t checked = 0;
+  for (uint32_t cores : {0u, 10u, 35u, 36u, 40u, 48u, 64u, 80u, 128u})
+    for (auto shape : {simd::uint2{1024, 4096}, {1536, 6144}, {2048, 8192},
+        {2176, 8448}, {2432, 9216}, {2560, 8192}, {2560, 9216}, {4096, 12288},
+        {6144, 24576}, {16384, 4096}, {262272, 16384}, {2147483500u, 4096},
+        {1536, 0}, {2560, 65536}}) {
+      std::unordered_map<NAInt8MatMulDescriptor, NAInt8MatMulKernelDescriptor> ranges;
+      std::vector<uint32_t> rows;
+      for (uint32_t M = 1; M <= 4352; ++M) rows.push_back(M);
+      for (uint64_t boundary : {uint64_t(UINT32_MAX) / std::max(1u, shape[0]) + 1,
+          uint64_t(UINT32_MAX) / std::max(1u, shape[1]) + 1,
+          uint64_t(INT32_MAX) - 62, uint64_t(UINT32_MAX)})
+        for (int offset : {-1, 0, 1})
+          if (boundary + offset > 0 && boundary + offset <= UINT32_MAX)
+            rows.push_back(boundary + offset);
+      for (uint32_t M : rows) {
+        NAInt8MatMulDescriptor d;
+        d.matrixDimensions = simd::uint3{M, shape[0], shape[1]};
+        d.loadM = true;
+        const auto config = NAInt8MatMulKernelDescriptor(d, DeviceProperties{cores});
+        auto previous = ranges.emplace(d, config);
+        require(previous.second || previous.first->second == config,
+          "Equal dynamic descriptors select different source configurations");
+        d.loadM = false;
+        auto fixed = NAInt8MatMulKernelDescriptor(d, DeviceProperties{cores});
+        fixed.loadM = true;
+        require(fixed == config, "Dynamic and fixed M select different configurations");
+        ++checked;
+      }
+    }
+
+  // Compile representative entries in both call orders. Check actual cache
+  // hits against uncached selection, not just descriptor equality in isolation.
+  for (uint32_t cores : {10u, 36u, 40u, 80u})
+    for (bool reverse : {false, true}) {
+      ShaderCache cache;
+      auto find = [&](const NAInt8MatMulDescriptor& d) {
+        return cache.findKernel<NAInt8MatMulKernel, NAInt8MatMulDescriptor, NAInt8MatMulKernelDescriptor>(
+          d, device, DeviceProperties{cores});
+      };
+      for (auto shape : {simd::uint2{2560, 9216}, {2176, 8448}, {2560, 8192}, {1536, 6144}}) {
+        std::vector<uint32_t> rows = {511, 512, 513, 575, 576, 577, 2457, 2458, 4095, 4096, 4097};
+        if (reverse) std::reverse(rows.begin(), rows.end());
+        for (uint32_t M : rows) {
+          NAInt8MatMulDescriptor d;
+          d.matrixDimensions = simd::uint3{M, shape[0], shape[1]}; d.loadM = true;
+          const auto expected = NAInt8MatMulKernelDescriptor(d, DeviceProperties{cores});
+          auto actual = find(d)->kernel;
+          require(actual->useRegisterOperands == expected.useRegisterOperands &&
+              simd_all(actual->blockDimensions == expected.blockDimensions) &&
+              actual->groupM == expected.groupM,
+            "Cached dynamic-M configuration depends on call order");
+        }
+      }
+      NAInt8MatMulDescriptor d;
+      d.matrixDimensions = simd::uint3{513, 2560, 9216}; d.loadM = true;
+      auto first = find(d);
+      d.matrixDimensions[0] = 576;
+      require(find(d) == first, "Dynamic-M pipeline stores exact M within a tile-count range");
+      d.matrixDimensions[0] = 2458;
+      first = find(d);
+      d.matrixDimensions[0] = 4095;
+      require(find(d) == first, "Large-output dynamic-M range does not share its pipeline");
+      d.matrixDimensions[0] = 4096;
+      first = find(d);
+      d.matrixDimensions[0] = 4097;
+      require(find(d) == first, "Large-M traversal range does not share its pipeline");
+      d.matrixDimensions[2] += 32;
+      auto k_tail = find(d);
+      require(k_tail != first && k_tail->kernel == first->kernel,
+        "K specialization does not share the source kernel");
+      d.matrixDimensions = simd::uint3{512, 2560, 9216}; d.loadM = false;
+      first = find(d);
+      require(first->kernel->useRegisterOperands == (cores >= 40), "Fixed-M register selection changed");
+      d.matrixDimensions[0] = 513;
+      require(find(d) != first, "Static-M pipeline omits M");
+    }
+  // Optional presence changes source / constants even at sentinel values.
+  NAInt8MatMulDescriptor d;
+  d.matrixDimensions = simd::uint3{511, 2560, 9216}; d.loadM = true;
+  auto equal = d;
+  equal.batchStrides = simd::uint4(UINT32_MAX);
+  equal.leadingDimensions = simd::uint2(UINT32_MAX);
+  require(!(d == equal), "Explicit strides alias absent optional strides");
+  equal = d; equal.matrixDimensions[0] = 512;
+  require(!(d == equal) && std::hash<NAInt8MatMulDescriptor>{}(d) != std::hash<NAInt8MatMulDescriptor>{}(equal),
+    "Dynamic-M selection boundary omitted from equality/hash");
+  std::cout << "validation descriptor_cache configurations=" << checked << " PASS\n";
 }
 
 // Independent dense FP64 reference: directly form each entry of H4^tensor4.
@@ -130,8 +232,8 @@ double run(MTL::CommandQueue* queue, const NAInt8MatMulDescriptor& d,
         enc->setBuffer(b.bias.get(), 0, 5);
       if (d.loadM)
         enc->setBytes(dims, sizeof(dims), d.useBias ? 6 : 5);
-      enc->dispatchThreadgroups(gemm->kernel->threadgroupsPerGrid(d.matrixDimensions[0], N, d.batchDimension),
-        MTL::Size(gemm->kernel->threadgroupSize(gemm->pipeline.get()), 1, 1));
+      enc->dispatchThreadgroups(gemm->kernel->threadgroupsPerGrid(actual_m, N, d.batchDimension),
+        gemm->kernel->threadsPerThreadgroup(gemm->pipeline.get()));
       enc->endEncoding();
     }
   }
@@ -144,9 +246,10 @@ double run(MTL::CommandQueue* queue, const NAInt8MatMulDescriptor& d,
 }
 
 void validate(MTL::Device* device, MTL::CommandQueue* queue, Cache& cache,
-    Precision precision, uint32_t K, bool dynamic, bool strided)
+    Precision precision, uint32_t K, bool dynamic, bool strided, bool register_operands = false)
 {
-  const uint32_t M = K > 2304 ? 7 : 19, N = K > 2304 ? 19 : 137, batches = strided ? 2 : 1;
+  const uint32_t M = register_operands ? 67 : K > 2304 ? 7 : 19;
+  const uint32_t N = register_operands ? 137 : K > 2304 ? 19 : 137, batches = strided ? 2 : 1;
   const uint32_t actual_m = dynamic ? M - 2 : M;
   const uint32_t lda = K + (strided ? 4 : 0), ldc = N + (strided ? 5 : 0);
   const uint32_t stride_a = M * lda + 8, stride_aq = M * K + 256, stride_as = M + 3;
@@ -157,7 +260,7 @@ void validate(MTL::Device* device, MTL::CommandQueue* queue, Cache& cache,
   d.ioPrecision = precision;
   d.batchDimension = batches;
   d.loadM = dynamic;
-  d.useBias = strided;
+  d.useBias = strided || (register_operands && dynamic);
   d.activationHadamard256 = true;
   if (strided) {
     d.leadingDimensions = simd::uint2 {lda, ldc};
@@ -165,20 +268,20 @@ void validate(MTL::Device* device, MTL::CommandQueue* queue, Cache& cache,
     d.packedABatchStride = stride_aq;
     d.aScaleBatchStride = stride_as;
   }
-  auto p = pipeline(device, cache, d);
+  auto p = pipeline(device, cache, d, register_operands);
   // A growing K must reuse the source object and specialize register storage via
   // function constants. Alternating the flag must produce a separate cache entry.
   auto plain_d = d;
   plain_d.activationHadamard256 = false;
   require(!(d == plain_d), "Descriptor omits rotation");
-  auto plain = pipeline(device, cache, plain_d);
+  auto plain = pipeline(device, cache, plain_d, register_operands);
   require(p->kernel != plain->kernel, "Kernel cache aliases rotation modes");
   const size_t cache_size = cache.size();
   auto larger_d = d;
   larger_d.matrixDimensions[2] = K == 65536 ? K - 256 : K + 256;
   if (strided)
     larger_d.leadingDimensions = simd::uint2 {larger_d.matrixDimensions[2] + 4, ldc};
-  auto larger = pipeline(device, cache, larger_d);
+  auto larger = pipeline(device, cache, larger_d, register_operands);
   require(larger->kernel == p->kernel && cache.size() == cache_size, "Kernel cache stores shape");
   Buffers b {buffer(device, batches * stride_a * bytes), buffer(device, batches * stride_aq),
     buffer(device, batches * stride_as * bytes), buffer(device, batches * N * K),
@@ -216,7 +319,7 @@ void validate(MTL::Device* device, MTL::CommandQueue* queue, Cache& cache,
     }
     auto exec_d = d;
     exec_d.activationHadamard256 = rotated;
-    run(queue, exec_d, rotated ? p.get() : plain.get(), plain.get(), b, actual_m, 2);
+    run(queue, exec_d, rotated ? p.get() : plain.get(), rotated ? p.get() : plain.get(), b, actual_m, 2);
     const auto& reference = rotated ? ar : a;
     double worst_quant = 0, worst_matmul = 0;
     for (uint32_t batch = 0; batch < batches; ++batch) {
@@ -255,14 +358,38 @@ void validate(MTL::Device* device, MTL::CommandQueue* queue, Cache& cache,
             signal += ref * ref;
         }
       }
-      if (dynamic)
+      if (dynamic) {
         for (uint32_t row = actual_m; row < M; ++row)
           for (uint32_t k = 0; k < K; ++k)
             require(static_cast<uint8_t*>(b.aq->contents())[qbase + row * K + k] == 0x55, "Dynamic M overwrote inactive row");
+        for (uint32_t row = actual_m; row < M; ++row)
+          for (uint32_t col = 0; col < N; ++col)
+            require(read_value(b.c->contents(), (batches > 1 ? batch * stride_c : 0) + row * ldc + col, precision) == 0,
+              "Dynamic M overwrote inactive output row");
+      }
     }
     require(worst_quant <= 0.501, "Rotated activation differs from dense H256 reference");
     const double tolerance = precision == Precision::FP32 ? 2e-5 : precision == Precision::FP16 ? 0.002 : 0.016;
     require(worst_matmul < tolerance, "Matmul disagrees with staged INT8 reference");
+    if (register_operands && dynamic) {
+      // Reuse the same pipeline across aligned / partial M and a smaller
+      // grid. Active values must match; inactive rows must remain untouched.
+      std::vector<uint8_t> expected(b.c->length());
+      std::memcpy(expected.data(), b.c->contents(), expected.size());
+      for (const uint32_t rows : {64u, 33u, actual_m}) {
+        std::memset(b.c->contents(), 0, b.c->length());
+        std::memset(b.aq->contents(), 0x55, b.aq->length());
+        run(queue, exec_d, rotated ? p.get() : plain.get(), rotated ? p.get() : plain.get(), b, rows, 2);
+        require(std::memcmp(expected.data(), b.c->contents(), size_t(rows) * N * bytes) == 0,
+          "Reusing dynamic-M register pipeline changed active output");
+        for (size_t i = size_t(rows) * N * bytes; i < b.c->length(); ++i)
+          require(static_cast<uint8_t*>(b.c->contents())[i] == 0,
+            "Reusing dynamic-M register pipeline overwrote inactive output");
+        for (size_t i = size_t(rows) * K; i < b.aq->length(); ++i)
+          require(static_cast<uint8_t*>(b.aq->contents())[i] == 0x55,
+            "Reusing dynamic-M register pipeline overwrote inactive activation");
+      }
+    }
   }
   require(errors[1] < errors[0], "Rotation didn't improve synthetic outlier error");
   if (strided) {
@@ -284,7 +411,7 @@ void validate(MTL::Device* device, MTL::CommandQueue* queue, Cache& cache,
       "Unaligned source strides changed activation quantization");
   }
   std::cout << "validation precision=" << precision.name() << " K=" << K << " dynamic=" << dynamic
-    << " strided_batched_bias=" << strided << " plain_nrmse=" << std::sqrt(errors[0] / signal)
+    << " register_operands=" << register_operands << " strided_batched_bias=" << strided << " plain_nrmse=" << std::sqrt(errors[0] / signal)
     << " h256_nrmse=" << std::sqrt(errors[1] / signal) << " PASS\n";
 }
 
@@ -355,19 +482,20 @@ void benchmark(MTL::Device* device, MTL::CommandQueue* queue, Cache& cache,
 int main(int argc, char** argv)
 {
   std::cout << std::unitbuf;
-  bool validate_only = false, skip_validation = false;
+  bool validate_only = false, skip_validation = false, validate_register = false;
   uint32_t M = 0, N = 0, K = 0;
   int iterations = 25, repeats = 3;
   for (int i = 1; i < argc; ++i) {
     const std::string arg = argv[i];
-    if (arg == "--validate-only") validate_only = true;
+    if (arg == "--validate-register") { validate_register = true; validate_only = true; }
+    else if (arg == "--validate-only") validate_only = true;
     else if (arg == "--skip-validation") skip_validation = true;
     else if (arg == "--shape" && i + 3 < argc) {
       M = std::stoul(argv[++i]); N = std::stoul(argv[++i]); K = std::stoul(argv[++i]);
     } else if (arg == "--iterations" && i + 1 < argc) iterations = std::stoi(argv[++i]);
     else if (arg == "--repeats" && i + 1 < argc) repeats = std::stoi(argv[++i]);
     else {
-      std::cerr << "Usage: " << argv[0] << " [--validate-only|--skip-validation] [--shape M N K] [--iterations 25] [--repeats 3]\n";
+      std::cerr << "Usage: " << argv[0] << " [--validate-only|--validate-register|--skip-validation] [--shape M N K] [--iterations 25] [--repeats 3]\n";
       return 1;
     }
   }
@@ -380,13 +508,15 @@ int main(int argc, char** argv)
   Cache cache;
   auto context = ccv_nnc_init_mfa_context(device.get());
   if (!skip_validation) {
+    validate_cache(device.get());
     for (Precision p : {Precision::FP16, Precision::FP32, Precision::BF16})
       for (uint32_t k : {256u, 768u, 2304u}) {
-        validate(device.get(), queue.get(), cache, p, k, false, false);
-        validate(device.get(), queue.get(), cache, p, k, true, true);
+        validate(device.get(), queue.get(), cache, p, k, false, false, validate_register);
+        validate(device.get(), queue.get(), cache, p, k, true, !validate_register, validate_register);
       }
-    for (uint32_t k : {5376u, 16384u, 65536u})
-      validate(device.get(), queue.get(), cache, Precision::FP16, k, true, true);
+    if (!validate_register)
+      for (uint32_t k : {5376u, 16384u, 65536u})
+        validate(device.get(), queue.get(), cache, Precision::FP16, k, true, true);
   }
   if (!validate_only) {
     if (M)

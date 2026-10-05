@@ -221,7 +221,7 @@ void ccv_nnc_mfa_encode_segmented_scaled_gemm(
   segmentedDesc.loadM = params.loadM;
 
   auto &shaderCache = context->kernel_cache;
-  DeviceProperties dprops = DeviceProperties();
+  const DeviceProperties& dprops = context->device_properties;
   auto quantizePipelineValue = shaderCache.findKernel<NAInt8MatMulKernel, NAInt8MatMulDescriptor, NAInt8MatMulKernelDescriptor>(quantizeDesc, context->device.get(), dprops);
   auto quantizeKernel = quantizePipelineValue->kernel;
   auto quantizePipeline = quantizePipelineValue->second;

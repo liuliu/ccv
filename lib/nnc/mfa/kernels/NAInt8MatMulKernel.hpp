@@ -15,6 +15,7 @@ struct NAInt8MatMulKernel {
   simd::ushort3 blockDimensions;
   uint16_t executionSIMDGroups;
   GEMMOperandPrecision ioPrecision;
+  bool useRegisterOperands;
   bool useBias;
   bool loadM;
   bool useLeadingDimensions;
@@ -25,11 +26,14 @@ struct NAInt8MatMulKernel {
 
   NAInt8MatMulKernel(NAInt8MatMulKernelDescriptor descriptor, MTL::Device *const device);
 
+  // Total count; use threadsPerThreadgroup for the dispatch layout.
   uint16_t threadgroupSize(MTL::ComputePipelineState *const pipelineState) const noexcept;
+  MTL::Size threadsPerThreadgroup(MTL::ComputePipelineState *const pipelineState) const noexcept;
   MTL::Size threadgroupsPerGrid(uint32_t M, uint32_t N, uint32_t batchDimension) const noexcept;
 
 private:
   std::string createSource() const noexcept;
 };
+
 
 #endif

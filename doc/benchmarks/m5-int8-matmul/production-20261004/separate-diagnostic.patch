@@ -1,0 +1,101 @@
+--- a/lib/nnc/mfa/kernels/NAInt8MatMulKernel.cpp
++++ b/lib/nnc/mfa/kernels/NAInt8MatMulKernel.cpp
+@@ -334,29 +334,75 @@
+     CCV_NNC_MFA_PRECONDITION(maskedAOffset != std::string::npos && maskedBOffset != std::string::npos);
+     matmulSource.replace(maskedBOffset, maskedB.size(), "Btile.load_rows(B + B_offset, ldb, sgp_sn);");
+     matmulSource.replace(maskedAOffset, maskedA.size(), "Atile.load_rows(A + A_offset, lda, sgp_sm);");
+-    // A partial outer reduction can still contain complete K32 fragments.
+-    // Load those normally, retaining bounds checks for partial M/N tiles and
+-    // the final short K fragment. This avoids masked scalar loads throughout
+-    // the remainder without adding a reduction-size selection rule.
+-    const std::string remainderLoads =
+-        "      Atile.load_safe(A + A_offset, lda, Aklims);\n      Btile.load_safe(B + B_offset, ldb, Bklims);";
+-    const auto remainderLoadsOffset = matmulSource.find(remainderLoads);
+-    CCV_NNC_MFA_PRECONDITION(remainderLoadsOffset != std::string::npos);
+-    matmulSource.replace(remainderLoadsOffset, remainderLoads.size(), R"(
+-      if (psk >= SK) {
+-        if constexpr (kAlignedM)
+-          Atile.load(A + A_offset, lda);
+-        else
+-          Atile.load_rows(A + A_offset, lda, sgp_sm);
+-        if constexpr (kAlignedN)
+-          Btile.load(B + B_offset, ldb);
+-        else
+-          Btile.load_rows(B + B_offset, ldb, sgp_sn);
+-      } else {
+-        Atile.load_safe(A + A_offset, lda, Aklims);
+-        Btile.load_safe(B + B_offset, ldb, Bklims);
+-      }
+-)");
++    const std::string tailLoop = R"TAIL(    STEEL_PRAGMA_NO_UNROLL
++    for (int kk1 = 0; kk1 < rem_bk; kk1 += SK) {
++      NAXTile<T, RA, CA> Atile;
++      NAXTile<T, RB, CB> Btile;
++
++      const int k = kk1;
++      const short psk = max(0, rem_bk - k);
++
++      const short2 Aklims =
++          transpose_a ? short2(sgp_sm, psk) : short2(psk, sgp_sm);
++      const short2 Bklims =
++          transpose_b ? short2(psk, sgp_sn) : short2(sgp_sn, psk);
++
++      const int A_offset = transpose_a ? k * lda : k;
++      const int B_offset = transpose_b ? k : k * ldb;
++
++      Atile.load_safe(A + A_offset, lda, Aklims);
++      Btile.load_safe(B + B_offset, ldb, Bklims);
++
++      tile_matmad_nax(
++          Dtile,
++          Atile,
++          metal::bool_constant<transpose_a>{},
++          Btile,
++          metal::bool_constant<transpose_b>{});
++    })TAIL";
++    const auto tailLoopOffset = matmulSource.find(tailLoop);
++    CCV_NNC_MFA_PRECONDITION(tailLoopOffset != std::string::npos);
++    matmulSource.replace(tailLoopOffset, tailLoop.size(), R"TAIL(    #pragma clang loop unroll_count(2)
++    for (int kk1 = 0; kk1 + SK <= rem_bk; kk1 += SK) {
++      NAXTile<T, RA, CA> Atile;
++      NAXTile<T, RB, CB> Btile;
++      if constexpr (kAlignedM)
++        Atile.load(A + kk1, lda);
++      else
++        Atile.load_rows(A + kk1, lda, sgp_sm);
++      if constexpr (kAlignedN)
++        Btile.load(B + kk1, ldb);
++      else
++        Btile.load_rows(B + kk1, ldb, sgp_sn);
++      tile_matmad_nax(Dtile, Atile, metal::bool_constant<transpose_a>{},
++          Btile, metal::bool_constant<transpose_b>{});
++    }
++    if (rem_bk % SK != 0) {
++      const int kk1 = rem_bk / SK * SK;
++      NAXTile<T, RA, CA> Atile;
++      NAXTile<T, RB, CB> Btile;
++
++      const int k = kk1;
++      const short psk = max(0, rem_bk - k);
++
++      const short2 Aklims =
++          transpose_a ? short2(sgp_sm, psk) : short2(psk, sgp_sm);
++      const short2 Bklims =
++          transpose_b ? short2(psk, sgp_sn) : short2(sgp_sn, psk);
++
++      const int A_offset = transpose_a ? k * lda : k;
++      const int B_offset = transpose_b ? k : k * ldb;
++
++      Atile.load_safe(A + A_offset, lda, Aklims);
++      Btile.load_safe(B + B_offset, ldb, Bklims);
++
++      tile_matmad_nax(
++          Dtile,
++          Atile,
++          metal::bool_constant<transpose_a>{},
++          Btile,
++          metal::bool_constant<transpose_b>{});
++    })TAIL");
+     // Reuse MLX's fragment loads and reduction traversal with integer operands.
+     // Apply the existing rowwise scales only after the exact INT32 reduction.
+     source.SetValue("MATMUL_SOURCE", matmulSource);

@@ -1,0 +1,194 @@
+NAInt8MatMul dynamic-M range normalization, 2026-10-05
+Baseline: b2ffdba5bf00733e876397515d9b2918d87ee215
+Branch: m5-na-int8-matmul
+
+Minimal production change: normalize dynamic M to 0 below 4096 and to
+4096 at/above 4096 in both descriptor equality and std::hash. Restore
+the corresponding native groupM selection in the kernel descriptor.
+Static M remains exact. The shared cache and shader generator are unchanged.
+Dynamic-M register selection remains disabled as previously agreed.
+The 36-core moreNumberOfTiles cutoff and other device gates are unchanged.
+
+Validation:
+- Max: make debug -j4 passed; descriptor-cache checks for 10/35/36/40/80
+  core profiles and 18 direct register configurations passed. The latter
+  include 36 plain/rotated CPU-reference GEMMs and 54 reused-row checks.
+- Max: dynamic_m_bench 1 passed all 24 combinations (8 M values, 3
+  layouts), with bit-exact static/dynamic outputs and CPU sample checks.
+  It covers contiguous, batched, and interleaved layouts with bias.
+- Max: both focused rowwise INT8 GEMM integration tests passed.
+- iPad: the same cache/register checks and 24 dynamic-M combinations
+  passed in a signed standalone MFA app. This is not a full iOS suite.
+- Pipeline checks verify reuse within each M range, a distinct pipeline
+  across 4096, and reuse when returning to the lower range.
+
+Paired GPU timings include quantization and GEMM, all with loadM=true.
+N=1536, K=6144. Baseline/update/update/baseline order. Max uses 15 samples
+per launch, >=0.3 GPU-second warmup, 10-second idle gaps; iPad uses 21
+samples, >=0.5 GPU-second warmup, 20-second idle gaps. All launches began
+and ended at nominal thermal state. Full output hashes match per shape.
+Each reported time is the median of two per-launch medians.
+The first Max run had noisy 4096/4097 repeats. A separate follow-up uses
+25 samples and >=1 GPU-second warmup; both rounds are retained below.
+
+Device   M       Baseline ms   Update ms    Change   Baseline drift   Update spread
+Max        4095        0.886000    0.885687     -0.04%            1.54%           1.94%
+Max        4096        0.885354    0.901542     +1.83%            3.13%           6.78%
+Max        4097        0.897250    0.903333     +0.68%            2.25%           3.43%
+Max repeat 4096        0.897812    0.886563     -1.25%            1.36%           1.26%
+Max repeat 4097        0.918250    0.899458     -2.05%            1.92%           0.88%
+iPad       4095        4.061479    4.077437     +0.39%            1.40%           0.64%
+iPad       4096        4.181042    4.163417     -0.42%            3.30%           3.49%
+iPad       4097        4.278375    4.202000     -1.79%            4.06%           1.15%
+
+Small changes within repeat variation are not established speedups.
+This change restores native row grouping; it does not address the larger
+performance gaps from keeping dynamic M on native operands.
+
+Reproduce focused Max checks after building test/int/nnc:
+  ./mpsblas.tests 'rowwise int8 gemm'
+From bin/mfa:
+  make na_int8_convrot_bench dynamic_m_bench -j4
+  ./na_int8_convrot_bench --validate-register
+  ./dynamic_m_bench 1
+
+Full raw logs, baseline/update probes, iPad source manifest and runners:
+  /private/tmp/ccv-matmul-m-buckets-20261005
+
+The first iPad launch failed with a CoreDevice transport EOF before test
+execution. A subsequent cold launch hit the 20-second process-launch watchdog
+(FRONTBOARD 0x8BADF00D, confirmed by termination.ips; thermal nominal).
+The full run passed after compilation was cached. Incomplete attempts are
+retained separately under ipad/results-transport-failure and results-signal9.
+
+Individual run medians and full-output hashes:
+[
+  {
+    "device": "Max",
+    "M": 4095,
+    "before_ms": 0.8859999940000001,
+    "after_ms": 0.885687492,
+    "change_percent": -0.03527110633367858,
+    "baseline_runs": [
+      0.879208324,
+      0.892791664
+    ],
+    "update_runs": [
+      0.877166662,
+      0.894208322
+    ],
+    "sha256": "4e2e0b24f789c0aa48c9c0f9080dfb332ed60f6d5bc9c9ff3cd306032321df4a"
+  },
+  {
+    "device": "Max",
+    "M": 4096,
+    "before_ms": 0.8853541659999999,
+    "after_ms": 0.9015416725000001,
+    "change_percent": 1.8283650906771864,
+    "baseline_runs": [
+      0.871708326,
+      0.899000006
+    ],
+    "update_runs": [
+      0.931083341,
+      0.872000004
+    ],
+    "sha256": "5527236eff50ac1bfb3b80224ab3e740f9db006a1df095be294e946b2381bc26"
+  },
+  {
+    "device": "Max",
+    "M": 4097,
+    "before_ms": 0.8972500075000001,
+    "after_ms": 0.9033333335,
+    "change_percent": 0.6779967622346339,
+    "baseline_runs": [
+      0.907250011,
+      0.887250004
+    ],
+    "update_runs": [
+      0.918583333,
+      0.888083334
+    ],
+    "sha256": "876f90f80fdcc9b8fb41632fb5aaf9e16ed1cbee1bbc375e91dfce76a735883b"
+  },
+  {
+    "device": "Max repeat",
+    "M": 4096,
+    "before_ms": 0.8978124970000001,
+    "after_ms": 0.8865625130000001,
+    "change_percent": -1.2530438190146986,
+    "baseline_runs": [
+      0.903875014,
+      0.89174998
+    ],
+    "update_runs": [
+      0.892125012,
+      0.881000014
+    ],
+    "sha256": "5527236eff50ac1bfb3b80224ab3e740f9db006a1df095be294e946b2381bc26"
+  },
+  {
+    "device": "Max repeat",
+    "M": 4097,
+    "before_ms": 0.9182499925000001,
+    "after_ms": 0.8994583185,
+    "change_percent": -2.0464660118143185,
+    "baseline_runs": [
+      0.909499999,
+      0.926999986
+    ],
+    "update_runs": [
+      0.895499979,
+      0.903416658
+    ],
+    "sha256": "876f90f80fdcc9b8fb41632fb5aaf9e16ed1cbee1bbc375e91dfce76a735883b"
+  },
+  {
+    "device": "iPad",
+    "M": 4095,
+    "before_ms": 4.061479165,
+    "after_ms": 4.077437495,
+    "change_percent": 0.39291916446406727,
+    "baseline_runs": [
+      4.03325001,
+      4.08970832
+    ],
+    "update_runs": [
+      4.06437498,
+      4.09050001
+    ],
+    "sha256": "4e2e0b24f789c0aa48c9c0f9080dfb332ed60f6d5bc9c9ff3cd306032321df4a"
+  },
+  {
+    "device": "iPad",
+    "M": 4096,
+    "before_ms": 4.18104166,
+    "after_ms": 4.163416655,
+    "change_percent": -0.42154578770688955,
+    "baseline_runs": [
+      4.24891667,
+      4.11316665
+    ],
+    "update_runs": [
+      4.23491665,
+      4.09191666
+    ],
+    "sha256": "5527236eff50ac1bfb3b80224ab3e740f9db006a1df095be294e946b2381bc26"
+  },
+  {
+    "device": "iPad",
+    "M": 4097,
+    "before_ms": 4.2783750099999995,
+    "after_ms": 4.20199998,
+    "change_percent": -1.7851410832731007,
+    "baseline_runs": [
+      4.19329168,
+      4.36345834
+    ],
+    "update_runs": [
+      4.17787497,
+      4.22612499
+    ],
+    "sha256": "876f90f80fdcc9b8fb41632fb5aaf9e16ed1cbee1bbc375e91dfce76a735883b"
+  }
+]

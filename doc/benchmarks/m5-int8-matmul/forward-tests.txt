@@ -1,0 +1,5 @@
+./mpsblas.tests 'rowwise int8 gemm' (M5 Max, 40 cores, extracted branch)
+exit: 0
+[1/2] [PASS] mps large rowwise int8 gemm preserves dynamic rows and fused bias
+[2/2] [PASS] mps rowwise int8 gemm preserves tuning boundaries and partial tiles
+all test case(s) passed, congratulations!

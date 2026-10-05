@@ -3,6 +3,8 @@
 #include "NAInt8MatMulKernel.hpp"
 #include "../ccv_nnc_mfa_hash.hpp"
 #include "../ccv_nnc_mfa_error.hpp"
+#include <algorithm>
+#include <climits>
 #include <cstring>
 
 namespace {
@@ -12,12 +14,31 @@ static void serializeBinaries(MTL::BinaryArchive *const binaryArchive, const std
   binaryArchive->serializeToURL(NS::URL::fileURLWithPath(NS::String::string(pathToWrite.c_str(), NS::UTF8StringEncoding)), &error);
 }
 
-static uint32_t groupM(const uint32_t M) noexcept {
-  return (M >= 4096) ? 4096 : 0;
-}
+// Use a representative M with the same selection on any core count. This is
+// only a lookup normalization; dispatch and shader inputs retain the actual M.
+static uint32_t normalizeM(const NAInt8MatMulDescriptor& descriptor) noexcept {
+  const uint64_t M = descriptor.matrixDimensions[0], N = descriptor.matrixDimensions[1], K = descriptor.matrixDimensions[2];
+  if (!descriptor.loadM)
+    return M;
+  // These execution layouts / dimensions always use native operands.
+  if (descriptor.batchDimension != 1 || descriptor.leadingDimensions.has_value() || descriptor.inPlace ||
+      N < 1536 || N > INT32_MAX - 127 || K < 4096 || K > 32768 || K > 4 * N)
+    return M >= 4096 ? 4096 : 0;
+  if (M < 512 || (M < 4096 && K > 20480))
+    return 0;
 
-static uint32_t groupN(const uint32_t N) noexcept {
-  return (N >= 4096) ? 4096 : 0;
+  const uint64_t largeM = std::max<uint64_t>(2048, (uint64_t(4096) * 1536 + N - 1) / N);
+  if (M < largeM && K <= 8192)
+    return 0;
+  // Below largeM, both 64-row and 128-row tile counts must stay constant.
+  // Once the output is large enough, only traversal grouping and address
+  // bounds can change the choice. Keep the 4096 boundary for native traversal.
+  uint64_t normalized = M >= 4096 ? 4096 : M >= largeM ? largeM :
+      std::max<uint64_t>(512, (M - 1) / 64 * 64 + 1);
+  for (const uint64_t boundary : {uint64_t(UINT32_MAX) / K + 1, uint64_t(UINT32_MAX) / N + 1})
+    if (M >= boundary)
+      normalized = std::max(normalized, boundary);
+  return normalized;
 }
 
 }
@@ -25,23 +46,24 @@ static uint32_t groupN(const uint32_t N) noexcept {
 bool NAInt8MatMulDescriptor::operator==(const NAInt8MatMulDescriptor& rhs) const {
   auto lhsMatrixDimensions = matrixDimensions;
   auto rhsMatrixDimensions = rhs.matrixDimensions;
-  if (loadM) {
-    lhsMatrixDimensions[0] = groupM(lhsMatrixDimensions[0]);
-    rhsMatrixDimensions[0] = groupM(rhsMatrixDimensions[0]);
-  }
   auto lhsBatchStrides = batchStrides.value_or(simd::uint4(UINT32_MAX));
   auto rhsBatchStrides = rhs.batchStrides.value_or(simd::uint4(UINT32_MAX));
   if (loadM) {
+    lhsMatrixDimensions[0] = normalizeM(*this);
+    rhsMatrixDimensions[0] = normalizeM(rhs);
     lhsBatchStrides[0] = rhsBatchStrides[0] = 0;
     lhsBatchStrides[2] = rhsBatchStrides[2] = 0;
   }
   return
     batchDimension == rhs.batchDimension &&
     ioPrecision == rhs.ioPrecision &&
+    batchStrides.has_value() == rhs.batchStrides.has_value() &&
     simd_all(lhsBatchStrides == rhsBatchStrides) &&
+    leadingDimensions.has_value() == rhs.leadingDimensions.has_value() &&
     simd_all(leadingDimensions.value_or(simd::uint2(UINT32_MAX)) == rhs.leadingDimensions.value_or(simd::uint2(UINT32_MAX))) &&
     (loadM || packedABatchStride == rhs.packedABatchStride) &&
     (loadM || aScaleBatchStride == rhs.aScaleBatchStride) &&
+    inPlace == rhs.inPlace &&
     useBias == rhs.useBias &&
     activationHadamard256 == rhs.activationHadamard256 &&
     loadM == rhs.loadM &&
@@ -52,42 +74,29 @@ bool NAInt8MatMulDescriptor::operator==(const NAInt8MatMulDescriptor& rhs) const
 std::size_t std::hash<NAInt8MatMulDescriptor>::operator()(const NAInt8MatMulDescriptor& hash) const noexcept {
   std::size_t seed = 0;
   using namespace ccv::nnc::mfa::hash;
-  combine_64(seed, hash.batchDimension);
-  combine_32(seed, (uint32_t)hash.ioPrecision.value);
-  combine_32(seed, hash.loadM ? groupM(hash.matrixDimensions[0]) : hash.matrixDimensions[0]);
-  combine_32(seed, hash.matrixDimensions[1]);
-  combine_32(seed, hash.matrixDimensions[2]);
-  if (hash.batchStrides.has_value()) {
-    combine_32(seed, hash.loadM ? 0 : hash.batchStrides.value()[0]);
-    combine_32(seed, hash.batchStrides.value()[1]);
-    combine_32(seed, hash.loadM ? 0 : hash.batchStrides.value()[2]);
-    combine_32(seed, hash.batchStrides.value()[3]);
-  }
-  if (hash.leadingDimensions.has_value()) {
-    combine_32(seed, hash.leadingDimensions.value()[0]);
-    combine_32(seed, hash.leadingDimensions.value()[1]);
-  }
-  combine_32(seed, hash.loadM ? 0 : hash.packedABatchStride.value_or(0));
-  combine_32(seed, hash.loadM ? 0 : hash.aScaleBatchStride.value_or(0));
-  combine_32(seed, hash.useBias ? 1 : 0);
-  combine_32(seed, hash.activationHadamard256 ? 1 : 0);
-  combine_32(seed, hash.loadM ? 1 : 0);
-  combine_32(seed, hash.supportIndirectCommandBuffers ? 1 : 0);
+  seed = combine_64(seed, hash.batchDimension);
+  seed = combine_32(seed, (uint32_t)hash.ioPrecision.value);
+  seed = combine_32(seed, normalizeM(hash));
+  seed = combine_32(seed, hash.matrixDimensions[1]);
+  seed = combine_32(seed, hash.matrixDimensions[2]);
+  seed = combine_32(seed, hash.batchStrides.has_value());
+  const auto batchStrides = hash.batchStrides.value_or(simd::uint4(UINT32_MAX));
+  seed = combine_32(seed, hash.loadM ? 0 : batchStrides[0]);
+  seed = combine_32(seed, batchStrides[1]);
+  seed = combine_32(seed, hash.loadM ? 0 : batchStrides[2]);
+  seed = combine_32(seed, batchStrides[3]);
+  const auto leadingDimensions = hash.leadingDimensions.value_or(simd::uint2(UINT32_MAX));
+  seed = combine_32(seed, hash.leadingDimensions.has_value());
+  seed = combine_32(seed, leadingDimensions[0]);
+  seed = combine_32(seed, leadingDimensions[1]);
+  seed = combine_32(seed, hash.loadM ? 0 : hash.packedABatchStride.value_or(0));
+  seed = combine_32(seed, hash.loadM ? 0 : hash.aScaleBatchStride.value_or(0));
+  seed = combine_32(seed, hash.inPlace);
+  seed = combine_32(seed, hash.useBias ? 1 : 0);
+  seed = combine_32(seed, hash.activationHadamard256 ? 1 : 0);
+  seed = combine_32(seed, hash.loadM ? 1 : 0);
+  seed = combine_32(seed, hash.supportIndirectCommandBuffers ? 1 : 0);
   return seed;
-}
-
-NAInt8MatMulKernelDescriptor NAInt8MatMulDescriptor::kernelDescriptor() const noexcept {
-  return NAInt8MatMulKernelDescriptor(
-      simd::ushort3 { 128, 128, 128 },
-      8,
-      ioPrecision,
-      useBias,
-      loadM,
-      256,
-      groupM(matrixDimensions[0]),
-      groupN(matrixDimensions[1]),
-      leadingDimensions.has_value(),
-      activationHadamard256);
 }
 
 std::pair<NAInt8MatMulKernelDescriptor, PipelineValue<NAInt8MatMulKernel> *> NAInt8MatMulDescriptor::findKernel(
@@ -98,7 +107,18 @@ std::pair<NAInt8MatMulKernelDescriptor, PipelineValue<NAInt8MatMulKernel> *> NAI
     const std::string& pathToWrite,
     std::unordered_map<NAInt8MatMulKernelDescriptor, std::unique_ptr<NAInt8MatMulKernel>> *const libraryCache) const noexcept
 {
-  (void)dprops;
+  return findKernel(device, NAInt8MatMulKernelDescriptor(*this, dprops), binaryArchivesToRead,
+      binaryArchiveToWrite, pathToWrite, libraryCache);
+}
+
+std::pair<NAInt8MatMulKernelDescriptor, PipelineValue<NAInt8MatMulKernel> *> NAInt8MatMulDescriptor::findKernel(
+    MTL::Device* const device,
+    const NAInt8MatMulKernelDescriptor& kernelDesc,
+    NS::Array* const binaryArchivesToRead,
+    MTL::BinaryArchive* const binaryArchiveToWrite,
+    const std::string& pathToWrite,
+    std::unordered_map<NAInt8MatMulKernelDescriptor, std::unique_ptr<NAInt8MatMulKernel>> *const libraryCache) const noexcept
+{
   CCV_NNC_MFA_PRECONDITION(!activationHadamard256 || (matrixDimensions[2] > 0 && matrixDimensions[2] <= 65536 && matrixDimensions[2] % 256 == 0));
 
   auto createKernel =
@@ -175,7 +195,6 @@ std::pair<NAInt8MatMulKernelDescriptor, PipelineValue<NAInt8MatMulKernel> *> NAI
     return pipeline;
   };
 
-  auto kernelDesc = kernelDescriptor();
   auto kernel = createKernel(kernelDesc);
   auto pipeline = NS::TransferPtr(createPipeline(kernel, "int8_matmul"));
   auto quantize = NS::TransferPtr(createPipeline(kernel, "quantize_activation"));

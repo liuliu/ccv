@@ -1,0 +1,35 @@
+
+ gemm-rows-512-6144-6144
+max base [0.443041674, 0.440374992] 0.441708333 nominal True
+max branch [0.355750002, 0.354624994] 0.35518749800000005 nominal True
+ipad all-old [1.612875, 1.62229166] 1.61758333 nominal True
+ipad base [1.62787501, 1.61750001] 1.62268751 nominal True
+ipad base-control [1.60608333, 1.609625] 1.607854165 nominal True
+ipad branch [3.228, 3.39325001] 3.3106250050000003 nominal True
+ipad no-register [3.34179166, 3.36391666] 3.35285416 nominal True
+
+ flux2-1024-projection
+max base [3.31145833, 3.35929167] 3.335375 nominal True
+max branch [2.67158334, 2.67062499] 2.671104165 nominal True
+ipad all-old [13.3835, 13.3209583] 13.35222915 nominal True
+ipad base [13.475375, 13.35975] 13.417562499999999 nominal True
+ipad base-control [13.3597917, 13.3739167] 13.3668542 nominal True
+ipad branch [15.772375, 15.7565] 15.7644375 nominal True
+ipad no-register [23.8460417, 25.10825] 24.47714585 nominal True
+
+ flux2-1024-ffn-down
+max base [11.7763333, 11.682375] 11.729354149999999 nominal True
+max branch [8.23525, 8.166125] 8.2006875 nominal True
+ipad all-old [51.1474583, 50.6394583] 50.8934583 nominal True
+ipad base [50.424125, 50.1164167] 50.27027085 nominal True
+ipad base-control [52.142375, 49.7514167] 50.946895850000004 nominal True
+ipad branch [70.249125, 70.149875] 70.1995 nominal True
+ipad no-register [54.145375, 50.7749583] 52.460166650000005 nominal True
+
+Max native tile probes
+[512, 6144, 6144] [128, 128, 128, 8] 0.446 0
+[512, 6144, 6144] [64, 128, 128, 4] 0.353 0
+[512, 6144, 6144] [128, 128, 128, 8] 0.445 0
+[4096, 6144, 6144] [128, 128, 128, 8] 3.343 0
+[4096, 6144, 6144] [64, 128, 128, 4] 2.763 0
+[4096, 6144, 6144] [128, 128, 128, 8] 3.342 0

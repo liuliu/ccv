@@ -19,6 +19,8 @@ struct NAInt8MatMulDescriptor {
   std::optional<simd::uint2> leadingDimensions;
   std::optional<uint32_t> packedABatchStride;
   std::optional<uint32_t> aScaleBatchStride;
+  // The source activation and destination share a buffer allocation.
+  bool inPlace = false;
   bool useBias = false;
   // Rotate contiguous groups along K with (H4 / 2) ^ tensor 4 before
   // row-wise quantization. K must be divisible by 256 and <= 65536;
@@ -37,8 +39,14 @@ struct NAInt8MatMulDescriptor {
       const std::string& pathToWrite,
       std::unordered_map<NAInt8MatMulKernelDescriptor, std::unique_ptr<NAInt8MatMulKernel>> *const libraryCache) const noexcept;
 
-private:
-  NAInt8MatMulKernelDescriptor kernelDescriptor() const noexcept;
+  // Specialize an explicit kernel configuration (also used by kernel probes).
+  std::pair<NAInt8MatMulKernelDescriptor, PipelineValue<NAInt8MatMulKernel> *> findKernel(
+      MTL::Device* const device,
+      const NAInt8MatMulKernelDescriptor& kernelDescriptor,
+      NS::Array* const binaryArchivesToRead,
+      MTL::BinaryArchive* const binaryArchiveToWrite,
+      const std::string& pathToWrite,
+      std::unordered_map<NAInt8MatMulKernelDescriptor, std::unique_ptr<NAInt8MatMulKernel>> *const libraryCache) const noexcept;
 };
 
 template<>

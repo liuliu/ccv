@@ -1,0 +1,160 @@
+NAInt8MatMul dynamic register selection, 2026-10-05
+Branch: m5-na-int8-matmul
+Baseline: 26fed9fc (native wide-offset repair)
+Physical device: Apple M5 Max, 40 GPU cores, 128 GiB memory.
+
+Dynamic M now uses the same kernel selection as fixed M. The blanket loadM
+exclusion is removed. Descriptor equality and hashing share one normalizeM
+helper, so cached selection is independent of the order in which M values
+arrive. There are no new descriptor fields or PipelineCacheKey type.
+KernelDescriptor retains the device-specific choices; the shader generator,
+GPU-core gates, numerical precision, attention and backward code are unchanged.
+
+How lookup normalization works
+- Fixed M remains exact.
+- Layouts/dimensions that cannot select register operands keep the two native
+  traversal ranges: M below 4096 and M at/above 4096.
+- For register-capable dimensions, M ranges preserve the relevant occupancy
+  tile counts until the large-output criterion becomes true. That criterion
+  is M >= max(2048, ceil(4096*1536/N)).
+- Subsequent ranges preserve the native traversal boundary at 4096 and both
+  M*K / M*N UINT32_MAX crossings used by selection.
+- Actual M is still supplied to the shader and used for dispatch geometry.
+  Only lookup comparison/hash are normalized.
+
+Example with N=2560, K=9216, contiguous unbatched output:
+  Actual M        Lookup representative
+  1..511          0
+  512             512
+  513..576        513
+  577..640        577
+  ...             ... (same 64-row tile count)
+  2433..2457      2433
+  2458..4095      2458
+  4096..466033    4096
+  466034 onward  additional address-boundary ranges
+
+The ranges are conservative across core counts. On a particular device,
+several ranges can choose the same configuration. This may create more
+pipeline entries than a device-specific key would, while source libraries
+remain shared. Normal full 4096-token chunks retain fixed-M specialization.
+
+The two NAInt8MatMul hash functions now assign the returned combine_32/64
+values to their seed. Previously they returned zero for every key. The shared
+MFA hash helpers and other operator hashes are unchanged. Optional stride
+presence is distinguished in equality/hash, because explicit strides can
+change source/constants even when their values equal the old nil sentinel.
+
+Validation on Max
+- make debug -j4 and the documented benchmark make targets passed. The
+  dynamic_m_bench object needed an explicit rule to receive the MFA include
+  paths and build flags; the make-built binary also ran the transition suite.
+- 549,720 descriptor/configuration comparisons covered M=1..4352 plus address
+  and signed-coordinate boundaries, 14 N/K pairs, and core profiles
+  0/10/35/36/40/48/64/80/128. Equal dynamic keys always selected equal kernel
+  configurations, and dynamic/fixed selection agreed.
+- Actual pipeline-cache checks traversed four N/K pairs in both M orders on
+  10/36/40/80-core policies. They verify reuse within ranges, source sharing
+  across K specializations, and exact fixed-M keys.
+- Existing 24 dynamic layout/reuse cases passed (batched/interleaved, bias,
+  bit-exact fixed/dynamic outputs and independent CPU samples).
+- New dynamic_m_bench mode 2 passed 88 cases using the actual 40-core policy
+  and 88 more with an 80-core policy on Max. All fixed/dynamic outputs were
+  bit-exact and the CPU samples passed. These check production encoding and
+  cache reuse in both call orders. Mode 2 has no timing warmup, so its printed
+  single-dispatch times are NOT performance evidence.
+- The 80-core policy correctly selected register/native/register at
+  M512/M513/M577 for N2176/K8448, and native/register at M2457/M2458 for
+  N2560/K8192, regardless of call order.
+- 18 direct register and 21 native configurations passed, including
+  FP16/BF16/FP32, activation rotation, bias, strides and dynamic M.
+- Four >4 GiB weight-buffer regressions and both focused BLAS tests passed.
+- Production FP32, BF16 and FP16+H256 dynamic GEMMs at 513x2560x9216 passed
+  CPU sample checks and matched their baseline full-output hashes.
+
+No physical iPad or Ultra execution this round. The prior instruction to
+finish with Max validation remains in effect. An 80-core selector profile
+on Max checks policy/correctness; it does not predict Ultra GPU timings.
+
+GPU timing comparison (milliseconds, quantization + GEMM)
+Baseline/update/update/baseline order, separate processes, 25 measured samples
+per launch after >=0.5 GPU-second warmup, 10-second idle gaps. All launches
+began and ended at nominal thermal state. Each value is the median of the
+two process medians. Full-output hashes match for every paired workload.
+
+M x N x K                  loadM  Baseline ms  Updated ms    Change
+512x2560x9216                1     0.402750    0.231021    -42.64%
+1024x4096x12288              1     1.269042    0.954083    -24.82%
+513x2560x9216                1     0.452708    0.280042    -38.14%
+4097x1536x6144               1     0.894292    0.910188     +1.78%
+4096x4096x12288              1     4.627500    3.767417    -18.59%
+512x2560x9216                0     0.230521    0.230812     +0.13%
+512x2559x9248                1     0.445521    0.355958    -20.10%
+512x2432x9216                1     0.403271    0.229625    -43.06%
+
+These timings measure the production dispatcher with normal dynamic-M
+selection. No forced register pipeline or alternate shader is used.
+Small control-case changes within repeat variation are not established wins.
+The separate scalar/H256 checks use short runs for correctness and are not
+included in the timing comparison above.
+The inherited Ultra partial-column/K-tail kernel gap is not repaired here;
+this restores the existing fixed-M policy for dynamic M. Ultra timing remains
+necessary, including those tail workloads.
+
+Reproduce
+  cd test/int/nnc
+  make debug -j4
+  ./mpsblas.tests 'rowwise int8 gemm'
+  cd ../../../bin/mfa
+  make na_int8_convrot_bench dynamic_m_bench na_int8_wide_offsets_bench -j4
+  ./na_int8_convrot_bench --validate-only
+  ./na_int8_convrot_bench --validate-register
+  ./dynamic_m_bench 1
+  ./dynamic_m_bench 2
+  CCV_PROBE_CORES=80 ./dynamic_m_bench 2
+  ./na_int8_wide_offsets_bench
+
+Local raw logs, paired probes, baseline archive, and runner scripts:
+  /private/tmp/ccv-matmul-dynamic-register-20261005
+
+All per-launch GPU medians and complete-output SHA256 hashes:
+512-2560-9216-d1-0-before: 0.402166683 ms; 355662d728d54066ae157adad5d3cf0aec3a49492bb02e8b9dd2699216c35233
+512-2560-9216-d1-1-after: 0.230916659 ms; 355662d728d54066ae157adad5d3cf0aec3a49492bb02e8b9dd2699216c35233
+512-2560-9216-d1-2-after: 0.231124985 ms; 355662d728d54066ae157adad5d3cf0aec3a49492bb02e8b9dd2699216c35233
+512-2560-9216-d1-3-before: 0.40333331 ms; 355662d728d54066ae157adad5d3cf0aec3a49492bb02e8b9dd2699216c35233
+1024-4096-12288-d1-0-before: 1.26508332 ms; 43f7a8fdd88ed75d98694cf80e10f26b64f0a4eeeed0318c98cc23b1f6c17f68
+1024-4096-12288-d1-1-after: 0.954291667 ms; 43f7a8fdd88ed75d98694cf80e10f26b64f0a4eeeed0318c98cc23b1f6c17f68
+1024-4096-12288-d1-2-after: 0.953875016 ms; 43f7a8fdd88ed75d98694cf80e10f26b64f0a4eeeed0318c98cc23b1f6c17f68
+1024-4096-12288-d1-3-before: 1.273 ms; 43f7a8fdd88ed75d98694cf80e10f26b64f0a4eeeed0318c98cc23b1f6c17f68
+513-2560-9216-d1-0-before: 0.453458313 ms; 141550734963f1bd2101aaf1b3dae35e3be617c63108275f9ed1a3042279f788
+513-2560-9216-d1-1-after: 0.280250009 ms; 141550734963f1bd2101aaf1b3dae35e3be617c63108275f9ed1a3042279f788
+513-2560-9216-d1-2-after: 0.27983333 ms; 141550734963f1bd2101aaf1b3dae35e3be617c63108275f9ed1a3042279f788
+513-2560-9216-d1-3-before: 0.451958331 ms; 141550734963f1bd2101aaf1b3dae35e3be617c63108275f9ed1a3042279f788
+4097-1536-6144-d1-0-before: 0.914208329 ms; 876f90f80fdcc9b8fb41632fb5aaf9e16ed1cbee1bbc375e91dfce76a735883b
+4097-1536-6144-d1-1-after: 0.922541687 ms; 876f90f80fdcc9b8fb41632fb5aaf9e16ed1cbee1bbc375e91dfce76a735883b
+4097-1536-6144-d1-2-after: 0.89783335 ms; 876f90f80fdcc9b8fb41632fb5aaf9e16ed1cbee1bbc375e91dfce76a735883b
+4097-1536-6144-d1-3-before: 0.874375022 ms; 876f90f80fdcc9b8fb41632fb5aaf9e16ed1cbee1bbc375e91dfce76a735883b
+4096-4096-12288-d1-0-before: 4.628375 ms; 779a148409efb7bb2af62d28d443e63f2b780b01ef15cc6eb87ae0a2e08e9e74
+4096-4096-12288-d1-1-after: 3.76674999 ms; 779a148409efb7bb2af62d28d443e63f2b780b01ef15cc6eb87ae0a2e08e9e74
+4096-4096-12288-d1-2-after: 3.76808335 ms; 779a148409efb7bb2af62d28d443e63f2b780b01ef15cc6eb87ae0a2e08e9e74
+4096-4096-12288-d1-3-before: 4.62662501 ms; 779a148409efb7bb2af62d28d443e63f2b780b01ef15cc6eb87ae0a2e08e9e74
+512-2560-9216-d0-0-before: 0.230583333 ms; 355662d728d54066ae157adad5d3cf0aec3a49492bb02e8b9dd2699216c35233
+512-2560-9216-d0-1-after: 0.230958336 ms; 355662d728d54066ae157adad5d3cf0aec3a49492bb02e8b9dd2699216c35233
+512-2560-9216-d0-2-after: 0.230666657 ms; 355662d728d54066ae157adad5d3cf0aec3a49492bb02e8b9dd2699216c35233
+512-2560-9216-d0-3-before: 0.230458332 ms; 355662d728d54066ae157adad5d3cf0aec3a49492bb02e8b9dd2699216c35233
+scalar-fp32-h0-before: 0.473249995 ms; c733c2202725014be16e7ba67cbd04ae06c29d19f36f18199bcbd26cbdba4332
+scalar-fp32-h0-after: 0.350041664 ms; c733c2202725014be16e7ba67cbd04ae06c29d19f36f18199bcbd26cbdba4332
+scalar-bf16-h0-before: 0.456749985 ms; eac6b4515d55d40abe026ddb6f233aeec0ee2dddd68a9562ff69e96751ce7bc0
+scalar-bf16-h0-after: 0.281749992 ms; eac6b4515d55d40abe026ddb6f233aeec0ee2dddd68a9562ff69e96751ce7bc0
+scalar-fp16-h1-before: 0.755041663 ms; a2030a8295bd763cddd93af6b84c8959ca53dab11683e9e003e2e14880ded268
+scalar-fp16-h1-after: 0.298083323 ms; a2030a8295bd763cddd93af6b84c8959ca53dab11683e9e003e2e14880ded268
+512-2559-9248-d1-0-before: 0.446750026 ms; 98414b4a5f89536ae40d8d0a37cdac4b496a5de7a693328a4dd1455848a6e9ba
+512-2559-9248-d1-1-after: 0.3555 ms; 98414b4a5f89536ae40d8d0a37cdac4b496a5de7a693328a4dd1455848a6e9ba
+512-2559-9248-d1-2-after: 0.356416655 ms; 98414b4a5f89536ae40d8d0a37cdac4b496a5de7a693328a4dd1455848a6e9ba
+512-2559-9248-d1-3-before: 0.444291654 ms; 98414b4a5f89536ae40d8d0a37cdac4b496a5de7a693328a4dd1455848a6e9ba
+512-2432-9216-d1-0-before: 0.403666665 ms; 9c40dd3d9522c2151928aedb78e4e7af30f8504505a843a7437b9adb74587719
+512-2432-9216-d1-1-after: 0.229625002 ms; 9c40dd3d9522c2151928aedb78e4e7af30f8504505a843a7437b9adb74587719
+512-2432-9216-d1-2-after: 0.229625002 ms; 9c40dd3d9522c2151928aedb78e4e7af30f8504505a843a7437b9adb74587719
+512-2432-9216-d1-3-before: 0.402875012 ms; 9c40dd3d9522c2151928aedb78e4e7af30f8504505a843a7437b9adb74587719
+
+Baseline archive SHA256: 76c738087e5a2234f6e41cf9f8ed9f3000360cfa8ba5040da6fa13e1ec5ea220

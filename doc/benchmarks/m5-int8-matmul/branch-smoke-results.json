@@ -1,0 +1,268 @@
+{
+  "purpose": "Functional validation of the extracted branch and dedicated benchmark; not paired performance evidence.",
+  "hardware": "M5 Max, 40 GPU cores",
+  "selector_override": null,
+  "warmup_gpu_seconds": 0.1,
+  "minimum_warmup_iterations": 3,
+  "samples": 3,
+  "cooldown_between_calls_seconds": 15,
+  "benchmark_sha256": "184560c673b884c73e61ab254ce12be5eb193917827710ee14367ea8060c6ec6",
+  "records": [
+    {
+      "shape": [
+        512,
+        2559,
+        9216
+      ],
+      "dynamic_m": 0,
+      "rc": 0,
+      "thermal_before": "0",
+      "thermal_after": "0",
+      "output_sha256": "a01fae1c5aef122765c8adaf6fa45c6d7b10c5949370fcc8a39e28a71a7e5e60",
+      "cpu_l2": "0.00387680609",
+      "gpu_median_ms": "0.297999999",
+      "gpu_core_count": "40",
+      "matches_prior_hash": true
+    },
+    {
+      "shape": [
+        512,
+        2559,
+        9216
+      ],
+      "dynamic_m": 1,
+      "rc": 0,
+      "thermal_before": "0",
+      "thermal_after": "0",
+      "output_sha256": "a01fae1c5aef122765c8adaf6fa45c6d7b10c5949370fcc8a39e28a71a7e5e60",
+      "cpu_l2": "0.00387680609",
+      "gpu_median_ms": "0.301250009",
+      "gpu_core_count": "40",
+      "matches_prior_hash": true
+    },
+    {
+      "shape": [
+        1023,
+        2560,
+        9216
+      ],
+      "dynamic_m": 0,
+      "rc": 0,
+      "thermal_before": "0",
+      "thermal_after": "0",
+      "output_sha256": "5171fa5021a840f817aca44555e30eed17470a23ff6a545b0fd90d3262912801",
+      "cpu_l2": "0.00435040769",
+      "gpu_median_ms": "0.527625001",
+      "gpu_core_count": "40",
+      "matches_prior_hash": true
+    },
+    {
+      "shape": [
+        1023,
+        2560,
+        9216
+      ],
+      "dynamic_m": 1,
+      "rc": 0,
+      "thermal_before": "0",
+      "thermal_after": "0",
+      "output_sha256": "5171fa5021a840f817aca44555e30eed17470a23ff6a545b0fd90d3262912801",
+      "cpu_l2": "0.00435040769",
+      "gpu_median_ms": "0.536291656",
+      "gpu_core_count": "40",
+      "matches_prior_hash": true
+    },
+    {
+      "shape": [
+        1023,
+        4096,
+        12288
+      ],
+      "dynamic_m": 0,
+      "rc": 0,
+      "thermal_before": "0",
+      "thermal_after": "0",
+      "output_sha256": "638ef2e5170386a51755052bee3556335f6916271c174bfdb83af3055fac7ff6",
+      "cpu_l2": "0.00388537687",
+      "gpu_median_ms": "1.05454167",
+      "gpu_core_count": "40",
+      "matches_prior_hash": true
+    },
+    {
+      "shape": [
+        1023,
+        4096,
+        12288
+      ],
+      "dynamic_m": 1,
+      "rc": 0,
+      "thermal_before": "0",
+      "thermal_after": "0",
+      "output_sha256": "638ef2e5170386a51755052bee3556335f6916271c174bfdb83af3055fac7ff6",
+      "cpu_l2": "0.00388537687",
+      "gpu_median_ms": "1.12020834",
+      "gpu_core_count": "40",
+      "matches_prior_hash": true
+    },
+    {
+      "shape": [
+        4095,
+        4097,
+        8192
+      ],
+      "dynamic_m": 0,
+      "rc": 0,
+      "thermal_before": "0",
+      "thermal_after": "0",
+      "output_sha256": "7d08d8de0df8dc9fc723806ff4addf5dec03fa8dc8dceb6de5f17c10924c092a",
+      "cpu_l2": "0.00338300301",
+      "gpu_median_ms": "2.887",
+      "gpu_core_count": "40",
+      "matches_prior_hash": true
+    },
+    {
+      "shape": [
+        4095,
+        4097,
+        8192
+      ],
+      "dynamic_m": 1,
+      "rc": 0,
+      "thermal_before": "0",
+      "thermal_after": "0",
+      "output_sha256": "7d08d8de0df8dc9fc723806ff4addf5dec03fa8dc8dceb6de5f17c10924c092a",
+      "cpu_l2": "0.00338300301",
+      "gpu_median_ms": "2.81612501",
+      "gpu_core_count": "40",
+      "matches_prior_hash": true
+    },
+    {
+      "shape": [
+        512,
+        2560,
+        9216
+      ],
+      "dynamic_m": 0,
+      "rc": 0,
+      "thermal_before": "0",
+      "thermal_after": "0",
+      "output_sha256": "355662d728d54066ae157adad5d3cf0aec3a49492bb02e8b9dd2699216c35233",
+      "cpu_l2": "0.00465772925",
+      "gpu_median_ms": "0.230749996",
+      "gpu_core_count": "40",
+      "matches_prior_hash": true
+    },
+    {
+      "shape": [
+        512,
+        2560,
+        9216
+      ],
+      "dynamic_m": 1,
+      "rc": 0,
+      "thermal_before": "0",
+      "thermal_after": "0",
+      "output_sha256": "355662d728d54066ae157adad5d3cf0aec3a49492bb02e8b9dd2699216c35233",
+      "cpu_l2": "0.00465772925",
+      "gpu_median_ms": "0.230999998",
+      "gpu_core_count": "40",
+      "matches_prior_hash": true
+    },
+    {
+      "shape": [
+        513,
+        2559,
+        9247
+      ],
+      "dynamic_m": 0,
+      "rc": 0,
+      "thermal_before": "0",
+      "thermal_after": "0",
+      "output_sha256": "7f2f28ef0394825200adea3af63fa1200a20b6e7ad70d732ef31de733b454af0",
+      "cpu_l2": "0.0036686506",
+      "gpu_median_ms": "0.389416658",
+      "gpu_core_count": "40",
+      "matches_prior_hash": null
+    },
+    {
+      "shape": [
+        513,
+        2559,
+        9247
+      ],
+      "dynamic_m": 1,
+      "rc": 0,
+      "thermal_before": "0",
+      "thermal_after": "0",
+      "output_sha256": "7f2f28ef0394825200adea3af63fa1200a20b6e7ad70d732ef31de733b454af0",
+      "cpu_l2": "0.0036686506",
+      "gpu_median_ms": "0.395625",
+      "gpu_core_count": "40",
+      "matches_prior_hash": null
+    },
+    {
+      "shape": [
+        513,
+        2559,
+        9248
+      ],
+      "dynamic_m": 0,
+      "rc": 0,
+      "thermal_before": "0",
+      "thermal_after": "0",
+      "output_sha256": "cac14736a8ea1d60aa5d417c1385d3c19756e7dfb8e3eb3a99a1799042e3dd62",
+      "cpu_l2": "0.0043806116",
+      "gpu_median_ms": "0.344125001",
+      "gpu_core_count": "40",
+      "matches_prior_hash": null
+    },
+    {
+      "shape": [
+        513,
+        2559,
+        9248
+      ],
+      "dynamic_m": 1,
+      "rc": 0,
+      "thermal_before": "0",
+      "thermal_after": "0",
+      "output_sha256": "cac14736a8ea1d60aa5d417c1385d3c19756e7dfb8e3eb3a99a1799042e3dd62",
+      "cpu_l2": "0.0043806116",
+      "gpu_median_ms": "0.34808334",
+      "gpu_core_count": "40",
+      "matches_prior_hash": null
+    },
+    {
+      "shape": [
+        4097,
+        6144,
+        18432
+      ],
+      "dynamic_m": 0,
+      "rc": 0,
+      "thermal_before": "0",
+      "thermal_after": "0",
+      "output_sha256": "8997772f9c27d8e581f9a6930122bfed94a50b79d741c9b8fbed6413b2cf43a6",
+      "cpu_l2": "0.00388426143",
+      "gpu_median_ms": "8.42179167",
+      "gpu_core_count": "40",
+      "matches_prior_hash": true
+    },
+    {
+      "shape": [
+        4097,
+        6144,
+        18432
+      ],
+      "dynamic_m": 1,
+      "rc": 0,
+      "thermal_before": "0",
+      "thermal_after": "0",
+      "output_sha256": "8997772f9c27d8e581f9a6930122bfed94a50b79d741c9b8fbed6413b2cf43a6",
+      "cpu_l2": "0.00388426143",
+      "gpu_median_ms": "8.43050001",
+      "gpu_core_count": "40",
+      "matches_prior_hash": true
+    }
+  ]
+}

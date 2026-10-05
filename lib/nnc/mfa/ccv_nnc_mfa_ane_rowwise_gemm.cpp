@@ -287,7 +287,7 @@ static bool probe_na_int8_matmul_tflops(
     encoder->setBuffer(a_buffer.get(), a_scale_offset, 3);
     encoder->setBuffer(b_buffer.get(), b_scale_offset, 4);
     for (uint32_t i = 0; i < kDispatchPerIteration; i++) {
-      encoder->dispatchThreadgroups( pipeline->kernel->threadgroupsPerGrid(M, N, 1), MTL::Size(pipeline->kernel->threadgroupSize(pipeline->pipeline.get()), 1, 1));
+      encoder->dispatchThreadgroups( pipeline->kernel->threadgroupsPerGrid(M, N, 1), pipeline->kernel->threadsPerThreadgroup(pipeline->pipeline.get()));
     }
     command_batch->finishCommand(encoder);
     auto command_buffer = NS::RetainPtr(command_batch->commandBuffer);
@@ -623,7 +623,7 @@ static PipelineValue<NAInt8MatMulKernel>* find_na_int8_pipeline(
 
   auto pool = NS::AutoreleasePool::alloc()->init();
   auto& shaderCache = context->kernel_cache;
-  DeviceProperties dprops = DeviceProperties();
+  const DeviceProperties& dprops = context->device_properties;
   auto pipeline = shaderCache.findKernel<NAInt8MatMulKernel, NAInt8MatMulDescriptor, NAInt8MatMulKernelDescriptor>(
       descriptor,
       context->device.get(),
@@ -747,7 +747,7 @@ static bool run_partial_na_matmul_async(
     encoder->setBuffer(bias, bias_offset, 5);
   encoder->dispatchThreadgroups(
       kernel->threadgroupsPerGrid(na_m, params.N, rowwise_batch_dimension(params)),
-      MTL::Size(kernel->threadgroupSize(matmul_pipeline->pipeline.get()), 1, 1));
+      kernel->threadsPerThreadgroup(matmul_pipeline->pipeline.get()));
   command_batch->finishCommand(encoder);
 
   char error_buffer[1024] = {};

@@ -1,0 +1,156 @@
+NAInt8MatMul native wide offsets and dynamic-M selection review, 2026-10-05
+Branch: m5-na-int8-matmul
+Baseline: f0954f0966f5deaad14981315fc2921ff867366e
+The baseline differs from the Ultra-reviewed f588dfb1 only by MLX attribution.
+Device tested: Apple M5 Max, 40 GPU cores, 128 GiB memory.
+
+Production change
+Widen the native A/B/C pointer-offset products before multiplication, including
+both complete- and partial-tile stores. No accumulator, quantizer, scalar IO,
+selection, cache, attention, or backward changes.
+
+At N_group_start=262144 and K=16384, the old uint multiplication evaluates
+262144 * 16384 modulo 2^32 to zero. With N=262272, the last 128 output columns
+therefore read the first 128 weight rows. B's INT8 payload is 4 GiB + 2 MiB.
+The register path already uses size_t products; the native path now does too.
+
+An opt-in regression allocates the actual large weight buffer, feeds the
+production scaled-GEMM encoder, and compares 65 CPU-reference output samples
+per case. Random nonzero and zero weight rows straddle the 4 GiB boundary.
+Exact input quantization and power-of-two scales allow a bit-exact CPU
+reference, including the FP16 store. M=511 covers a partial row tile as well as M=512's full tiles.
+The test is separate from the default integration suite because it needs
+approximately 4.3 GiB shared memory. It returns 77 if maxBufferLength is too small.
+
+Before (unchanged baseline library):
+  M=512 fixed:    PASS, 0/65 incorrect samples (register operands)
+  M=512 dynamic: FAIL, 15/65 incorrect samples (native operands)
+  M=511 fixed:   FAIL, 15/65 incorrect samples (native operands)
+  M=511 dynamic: FAIL, 15/65 incorrect samples (native operands)
+After: all four cases PASS, 260/260 samples exactly match the CPU reference.
+For example, row 0 / column 262144 previously returned -0.817871 instead of
+-5.10156. The fix restores -5.10156.
+
+Other Max validation
+- make debug -j4 passed; the documented new benchmark make target also passed.
+- 24 dynamic-M reuse/layout cases passed, including bit-exact fixed/dynamic
+  outputs, CPU samples, batched/interleaved layouts, bias, and both M ranges.
+- Descriptor-cache checks for 10/35/36/40/80 cores and 18 direct register
+  configurations passed (FP16/BF16/FP32, static/dynamic M, plain/H256).
+- 21 native configurations and their descriptor-cache checks passed, including
+  FP16/BF16/FP32, strides, batching, bias, dynamic M and H256.
+- Both focused rowwise INT8 GEMM integration tests passed.
+
+No iPad execution in this round: CoreDevice rejected app installation with
+error 4016 and listed the physical M5 iPad as unavailable. Signed before/after
+apps were built and verified, but not installed. The user explicitly requested
+finishing with Max validation for now. No Ultra measurements were performed here.
+
+Address-fix timing comparison (GPU ms, activation quantization + GEMM)
+Each workload runs baseline/update/update/baseline in separate processes,
+25 samples per process after >=0.5 GPU-second warmup, with 10-second idle gaps.
+Every launch started and ended at nominal thermal state. Times below are the
+median of the two process medians. All full-output hashes match per workload.
+Small changes within repeat variation are not established speedups/regressions.
+
+M x N x K                 loadM   Baseline ms  Updated ms   Change
+512x2560x9216               1      0.404271    0.404458    +0.05%
+1024x4096x12288             1      1.262083    1.271917    +0.78%
+4097x1536x6144              1      0.890271    0.885104    -0.58%
+512x2560x9216               0      0.231250    0.230958    -0.13%
+
+Unresolved selection issue
+Dynamic M still returns false immediately in useRegisterOperands selection.
+This retains the earlier "native for now" policy; it is not a limitation of
+the runtime-M register shader. The address repair does not recover the Ultra
+review's 64% / 30% partial-prefill gaps relative to ece05fbc.
+
+A separate Max diagnostic prepopulates a one-shape pipeline cache with the
+existing explicit register KernelDescriptor (loadM=true). It changes no
+production source or quantization code. Each process uses only one M, so this
+measures shader performance without making an unsafe cross-M reuse claim.
+The same native/register/register/native protocol and CPU/output checks apply.
+
+M x N x K                Native ms  Register ms  Reduction
+512x2560x9216              0.404292     0.231396     42.77%
+1024x4096x12288            1.274146     0.952937     25.21%
+
+Both diagnostics produce bit-exact output hashes matching the native path.
+They demonstrate recoverable throughput, not a production selection repair.
+
+Why simply removing the loadM guard is insufficient
+ShaderCache looks up NAInt8MatMulDescriptor before constructing the kernel
+configuration. Its current dynamic equality treats all M<4096 as equivalent
+for the same other execution facts. For N=2560/K=9216, M=511 and M=512 compare
+equal, although the existing fixed-M selector chooses native and register
+operands respectively on both 40- and 80-core profiles. Without changing that
+equality, the first M to populate the cache would choose the path for both.
+
+There are also narrower M-dependent selection boundaries. These are exact
+host-selector results for an 80-core profile, NOT GPU measurements on Ultra:
+  N=2176, K=8448: M512 register, M513 native, M577 register.
+    M512: register grid 136 groups, native grid 68 groups; more cores reached.
+    M513: register grid 153, native grid 85; native already reaches 80 cores,
+          and register does not reach the 160-group admission threshold.
+    M577: register grid 170; it reaches that threshold.
+  N=2560, K=8192: M2457 native, M2458 register.
+    The latter crosses M*N >= 4096*1536 with M >= 2048.
+Thus one additional M512 boundary would not preserve all current decisions.
+A subsequent selection change must make normalized equality/hash distinguish
+M ranges where the selected configuration can differ. This can remain in the
+existing descriptor; adding a separate PipelineCacheKey is not necessary.
+The decision boundaries and cache reuse must be tested in both call orders.
+
+Additional inherited lookup finding (unchanged)
+The shared combine_32/combine_64 helpers in lib/nnc/mfa/ccv_nnc_mfa_hash.hpp
+return a combined seed but do not
+mutate their seed reference. NAInt8MatMulDescriptor's hash ignores those return
+values, so the inspected hashes are all zero. Equality still distinguishes
+keys and preserves correctness, but hashing does not distribute them. This is
+separate from the M-range equality issue and the GPU timing gaps. It was not
+changed here because the helpers and their callers are shared across MFA.
+
+Reproduce Max checks
+  cd test/int/nnc
+  make debug -j4
+  ./mpsblas.tests 'rowwise int8 gemm'
+  cd ../../../bin/mfa
+  make na_int8_wide_offsets_bench na_int8_convrot_bench dynamic_m_bench -j4
+  ./na_int8_wide_offsets_bench
+  ./na_int8_convrot_bench --validate-only
+  ./na_int8_convrot_bench --validate-register
+  ./dynamic_m_bench 1
+
+Local raw logs, baseline archive, signed iPad apps, selection diagnostic source
+and runners: /private/tmp/ccv-matmul-wide-offsets-20261005
+All timing launches, including variation, are retained below.
+
+Per-launch GPU medians and complete-output SHA256 hashes:
+Address repair
+512-2560-9216-d1-0-before: 0.403625017 ms; 355662d728d54066ae157adad5d3cf0aec3a49492bb02e8b9dd2699216c35233
+512-2560-9216-d1-1-after: 0.404499995 ms; 355662d728d54066ae157adad5d3cf0aec3a49492bb02e8b9dd2699216c35233
+512-2560-9216-d1-2-after: 0.404416642 ms; 355662d728d54066ae157adad5d3cf0aec3a49492bb02e8b9dd2699216c35233
+512-2560-9216-d1-3-before: 0.404916645 ms; 355662d728d54066ae157adad5d3cf0aec3a49492bb02e8b9dd2699216c35233
+1024-4096-12288-d1-0-before: 1.26570833 ms; 43f7a8fdd88ed75d98694cf80e10f26b64f0a4eeeed0318c98cc23b1f6c17f68
+1024-4096-12288-d1-1-after: 1.273125 ms; 43f7a8fdd88ed75d98694cf80e10f26b64f0a4eeeed0318c98cc23b1f6c17f68
+1024-4096-12288-d1-2-after: 1.27070834 ms; 43f7a8fdd88ed75d98694cf80e10f26b64f0a4eeeed0318c98cc23b1f6c17f68
+1024-4096-12288-d1-3-before: 1.25845833 ms; 43f7a8fdd88ed75d98694cf80e10f26b64f0a4eeeed0318c98cc23b1f6c17f68
+4097-1536-6144-d1-0-before: 0.886124995 ms; 876f90f80fdcc9b8fb41632fb5aaf9e16ed1cbee1bbc375e91dfce76a735883b
+4097-1536-6144-d1-1-after: 0.882541673 ms; 876f90f80fdcc9b8fb41632fb5aaf9e16ed1cbee1bbc375e91dfce76a735883b
+4097-1536-6144-d1-2-after: 0.887666654 ms; 876f90f80fdcc9b8fb41632fb5aaf9e16ed1cbee1bbc375e91dfce76a735883b
+4097-1536-6144-d1-3-before: 0.894416677 ms; 876f90f80fdcc9b8fb41632fb5aaf9e16ed1cbee1bbc375e91dfce76a735883b
+512-2560-9216-d0-0-before: 0.230874983 ms; 355662d728d54066ae157adad5d3cf0aec3a49492bb02e8b9dd2699216c35233
+512-2560-9216-d0-1-after: 0.231416663 ms; 355662d728d54066ae157adad5d3cf0aec3a49492bb02e8b9dd2699216c35233
+512-2560-9216-d0-2-after: 0.230500009 ms; 355662d728d54066ae157adad5d3cf0aec3a49492bb02e8b9dd2699216c35233
+512-2560-9216-d0-3-before: 0.231624988 ms; 355662d728d54066ae157adad5d3cf0aec3a49492bb02e8b9dd2699216c35233
+Register diagnostic
+selection-512-0-native: 0.40429167 ms; 355662d728d54066ae157adad5d3cf0aec3a49492bb02e8b9dd2699216c35233
+selection-512-1-register: 0.231416663 ms; 355662d728d54066ae157adad5d3cf0aec3a49492bb02e8b9dd2699216c35233
+selection-512-2-register: 0.231374986 ms; 355662d728d54066ae157adad5d3cf0aec3a49492bb02e8b9dd2699216c35233
+selection-512-3-native: 0.40429167 ms; 355662d728d54066ae157adad5d3cf0aec3a49492bb02e8b9dd2699216c35233
+selection-1024-0-native: 1.27079166 ms; 43f7a8fdd88ed75d98694cf80e10f26b64f0a4eeeed0318c98cc23b1f6c17f68
+selection-1024-1-register: 0.953375013 ms; 43f7a8fdd88ed75d98694cf80e10f26b64f0a4eeeed0318c98cc23b1f6c17f68
+selection-1024-2-register: 0.952499977 ms; 43f7a8fdd88ed75d98694cf80e10f26b64f0a4eeeed0318c98cc23b1f6c17f68
+selection-1024-3-native: 1.27750001 ms; 43f7a8fdd88ed75d98694cf80e10f26b64f0a4eeeed0318c98cc23b1f6c17f68
+
+Baseline archive SHA256: 010a8bd5f3e484f980558fb4697d42a2173d15c0fdd6b4077c1beaa213708bad

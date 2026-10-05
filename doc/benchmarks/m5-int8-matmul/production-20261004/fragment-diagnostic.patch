@@ -1,0 +1,11 @@
+--- a/lib/nnc/mfa/kernels/NAInt8MatMulKernel.cpp
++++ b/lib/nnc/mfa/kernels/NAInt8MatMulKernel.cpp
+@@ -343,7 +343,7 @@
+     const auto remainderLoadsOffset = matmulSource.find(remainderLoads);
+     CCV_NNC_MFA_PRECONDITION(remainderLoadsOffset != std::string::npos);
+     matmulSource.replace(remainderLoadsOffset, remainderLoads.size(), R"(
+-      if (psk >= SK) {
++      if (::K % SK == 0 || psk >= SK) {
+         if constexpr (kAlignedM)
+           Atile.load(A + A_offset, lda);
+         else

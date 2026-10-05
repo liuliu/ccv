@@ -129,7 +129,7 @@ static ccv_nnc_mfa_segmented_scaled_swiglu_execution_t execution(
 
   auto pool = NS::AutoreleasePool::alloc()->init();
   auto& shader_cache = context->kernel_cache;
-  const DeviceProperties device_properties = DeviceProperties();
+  const DeviceProperties& device_properties = context->device_properties;
   auto quantize_pipeline_value = shader_cache.findKernel<
     NAInt8MatMulKernel, NAInt8MatMulDescriptor, NAInt8MatMulKernelDescriptor>(
       quantize_desc, context->device.get(), device_properties);

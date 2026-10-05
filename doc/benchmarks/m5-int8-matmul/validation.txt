@@ -1,0 +1,88 @@
+Validation of the MatMul-only extraction on M5 Max (40 cores)
+
+Fresh build:
+  test/int/nnc: make debug -j4 -> exit 0
+  bin/mfa: make na_int8_matmul_forward_bench -> exit 0
+  swift package dump-package -> exit 0; IOKit limited to macOS/Mac Catalyst
+The worktree was built from source, without copying library/object artifacts
+from the mixed branch. Its existing local sample model was reused.
+
+GPU tests:
+  ./mpsblas.tests 'rowwise int8 gemm' -> 2/2 passed, exit 0
+    Large dynamic-row / bias test: four calls, static/dynamic M, row boundaries.
+    Tuning-boundary / partial-tile test: 46 randomized shapes.
+    Includes full output finiteness checks and sampled complete rows compared
+    against quantized CPU GEMM, with existing tolerances unchanged.
+  ./mpsdnn.tests -> 126/126 passed, exit 0
+See forward-tests.txt and dnn-tests.txt for pass records.
+
+Extracted-branch benchmark smoke:
+  Eight shapes, each with static and dynamic M: 16/16 runs passed.
+  Actual 40-core production policy; no core-count override.
+  All eight static/dynamic pairs have identical whole-output SHA256.
+  The 12 runs with prior reference hashes also match those hashes exactly.
+  Both K-tail shapes pass the CPU check and static/dynamic hash comparison.
+  Every run started and ended at nominal thermal state, with 15-second
+  cooling intervals, 0.1 GPU-second warmup and three timed samples.
+  These short runs verify extraction and benchmark behavior; they are not
+  a replacement for paired performance measurements on Ultra.
+  See branch-smoke-results.json.
+
+Scope audit:
+  All seven MatMul dispatch/descriptor/kernel files exactly match the tested
+  candidate in the partial-tile investigation. MLX embedded source matches.
+  30 attention, FP16 MatMul and related API/cache source files exactly match
+  unstable. Every existing BLAS test is unchanged; only two MatMul tests added.
+  No attention selector, inference metadata, precision/backward or cast-fusion
+  change is included. No experimental core-count override is shipped.
+  source-manifest.json records source hashes and the protected-file list.
+
+Limits:
+  Full BLAS/backward execution was not repeated. Prior runs reproduced
+  baseline Metal shader compilation failures in generic GEMM and INT8
+  attention backward; this commit does not address them.
+  Full Bazel and Catalyst builds were not repeated in this extraction. The
+  IOKit fixes are carried over unchanged from the earlier validated branch;
+  the SwiftPM platform condition was checked again here.
+  No new Ultra or iPad hardware run was performed. Ultra timing is the next
+  iteration; the earlier Max kernel comparison used an experimental selector
+  override and must not be described as Ultra performance.
+
+Encoder-loop follow-up, 2026-10-05 (baseline 83c5be6c)
+
+Descriptor setup is restored to its original position after the non-NA
+fallback. The 8192-row partition uses an explicit loop instead of recursive
+calls. Each chunk retains its own M, pipeline lookup, scratch layout and
+activation/output offsets. The final small-M tail continues through the
+same existing small-M dispatch. Selection thresholds and shader sources
+are unchanged.
+
+Fresh Max debug build passed. Both focused rowwise INT8 GEMM integration
+tests passed against the CPU reference, including randomized partial tiles
+and static/dynamic rows with bias.
+
+Twelve before/after probe launches passed all finiteness / sampled CPU
+checks and produced identical complete-output hashes for each workload:
+  16384 x 11264 x 33024, fixed M, two full chunks, no bias
+  16385 x 11264 x 33024, dynamic M, one-row small-M tail, bias
+  16401 x 11264 x 33024, dynamic M, 17-row native tail, bias
+  512 x 2560 x 9216, dynamic M, register-path control
+All probes used nonzero activation/output buffer offsets and sampled chunk
+boundaries and final rows. All started and ended at nominal thermal state,
+with 10 seconds between launches and at least 0.2 GPU-second warmup.
+
+The register control measured 0.230458 / 0.230625 ms (recursive / loop).
+Large-workload timings varied substantially between launches. A further
+same-process comparison alternated both encoder implementations against the
+same buffers and pipeline cache (40 samples, recursive/loop/loop/recursive).
+It retained the exact expected output hash, and both implementations showed
+strong common timing drift (roughly 170-430 ms); these timings are not a
+stable performance estimate. No shader or dispatch-policy tuning is based
+on this run. Latest cleanup validation is on Max only.
+
+Local reproduction source, baseline library, builds and all raw results:
+  /private/tmp/ccv-matmul-iteration-20261005/
+  build-probes.py / probe.cpp: baseline and loop binaries, bias/offset checks
+  run.py / results.json / *.log: all twelve launches
+  build-paired.py / paired.cpp / paired.log: alternating encoder comparison
+  build.log / blas.log: debug build and integration checks

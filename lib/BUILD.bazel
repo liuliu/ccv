@@ -436,7 +436,7 @@ objc_library(
 		"nnc/mps/ccv_nnc_mps.h",
 	],
 	copts = ccv_default_copts(),
-	sdk_frameworks = ["Metal", "MetalPerformanceShaders", "MetalPerformanceShadersGraph", "IOSurface", "CoreVideo", "CoreML"],
+	sdk_frameworks = ["Metal", "IOKit", "MetalPerformanceShaders", "MetalPerformanceShadersGraph", "IOSurface", "CoreVideo", "CoreML"],
 	deps = [
 		":nnc_mfa_compat",
 		":nnc_headers",

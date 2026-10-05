@@ -289,7 +289,7 @@ double run_matmul_once(
   encoder->setBuffer(b_rowwise, b_scale_offset, 4);
   encoder->dispatchThreadgroups(
       pipeline->kernel->threadgroupsPerGrid(config.M, config.N, 1),
-      MTL::Size(pipeline->kernel->threadgroupSize(pipeline->pipeline.get()), 1, 1));
+      pipeline->kernel->threadsPerThreadgroup(pipeline->pipeline.get()));
   encoder->endEncoding();
   command_buffer->commit();
   command_buffer->waitUntilCompleted();
@@ -340,7 +340,7 @@ double run_dequant_matmul_once(
     encoder->setBuffer(b_rowwise_scratch, b_scale_offset, 4);
     encoder->dispatchThreadgroups(
         matmul_pipeline->kernel->threadgroupsPerGrid(config.M, config.N, 1),
-        MTL::Size(matmul_pipeline->kernel->threadgroupSize(matmul_pipeline->pipeline.get()), 1, 1));
+        matmul_pipeline->kernel->threadsPerThreadgroup(matmul_pipeline->pipeline.get()));
     encoder->endEncoding();
   }
   command_buffer->commit();

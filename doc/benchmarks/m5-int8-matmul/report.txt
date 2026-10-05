@@ -1,0 +1,133 @@
+NAInt8MatMul-only iteration for M5 Ultra, 2026-10-04
+
+Branch: m5-na-int8-matmul
+Base: unstable at 6a611be1aab6470ae279115ae4eaf7e01bc87135
+Earlier mixed branch: m5-na-int8-performance at 579f33b9
+
+Scope
+A single commit on unstable containing the NAInt8MatMul performance work
+and the partial-tile repair investigated after the 579f33b9 Ultra review.
+Attention code and selectors match unstable. The earlier mixed branch is
+preserved separately. Precision/backward changes and output-cast fusion are
+excluded. Existing activation quantization, INT32 accumulation, row scales,
+bias and FP16 output semantics are retained.
+
+MatMul implementation
+- A 64x128 native tile with four SIMD groups for Apple10 GPUs with at least
+  40 cores and K <= 8192.
+- Register operands within NAInt8MatMul, using MLX's integer fragments:
+  64x128 output tiles, eight SIMD groups with 32x32 subtiles, K32 fragments
+  grouped into K512 loops. The local generator unrolls two K32 operations.
+  There is no separate NARegisterMatMul operator or FP16 fallback.
+- Bounded 8192-row quantize/consume ranges for selected large working sets
+  outside the tuned register surface. Existing small-M paths are retained.
+- Core discovery is cached in the MFA context. macOS and Catalyst use IOKit;
+  iOS uses 10. SwiftPM, configure and Bazel carry the required IOKit linkage.
+
+Partial-tile changes relative to 579f33b9
+1. Alignment branches around gemm_loop now use whole-threadgroup 64x128
+   predicates. The loop contains threadgroup barriers, so choosing a branch
+   independently for each SIMD group's 32x32 subtile was invalid at edges.
+2. For full K32 fragments in a partial M/N tile, load_rows checks only the
+   row coordinate and places four adjacent loads inside one check. The
+   original general load_safe checked both row and K for each element.
+   A and transposed B both have contiguous K here, making those K checks
+   unnecessary. The final fragment with fewer than 32 valid K elements
+   still uses the general bounded loader.
+The barrier-only diagnostic recovered about 1-5%, consistent with the Ultra
+review. Loader selection is the material improvement. The investigation
+isolates this source path; it does not measure generated instruction counts,
+register allocation, occupancy or spills.
+Apple's conditional barrier requirement:
+https://developer.apple.com/metal/Metal-Shading-Language-Specification.pdf
+
+Selector status
+No shape thresholds are changed relative to 579f33b9. Within the existing
+supported/tuned shape surface, the core/reduction policy remains:
+  Below 40 cores: original native implementation.
+  40 cores: native for K <= 8192; register operands for K > 8192.
+  Above 40 cores: register operands.
+The existing large-address exception uses register operands when N*K or M*N
+exceeds UINT32_MAX; in-place A/output always excludes that register path.
+
+The retained tuned-shape conditions are explicit, not claimed hardware limits:
+  Apple10, NA enabled, FP16, one batch, contiguous A/output, no Hadamard256;
+  N >= 1536; 4096 <= K <= 32768; K <= 4*N; and either
+    M >= 2048 with M*N >= 4096*1536, or
+    M >= 512, K > 8192, and ceil(M/64)*ceil(N/128) >= 2*GPU cores;
+  additionally M >= 4096 or K <= 20480, plus address/range safety guards.
+They retain the prior measured surface for this iteration. Simplifying or
+broadening these shape gates needs separate timing evidence.
+
+The 8192-row host partition additionally requires at least 40 cores, Apple10,
+NA FP16, one batch, contiguous A/output, no Hadamard256, M >= 16384,
+K > 8192, K <= 3*N, M*K > 128 Mi elements, N*K > 64 Mi elements, no
+A/output alias, and exclusion from the tuned shape surface. These are
+measured working-set thresholds, not GPU cache-capacity claims.
+
+Ultra review baseline supplied by the user (GPU ms, includes quantization)
+Shape                  579f33b9   Clean unstable   Retained prototype
+512x2559x9216             0.537       0.205               0.211
+1023x2560x9216            0.668       0.421               0.346
+1023x4096x12288           1.114       0.680               0.704
+4095x4097x8192            1.969       1.708               1.451
+These are the outstanding regressions for the next Ultra round. The actual
+review artifacts and prototype were not available in this workspace.
+
+Earlier paired M5 Max kernel experiment (GPU ms, includes quantization)
+Shape                  579 register   This kernel   Native 128-row
+512x2559x9216             0.612062      0.298667       0.405438
+1023x2560x9216            0.786792      0.514125       0.657250
+1023x4096x12288           1.433833      1.075500       1.249187
+4095x4097x8192            3.179917      2.592458       3.071917
+512x2560x9216             0.229646      0.230000       0.392562
+
+All are actual 40-core M5 Max measurements. The experimental probe forced
+selector core count to 80 for register runs and to 10 for the original
+native reference. These do not emulate Ultra or iPad hardware. Production
+Max dispatch selects the smaller native tile for the K8192 case. This
+branch's benchmark contains no override.
+
+Per shape the order was original/candidate/native/native/candidate/original,
+with 90 seconds initial cooling, 15 seconds between runs, 0.5 GPU-second
+warmup and 21 GPU samples per run. The table averages two run medians.
+All 30 runs passed sampled CPU checks and whole-output SHA256 matched per
+shape; thermal state was nominal before and after every run. Paired order
+and repeat spread help constrain clock drift but do not eliminate it.
+The four partial-tile cases improve 18-51% versus the earlier register
+kernel; the aligned control is unchanged (+0.15%). Ultra remains unmeasured
+for this fix. Do not infer universal wins or closure of the Ultra gaps.
+See partial-tile-results.json for individual runs, spread and binary hashes.
+
+Validation on the extracted branch is recorded in validation.txt.
+
+Ultra reproduction
+From a configured macOS checkout:
+  cd test/int/nnc
+  make debug -j4
+  ./mpsblas.tests 'rowwise int8 gemm'
+  cd ../../../bin/mfa
+  make na_int8_matmul_forward_bench
+  CCV_NA_WARMUP_SECONDS=0.5 ./na_int8_matmul_forward_bench 512 2559 9216 3 21 0
+
+CLI: M N K warmup_iterations timed_samples dynamic_m (0 or 1).
+GPU command-buffer timing includes activation quantization and GEMM; offline
+weight preparation and CPU checking are outside the timed region. The
+benchmark reports every sample, median, sampled FP16 CPU error and full
+output SHA256. The randomized integration tests use the stricter quantized
+CPU reference and exercise bias, zero rows, dynamic-M cache reuse and tails.
+
+Repeat with dynamic_m=1 and these shapes:
+  512 2560 9216       aligned control / medium-row down projection
+  1023 2560 9216      partial rows
+  1023 4096 12288     partial rows, longer K
+  4095 4097 8192      both partial axes, Ultra register policy
+  513 2559 9247       partial axes and short K31 remainder
+  513 2559 9248       partial axes and full K32 remainder
+  4097 6144 18432     large partial rows
+Alternate comparison binaries and allow cooling; collect repeated medians
+at nominal thermal state. Compare against clean unstable as well as 579f33b9
+and the retained prototype. The first comparison measures the complete
+MatMul work; the second isolates the new partial-tile repair. Attention/H3
+timings on this branch intentionally reflect unstable, not the deferred
+attention optimizations.

@@ -27,6 +27,7 @@ NAInt8MatMulKernel::NAInt8MatMulKernel(
   blockDimensions = descriptor.blockDimensions;
   executionSIMDGroups = descriptor.executionSIMDGroups;
   ioPrecision = descriptor.ioPrecision;
+  useRegisterOperands = descriptor.useRegisterOperands;
   useBias = descriptor.useBias;
   loadM = descriptor.loadM;
   useLeadingDimensions = descriptor.useLeadingDimensions;
@@ -36,6 +37,11 @@ NAInt8MatMulKernel::NAInt8MatMulKernel(
   groupM = descriptor.groupM;
   groupN = descriptor.groupN;
 
+  CCV_NNC_MFA_PRECONDITION(!useRegisterOperands || !useLeadingDimensions);
+  if (useRegisterOperands) {
+    CCV_NNC_MFA_PRECONDITION(blockDimensions[0] == 64 && blockDimensions[1] == 128 && blockDimensions[2] == 32);
+    CCV_NNC_MFA_PRECONDITION(executionSIMDGroups == 8);
+  }
   source = createSource();
   auto string = NS::String::string(source.c_str(), NS::UTF8StringEncoding);
   NS::Error* error = nil;
@@ -47,11 +53,23 @@ uint16_t NAInt8MatMulKernel::threadgroupSize(MTL::ComputePipelineState *const pi
   return pipelineState->threadExecutionWidth() * executionSIMDGroups;
 }
 
+MTL::Size NAInt8MatMulKernel::threadsPerThreadgroup(MTL::ComputePipelineState *const pipelineState) const noexcept {
+  // One SIMD group along x, four output-column groups along y, two
+  // output-row groups along z. Flattening this layout regresses large GEMMs.
+  if (useRegisterOperands)
+    return MTL::Size(pipelineState->threadExecutionWidth(), 4, 2);
+  return MTL::Size(threadgroupSize(pipelineState), 1, 1);
+}
+
 MTL::Size NAInt8MatMulKernel::threadgroupsPerGrid(uint32_t M, uint32_t N, uint32_t batchDimension) const noexcept {
   auto ceilDivide =
     [=](int64_t target, uint16_t granularity) -> int64_t {
       return (target + int64_t(granularity) - 1) / int64_t(granularity);
     };
+  if (useRegisterOperands) {
+    CCV_NNC_MFA_PRECONDITION(batchDimension == 1);
+    return MTL::Size(ceilDivide(N, blockDimensions[1]), ceilDivide(M, blockDimensions[0]), 1);
+  }
   const int64_t M_tiles = ceilDivide(int64_t(M), blockDimensions[0]);
   const int64_t N_tiles = ceilDivide(int64_t(N), blockDimensions[1]);
   const uint32_t M_bits = ceilLog2(M_tiles);
@@ -301,10 +319,187 @@ kernel void quantize_activation(
   }
 )";
   }
-  source += R"(
+  source += "}";
+  if (useRegisterOperands) {
+    // Fragment layout and MPP register assembly adapted from MLX Steel's
+    // gemm_nax.h (Apple Inc., MIT); see ../3rdparty/mlx/README and LICENSE.
+    source += R"(
+#pragma METAL fp math_mode(safe)
+
+// A 16x16 fragment has eight values per lane: four adjacent columns in
+// each of two rows eight apart. A SIMD group owns a 2x2 array of fragments.
+__attribute__((always_inline)) inline short2 register_fragment_coordinate(ushort lane) {
+  const short quad = lane >> 2;
+  return short2(((quad & 2) | (lane & 1)) * 4,
+                (quad & 4) | ((lane >> 1) & 3));
 }
 
-kernel void int8_matmul(
+template<typename T>
+struct register_tile {
+  vec<T, 8> fragments[4];
+};
+
+// Both packed A and transposed B have contiguous K. Full K32 steps need
+// only a row bound on edge tiles; only the last short K step masks columns.
+template<bool full_rows, bool full_k>
+__attribute__((always_inline)) inline void load_register_tile(thread register_tile<int8_t>& tile,
+    const device int8_t* src, short rows, short columns, short2 origin) {
+  src += origin.y * K + origin.x;
+  #pragma clang loop unroll(full)
+  for (short m = 0; m < 2; ++m) {
+    #pragma clang loop unroll(full)
+    for (short k = 0; k < 2; ++k) {
+      #pragma clang loop unroll(full)
+      for (short r = 0; r < 2; ++r) {
+        const short row = m * 16 + r * 8;
+        if (full_rows || row < rows - origin.y) {
+          #pragma clang loop unroll(full)
+          for (short c = 0; c < 4; ++c) {
+            const short col = k * 16 + c;
+            tile.fragments[m * 2 + k][r * 4 + c] =
+                (full_k || col < columns - origin.x) ? src[row * K + col] : 0;
+          }
+        } else {
+          #pragma clang loop unroll(full)
+          for (short c = 0; c < 4; ++c)
+            tile.fragments[m * 2 + k][r * 4 + c] = 0;
+        }
+      }
+    }
+  }
+}
+
+// Four M16/N32/K16 operations form a SIMD group's M32/N32/K32 update.
+// B is stored as [N,K], so its two N fragments become the right operand
+// of a transposed MPP multiply. The accumulator stays INT32 throughout K.
+__attribute__((always_inline)) inline void multiply_register_tiles(thread register_tile<int32_t>& accum,
+    thread const register_tile<int8_t>& a, thread const register_tile<int8_t>& b) {
+  constexpr auto descriptor = matmul2d_descriptor(
+      16, 32, 16, false, true, true,
+      matmul2d_descriptor::mode::multiply_accumulate);
+  matmul2d<descriptor, execution_simdgroup> op;
+  #pragma clang loop unroll(full)
+  for (short m = 0; m < 2; ++m) {
+    #pragma clang loop unroll(full)
+    for (short k = 0; k < 2; ++k) {
+      auto aT = op.get_left_input_cooperative_tensor<int8_t, int8_t, int32_t>();
+      auto bT = op.get_right_input_cooperative_tensor<int8_t, int8_t, int32_t>();
+      auto cT = op.get_destination_cooperative_tensor<
+          metal::remove_addrspace_t<decltype(aT)>,
+          metal::remove_addrspace_t<decltype(bT)>, int32_t>();
+      #pragma clang loop unroll(full)
+      for (short i = 0; i < 8; ++i) {
+        aT[i] = a.fragments[m * 2 + k][i];
+        bT[i] = b.fragments[k][i];
+        bT[8 + i] = b.fragments[2 + k][i];
+        cT[i] = accum.fragments[m * 2][i];
+        cT[8 + i] = accum.fragments[m * 2 + 1][i];
+      }
+      op.run(aT, bT, cT);
+      #pragma clang loop unroll(full)
+      for (short i = 0; i < 8; ++i) {
+        accum.fragments[m * 2][i] = cT[i];
+        accum.fragments[m * 2 + 1][i] = cT[8 + i];
+      }
+    }
+  }
+}
+
+template<bool full_m, bool full_n>
+inline void multiply_register(const device int8_t* A, const device int8_t* B,
+    device {{IO_TYPE}}* C, const device {{IO_TYPE}}* A_scale,
+    const device {{IO_TYPE}}* B_scale,
+)";
+    if (useBias)
+      source += "    const device {{IO_TYPE}}* bias,";
+    source += R"(
+    short rows, short columns, ushort lane) {
+  const short2 origin = register_fragment_coordinate(lane);
+  register_tile<int32_t> accum;
+  #pragma clang loop unroll(full)
+  for (short i = 0; i < 4; ++i)
+    accum.fragments[i] = vec<int32_t, 8>(0);
+  const bool has_output = rows > 0 && columns > 0;
+
+  // Keep the eight SIMD groups in step every K512. Empty edge groups must
+  // participate in every threadgroup barrier, even when they skip arithmetic.
+  #pragma clang loop unroll(disable)
+  for (uint block = 0; block < K / 512; ++block) {
+    threadgroup_barrier(mem_flags::mem_none);
+    if ((!full_m || !full_n) && !has_output)
+      continue;
+    // Expose pairs of K32 loads / multiplies without unrolling the entire K.
+    #pragma clang loop unroll_count(2)
+    for (uint k = 0; k < 512; k += 32) {
+      register_tile<int8_t> a, b;
+      load_register_tile<full_m, true>(a, A + k, rows, 32, origin);
+      load_register_tile<full_n, true>(b, B + k, columns, 32, origin);
+      multiply_register_tiles(accum, a, b);
+    }
+    A += 512;
+    B += 512;
+  }
+  if (K % 512 != 0) {
+    simdgroup_barrier(mem_flags::mem_none);
+    if ((!full_m || !full_n) && !has_output)
+      return;
+    #pragma clang loop unroll(disable)
+    for (uint k = 0; k < K % 512; k += 32) {
+      register_tile<int8_t> a, b;
+      const short remaining = K % 512 - k;
+      if (remaining >= 32) {
+        load_register_tile<full_m, true>(a, A + k, rows, 32, origin);
+        load_register_tile<full_n, true>(b, B + k, columns, 32, origin);
+      } else {
+        load_register_tile<false, false>(a, A + k, rows, remaining, origin);
+        load_register_tile<false, false>(b, B + k, columns, remaining, origin);
+      }
+      multiply_register_tiles(accum, a, b);
+    }
+  }
+  if (!has_output)
+    return;
+  register_tile<{{IO_TYPE}}> output;
+  #pragma clang loop unroll(full)
+  for (short m = 0; m < 2; ++m) {
+    #pragma clang loop unroll(full)
+    for (short n = 0; n < 2; ++n) {
+      #pragma clang loop unroll(full)
+      for (short i = 0; i < 8; ++i) {
+        const short row = m * 16 + origin.y + (i / 4) * 8;
+        const short col = n * 16 + origin.x + i % 4;
+        const float a = row < rows ? float(A_scale[row]) : 0.0f;
+        const float b = col < columns ? float(B_scale[col]) : 0.0f;
+        float value = float(accum.fragments[m * 2 + n][i]) * a * b;
+)";
+    if (useBias)
+      source += "        if (col < columns) value += float(bias[col]);";
+    source += R"(
+        output.fragments[m * 2 + n][i] = {{IO_TYPE}}(value);
+      }
+    }
+  }
+  C += size_t(origin.y) * N + origin.x;
+  #pragma clang loop unroll(full)
+  for (short m = 0; m < 2; ++m) {
+    #pragma clang loop unroll(full)
+    for (short n = 0; n < 2; ++n) {
+      #pragma clang loop unroll(full)
+      for (short i = 0; i < 8; ++i) {
+        const short row = m * 16 + (i / 4) * 8;
+        const short col = n * 16 + i % 4;
+        if ((full_m && full_n) || (row < rows - origin.y && col < columns - origin.x))
+          C[size_t(row) * N + col] = output.fragments[m * 2 + n][i];
+      }
+    }
+  }
+}
+)";
+  }
+  source += useRegisterOperands ?
+      "[[kernel, max_total_threads_per_threadgroup(256)]] void int8_matmul(" :
+      "kernel void int8_matmul(";
+  source += R"(
     device int8_t *A_buf [[buffer(0)]],
     device int8_t *B_buf [[buffer(1)]],
     device {{IO_TYPE}} *C_buf [[buffer(2)]],
@@ -323,6 +518,12 @@ kernel void int8_matmul(
     const device uint *loadM_buf [[buffer(5)]],
 )";
   }
+  if (useRegisterOperands) {
+    source += R"(
+    ushort sgid [[simdgroup_index_in_threadgroup]],
+    ushort lane [[thread_index_in_simdgroup]],
+)";
+  }
   source += R"(
     uint3 tgid [[threadgroup_position_in_grid]])
 {
@@ -335,6 +536,55 @@ kernel void int8_matmul(
   const uniform<uint> A_packed_batch_stride = make_uniform(batched ? loadM_buf[3] : 0);
   const uniform<uint> A_scale_batch_stride = make_uniform(batched ? loadM_buf[4] : 0);
 )";
+  }
+  source += R"(
+  if (batched) {
+    A_buf += A_packed_batch_stride * tgid.z;
+    B_buf += B_batch_stride * tgid.z;
+    C_buf += C_batch_stride * tgid.z;
+    A_scale_buf += A_scale_batch_stride * tgid.z;
+    B_scale_buf += B_scale_batch_stride * tgid.z;
+)";
+  if (useBias) {
+    source += R"(
+    bias_buf += bias_batch_stride * tgid.z;
+)";
+  }
+  source += R"(
+  }
+
+)";
+  if (useRegisterOperands) {
+    source += R"(
+  // Eight SIMD groups cover 64x128. Alignment decisions use the complete
+  // threadgroup tile, because multiply_register contains threadgroup barriers.
+  const int row = int(tgid.y) * 64 + (sgid / 4) * 32;
+  const int col = int(tgid.x) * 128 + (sgid % 4) * 32;
+  const short rows = min(32, int(M) - row);
+  const short columns = min(32, int(N) - col);
+  A_buf += size_t(row) * K;
+  B_buf += size_t(col) * K;
+  C_buf += size_t(row) * N + col;
+  A_scale_buf += row;
+  B_scale_buf += col;
+)";
+    if (useBias)
+      source += "  bias_buf += col;";
+    const std::string arguments = "(A_buf, B_buf, C_buf, A_scale_buf, B_scale_buf, " +
+        std::string(useBias ? "bias_buf, " : "") + "rows, columns, lane);";
+    source += "  if (M % 64 == 0 || tgid.y * 64 + 64 <= M) {";
+    source += "    if (N % 128 == 0 || tgid.x * 128 + 128 <= N)";
+    source += "      multiply_register<true, true>" + arguments;
+    source += "    else";
+    source += "      multiply_register<true, false>" + arguments;
+    source += "  } else {";
+    source += "    if (N % 128 == 0 || tgid.x * 128 + 128 <= N)";
+    source += "      multiply_register<false, true>" + arguments;
+    source += "    else";
+    source += "      multiply_register<false, false>" + arguments;
+    source += "  }";
+    source += "}";
+    return source.ToString();
   }
   source += R"(
   const uint M_tiles = (M + {{BLOCK_M}} - 1) / {{BLOCK_M}};
@@ -359,24 +609,10 @@ kernel void int8_matmul(
   const uint N_group_offset = N_block_start - N_group_start;
   const uint N_group_size = N - N_group_start;
 
-  if (batched) {
-    A_buf += A_packed_batch_stride * tgid.z;
-    B_buf += B_batch_stride * tgid.z;
-    C_buf += C_batch_stride * tgid.z;
-    A_scale_buf += A_scale_batch_stride * tgid.z;
-    B_scale_buf += B_scale_batch_stride * tgid.z;
-)";
-  if (useBias) {
-    source += R"(
-    bias_buf += bias_batch_stride * tgid.z;
-)";
-  }
-  source += R"(
-  }
-
-  A_buf += M_group_start * K;
-  B_buf += N_group_start * K;
-  C_buf += M_group_start * {{C_LEADING_DIMENSION}};
+  // Widen before multiplying: packed weights can span more than 4 GiB.
+  A_buf += size_t(M_group_start) * K;
+  B_buf += size_t(N_group_start) * K;
+  C_buf += size_t(M_group_start) * {{C_LEADING_DIMENSION}};
   A_scale_buf += M_group_start;
   B_scale_buf += N_group_start;
 )";
@@ -427,7 +663,7 @@ kernel void int8_matmul(
       auto mB = B.slice<dynamic_extent, {{BLOCK_N}}>(K / {{BLOCK_K}} * {{BLOCK_K}}, N_group_offset);
       residual_op.run(mA, mB, cT);
     }
-    auto mC = C_buf + M_group_offset * {{C_LEADING_DIMENSION}} + N_block_start;
+    auto mC = C_buf + size_t(M_group_offset) * {{C_LEADING_DIMENSION}} + N_block_start;
     #pragma clang loop unroll(full)
     for (unsigned short i = 0; i < cT.get_capacity(); ++i) {
       if (cT.is_valid_element(i)) {
@@ -442,7 +678,7 @@ kernel void int8_matmul(
 )";
   }
   source += R"(
-        mC[idx[1] * {{C_LEADING_DIMENSION}} + idx[0]] = ({{IO_TYPE}})value;
+        mC[size_t(idx[1]) * {{C_LEADING_DIMENSION}} + idx[0]] = ({{IO_TYPE}})value;
       }
     }
   } else {
@@ -464,7 +700,7 @@ kernel void int8_matmul(
         cT[i] = 0;
     }
     matmul_op.run(mA, mB, cT);
-    auto mC = C_buf + M_group_offset * {{C_LEADING_DIMENSION}} + N_block_start;
+    auto mC = C_buf + size_t(M_group_offset) * {{C_LEADING_DIMENSION}} + N_block_start;
     #pragma clang loop unroll(full)
     for (unsigned short i = 0; i < cT.get_capacity(); ++i) {
       if (cT.is_valid_element(i)) {
@@ -482,7 +718,7 @@ kernel void int8_matmul(
 )";
   }
   source += R"(
-          mC[row * {{C_LEADING_DIMENSION}} + col] = ({{IO_TYPE}})value;
+          mC[size_t(row) * {{C_LEADING_DIMENSION}} + col] = ({{IO_TYPE}})value;
         }
       }
     }
