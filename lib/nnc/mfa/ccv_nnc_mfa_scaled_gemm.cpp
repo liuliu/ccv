@@ -270,14 +270,14 @@ void ccv_nnc_mfa_encode_scaled_gemm(mfa::context* context, ccv_nnc_mfa_scaled_ge
   // narrower reductions favored the original traversal with dynamic M.
   // The K <= 8192 profile already uses a smaller 64-row kernel tile and does
   // not consistently benefit from adding this second level of partitioning.
-  // Keep batching, strided views and rotated activations on their existing path.
+  // Keep batching and strided views on their existing path.
   // Shared A/C storage can let an output chunk overwrite input rows before
   // the next chunk quantizes them. Quantize all rows first in that case.
   const bool partitionRows =
       !NAInt8MatMulKernelDescriptor(matmulDesc, context->device_properties).useRegisterOperands &&
       context->device_properties.coreCount >= 36 && params.data_type == MTL::DataTypeHalf &&
       params.batch_dimension == 1 && !params.leading_dimension_a && !params.leading_dimension_c &&
-      !params.activation_hadamard_256 && params.M >= 16384 && params.K > 8192 &&
+      params.M >= 16384 && params.K > 8192 &&
       uint64_t(params.K) <= uint64_t(3) * params.N &&
       uint64_t(params.M) * params.K > (uint64_t(128) << 20) &&
       uint64_t(params.N) * params.K > (uint64_t(64) << 20) &&
