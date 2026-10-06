@@ -11,6 +11,7 @@
 
 #include "nnc/mfa/ccv_nnc_mfa_error.hpp"
 #include "nnc/mfa/kernels/AttentionKernelType.hpp"
+#include "nnc/mfa/kernels/NAInt8AttentionDescriptor.hpp"
 #include "nnc/mfa/kernels/NAInt8AttentionKernel.hpp"
 #include "nnc/mfa/kernels/NAInt8AttentionKernelDescriptor.hpp"
 
@@ -195,9 +196,18 @@ size_t reserve(size_t* total, size_t size)
   return offset;
 }
 
-simd::ushort3 create_forward_block_dimensions(const AttentionCase& attention)
+NAInt8AttentionKernelDescriptor create_int8_forward_descriptor(const AttentionCase& attention)
 {
-  return simd::ushort3 { 16, 64, attention.D >= 192 ? (uint16_t)64 : (uint16_t)32 };
+  NAInt8AttentionDescriptor descriptor;
+  descriptor.matrixDimensions = simd::uint3 { attention.R, attention.C, attention.D };
+  descriptor.batchDimension = attention.batch;
+  descriptor.Hq = attention.Hq;
+  descriptor.Hk = attention.Hk;
+  descriptor.ioPrecision = create_io_precision();
+  descriptor.lowPrecisionIntermediates = create_low_precision_intermediates();
+  descriptor.scale = create_scale(attention);
+  // Forward defaults follow production; backward tile overrides are diagnostic.
+  return NAInt8AttentionKernelDescriptor(descriptor, DeviceProperties {});
 }
 
 simd::ushort3 create_backward_query_block_dimensions(
@@ -226,11 +236,6 @@ simd::ushort3 create_backward_keyvalue_block_dimensions(
       block_r ? block_r : (uint16_t)16,
       block_c ? block_c : default_block_c,
       block_d ? block_d : default_block_d };
-}
-
-uint16_t create_forward_execution_simdgroups(const AttentionCase& attention)
-{
-  return attention.D > 192 ? 16 : 4;
 }
 
 uint16_t create_backward_query_execution_simdgroups(const AttentionCase&)
@@ -337,32 +342,10 @@ NS::SharedPtr<MTL::ComputePipelineState> create_pipeline(
 QuantizePipelines create_quantize_pipelines(MTL::Device* device, const AttentionCase& attention)
 {
   QuantizePipelines bundle;
-  const simd::ushort3 forward_block_dimensions = create_forward_block_dimensions(attention);
-  bundle.q_tiles = (attention.R + 15) / 16;
-  bundle.kv_tiles = (attention.C + 63) / 64;
-  bundle.v_mean_threads =
-      attention.C <= 20480 ?
-      NAInt8AttentionKernel::smallSequenceVMeanThreads :
-      NAInt8AttentionKernel::largeSequenceVMeanThreads;
-  const NAInt8AttentionKernelDescriptor kernel_descriptor(
-      forward_block_dimensions,
-      attention.D,
-      attention.Hq,
-      attention.Hk,
-      16,
-      64,
-      create_forward_execution_simdgroups(attention),
-      bundle.v_mean_threads,
-      (attention.C % forward_block_dimensions[1]) != 0,
-      true,
-      create_io_precision(),
-      create_low_precision_intermediates(),
-      AttentionKernelType::forward,
-      create_scale(attention),
-      false,
-      false,
-      false,
-      false);
+  const auto kernel_descriptor = create_int8_forward_descriptor(attention);
+  bundle.q_tiles = (attention.R + kernel_descriptor.qScaleTileSize - 1) / kernel_descriptor.qScaleTileSize;
+  bundle.kv_tiles = (attention.C + kernel_descriptor.kvScaleTileSize - 1) / kernel_descriptor.kvScaleTileSize;
+  bundle.v_mean_threads = kernel_descriptor.vMeanThreads;
   bundle.kernel = std::make_unique<NAInt8AttentionKernel>(kernel_descriptor, device);
   auto quantize_constants = create_quantize_constants(attention, bundle.q_tiles, bundle.kv_tiles);
   bundle.q_pipeline = create_pipeline(device, bundle.kernel->library.get(), "quantize_q", quantize_constants.get());
@@ -375,28 +358,7 @@ QuantizePipelines create_quantize_pipelines(MTL::Device* device, const Attention
 ForwardPipeline create_forward_pipeline(MTL::Device* device, const AttentionCase& attention)
 {
   ForwardPipeline bundle;
-  const simd::ushort3 block_dimensions = create_forward_block_dimensions(attention);
-  const NAInt8AttentionKernelDescriptor kernel_descriptor(
-      block_dimensions,
-      attention.D,
-      attention.Hq,
-      attention.Hk,
-      16,
-      64,
-      create_forward_execution_simdgroups(attention),
-      attention.C <= 20480 ?
-          NAInt8AttentionKernel::smallSequenceVMeanThreads :
-          NAInt8AttentionKernel::largeSequenceVMeanThreads,
-      (attention.C % block_dimensions[1]) != 0,
-      true,
-      create_io_precision(),
-      create_low_precision_intermediates(),
-      AttentionKernelType::forward,
-      create_scale(attention),
-      false,
-      false,
-      false,
-      false);
+  const auto kernel_descriptor = create_int8_forward_descriptor(attention);
   bundle.kernel = std::make_unique<NAInt8AttentionKernel>(kernel_descriptor, device);
   auto attention_constants = create_attention_constants(
       attention, (attention.R + 15) / 16, (attention.C + 63) / 64);

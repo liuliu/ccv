@@ -20,7 +20,6 @@ bool NAInt8AttentionDescriptor::operator==(const NAInt8AttentionDescriptor& rhs)
   if (loadC) lhsDimensions[1] = rhsDimensions[1] = 0;
   return
     loadR == rhs.loadR && loadC == rhs.loadC &&
-    (!(loadR || loadC) || kernelDescriptor() == rhs.kernelDescriptor()) &&
     batchDimension == rhs.batchDimension &&
     Hq == rhs.Hq &&
     Hk == rhs.Hk &&
@@ -58,87 +57,17 @@ std::size_t std::hash<NAInt8AttentionDescriptor>::operator()(const NAInt8Attenti
   seed = combine_32(seed, hash.matrixDimensions[2]);
   seed = combine_32(seed, uint32_t(std::hash<float>{}(hash.scale)));
   seed = combine_32(seed, (hash.loadR ? 1 : 0) | (hash.loadC ? 2 : 0));
-  if (hash.loadR || hash.loadC)
-    seed = combine_64(seed, std::hash<NAInt8AttentionKernelDescriptor>{}(hash.kernelDescriptor()));
   return seed;
-}
-
-NAInt8AttentionKernelDescriptor NAInt8AttentionDescriptor::kernelDescriptor() const noexcept {
-  const uint16_t qScaleTileSize =
-      type == AttentionKernelType::forward ? 16 : 32;
-  const uint16_t kvScaleTileSize = 64;
-  const bool lowPrecisionBackward =
-      type != AttentionKernelType::forward &&
-      ioPrecision != GEMMOperandPrecision::FP32;
-  const bool splitHeadBackward = lowPrecisionBackward && matrixDimensions[2] == 128;
-  const bool splitHeadBackwardKeyValue =
-      type == AttentionKernelType::backwardKeyValue && splitHeadBackward;
-  const uint16_t blockD =
-      type == AttentionKernelType::forward ?
-      (matrixDimensions[2] >= 192 ? 64 : 32) :
-      (type == AttentionKernelType::backwardQuery && splitHeadBackward ?
-          32 :
-          (splitHeadBackward ? 64 : (uint16_t)matrixDimensions[2]));
-  const uint16_t blockC =
-      type == AttentionKernelType::backwardKeyValue ?
-      (splitHeadBackward ? 32 : 16) : 64;
-  const uint16_t queryBlockC =
-      type == AttentionKernelType::backwardQuery && splitHeadBackward ? 32 : blockC;
-  const simd::ushort3 blockDimensions { 16, queryBlockC, blockD };
-  const uint16_t executionSIMDGroups =
-      type == AttentionKernelType::forward ?
-      (matrixDimensions[2] > 192 ? 16 : 4) :
-      (splitHeadBackwardKeyValue ?
-          (Hq > Hk ? 8 : 16) :
-          4);
-  const uint16_t vMeanThreads =
-      matrixDimensions[1] <= 20480 ?
-      NAInt8AttentionKernel::smallSequenceVMeanThreads :
-      NAInt8AttentionKernel::largeSequenceVMeanThreads;
-  const bool has_c_remainder =
-      type == AttentionKernelType::forward &&
-      (isVarlen || (matrixDimensions[1] % blockDimensions[1]) != 0);
-  const bool has_causal_empty_rows =
-      type == AttentionKernelType::forward &&
-      isCausal &&
-      !masked &&
-      (isVarlen || matrixDimensions[0] > matrixDimensions[1]);
-  auto descriptor = NAInt8AttentionKernelDescriptor(
-      blockDimensions,
-      (unsigned short)matrixDimensions[2],
-      Hq,
-      Hk,
-      qScaleTileSize,
-      kvScaleTileSize,
-      executionSIMDGroups,
-      vMeanThreads,
-      has_c_remainder,
-      isCausal ? 0 : 2,
-      ioPrecision,
-      lowPrecisionIntermediates,
-      type,
-      scale,
-      isCausal,
-      masked,
-      has_causal_empty_rows,
-      isVarlen,
-      attentionSinks);
-  descriptor.loadR = loadR;
-  descriptor.hasRRemainder = !loadR || isVarlen || matrixDimensions[0] % blockDimensions[0] != 0;
-  descriptor.loadC = loadC;
-  return descriptor;
 }
 
 std::pair<NAInt8AttentionKernelDescriptor, PipelineValue<NAInt8AttentionKernel> *> NAInt8AttentionDescriptor::findKernel(
     MTL::Device* const device,
-    const DeviceProperties &dprops,
+    const NAInt8AttentionKernelDescriptor& kernelDesc,
     NS::Array* const binaryArchivesToRead,
     MTL::BinaryArchive* const binaryArchiveToWrite,
     const std::string& pathToWrite,
     std::unordered_map<NAInt8AttentionKernelDescriptor, std::unique_ptr<NAInt8AttentionKernel>> *const libraryCache) const noexcept
 {
-  (void)dprops;
-
   auto createKernel =
   [=](const NAInt8AttentionKernelDescriptor& descriptor) -> NAInt8AttentionKernel* {
     auto iterator = libraryCache->find(descriptor);
@@ -175,7 +104,6 @@ std::pair<NAInt8AttentionKernelDescriptor, PipelineValue<NAInt8AttentionKernel> 
     return pipeline;
   };
 
-  auto kernelDesc = kernelDescriptor();
   auto kernel = createKernel(kernelDesc);
   const uint32_t q_tiles = (matrixDimensions[0] + kernelDesc.qScaleTileSize - 1) / kernelDesc.qScaleTileSize;
   const uint32_t k_tiles = (matrixDimensions[1] + kernelDesc.kvScaleTileSize - 1) / kernelDesc.kvScaleTileSize;

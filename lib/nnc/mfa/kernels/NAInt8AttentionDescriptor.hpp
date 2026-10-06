@@ -34,14 +34,11 @@ struct NAInt8AttentionDescriptor {
 
   std::pair<NAInt8AttentionKernelDescriptor, PipelineValue<NAInt8AttentionKernel> *> findKernel(
       MTL::Device* const device,
-      const DeviceProperties &dprops,
+      const NAInt8AttentionKernelDescriptor& kernelDescriptor,
       NS::Array* const binaryArchivesToRead,
       MTL::BinaryArchive* const binaryArchiveToWrite,
       const std::string& pathToWrite,
       std::unordered_map<NAInt8AttentionKernelDescriptor, std::unique_ptr<NAInt8AttentionKernel>> *const libraryCache) const noexcept;
-
-  // Includes the existing length-dependent source variants.
-  NAInt8AttentionKernelDescriptor kernelDescriptor() const noexcept;
 };
 
 template<>

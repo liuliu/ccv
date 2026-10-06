@@ -1,0 +1,55 @@
+NAInt8Attention review fixes — 2026-10-06
+
+Changes
+-------
+Mixed mask tiles now contribute zero probabilities for rows whose running
+maximum is still -infinity. This covers full and remainder tiles, including
+causal-plus-mask traversal. Permanently empty rows save -infinity LSE and zero O.
+
+The forward function uses #pragma METAL fp math_mode(relaxed). Library-wide
+setFastMathEnabled(false) is removed; quantization, V-mean, backward-query,
+backward-key/value, and compute_d retain their original compiler options.
+Explicit fast:: intrinsics remain. Under these semantics, dense padded scores
+already exponentiate to zero; the repeated column predicate is removed.
+
+The older INT8 attention benchmark, backward probe's forward pass, and SDPA
+comparison benchmark's forward pass now select through the production execution
+descriptor. Explicit backward configurations remain diagnostic. DeviceProperties
+is empty in these standalone tools because attention selection is currently
+device-independent. The main benchmark retains explicit tile/SG/barrier overrides.
+
+Validation completed on M5 Max
+-----------------------------
+- Debug integration build and all three updated benchmark builds pass.
+- 11/11 quantized forward integration tests and 1/1 variable-length test pass.
+- The wide-output test now checks sampled saved LSE. Both updated tests restore
+  global flags and free their allocations before any failure assertions.
+- The new randomized test covers document boundaries at token 100, rows masked
+  before their first visible tile, fully masked rows, causal R > C, causal plus
+  explicit masks, and partial output tiles with sinks. It checks every output
+  and saved LSE against CPU attention / independently computed log2-sum-exp.
+- 16 direct GPU checks pass: packed masks at D128/256/264, fixed/dynamic lengths,
+  FP16/FP32, causal attention, short C=1/7/31, variable lengths, and sinks.
+- Across 108 generated configurations, all 324 backward/compute_d sources are
+  byte-identical to the previous staged version, as are the forward helper
+  prefixes. The relaxed-math pragma occurs only inside the forward function.
+
+Performance / device validation status
+--------------------------------------
+The Max timing batch was stopped when concurrent GPU work was reported. All
+attempts from that batch are excluded from performance conclusions. Paired Max
+timings for relaxed math and isolated removal of the column predicate are
+pending an idle GPU. No speedup or <=2% regression claim is made for these fixes.
+The iPad validation app is prepared; final device validation is pending.
+
+Reproduction
+------------
+From test/int/nnc:
+  make debug -j4
+  ./mpsblas.tests "scaled dot product attention with quantized"
+  ./mpsblas.tests "scaled dot product attention with varlen NA mps"
+From bin/mfa:
+  make -j4 na_int8_attention_bench na_int8_attention_backward_probe sdpa_backward_compare_bench
+
+Local raw checks and comparison variants:
+  /private/tmp/ccv-attention-review-fixes-20261006/

@@ -6,6 +6,9 @@
 #include "AttentionKernelType.hpp"
 #include <simd/simd.h>
 
+struct NAInt8AttentionDescriptor;
+struct DeviceProperties;
+
 struct NAInt8AttentionKernelDescriptor {
   simd::ushort3 blockDimensions;
   unsigned short headDimension;
@@ -29,8 +32,12 @@ struct NAInt8AttentionKernelDescriptor {
   bool hasRRemainder = true;
   bool loadC = false;
   bool attentionSinks;
+  // Output channels owned by each threadgroup; QK still reduces over the full head.
+  unsigned short outputTileSize;
 
   NAInt8AttentionKernelDescriptor() = delete;
+  NAInt8AttentionKernelDescriptor(const NAInt8AttentionDescriptor& descriptor,
+      const DeviceProperties& dprops) noexcept;
   NAInt8AttentionKernelDescriptor(
       simd::ushort3 blockDimensions,
       unsigned short headDimension,

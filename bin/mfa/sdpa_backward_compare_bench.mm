@@ -23,6 +23,7 @@
 #include "nnc/mfa/kernels/NAAttentionDescriptor.hpp"
 #include "nnc/mfa/kernels/NAAttentionKernel.hpp"
 #include "nnc/mfa/kernels/NAAttentionKernelDescriptor.hpp"
+#include "nnc/mfa/kernels/NAInt8AttentionDescriptor.hpp"
 #include "nnc/mfa/kernels/NAInt8AttentionKernel.hpp"
 #include "nnc/mfa/kernels/NAInt8AttentionKernelDescriptor.hpp"
 
@@ -654,34 +655,27 @@ NS::SharedPtr<MTL::ComputePipelineState> create_int8_pipeline(
   return pipeline;
 }
 
+NAInt8AttentionKernelDescriptor create_int8_forward_descriptor(const AttentionCase& attention)
+{
+  NAInt8AttentionDescriptor descriptor;
+  descriptor.matrixDimensions = simd::uint3 { attention.R, attention.C, attention.D };
+  descriptor.batchDimension = attention.batch;
+  descriptor.Hq = attention.Hq;
+  descriptor.Hk = attention.Hk;
+  descriptor.ioPrecision = GEMMOperandPrecision::FP16;
+  descriptor.lowPrecisionIntermediates = true;
+  descriptor.scale = create_scale(attention);
+  // Forward defaults follow production; backward tile overrides are diagnostic.
+  return NAInt8AttentionKernelDescriptor(descriptor, DeviceProperties {});
+}
+
 QuantizePipelines create_int8_quantize_pipelines(MTL::Device* device, const AttentionCase& attention)
 {
   QuantizePipelines bundle;
-  const simd::ushort3 forward_block_dimensions { 16, 64, attention.D >= 192 ? (uint16_t)64 : (uint16_t)32 };
-  bundle.q_tiles = (attention.R + 15) / 16;
-  bundle.kv_tiles = (attention.C + 63) / 64;
-  bundle.v_mean_threads =
-      attention.C <= 20480 ?
-      NAInt8AttentionKernel::smallSequenceVMeanThreads :
-      NAInt8AttentionKernel::largeSequenceVMeanThreads;
-  const NAInt8AttentionKernelDescriptor kernel_descriptor(
-      forward_block_dimensions,
-      attention.D,
-      attention.Hq,
-      attention.Hk,
-      16,
-      64,
-      attention.D > 192 ? 16 : 4,
-      bundle.v_mean_threads,
-      (attention.C % forward_block_dimensions[1]) != 0,
-      true,
-      GEMMOperandPrecision::FP16,
-      true,
-      AttentionKernelType::forward,
-      create_scale(attention),
-      false,
-      false,
-      false);
+  const auto kernel_descriptor = create_int8_forward_descriptor(attention);
+  bundle.q_tiles = (attention.R + kernel_descriptor.qScaleTileSize - 1) / kernel_descriptor.qScaleTileSize;
+  bundle.kv_tiles = (attention.C + kernel_descriptor.kvScaleTileSize - 1) / kernel_descriptor.kvScaleTileSize;
+  bundle.v_mean_threads = kernel_descriptor.vMeanThreads;
   bundle.kernel = std::make_unique<NAInt8AttentionKernel>(kernel_descriptor, device);
   auto quantize_constants = create_int8_quantize_constants(attention, bundle.q_tiles, bundle.kv_tiles);
   bundle.q_pipeline = create_int8_pipeline(device, bundle.kernel->library.get(), "quantize_q", quantize_constants.get());
@@ -694,27 +688,7 @@ QuantizePipelines create_int8_quantize_pipelines(MTL::Device* device, const Atte
 Int8ForwardPipeline create_int8_forward_pipeline(MTL::Device* device, const AttentionCase& attention)
 {
   Int8ForwardPipeline bundle;
-  const simd::ushort3 block_dimensions { 16, 64, attention.D >= 192 ? (uint16_t)64 : (uint16_t)32 };
-  const NAInt8AttentionKernelDescriptor kernel_descriptor(
-      block_dimensions,
-      attention.D,
-      attention.Hq,
-      attention.Hk,
-      16,
-      64,
-      attention.D > 192 ? 16 : 4,
-      attention.C <= 20480 ?
-          NAInt8AttentionKernel::smallSequenceVMeanThreads :
-          NAInt8AttentionKernel::largeSequenceVMeanThreads,
-      (attention.C % block_dimensions[1]) != 0,
-      true,
-      GEMMOperandPrecision::FP16,
-      true,
-      AttentionKernelType::forward,
-      create_scale(attention),
-      false,
-      false,
-      false);
+  const auto kernel_descriptor = create_int8_forward_descriptor(attention);
   bundle.kernel = std::make_unique<NAInt8AttentionKernel>(kernel_descriptor, device);
   auto attention_constants = create_int8_attention_constants(attention, (attention.R + 15) / 16, (attention.C + 63) / 64);
   bundle.pipeline = create_int8_pipeline(device, bundle.kernel->library.get(), "int8_attention", attention_constants.get());
@@ -748,6 +722,7 @@ Int8BackwardPipelines create_int8_backward_pipelines(MTL::Device* device, const 
       create_scale(attention),
       false,
       false,
+      false,
       false);
   const NAInt8AttentionKernelDescriptor keyvalue_descriptor(
       keyvalue_block_dimensions,
@@ -764,6 +739,7 @@ Int8BackwardPipelines create_int8_backward_pipelines(MTL::Device* device, const 
       true,
       AttentionKernelType::backwardKeyValue,
       create_scale(attention),
+      false,
       false,
       false,
       false);

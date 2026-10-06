@@ -1,0 +1,169 @@
+NAInt8Attention: disabling Metal fast math (historical experiment)
+2026-10-06 — M5 Max (40 cores) and M5 iPad (10 cores)
+
+The class-wide option measured here has been replaced with forward-scoped
+relaxed math. These timings do not measure that replacement. See review-fixes.txt.
+
+Result
+------
+No new numerical regression was observed on the tested forward surface.
+The change is not performance-neutral: short calls, low-head tails, and masked
+D264 attention have small repeatable slowdowns. Dense H32 video/H3 and D256
+prefill/long-KV cases range from -0.7% to +2.0%. Output hashes change between
+math modes. The measurements establish costs on this tested surface.
+
+Performance acceptance focuses on larger attention workloads, with a 2%
+slowdown tolerance. Short-call microsecond overheads do not gate the fix.
+The dense H32 video/H3 and D256 prefill/long-KV measurements meet that target.
+The Max 4097x4097/D128/H8 tail case (+2.1% to +3.0%) and masked D264
+(Max +2.7% to +3.2%; iPad +1.1% to +3.7%) remain measured exceptions.
+
+Compared code
+-------------
+Each pair differs only in NAInt8AttentionKernel's library compile options:
+setFastMathEnabled(false), supplied to newLibrary. Explicit fast:: shader calls
+are retained. The option also affects quantization, V-mean, and backward source
+compiled by this class. Other attention classes are unchanged.
+
+The main comparison uses bd87d6d02b8e83774ff96da6f0ba23647958fc76 plus the
+pending outputTileSize/short-KV changes documented in report.txt. Its default-
+math NAInt8AttentionKernel.cpp SHA256 is:
+bf27213c4fc681e454567cf93bdbb02b32af570c04c200f1cb9862c33950628b
+Four Max workload pairs also use exact pinned 6a611be1aab6470ae279115ae4eaf7e01bc87135.
+Archive-member comparison confirms only NAInt8AttentionKernel.cpp.o and the
+archive symbol table differ within each fast/safe pair, including iPad builds.
+Max: macOS 27.0.1 (26A434), Xcode 27.0 (27A266a).
+
+The source initializes the online-softmax maximum to negative infinity and
+uses negative infinity for masked scores. Metal fast math assumes finite
+operands, so disabling that assumption is justified. Runtime inspection of
+MTLCompileOptions confirms fastMathEnabled=false selects safe arithmetic and
+precise default FP32 math functions. This is broader than preserving infinity;
+explicit fast:: operations remain explicit. See Metal Shading Language 1.6.3:
+https://developer.apple.com/metal/Metal-Shading-Language-Specification.pdf
+
+Method
+------
+GPU milliseconds include Q/K/V quantization, V-mean, and attention. Each shape
+uses fast/safe/safe/fast process order, >=0.4 seconds GPU warmup on Max (0.3 on
+iPad), and nine timed samples per launch. Tables use the median of the two
+launch medians. Compilation and CPU reference checks are outside GPU timing.
+All accepted launches have nominal thermal state. Max records background GPU
+activity, requires three prechecks <=25%, and repeats launches failing the
+postcheck. Early desktop activity was typically 10-20%; later confirmation
+runs were predominantly idle. iPad launches have 20-second cooldowns. Timing
+variation remains, especially iPad masked workloads and Max H3 (roughly
+240-270 ms individual samples). Every accepted launch contributes to the tables.
+
+Main Max sweep: pending attention changes
+----------------------------------------
+  Case                    R/C/D                 B Hq/Hkv  IO     Fast ms    Safe ms   Change
+  text29-fp16             29/29/128             1 32/32   FP16    0.03204    0.03340   +4.23%
+  text29-batch2           29/29/128             2 32/32   FP16    0.03502    0.03581   +2.26%
+  text29-fp32             29/29/128             1 32/32   FP32    0.03340    0.03425   +2.56%
+  dense-d128              4096/4096/128         1 32/32   FP16    3.95504    3.93688   -0.46%
+  tail-d128-low-heads     4097/4097/128         1 8/8     FP16    1.24646    1.27244   +2.08%
+  tail-d128               4097/4097/128         1 32/32   FP16    4.77721    4.78933   +0.25%
+  d128-fp32               512/4097/128          1 18/6    FP32    0.42340    0.42106   -0.55%
+  d128-bf16               512/4097/128          1 18/6    BF16    0.39963    0.39481   -1.20%
+  d256-short-fp16         512/31/256            1 18/6    FP16    0.04613    0.04735   +2.66%
+  d256-short-fp32         512/31/256            1 18/6    FP32    0.05344    0.05475   +2.46%
+  d256-fp16               512/4097/256          1 18/6    FP16    0.88783    0.89385   +0.68%
+  d256-fp32               512/4097/256          1 18/6    FP32    1.00052    1.01106   +1.05%
+  d256-large              4095/4096/256         1 18/6    FP16    5.53181    5.54856   +0.30%
+  d256-prefill-fp16       64/8192/256           1 16/4    FP16    0.69237    0.69040   -0.29%
+  d256-prefill-fp32       64/8192/256           1 16/4    FP32    0.81929    0.82477   +0.67%
+  masked-d264             129/4097/264          2 6/2     FP16    0.57712    0.59577   +3.23%
+  varlen-d256             129/4097/256          2 6/2     FP16    0.30233    0.30360   +0.42%
+  sinks-short             31/31/256             2 6/2     FP32    0.02994    0.03192   +6.61%
+  video-d128              8192/8192/128         1 32/32   FP16   14.78896   14.82744   +0.26%
+  h3-long                 31018/31018/128       1 32/32   FP16  252.28419  257.29752   +1.99%
+
+Main iPad sweep: same pending attention changes
+-----------------------------------------------
+  Case                    R/C/D                 B Hq/Hkv  IO     Fast ms    Safe ms   Change
+  text29-fp16             29/29/128             1 32/32   FP16    0.03658    0.03738   +2.16%
+  text29-batch2           29/29/128             2 32/32   FP16    0.05321    0.05398   +1.45%
+  dense-d128              4096/4096/128         1 32/32   FP16   16.92263   16.93042   +0.05%
+  tail-d128               4097/4097/128         1 8/8     FP16    4.72835    4.75744   +0.62%
+  d128-bf16               512/4097/128          1 18/6    BF16    1.51098    1.48469   -1.74%
+  d256-short-fp16         512/31/256            1 18/6    FP16    0.12598    0.12815   +1.72%
+  d256-short-fp32         512/31/256            1 18/6    FP32    0.22363    0.22937   +2.57%
+  d256-fp16               512/4097/256          1 18/6    FP16    3.63762    3.66771   +0.83%
+  d256-fp32               512/4097/256          1 18/6    FP32    4.07406    4.07877   +0.12%
+  d256-prefill-fp32       64/8192/256           1 16/4    FP32    1.88200    1.89302   +0.59%
+  masked-d264             129/4097/264          2 6/2     FP16    1.83492    1.90283   +3.70%
+  varlen-d256             129/4097/256          2 6/2     FP16    0.62315    0.62360   +0.07%
+  sinks-short             31/31/256             2 6/2     FP32    0.02779    0.02877   +3.52%
+
+All cases use dynamic R/C except text29, dense-d128, video-d128, and h3-long.
+text29 and prefill are causal; masked/varlen/sinks are identified in the case
+name. Other cases are dense and unmasked. BF16 uses FP32 intermediates.
+The iPad tail-d128 case has H8, matching Max tail-d128-low-heads.
+
+Independent confirmation rounds
+--------------------------------
+  Max  text29-fp16             0.03206 -> 0.03348 ms (+4.42%; first round +4.23%)
+  Max  tail-d128-low-heads     1.23923 -> 1.27658 ms (+3.01%; first round +2.08%)
+  Max  masked-d264             0.57721 -> 0.59285 ms (+2.71%; first round +3.23%)
+  Max  sinks-short             0.03050 -> 0.03198 ms (+4.85%; first round +6.61%)
+  iPad masked-d264             1.86673 -> 1.88654 ms (+1.06%; first round +3.70%)
+
+The iPad masked-D264 rounds range from +1.1% to +3.7%; combining all four
+launches per mode gives about +2.5%. Short-call percentage changes correspond
+to roughly 1-2 microseconds on Max.
+
+Exact pinned 6a611be: Max fast/safe comparison
+---------------------------------------------
+  Case                    R/C/D                 B Hq/Hkv  IO     Fast ms    Safe ms   Change
+  text29-fp16             29/29/128             1 32/32   FP16    0.03212    0.03315   +3.18%
+  dense-d128              4096/4096/128         1 32/32   FP16    3.95481    3.93740   -0.44%
+  tail-d128               4097/4097/128         1 32/32   FP16    6.49246    6.44850   -0.68%
+  h3-long                 31018/31018/128       1 32/32   FP16  253.05448  251.26446   -0.71%
+
+Correctness and remaining limits
+--------------------------------
+- Debug build passes. All 10 quantized-forward integration tests and the one
+  varlen NA integration test pass with disabled fast math.
+- 504 same-process attention calls on Max and 140 on iPad pass finite-output,
+  sampled CPU O/LSE, and repeated-input hash checks. Max covers pinned and
+  pending code, fixed/dynamic lengths, FP16/FP32, D128/D256; iPad covers the
+  pending code. Causal lengths include 1,7,15,16,17,29,31,32,33,63,64,65.
+  Short batch-1 calls repeat cold, after long dense passes, and after batch-2
+  calls, retaining one context and command queue. Max stress reaches R9216,
+  C9245, D128, H32. Each invocation is a separate command buffer.
+- Both default and disabled-fast-math builds pass those same-process tests.
+  The exact application failure was NOT reproduced, nor were full model
+  generations rerun. The specific stale-register mechanism remains unverified.
+- All 168 accepted paired forward timing launches pass finite-O and sampled
+  CPU checks. Fully masked rows retain the pre-existing NaN-LSE behavior in
+  both modes; these rows are tracked separately from finite-LSE comparisons.
+- Eight direct-kernel backward launches cover R=C=2048/4096, D128, B1, H32.
+  All dQ/dK/dV buffer hashes match across modes and launches; all are finite.
+  dV is entirely zero in both builds for these probe inputs, limiting coverage.
+  Backward totals: 6.44115 -> 6.06965 ms and 24.23730 -> 22.88885 ms.
+  This is a diagnostic configuration: Q/KV quantization tiles 16/64,
+  query block 16/32/32 with 4 SIMD groups, KV block 16/64/64 with 16 groups.
+  It is not full production backward correctness validation or a CPU-gradient
+  comparison. Its forward sub-timings are not used for inference claims.
+- The broader integration gradient test fails in both builds with the same
+  pre-existing Metal get_destination_cooperative_tensor compilation error.
+  No backward precision workaround is included.
+
+All raw attempts are retained locally, including 7 Max activity-guard retries
+and one iPad CoreDevice transport failure, which succeeded on retry.
+
+Reproduction
+------------
+Build each compiler-option variant separately; the only source difference
+between a pair should be the CompileOptions block in NAInt8AttentionKernel.
+From test/int/nnc:
+  make debug -j4
+  ./mpsblas.tests "scaled dot product attention with quantized"
+  ./mpsblas.tests "scaled dot product attention with varlen NA mps"
+From bin/mfa (production dispatcher, CPU samples, GPU timing):
+  make na_int8_attention_forward_bench
+  ./na_int8_attention_forward_bench 29 29 128 1 32 32 2 9 1 0 0 0
+  ./na_int8_attention_forward_bench 4097 4097 128 1 8 8 2 9 0 3 0 0
+  ./na_int8_attention_forward_bench 512 4097 256 1 18 6 2 9 0 3 2 0
+Use warmup, paired launch order, and cooldowns as described above.

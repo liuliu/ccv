@@ -60,6 +60,10 @@ static NAInt8AttentionKernel* create_kernel(const NAInt8AttentionKernelDescripto
   kernel->isVarlen = kernel_descriptor.isVarlen;
   kernel->attentionSinks = kernel_descriptor.attentionSinks;
   kernel->hasCausalEmptyRows = kernel_descriptor.hasCausalEmptyRows;
+  kernel->loadR = kernel_descriptor.loadR;
+  kernel->hasRRemainder = kernel_descriptor.hasRRemainder;
+  kernel->loadC = kernel_descriptor.loadC;
+  kernel->outputTileSize = kernel_descriptor.outputTileSize;
   return kernel;
 }
 
@@ -112,15 +116,15 @@ int main(int argc, char** argv)
   descriptor.isVarlen = is_varlen;
 
   descriptor.type = AttentionKernelType::forward;
-  const auto forward_descriptor = descriptor.kernelDescriptor();
+  const auto forward_descriptor = NAInt8AttentionKernelDescriptor(descriptor, DeviceProperties());
   auto* forward_kernel = create_kernel(forward_descriptor);
 
   descriptor.type = AttentionKernelType::backwardQuery;
-  const auto query_descriptor = descriptor.kernelDescriptor();
+  const auto query_descriptor = NAInt8AttentionKernelDescriptor(descriptor, DeviceProperties());
   auto* query_kernel = create_kernel(query_descriptor);
 
   descriptor.type = AttentionKernelType::backwardKeyValue;
-  const auto keyvalue_descriptor = descriptor.kernelDescriptor();
+  const auto keyvalue_descriptor = NAInt8AttentionKernelDescriptor(descriptor, DeviceProperties());
   auto* keyvalue_kernel = create_kernel(keyvalue_descriptor);
 
   const std::string precision =

@@ -834,7 +834,7 @@ int main(int argc, char** argv)
   matmul_descriptor.useBias = false;
   std::unordered_map<NAInt8MatMulKernelDescriptor, std::unique_ptr<NAInt8MatMulKernel>> matmul_cache;
   auto matmul_pipeline = std::unique_ptr<PipelineValue<NAInt8MatMulKernel>>(
-      matmul_descriptor.findKernel(device.get(), DeviceProperties(), nullptr, nullptr, "", &matmul_cache).second);
+      matmul_descriptor.findKernel(device.get(), NAInt8MatMulKernelDescriptor(matmul_descriptor, DeviceProperties()), nullptr, nullptr, "", &matmul_cache).second);
 
   Dequantize8iRowwiseDescriptor rowwise_dequant_descriptor;
   rowwise_dequant_descriptor.memoryPrecision = GEMMOperandPrecision::FP16;

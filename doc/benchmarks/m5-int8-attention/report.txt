@@ -1,0 +1,142 @@
+NAInt8Attention output-channel tiling — M5 Max / M5 iPad
+2026-10-06; baseline bd87d6d02b8e83774ff96da6f0ba23647958fc76
+
+The tables below precede the review fixes. See review-fixes.txt for the
+current masked-row guard, forward-scoped math policy, and validation status.
+
+Scope and selection
+-------------------
+One new kernel property, outputTileSize, replaces the proposed splitOutput flag.
+The execution descriptor retains execution facts; the kernel descriptor selects:
+
+  forward && D > 192 ? outputTileSize = 128 : outputTileSize = D
+
+There is no I/O-precision, sequence-length, head-count, or core-count restriction.
+The tiled variant supports causal attention, masks, variable lengths, and sinks.
+D192 forced tiling was 5–6% slower in three screening launches; retain its
+original selection. D200/208/224 and wider heads improved in Max screening.
+
+Each output tile repeats QK over the full head and computes PV for its own
+channel range. At D256 it halves each SIMD group's live FP32 output state.
+The variant uses 8 SIMD groups rather than 16, visits only live head/query
+threadgroups, and folds output rescaling into each FP32 PV update. Complete
+channel tiles hoist the V base offset; partial tiles keep bounded V loads.
+Only the first output tile writes LSE. These changes were measured together;
+no counter evidence isolates register spilling as the cause.
+
+Dense, unmasked attention now uses one bounded KV loop for full tiles, tails,
+and C < 64, including shorter members of variable-length batches. It needs no
+shared-memory remainder multiply. Padded scores are set to -infinity before
+softmax; forward-scoped relaxed math makes their probabilities zero. The
+extra per-score column predicate has been removed as a measured-trial candidate.
+Causal and masked attention retain their existing remainder implementation.
+This removes the former C >= 64 selector condition and SHORT_KV_ALLOWED flag.
+
+Selection lives in NAInt8AttentionKernelDescriptor. The existing ShaderCache
+source-configuration lookup precedes normalized dynamic-R/C pipeline lookup.
+The shared cache implementation is unchanged. No H3 query partitioning,
+frontend inference flag, fused output cast, or backward precision fix is included.
+
+Output-tiling measurements before the short-KV simplification (2026-10-05)
+------------------------------------------------------------------------
+M5 Max, 40 GPU cores. GPU milliseconds include Q/K/V quantization, V-mean,
+and attention. B=1, Hq/Hkv=18/6 unless specified. Launches were sequential,
+at nominal thermal state, with >=0.35 seconds warmup and nine timed samples.
+
+FP16, R512/C4096, one screening launch per implementation:
+  D       Baseline     Tiled
+  128       0.345      0.345  (unchanged control)
+  192       0.689      0.727  (forced diagnostic; not selected)
+  208       3.195      0.798
+  224       3.291      0.811
+  256       2.782      0.865
+  264       4.787      1.380
+  320       4.139      1.471
+  512      10.999      2.555
+
+Actual FP32 I/O, baseline/candidate/candidate/baseline launch order,
+10-second cooldowns, medians of both launch medians:
+  R      C     D   Causal   Baseline    Tiled
+   512  4097  256     no       4.712      1.005
+    64  8192  256    yes       1.310      0.985
+  4095  4096  256     no       9.493      5.742
+The large baseline includes both launches, 9.111 and 9.874 ms.
+At R512/C4097/D256, BF16 with FP32 intermediates measured 4.259 -> 0.888 ms;
+FP16 with FP32 intermediates measured 4.303 -> 0.890 ms in screening.
+
+Short-KV simplification (2026-10-06)
+-----------------------------------
+The comparison is against the preceding C-gated output-tiling implementation,
+not against the baseline commit. The first eight cases used ABBA launch order;
+remaining cases used one launch per implementation. Each launch requires
+three idle-GPU checks, nominal thermals, >=0.4 seconds warmup, and nine samples.
+A further GPU/thermal check follows each launch. Runs that fail that check are
+retained separately and retried. Earlier measurements taken while another GPU
+workload was active are excluded from this comparison.
+
+GPU milliseconds, R512/D256/B1/Hq18/Hkv6, dynamic R/C unless marked fixed:
+  Precision   C      Previous     Simplified
+  FP16          31     0.08400       0.04590
+  FP32          31     0.09283       0.05312
+  FP16 fixed    31     0.05202       0.03169
+  FP16        4097     0.86188       0.87002
+  FP32        4097     0.98583       0.99069
+
+The repeated short cases improve 39–45%; the repeated long cases change by
++0.5–1.0%. FP16 D320/R129/C16/B2/Hq6/Hkv2 improves 0.04913 -> 0.03354 ms.
+FP32 varlen R31/C31/B2/Hq6/Hkv2 improves 0.04696 -> 0.03069 ms.
+Short-sequence hashes match in these dynamic cases; some other hashes differ
+while still passing CPU-reference checks. Bitwise equivalence is not claimed.
+
+Across 18 paired shapes (52 accepted launches, eight guard-triggered retries),
+the largest measured slowdown is FP32 causal R64/C8192: 0.96412 -> 0.98137 ms
+(+1.8%). FP16 R4095/C4096 is 5.52125 -> 5.54150 ms (+0.4%). All launches
+pass numerical checks, including the retries. Untiled D64/D128/D192 controls
+also benefit from removing the dense remainder path: C31 improves 17–21%,
+and C4097 improves 11–34%, in one pair per shape.
+
+Validation
+-----------
+Final Max debug build, source-dump tool, and FP32/BF16 benchmark build: PASS.
+Max: 10 quantized attention tests and one varlen test passed. Coverage includes
+all three I/O precisions, grouped heads, batches, D264/D320 output tails,
+C63/64/65, fixed C1/7/16/31, dynamic R4095/4096/4097, masks, causal attention,
+short varlen members, and sinks. The existing every-key-tail test also passes.
+Twenty additional fixed/dynamic short-KV probes passed O and LSE checks.
+Five further paired short-KV cases (10 launches) passed: fixed FP32 C1,
+FP32 causal, masked, and causal+masked C31, and BF16 C31 with FP32
+intermediates. These cases improve 15–47% against the preceding version.
+The earlier output-tiling version passed 126/126 DNN tests; that suite was not
+rerun after the short-KV-only simplification.
+
+The pre-existing combined sink test fails in unchanged generic AttentionKernel
+FP32 Metal compilation before reaching its INT8 cases. The independent INT8
+sink test passes. Full BLAS/backward success is not claimed.
+BF16 low-precision intermediates do not compile (production BF16 uses FP32
+intermediates). The later masked-row guard also fixes the NaN saved LSE for
+completely masked rows; see review-fixes.txt.
+
+M5 iPad (10 cores): final forward validation completed with both default and
+disabled fast math; see fast-math.txt for correctness coverage and timings.
+Those timing pairs isolate the compiler option, not the output-tiling speedup.
+No new Ultra data is claimed.
+
+Reproduction
+------------
+From test/int/nnc:
+  make debug -j4
+  ./mpsblas.tests "scaled dot product attention with quantized"
+  ./mpsblas.tests "scaled dot product attention with varlen NA mps"
+
+From bin/mfa:
+  make na_int8_attention_forward_bench
+  ./na_int8_attention_forward_bench 512 31 256 1 18 6 2 9 0 3 2 0
+  ./na_int8_attention_forward_bench 512 4097 256 1 18 6 2 9 0 3 2 0
+  ./na_int8_attention_forward_bench 64 8192 256 1 18 6 2 9 1 3 2 0
+
+Arguments: R C D B Hq Hkv warmup samples causal dynamic_flags [precision] [upcast].
+Dynamic flags: R=1, C=2; precision: FP16=0, BF16=1, FP32=2.
+The probe uses the production dispatcher, verifies finite outputs and sampled
+CPU agreement, and prints every timed sample plus an output hash. Alternate
+baseline/candidate launch order and allow cooldown; compilation and CPU checks
+are outside GPU timing. Do not benchmark alongside another GPU workload.

@@ -18,6 +18,7 @@
 #include "nnc/mfa/kernels/NAAttentionDescriptor.hpp"
 #include "nnc/mfa/kernels/NAAttentionKernel.hpp"
 #include "nnc/mfa/kernels/NAAttentionKernelDescriptor.hpp"
+#include "nnc/mfa/kernels/NAInt8AttentionDescriptor.hpp"
 #include "nnc/mfa/kernels/NAInt8AttentionKernel.hpp"
 #include "nnc/mfa/kernels/NAInt8AttentionKernelDescriptor.hpp"
 
@@ -431,16 +432,31 @@ simd::ushort3 create_baseline_block_dimensions(
   }
 }
 
-simd::ushort3 create_int8_block_dimensions(
-    const AttentionCase& attention,
-    uint16_t block_r_override = 0,
-    uint16_t block_c_override = 0,
-    uint16_t block_d_override = 0)
+NAInt8AttentionKernelDescriptor create_int8_kernel_descriptor(
+    const AttentionCase& attention, const VariantConfig& variant)
 {
-  const uint16_t block_r = block_r_override ? block_r_override : 16;
-  const uint16_t block_c = block_c_override ? block_c_override : 64;
-  const uint16_t block_d = block_d_override ? block_d_override : (attention.D >= 192 ? 64 : 32);
-  return simd::ushort3 { block_r, block_c, block_d };
+  NAInt8AttentionDescriptor descriptor;
+  descriptor.matrixDimensions = simd::uint3 { attention.R, attention.C, attention.D };
+  descriptor.batchDimension = attention.batch;
+  descriptor.Hq = attention.Hq;
+  descriptor.Hk = attention.Hk;
+  descriptor.ioPrecision = create_io_precision(variant.input_precision);
+  descriptor.lowPrecisionIntermediates = variant.input_precision != InputPrecision::fp32;
+  descriptor.scale = create_scale(attention);
+  descriptor.isCausal = variant.is_causal;
+  descriptor.masked = variant.zero_mask;
+  // Attention selection currently has no device-dependent policy.
+  NAInt8AttentionKernelDescriptor kernel(descriptor, DeviceProperties {});
+  if (variant.int8_block_r_override) kernel.blockDimensions[0] = variant.int8_block_r_override;
+  if (variant.int8_block_c_override) kernel.blockDimensions[1] = variant.int8_block_c_override;
+  if (variant.int8_block_d_override) kernel.blockDimensions[2] = variant.int8_block_d_override;
+  if (variant.int8_execution_simd_groups_override) kernel.executionSIMDGroups = variant.int8_execution_simd_groups_override;
+  if (variant.int8_thread_barrier_every_c_override)
+    kernel.threadBarrierEveryC = variant.int8_thread_barrier_every_c_override;
+  else if (!variant.int8_thread_barrier_over_c)
+    kernel.threadBarrierEveryC = 0;
+  kernel.hasCRemainder = attention.C % kernel.blockDimensions[1] != 0;
+  return kernel;
 }
 
 uint16_t create_baseline_execution_simd_groups(bool is_causal, uint16_t override_value)
@@ -448,13 +464,6 @@ uint16_t create_baseline_execution_simd_groups(bool is_causal, uint16_t override
   if (override_value != 0)
     return override_value;
   return is_causal ? 8 : 16;
-}
-
-uint16_t create_int8_execution_simd_groups(const AttentionCase& attention, uint16_t override_value)
-{
-  if (override_value != 0)
-    return override_value;
-  return attention.D > 192 ? 16 : 4;
 }
 
 QuantizePipelines create_quantize_pipelines(
@@ -1986,41 +1995,11 @@ Int8Pipeline create_int8_pipeline(
     const VariantConfig& variant)
 {
   Int8Pipeline bundle;
-  bundle.block_dimensions = create_int8_block_dimensions(
-      attention,
-      variant.int8_block_r_override,
-      variant.int8_block_c_override,
-      variant.int8_block_d_override);
-  bundle.execution_simd_groups =
-      create_int8_execution_simd_groups(attention, variant.int8_execution_simd_groups_override);
-  bundle.thread_barrier_every_c =
-      variant.int8_thread_barrier_every_c_override ?
-      variant.int8_thread_barrier_every_c_override :
-      (variant.int8_thread_barrier_over_c && !variant.is_causal ? 2 : 0);
-  bundle.masked = variant.zero_mask;
-  const uint16_t v_mean_threads =
-      attention.C <= 20480 ?
-      NAInt8AttentionKernel::smallSequenceVMeanThreads :
-      NAInt8AttentionKernel::largeSequenceVMeanThreads;
-  const NAInt8AttentionKernelDescriptor kernel_descriptor(
-      bundle.block_dimensions,
-      attention.D,
-      attention.Hq,
-      attention.Hk,
-      16,
-      64,
-      bundle.execution_simd_groups,
-      v_mean_threads,
-      (attention.C % bundle.block_dimensions[1]) != 0,
-      bundle.thread_barrier_every_c,
-      create_io_precision(variant.input_precision),
-      variant.input_precision != InputPrecision::fp32,
-      AttentionKernelType::forward,
-      create_scale(attention),
-      variant.is_causal,
-      variant.zero_mask,
-      variant.is_causal && !variant.zero_mask && attention.R > attention.C,
-      false);
+  const auto kernel_descriptor = create_int8_kernel_descriptor(attention, variant);
+  bundle.block_dimensions = kernel_descriptor.blockDimensions;
+  bundle.execution_simd_groups = kernel_descriptor.executionSIMDGroups;
+  bundle.thread_barrier_every_c = kernel_descriptor.threadBarrierEveryC;
+  bundle.masked = kernel_descriptor.masked;
   bundle.kernel = std::make_unique<NAInt8AttentionKernel>(kernel_descriptor, device);
 
   const uint32_t q_tiles = (attention.R + bundle.block_dimensions[0] - 1) / bundle.block_dimensions[0];
@@ -2763,11 +2742,8 @@ int main(int argc, char** argv)
     mask_encoded = encode_values(mask_values, variant.input_precision);
   }
 
-  const simd::ushort3 block_dimensions = create_int8_block_dimensions(
-      attention,
-      variant.int8_block_r_override,
-      variant.int8_block_c_override,
-      variant.int8_block_d_override);
+  const auto kernel_descriptor = create_int8_kernel_descriptor(attention, variant);
+  const simd::ushort3 block_dimensions = kernel_descriptor.blockDimensions;
   BaselinePipeline baseline;
   Int8Pipeline int8_pipeline;
   if (!variant.quantize_only) {
@@ -2775,12 +2751,8 @@ int main(int argc, char** argv)
     int8_pipeline = create_int8_pipeline(device.get(), attention, variant);
   } else {
     int8_pipeline.block_dimensions = block_dimensions;
-    int8_pipeline.execution_simd_groups =
-        create_int8_execution_simd_groups(attention, variant.int8_execution_simd_groups_override);
-    int8_pipeline.thread_barrier_every_c =
-        variant.int8_thread_barrier_every_c_override ?
-        variant.int8_thread_barrier_every_c_override :
-        (variant.int8_thread_barrier_over_c && !variant.is_causal ? 2 : 0);
+    int8_pipeline.execution_simd_groups = kernel_descriptor.executionSIMDGroups;
+    int8_pipeline.thread_barrier_every_c = kernel_descriptor.threadBarrierEveryC;
   }
   auto quantize_pipelines = create_quantize_pipelines(
       device.get(),
@@ -2973,6 +2945,7 @@ int main(int argc, char** argv)
             << " qkScales=tile"
             << " baselineSimdgroups=" << (variant.quantize_only ? 0 : baseline.kernel->executionSIMDGroups)
             << " int8Simdgroups=" << int8_pipeline.execution_simd_groups
+            << " outputTileSize=" << kernel_descriptor.outputTileSize
             << " qQuantThreads=" << quantize_pipelines.q_threads
             << " kvQuantThreads=" << quantize_pipelines.kv_threads
             << " vMeanThreads=" << quantize_pipelines.v_mean_threads

@@ -69,18 +69,6 @@ std::size_t std::hash<NAInt8MatMulDescriptor>::operator()(const NAInt8MatMulDesc
 
 std::pair<NAInt8MatMulKernelDescriptor, PipelineValue<NAInt8MatMulKernel> *> NAInt8MatMulDescriptor::findKernel(
     MTL::Device* const device,
-    const DeviceProperties &dprops,
-    NS::Array* const binaryArchivesToRead,
-    MTL::BinaryArchive* const binaryArchiveToWrite,
-    const std::string& pathToWrite,
-    std::unordered_map<NAInt8MatMulKernelDescriptor, std::unique_ptr<NAInt8MatMulKernel>> *const libraryCache) const noexcept
-{
-  return findKernel(device, NAInt8MatMulKernelDescriptor(*this, dprops), binaryArchivesToRead,
-      binaryArchiveToWrite, pathToWrite, libraryCache);
-}
-
-std::pair<NAInt8MatMulKernelDescriptor, PipelineValue<NAInt8MatMulKernel> *> NAInt8MatMulDescriptor::findKernel(
-    MTL::Device* const device,
     const NAInt8MatMulKernelDescriptor& kernelDesc,
     NS::Array* const binaryArchivesToRead,
     MTL::BinaryArchive* const binaryArchiveToWrite,

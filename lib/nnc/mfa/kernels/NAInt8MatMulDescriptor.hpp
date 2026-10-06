@@ -29,14 +29,6 @@ struct NAInt8MatMulDescriptor {
 
   bool operator==(const NAInt8MatMulDescriptor& rhs) const;
 
-  std::pair<NAInt8MatMulKernelDescriptor, PipelineValue<NAInt8MatMulKernel> *> findKernel(
-      MTL::Device* const device,
-      const DeviceProperties &dprops,
-      NS::Array* const binaryArchivesToRead,
-      MTL::BinaryArchive* const binaryArchiveToWrite,
-      const std::string& pathToWrite,
-      std::unordered_map<NAInt8MatMulKernelDescriptor, std::unique_ptr<NAInt8MatMulKernel>> *const libraryCache) const noexcept;
-
   // Specialize an explicit kernel configuration (also used by kernel probes).
   std::pair<NAInt8MatMulKernelDescriptor, PipelineValue<NAInt8MatMulKernel> *> findKernel(
       MTL::Device* const device,

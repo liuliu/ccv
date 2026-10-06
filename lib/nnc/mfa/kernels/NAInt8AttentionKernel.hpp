@@ -16,9 +16,6 @@ struct NAInt8AttentionKernel {
   static constexpr uint16_t smallSequenceVMeanThreads = 256;
   static constexpr uint16_t largeSequenceVMeanThreads = 128;
   static constexpr uint16_t computeDThreads = 32;
-  // Debug note: keep the production kernel full-only and Morton-ordered.
-  // If stripped debug modes are needed again, reintroduce them in the bench
-  // harness and source generator together instead of widening this surface.
 
   NS::SharedPtr<MTL::Library> library;
   std::string source;
@@ -35,6 +32,8 @@ struct NAInt8AttentionKernel {
   bool hasCRemainder;
   uint16_t threadBarrierEveryC;
   GEMMOperandPrecision ioPrecision;
+  // Output channels owned by each threadgroup; QK still reduces over the full head.
+  unsigned short outputTileSize;
   bool lowPrecisionIntermediates;
   float scale;
   bool isCausal;

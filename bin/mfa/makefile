@@ -7,7 +7,7 @@ TARGETS = dynamic_m_bench gemm_scaffold int8_matmul_bench gemv_thin_tensorop_ben
 
 MPSGRAPH_LDFLAGS := $(LDFLAGS) -framework Foundation -framework MetalPerformanceShaders -framework MetalPerformanceShadersGraph
 TARGETS += moe_routing_bench scaled_dot_product_arg_partition_candidates_bench
-TARGETS += na_int8_convrot_bench na_int8_sol_attention_bench na_int8_matmul_forward_bench na_int8_wide_offsets_bench
+TARGETS += na_int8_convrot_bench na_int8_sol_attention_bench na_int8_matmul_forward_bench na_int8_wide_offsets_bench na_int8_attention_forward_bench
 ANE_LDFLAGS := $(LDFLAGS) -framework IOSurface -ldl
 ANE_ROWWISE_LDFLAGS := $(LDFLAGS) -framework Foundation -framework CoreML -framework CoreVideo -framework IOSurface -framework MetalPerformanceShaders
 
@@ -489,4 +489,8 @@ na_int8_sol_attention_bench.o: na_int8_sol_attention_bench.cpp ../../lib/nnc/mfa
 
 # End-to-end INT8 GEMM probe, including activation quantization.
 na_int8_matmul_forward_bench: na_int8_matmul_forward_bench.cpp ../../lib/libccv.a
+	$(CC) $(CFLAGS) -O2 -Wno-deprecated-declarations $< ../../lib/libccv.a -o $@ $(LDFLAGS) -lsqlite3 -lz
+
+# Forward INT8 attention probe, including Q/K/V quantization.
+na_int8_attention_forward_bench: na_int8_attention_forward_bench.cpp ../../lib/libccv.a
 	$(CC) $(CFLAGS) -O2 -Wno-deprecated-declarations $< ../../lib/libccv.a -o $@ $(LDFLAGS) -lsqlite3 -lz

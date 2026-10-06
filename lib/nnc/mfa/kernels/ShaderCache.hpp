@@ -74,19 +74,21 @@ public:
     // New-style kernel descriptors select the source before pipeline lookup.
     // Runtime dimensions can then be omitted from the execution descriptor's
     // equality/hash without conflating different source configurations.
-    if constexpr (std::is_constructible_v<KernelDescriptor, const Descriptor&, const DeviceProperties&>)
+    if constexpr (std::is_constructible_v<KernelDescriptor, const Descriptor&, const DeviceProperties&>) {
       return findKernel<Kernel, Descriptor, KernelDescriptor>(descriptor, KernelDescriptor(descriptor, dprops), device);
-    UnorderedMapWrapper<Descriptor, std::unique_ptr<PipelineValue<Kernel>>> *pipelineCache = static_cast<UnorderedMapWrapper<Descriptor, std::unique_ptr<PipelineValue<Kernel>>> *>(this->pipelineCache.try_emplace(typeid(Descriptor), std::make_unique<UnorderedMapWrapper<Descriptor, std::unique_ptr<PipelineValue<Kernel>>>>()).first->second.get());
-    auto iterator = pipelineCache->map.find(descriptor);
-    if (iterator != pipelineCache->map.end()) {
-      return iterator->second.get();
+    } else {
+      UnorderedMapWrapper<Descriptor, std::unique_ptr<PipelineValue<Kernel>>> *pipelineCache = static_cast<UnorderedMapWrapper<Descriptor, std::unique_ptr<PipelineValue<Kernel>>> *>(this->pipelineCache.try_emplace(typeid(Descriptor), std::make_unique<UnorderedMapWrapper<Descriptor, std::unique_ptr<PipelineValue<Kernel>>>>()).first->second.get());
+      auto iterator = pipelineCache->map.find(descriptor);
+      if (iterator != pipelineCache->map.end()) {
+        return iterator->second.get();
+      }
+      UnorderedMapWrapper<KernelDescriptor, std::unique_ptr<Kernel>> *libraryCache = static_cast<UnorderedMapWrapper<KernelDescriptor, std::unique_ptr<Kernel>> *>(this->libraryCache.try_emplace(typeid(KernelDescriptor), std::make_unique<UnorderedMapWrapper<KernelDescriptor, std::unique_ptr<Kernel>>>()).first->second.get());
+      auto binaryArchivesToRead = this->binaryArchivesToRead(device);
+      auto binaryArchiveToWrite = this->binaryArchiveToWrite(device);
+      auto result = descriptor.findKernel(device, dprops, binaryArchivesToRead, binaryArchiveToWrite, this->pathToWrite, &libraryCache->map);
+      pipelineCache->map[descriptor] = std::unique_ptr<PipelineValue<Kernel>>(result.second);
+      return result.second;
     }
-    UnorderedMapWrapper<KernelDescriptor, std::unique_ptr<Kernel>> *libraryCache = static_cast<UnorderedMapWrapper<KernelDescriptor, std::unique_ptr<Kernel>> *>(this->libraryCache.try_emplace(typeid(KernelDescriptor), std::make_unique<UnorderedMapWrapper<KernelDescriptor, std::unique_ptr<Kernel>>>()).first->second.get());
-    auto binaryArchivesToRead = this->binaryArchivesToRead(device);
-    auto binaryArchiveToWrite = this->binaryArchiveToWrite(device);
-    auto result = descriptor.findKernel(device, dprops, binaryArchivesToRead, binaryArchiveToWrite, this->pathToWrite, &libraryCache->map);
-    pipelineCache->map[descriptor] = std::unique_ptr<PipelineValue<Kernel>>(result.second);
-    return result.second;
   }
 
   template<typename Kernel, typename Descriptor, typename KernelDescriptor>

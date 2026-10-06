@@ -1,4 +1,6 @@
 #include "NAInt8AttentionKernelDescriptor.hpp"
+#include "NAInt8AttentionDescriptor.hpp"
+#include "NAInt8AttentionKernel.hpp"
 #include "../ccv_nnc_mfa_hash.hpp"
 
 bool NAInt8AttentionKernelDescriptor::operator==(const NAInt8AttentionKernelDescriptor& rhs) const {
@@ -23,6 +25,7 @@ bool NAInt8AttentionKernelDescriptor::operator==(const NAInt8AttentionKernelDesc
     isVarlen == rhs.isVarlen &&
     hasCausalEmptyRows == rhs.hasCausalEmptyRows &&
     attentionSinks == rhs.attentionSinks &&
+    outputTileSize == rhs.outputTileSize &&
     scale == rhs.scale;
 }
 
@@ -51,6 +54,7 @@ std::size_t std::hash<NAInt8AttentionKernelDescriptor>::operator()(const NAInt8A
       (uint16_t)(hash.hasCausalEmptyRows ? 1 : 0) }));
   seed = combine_32(seed, hash.isVarlen ? 1 : 0);
   seed = combine_32(seed, hash.attentionSinks ? 1 : 0);
+  seed = combine_32(seed, hash.outputTileSize);
   seed = combine_32(seed, uint32_t(std::hash<float>{}(hash.scale)));
   return seed;
 }
@@ -79,6 +83,7 @@ NAInt8AttentionKernelDescriptor::NAInt8AttentionKernelDescriptor(
   this->blockDimensions = blockDimensions;
   this->type = type;
   this->headDimension = headDimension;
+  this->outputTileSize = headDimension;
   this->Hq = Hq;
   this->Hk = Hk;
   this->qScaleTileSize = qScaleTileSize;
@@ -95,4 +100,61 @@ NAInt8AttentionKernelDescriptor::NAInt8AttentionKernelDescriptor(
   this->isVarlen = isVarlen;
   this->hasCausalEmptyRows = hasCausalEmptyRows;
   this->attentionSinks = attentionSinks;
+}
+
+NAInt8AttentionKernelDescriptor::NAInt8AttentionKernelDescriptor(
+    const NAInt8AttentionDescriptor& descriptor, const DeviceProperties& dprops) noexcept
+  : headDimension(descriptor.matrixDimensions[2]),
+    Hq(descriptor.Hq),
+    Hk(descriptor.Hk),
+    qScaleTileSize(descriptor.type == AttentionKernelType::forward ? 16 : 32),
+    kvScaleTileSize(64),
+    threadBarrierEveryC(descriptor.isCausal ? 0 : 2),
+    ioPrecision(descriptor.ioPrecision),
+    lowPrecisionIntermediates(descriptor.lowPrecisionIntermediates),
+    type(descriptor.type),
+    scale(descriptor.scale),
+    isCausal(descriptor.isCausal),
+    masked(descriptor.masked),
+    isVarlen(descriptor.isVarlen),
+    hasCausalEmptyRows(type == AttentionKernelType::forward && isCausal && !masked &&
+        (isVarlen || descriptor.matrixDimensions[0] > descriptor.matrixDimensions[1])),
+    loadR(descriptor.loadR),
+    loadC(descriptor.loadC),
+    attentionSinks(descriptor.attentionSinks)
+{
+  (void)dprops;
+  const uint32_t D = descriptor.matrixDimensions[2];
+  const bool lowPrecisionBackward =
+      type != AttentionKernelType::forward && ioPrecision != GEMMOperandPrecision::FP32;
+  const bool splitHeadBackward = lowPrecisionBackward && D == 128;
+  const bool splitHeadBackwardKeyValue =
+      type == AttentionKernelType::backwardKeyValue && splitHeadBackward;
+  const uint16_t blockD =
+      type == AttentionKernelType::forward ? (D >= 192 ? 64 : 32) :
+      (type == AttentionKernelType::backwardQuery && splitHeadBackward ?
+          32 :
+          (splitHeadBackward ? 64 : (uint16_t)D));
+  const uint16_t blockC =
+      type == AttentionKernelType::backwardKeyValue ?
+      (splitHeadBackward ? 32 : 16) : 64;
+  const uint16_t queryBlockC =
+      type == AttentionKernelType::backwardQuery && splitHeadBackward ? 32 : blockC;
+  blockDimensions = simd::ushort3 { 16, queryBlockC, blockD };
+  // Wider heads benefit from limiting each group's FP32 output state to 128
+  // channels. Each tile repeats QK over the complete head.
+  outputTileSize = type == AttentionKernelType::forward && D > 192 ? 128 : D;
+  executionSIMDGroups =
+      type == AttentionKernelType::forward ?
+      (D > 192 ? 8 : 4) :
+      (splitHeadBackwardKeyValue ?
+          (Hq > Hk ? 8 : 16) :
+          4);
+  vMeanThreads =
+      descriptor.matrixDimensions[1] <= 20480 ?
+      NAInt8AttentionKernel::smallSequenceVMeanThreads :
+      NAInt8AttentionKernel::largeSequenceVMeanThreads;
+  hasCRemainder = type == AttentionKernelType::forward &&
+      (isVarlen || (descriptor.matrixDimensions[1] % blockDimensions[1]) != 0);
+  hasRRemainder = !loadR || isVarlen || descriptor.matrixDimensions[0] % blockDimensions[0] != 0;
 }
