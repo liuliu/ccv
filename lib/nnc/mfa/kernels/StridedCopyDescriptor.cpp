@@ -21,13 +21,13 @@ std::size_t std::hash<StridedCopyDescriptor>::operator()(const StridedCopyDescri
 {
 	using namespace ccv::nnc::mfa::hash;
 	std::size_t seed = 0;
-	combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.memoryPrecision.value, (unsigned int)hash.vectorized }));
-	combine_64(seed, pack_64(simd::uint2 { hash.loadM ? 0 : hash.rows, hash.cols }));
-	combine_32(seed, hash.sourceRowStride);
-	combine_32(seed, hash.destinationStrided);
+	seed = combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.memoryPrecision.value, (unsigned int)hash.vectorized }));
+	seed = combine_64(seed, pack_64(simd::uint2 { hash.loadM ? 0 : hash.rows, hash.cols }));
+	seed = combine_32(seed, hash.sourceRowStride);
+	seed = combine_32(seed, hash.destinationStrided);
 	if (hash.destinationStrided)
-		combine_32(seed, hash.destinationRowStride);
-	combine_32(seed, hash.loadM ? 1 : 0);
+		seed = combine_32(seed, hash.destinationRowStride);
+	seed = combine_32(seed, hash.loadM ? 1 : 0);
 	return seed;
 }
 

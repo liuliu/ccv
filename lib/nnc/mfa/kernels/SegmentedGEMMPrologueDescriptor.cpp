@@ -21,17 +21,17 @@ bool SegmentedGEMMPrologueDescriptor::operator==(const SegmentedGEMMPrologueDesc
 std::size_t std::hash<SegmentedGEMMPrologueDescriptor>::operator()(const SegmentedGEMMPrologueDescriptor& hash) const noexcept {
   std::size_t seed = 0;
   using namespace ccv::nnc::mfa::hash;
-  combine_32(seed, hash.matrixDimensions[0]);
-  combine_32(seed, hash.matrixDimensions[1]);
-  combine_32(seed, hash.expertCount);
-  combine_32(seed, hash.binCount);
-  combine_32(seed, hash.blockDimensions[0]);
-  combine_32(seed, hash.blockDimensions[1]);
-  combine_32(seed, hash.blockDimensions[2]);
-  combine_64(seed, pack_64(simd::ushort4 { hash.memoryPrecisions.A.value, hash.memoryPrecisions.B.value, hash.memoryPrecisions.C.value, hash.memoryPrecisions.bias.value }));
-  combine_32(seed, pack_32(simd::uchar4 { hash.useBias, hash.mortonOrder, 0, 0 }));
-  combine_32(seed, hash.threadgroupMemoryAllocation);
-  combine_32(seed, hash.threadgroupSize);
+  seed = combine_32(seed, hash.matrixDimensions[0]);
+  seed = combine_32(seed, hash.matrixDimensions[1]);
+  seed = combine_32(seed, hash.expertCount);
+  seed = combine_32(seed, hash.binCount);
+  seed = combine_32(seed, hash.blockDimensions[0]);
+  seed = combine_32(seed, hash.blockDimensions[1]);
+  seed = combine_32(seed, hash.blockDimensions[2]);
+  seed = combine_64(seed, pack_64(simd::ushort4 { hash.memoryPrecisions.A.value, hash.memoryPrecisions.B.value, hash.memoryPrecisions.C.value, hash.memoryPrecisions.bias.value }));
+  seed = combine_32(seed, pack_32(simd::uchar4 { hash.useBias, hash.mortonOrder, 0, 0 }));
+  seed = combine_32(seed, hash.threadgroupMemoryAllocation);
+  seed = combine_32(seed, hash.threadgroupSize);
   return seed;
 }
 

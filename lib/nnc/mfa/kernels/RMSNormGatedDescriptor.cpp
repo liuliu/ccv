@@ -23,9 +23,9 @@ bool RMSNormGatedDescriptor::operator==(const RMSNormGatedDescriptor& rhs) const
 static std::size_t _rmsnorm_gated_descriptor_hash(const float epsilon, const GEMMOperandPrecision a_precision, const GEMMOperandPrecision gate_precision, const GEMMOperandPrecision scale_precision, const uint32_t column_count) noexcept {
   using namespace ccv::nnc::mfa::hash;
   std::size_t seed = 0;
-  combine_64(seed, pack_64(simd::uint2 { (unsigned int)a_precision.value, (unsigned int)gate_precision.value }));
-  combine_64(seed, pack_64(simd::uint2 { (unsigned int)scale_precision.value, column_count }));
-  combine_32(seed, *reinterpret_cast<const uint32_t*>(&epsilon));
+  seed = combine_64(seed, pack_64(simd::uint2 { (unsigned int)a_precision.value, (unsigned int)gate_precision.value }));
+  seed = combine_64(seed, pack_64(simd::uint2 { (unsigned int)scale_precision.value, column_count }));
+  seed = combine_32(seed, *reinterpret_cast<const uint32_t*>(&epsilon));
   return seed;
 }
 

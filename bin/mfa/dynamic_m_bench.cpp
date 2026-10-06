@@ -35,7 +35,6 @@ int main(int argc, char** argv)
     for (int reverse = 0; reverse < (register_cases ? 2 : 1); ++reverse) {
       context->kernel_cache.evict();
       PipelineValue<NAInt8MatMulKernel>* previous = nullptr;
-      uint32_t previousM = 0;
       NAInt8MatMulDescriptor previousDescriptor;
       std::vector<uint32_t> rows = register_cases ?
         std::vector<uint32_t>{511, 512, 513, 575, 576, 577, 2457, 2458, 4095, 4096, 4097} :
@@ -123,11 +122,12 @@ int main(int argc, char** argv)
         }
         auto value = context->kernel_cache.findKernel<NAInt8MatMulKernel, NAInt8MatMulDescriptor, NAInt8MatMulKernelDescriptor>(d, device.get(), context->device_properties);
         const bool reused = previous && value == previous;
-        const bool sameRange = previous && (register_cases ? d == previousDescriptor : (M >= 4096) == (previousM >= 4096));
+        const bool sameRange = previous && d == previousDescriptor &&
+          NAInt8MatMulKernelDescriptor(d, context->device_properties) ==
+            NAInt8MatMulKernelDescriptor(previousDescriptor, context->device_properties);
         if (require_reuse && previous && reused != sameRange) { fprintf(stderr, "incorrect M-range pipeline reuse\n"); return 1; }
         previous = value;
         previousDescriptor = d;
-        previousM = M;
         auto fixedDescriptor = d; fixedDescriptor.loadM = false;
         const auto expected = NAInt8MatMulKernelDescriptor(fixedDescriptor, context->device_properties);
         if (value->kernel->useRegisterOperands != expected.useRegisterOperands) {

@@ -17,8 +17,8 @@ bool Dequantize8iRowwiseDescriptor::vectorized() const noexcept {
 std::size_t std::hash<Dequantize8iRowwiseDescriptor>::operator()(const Dequantize8iRowwiseDescriptor& hash) const noexcept {
 	using namespace ccv::nnc::mfa::hash;
 	std::size_t seed = 0;
-	combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.memoryPrecision.value, hash.rowLength }));
-	combine_32(seed, hash.length);
+	seed = combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.memoryPrecision.value, hash.rowLength }));
+	seed = combine_32(seed, hash.length);
 	return seed;
 }
 

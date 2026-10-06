@@ -19,14 +19,14 @@ bool MulDescriptor::operator==(const MulDescriptor& rhs) const {
 std::size_t std::hash<MulDescriptor>::operator()(const MulDescriptor& hash) const noexcept {
   using namespace ccv::nnc::mfa::hash;
   std::size_t seed = 0;
-  combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.memoryPrecision.value, (unsigned int)hash.value }));
-  combine_32(seed, hash.loadM || hash.value == 0 ? 0 : hash.length);
-  combine_32(seed, hash.loadM ? 1 : 0);
-  combine_32(seed, hash.row_broadcast);
-  combine_32(seed, hash.row_length);
-  combine_32(seed, hash.channel_broadcast);
-  combine_32(seed, hash.channel_count);
-  combine_32(seed, hash.channel_length);
+  seed = combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.memoryPrecision.value, (unsigned int)hash.value }));
+  seed = combine_32(seed, hash.loadM || hash.value == 0 ? 0 : hash.length);
+  seed = combine_32(seed, hash.loadM ? 1 : 0);
+  seed = combine_32(seed, hash.row_broadcast);
+  seed = combine_32(seed, hash.row_length);
+  seed = combine_32(seed, hash.channel_broadcast);
+  seed = combine_32(seed, hash.channel_count);
+  seed = combine_32(seed, hash.channel_length);
   return seed;
 }
 

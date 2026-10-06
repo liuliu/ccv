@@ -29,29 +29,29 @@ bool NAInt8AttentionKernelDescriptor::operator==(const NAInt8AttentionKernelDesc
 std::size_t std::hash<NAInt8AttentionKernelDescriptor>::operator()(const NAInt8AttentionKernelDescriptor& hash) const noexcept {
   std::size_t seed = 0;
   using namespace ccv::nnc::mfa::hash;
-  combine_32(seed, (hash.loadR ? 1 : 0) | (hash.loadC ? 2 : 0) | (hash.hasRRemainder ? 4 : 0));
-  combine_64(seed, pack_64(simd_make_ushort4(hash.blockDimensions, 0)));
-  combine_32(seed, pack_32(simd::ushort2 {
+  seed = combine_32(seed, (hash.loadR ? 1 : 0) | (hash.loadC ? 2 : 0) | (hash.hasRRemainder ? 4 : 0));
+  seed = combine_64(seed, pack_64(simd_make_ushort4(hash.blockDimensions, 0)));
+  seed = combine_32(seed, pack_32(simd::ushort2 {
       hash.headDimension,
       (uint16_t)hash.executionSIMDGroups }));
-  combine_32(seed, pack_32(simd::ushort2 { hash.Hq, hash.Hk }));
-  combine_32(seed, pack_32(simd::ushort2 { hash.qScaleTileSize, hash.kvScaleTileSize }));
-  combine_32(seed, hash.vMeanThreads);
-  combine_32(seed, pack_32(simd::ushort2 {
+  seed = combine_32(seed, pack_32(simd::ushort2 { hash.Hq, hash.Hk }));
+  seed = combine_32(seed, pack_32(simd::ushort2 { hash.qScaleTileSize, hash.kvScaleTileSize }));
+  seed = combine_32(seed, hash.vMeanThreads);
+  seed = combine_32(seed, pack_32(simd::ushort2 {
       (uint16_t)(hash.hasCRemainder ? 1 : 0),
       hash.threadBarrierEveryC }));
-  combine_32(seed, pack_32(simd::ushort2 {
+  seed = combine_32(seed, pack_32(simd::ushort2 {
       (uint16_t)hash.ioPrecision.value,
       (uint16_t)(hash.lowPrecisionIntermediates ? 1 : 0) }));
-  combine_32(seed, pack_32(simd::ushort2 {
+  seed = combine_32(seed, pack_32(simd::ushort2 {
       (uint16_t)hash.type.value,
       (uint16_t)(hash.isCausal ? 1 : 0) }));
-  combine_32(seed, pack_32(simd::ushort2 {
+  seed = combine_32(seed, pack_32(simd::ushort2 {
       (uint16_t)(hash.masked ? 1 : 0),
       (uint16_t)(hash.hasCausalEmptyRows ? 1 : 0) }));
-  combine_32(seed, hash.isVarlen ? 1 : 0);
-  combine_32(seed, hash.attentionSinks ? 1 : 0);
-  combine_32(seed, *reinterpret_cast<const uint32_t*>(&hash.scale));
+  seed = combine_32(seed, hash.isVarlen ? 1 : 0);
+  seed = combine_32(seed, hash.attentionSinks ? 1 : 0);
+  seed = combine_32(seed, uint32_t(std::hash<float>{}(hash.scale)));
   return seed;
 }
 

@@ -12,6 +12,7 @@ bool Int8GemvDescriptor::operator==(const Int8GemvDescriptor& rhs) const {
   memoryPrecision == rhs.memoryPrecision &&
   nrows == rhs.nrows &&
   ncols == rhs.ncols &&
+  batchStrides.has_value() == rhs.batchStrides.has_value() &&
   simd_all(batchStrides.value_or(simd::uint4(UINT32_MAX)) == rhs.batchStrides.value_or(simd::uint4(UINT32_MAX)));
 }
 

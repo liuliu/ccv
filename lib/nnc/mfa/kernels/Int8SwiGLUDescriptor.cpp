@@ -15,7 +15,7 @@ std::size_t std::hash<Int8SwiGLUDescriptor>::operator()(
   std::size_t seed = 0;
   seed = combine_32(seed, value.N);
   seed = combine_32(seed, value.K);
-  seed = combine_32(seed, reinterpret_cast<const uint32_t&>(value.clamp));
+  seed = combine_32(seed, uint32_t(std::hash<float>{}(value.clamp)));
   seed = combine_32(seed, (uint32_t)value.memoryPrecision.value);
   return seed;
 }

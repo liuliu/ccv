@@ -28,8 +28,10 @@ bool NAMatMulDescriptor::operator==(const NAMatMulDescriptor& rhs) const {
   return
   (batchDimension == rhs.batchDimension) &&
   simd_all(lhsMatrixDimensions == rhsMatrixDimensions) &&
+  leadingDimensions.has_value() == rhs.leadingDimensions.has_value() &&
   simd_all(leadingDimensions.value_or(simd::uint2(UINT32_MAX)) == rhs.leadingDimensions.value_or(simd::uint2(UINT32_MAX))) &&
-  (loadM || simd_all(batchStrides.value_or(simd::uint4(UINT32_MAX)) == rhs.batchStrides.value_or(simd::uint4(UINT32_MAX)))) &&
+  (loadM || (batchStrides.has_value() == rhs.batchStrides.has_value() &&
+    simd_all(batchStrides.value_or(simd::uint4(UINT32_MAX)) == rhs.batchStrides.value_or(simd::uint4(UINT32_MAX))))) &&
   memoryPrecisions == rhs.memoryPrecisions &&
   registerPrecisionC == rhs.registerPrecisionC &&
   simd_all(transposeState == rhs.transposeState) &&
@@ -41,25 +43,25 @@ bool NAMatMulDescriptor::operator==(const NAMatMulDescriptor& rhs) const {
 std::size_t std::hash<NAMatMulDescriptor>::operator()(const NAMatMulDescriptor& hash) const noexcept {
   std::size_t seed = 0;
   using namespace ccv::nnc::mfa::hash;
-  combine_64(seed, hash.batchDimension);
-  combine_32(seed, hash.loadM ? groupM(hash.matrixDimensions[0]) : hash.matrixDimensions[0]);
-  combine_32(seed, hash.matrixDimensions[1]);
-  combine_32(seed, hash.matrixDimensions[2]);
+  seed = combine_64(seed, hash.batchDimension);
+  seed = combine_32(seed, hash.loadM ? groupM(hash.matrixDimensions[0]) : hash.matrixDimensions[0]);
+  seed = combine_32(seed, hash.matrixDimensions[1]);
+  seed = combine_32(seed, hash.matrixDimensions[2]);
   if (hash.leadingDimensions.has_value()) {
-    combine_32(seed, hash.leadingDimensions.value()[0]);
-    combine_32(seed, hash.leadingDimensions.value()[1]);
+    seed = combine_32(seed, hash.leadingDimensions.value()[0]);
+    seed = combine_32(seed, hash.leadingDimensions.value()[1]);
   }
   if (!hash.loadM && hash.batchStrides.has_value()) {
-    combine_32(seed, hash.batchStrides.value()[0]);
-    combine_32(seed, hash.batchStrides.value()[1]);
-    combine_32(seed, hash.batchStrides.value()[2]);
-    combine_32(seed, hash.batchStrides.value()[3]);
+    seed = combine_32(seed, hash.batchStrides.value()[0]);
+    seed = combine_32(seed, hash.batchStrides.value()[1]);
+    seed = combine_32(seed, hash.batchStrides.value()[2]);
+    seed = combine_32(seed, hash.batchStrides.value()[3]);
   }
-  combine_64(seed, pack_64(simd::ushort4 { hash.memoryPrecisions.A.value, hash.memoryPrecisions.B.value, hash.memoryPrecisions.C.value, hash.memoryPrecisions.bias.value }));
-  combine_32(seed, pack_32(simd::uchar4 { hash.transposeState[0], hash.transposeState[1], hash.transposeState[2], 0 }));
-  combine_32(seed, pack_32(simd::uchar4 { hash.useBias, hash.loadM, hash.supportIndirectCommandBuffers, 0 }));
+  seed = combine_64(seed, pack_64(simd::ushort4 { hash.memoryPrecisions.A.value, hash.memoryPrecisions.B.value, hash.memoryPrecisions.C.value, hash.memoryPrecisions.bias.value }));
+  seed = combine_32(seed, pack_32(simd::uchar4 { hash.transposeState[0], hash.transposeState[1], hash.transposeState[2], 0 }));
+  seed = combine_32(seed, pack_32(simd::uchar4 { hash.useBias, hash.loadM, hash.supportIndirectCommandBuffers, 0 }));
   if (hash.registerPrecisionC.has_value()) {
-    combine_32(seed, pack_32(simd::ushort2 { hash.registerPrecisionC.value().value, 0 }));
+    seed = combine_32(seed, pack_32(simd::ushort2 { hash.registerPrecisionC.value().value, 0 }));
   }
   return seed;
 }

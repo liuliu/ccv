@@ -25,7 +25,7 @@ std::size_t std::hash<MoERoutingDescriptor>::operator()(const MoERoutingDescript
 	seed = combine_32(seed, hash.expertCount);
 	seed = combine_32(seed, hash.kth);
 	seed = combine_32(seed, hash.hidden);
-	seed = combine_32(seed, reinterpret_cast<const uint32_t&>(hash.weightScale));
+	seed = combine_32(seed, uint32_t(std::hash<float>{}(hash.weightScale)));
 	seed = combine_32(seed, hash.preselected ? 1 : 0);
 	seed = combine_32(seed, hash.singleInputToken ? 1 : 0);
 	seed = combine_64(seed, std::hash<float>()(hash.normalizationEpsilon));

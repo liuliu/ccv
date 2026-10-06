@@ -31,14 +31,14 @@ bool NormalizationDescriptor::operator==(const NormalizationDescriptor& rhs) con
 static std::size_t _normalization_descriptor_hash(const uint64_t data_type, const uint32_t channel_count, const uint32_t channel_groups, const uint32_t sequence_count, const float epsilon, const float scale, const uint8_t elementwise_affine, const uint8_t scale_translation_batched, const uint8_t normalization_type, const uint8_t reuse_saved_statistics, const bool load_m, const uint32_t src_batch_stride, const uint32_t dst_batch_stride) noexcept {
   using namespace ccv::nnc::mfa::hash;
   std::size_t seed = 0;
-  combine_64(seed, data_type);
-  combine_64(seed, pack_64(simd::uint2 { channel_count, channel_groups }));
-  combine_64(seed, pack_64(simd::uint2 { load_m ? 0 : sequence_count, *reinterpret_cast<const uint32_t*>(&epsilon) }));
-  combine_32(seed, *reinterpret_cast<const uint32_t*>(&scale));
-  combine_32(seed, pack_32(simd::uchar4 { elementwise_affine, scale_translation_batched, normalization_type, reuse_saved_statistics }));
-  combine_32(seed, load_m ? 1 : 0);
+  seed = combine_64(seed, data_type);
+  seed = combine_64(seed, pack_64(simd::uint2 { channel_count, channel_groups }));
+  seed = combine_64(seed, pack_64(simd::uint2 { load_m ? 0 : sequence_count, *reinterpret_cast<const uint32_t*>(&epsilon) }));
+  seed = combine_32(seed, *reinterpret_cast<const uint32_t*>(&scale));
+  seed = combine_32(seed, pack_32(simd::uchar4 { elementwise_affine, scale_translation_batched, normalization_type, reuse_saved_statistics }));
+  seed = combine_32(seed, load_m ? 1 : 0);
   if (!load_m)
-    combine_64(seed, pack_64(simd::uint2 { src_batch_stride, dst_batch_stride }));
+    seed = combine_64(seed, pack_64(simd::uint2 { src_batch_stride, dst_batch_stride }));
   return seed;
 }
 

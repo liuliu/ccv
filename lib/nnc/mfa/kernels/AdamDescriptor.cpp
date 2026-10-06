@@ -20,11 +20,11 @@ bool AdamDescriptor::operator==(const AdamDescriptor& rhs) const {
 std::size_t std::hash<AdamDescriptor>::operator()(const AdamDescriptor& hash) const noexcept {
   using namespace ccv::nnc::mfa::hash;
   std::size_t seed = 0;
-  combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.memoryPrecision.value, (unsigned int)hash.adamw | ((unsigned int)hash.amsgrad << 8) }));
-  combine_64(seed, pack_64(simd::uint2 { *reinterpret_cast<const uint32_t*>(&hash.rate), *reinterpret_cast<const uint32_t*>(&hash.scale) }));
-  combine_64(seed, pack_64(simd::uint2 { *reinterpret_cast<const uint32_t*>(&hash.beta1), *reinterpret_cast<const uint32_t*>(&hash.beta2) }));
-  combine_64(seed, pack_64(simd::uint2 { *reinterpret_cast<const uint32_t*>(&hash.decay), *reinterpret_cast<const uint32_t*>(&hash.epsilon) }));
-  combine_64(seed, hash.length);
+  seed = combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.memoryPrecision.value, (unsigned int)hash.adamw | ((unsigned int)hash.amsgrad << 8) }));
+  seed = combine_64(seed, pack_64(simd::uint2 { uint32_t(std::hash<float>{}(hash.rate)), uint32_t(std::hash<float>{}(hash.scale)) }));
+  seed = combine_64(seed, pack_64(simd::uint2 { uint32_t(std::hash<float>{}(hash.beta1)), uint32_t(std::hash<float>{}(hash.beta2)) }));
+  seed = combine_64(seed, pack_64(simd::uint2 { uint32_t(std::hash<float>{}(hash.decay)), uint32_t(std::hash<float>{}(hash.epsilon)) }));
+  seed = combine_64(seed, hash.length);
   return seed;
 }
 

@@ -14,8 +14,8 @@ bool SegmentedGEMMPrologueKernelDescriptor::operator==(const SegmentedGEMMProlog
 std::size_t std::hash<SegmentedGEMMPrologueKernelDescriptor>::operator()(const SegmentedGEMMPrologueKernelDescriptor& hash) const noexcept {
   std::size_t seed = 0;
   using namespace ccv::nnc::mfa::hash;
-  combine_64(seed, pack_64(simd::ushort4 { hash.memoryPrecisions.A.value, hash.memoryPrecisions.B.value, hash.memoryPrecisions.C.value, hash.memoryPrecisions.bias.value }));
-  combine_32(seed, pack_32(simd::uchar4 { hash.useBias, 0, 0, 0 }));
+  seed = combine_64(seed, pack_64(simd::ushort4 { hash.memoryPrecisions.A.value, hash.memoryPrecisions.B.value, hash.memoryPrecisions.C.value, hash.memoryPrecisions.bias.value }));
+  seed = combine_32(seed, pack_32(simd::uchar4 { hash.useBias, 0, 0, 0 }));
   return seed;
 }
 

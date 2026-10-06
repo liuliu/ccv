@@ -14,6 +14,8 @@
 #include "nnc/mfa/ccv_nnc_mfa.hpp"
 #include "nnc/mfa/kernels/NAInt8MatMulDescriptor.hpp"
 #include "nnc/mfa/kernels/NAInt8MatMulKernel.hpp"
+#include "nnc/mfa/kernels/GEMMDescriptor.hpp"
+#include "nnc/mfa/kernels/AdamDescriptor.hpp"
 
 namespace {
 using Precision = GEMMOperandPrecision;
@@ -78,15 +80,44 @@ std::unique_ptr<Pipeline> pipeline(MTL::Device* device, Cache& cache, const NAIn
 
 void validate_cache(MTL::Device* device)
 {
-  // Equal dynamic descriptors must select the same source configuration on
-  // every device profile, including the M-dependent address admission limits.
+  // Hashes must distinguish representative shapes, while equality still
+  // permits cache hits for different representations of the same value.
+  GEMMDescriptor gemm = {};
+  gemm.matrixDimensions = simd::uint3{512, 4096, 14336};
+  std::unordered_map<size_t, uint32_t> hashes;
+  for (uint32_t M = 1; M <= 128; ++M) {
+    gemm.matrixDimensions[0] = M;
+    hashes.emplace(std::hash<GEMMDescriptor>{}(gemm), M);
+  }
+  require(hashes.size() == 128, "GEMM shape hashing discards descriptor fields");
+  auto accumulated = gemm; accumulated.loadPreviousC = true;
+  require(!(gemm == accumulated), "GEMM cache aliases overwrite and accumulate pipelines");
+  auto explicit_strides = gemm;
+  explicit_strides.leadingDimensions = simd::uint3(UINT32_MAX);
+  require(!(gemm == explicit_strides), "GEMM cache aliases absent and explicit leading dimensions");
+  explicit_strides = gemm;
+  explicit_strides.batchStrides = simd::uint4(UINT32_MAX);
+  require(!(gemm == explicit_strides), "GEMM cache aliases absent and explicit batch strides");
+  AdamDescriptor adam = {};
+  adam.length = 1024;
+  std::unordered_map<AdamDescriptor, int> adam_cache;
+  adam_cache.emplace(adam, 1);
+  for (float AdamDescriptor::* field : {&AdamDescriptor::rate, &AdamDescriptor::scale,
+      &AdamDescriptor::beta1, &AdamDescriptor::beta2, &AdamDescriptor::decay, &AdamDescriptor::epsilon}) {
+    auto negative_zero = adam;
+    negative_zero.*field = -0.0f;
+    require(negative_zero == adam && std::hash<AdamDescriptor>{}(negative_zero) == std::hash<AdamDescriptor>{}(adam) &&
+        adam_cache.find(negative_zero) != adam_cache.end(), "Equal signed-zero descriptor missed its cache entry");
+  }
+
+  // Pipeline keys omit runtime M; the selected kernel configuration is a
+  // separate lookup dimension, including M-dependent address admission limits.
   size_t checked = 0;
   for (uint32_t cores : {0u, 10u, 35u, 36u, 40u, 48u, 64u, 80u, 128u})
     for (auto shape : {simd::uint2{1024, 4096}, {1536, 6144}, {2048, 8192},
         {2176, 8448}, {2432, 9216}, {2560, 8192}, {2560, 9216}, {4096, 12288},
         {6144, 24576}, {16384, 4096}, {262272, 16384}, {2147483500u, 4096},
         {1536, 0}, {2560, 65536}}) {
-      std::unordered_map<NAInt8MatMulDescriptor, NAInt8MatMulKernelDescriptor> ranges;
       std::vector<uint32_t> rows;
       for (uint32_t M = 1; M <= 4352; ++M) rows.push_back(M);
       for (uint64_t boundary : {uint64_t(UINT32_MAX) / std::max(1u, shape[0]) + 1,
@@ -100,9 +131,9 @@ void validate_cache(MTL::Device* device)
         d.matrixDimensions = simd::uint3{M, shape[0], shape[1]};
         d.loadM = true;
         const auto config = NAInt8MatMulKernelDescriptor(d, DeviceProperties{cores});
-        auto previous = ranges.emplace(d, config);
-        require(previous.second || previous.first->second == config,
-          "Equal dynamic descriptors select different source configurations");
+        auto normalized = d; normalized.matrixDimensions[0] = 0;
+        require(d == normalized && std::hash<NAInt8MatMulDescriptor>{}(d) == std::hash<NAInt8MatMulDescriptor>{}(normalized),
+          "Runtime M still partitions the pipeline key");
         d.loadM = false;
         auto fixed = NAInt8MatMulKernelDescriptor(d, DeviceProperties{cores});
         fixed.loadM = true;
@@ -113,21 +144,28 @@ void validate_cache(MTL::Device* device)
 
   // Compile representative entries in both call orders. Check actual cache
   // hits against uncached selection, not just descriptor equality in isolation.
-  for (uint32_t cores : {10u, 36u, 40u, 80u})
+  for (uint32_t cores : {10u, 35u, 36u, 40u, 80u})
     for (bool reverse : {false, true}) {
       ShaderCache cache;
       auto find = [&](const NAInt8MatMulDescriptor& d) {
         return cache.findKernel<NAInt8MatMulKernel, NAInt8MatMulDescriptor, NAInt8MatMulKernelDescriptor>(
           d, device, DeviceProperties{cores});
       };
-      for (auto shape : {simd::uint2{2560, 9216}, {2176, 8448}, {2560, 8192}, {1536, 6144}}) {
+      for (auto shape : {simd::uint2{2560, 9216}, {2176, 8448}, {2560, 8192}, {1536, 6144}, {4096, 14336}}) {
+        std::unordered_map<NAInt8MatMulKernelDescriptor, PipelineValue<NAInt8MatMulKernel>*> pipelines;
         std::vector<uint32_t> rows = {511, 512, 513, 575, 576, 577, 2457, 2458, 4095, 4096, 4097};
+        if (shape[0] == 4096)
+          for (uint32_t M = 512; M <= 8192; M += 64) rows.push_back(M);
         if (reverse) std::reverse(rows.begin(), rows.end());
         for (uint32_t M : rows) {
           NAInt8MatMulDescriptor d;
           d.matrixDimensions = simd::uint3{M, shape[0], shape[1]}; d.loadM = true;
           const auto expected = NAInt8MatMulKernelDescriptor(d, DeviceProperties{cores});
-          auto actual = find(d)->kernel;
+          auto* value = find(d);
+          const auto previous = pipelines.emplace(expected, value);
+          require(previous.second || previous.first->second == value,
+            "Equivalent dynamic-M source / constants created duplicate pipelines");
+          auto actual = value->kernel;
           require(actual->useRegisterOperands == expected.useRegisterOperands &&
               simd_all(actual->blockDimensions == expected.blockDimensions) &&
               actual->groupM == expected.groupM,
@@ -153,7 +191,7 @@ void validate_cache(MTL::Device* device)
         "K specialization does not share the source kernel");
       d.matrixDimensions = simd::uint3{512, 2560, 9216}; d.loadM = false;
       first = find(d);
-      require(first->kernel->useRegisterOperands == (cores >= 40), "Fixed-M register selection changed");
+      require(first->kernel->useRegisterOperands == (cores >= 36), "Fixed-M register selection changed");
       d.matrixDimensions[0] = 513;
       require(find(d) != first, "Static-M pipeline omits M");
     }
@@ -165,8 +203,8 @@ void validate_cache(MTL::Device* device)
   equal.leadingDimensions = simd::uint2(UINT32_MAX);
   require(!(d == equal), "Explicit strides alias absent optional strides");
   equal = d; equal.matrixDimensions[0] = 512;
-  require(!(d == equal) && std::hash<NAInt8MatMulDescriptor>{}(d) != std::hash<NAInt8MatMulDescriptor>{}(equal),
-    "Dynamic-M selection boundary omitted from equality/hash");
+  require(d == equal && std::hash<NAInt8MatMulDescriptor>{}(d) == std::hash<NAInt8MatMulDescriptor>{}(equal),
+    "Dynamic-M pipeline key includes a source-selection boundary");
   std::cout << "validation descriptor_cache configurations=" << checked << " PASS\n";
 }
 

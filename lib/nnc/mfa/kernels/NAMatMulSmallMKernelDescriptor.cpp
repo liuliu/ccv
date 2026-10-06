@@ -14,13 +14,13 @@ bool NAMatMulSmallMKernelDescriptor::operator==(const NAMatMulSmallMKernelDescri
 std::size_t std::hash<NAMatMulSmallMKernelDescriptor>::operator()(const NAMatMulSmallMKernelDescriptor& hash) const noexcept {
   std::size_t seed = 0;
   using namespace ccv::nnc::mfa::hash;
-  combine_64(seed, pack_64(simd_make_ushort4(hash.blockDimensions, 0)));
-  combine_64(seed, pack_64(simd::ushort4 {
+  seed = combine_64(seed, pack_64(simd_make_ushort4(hash.blockDimensions, 0)));
+  seed = combine_64(seed, pack_64(simd::ushort4 {
       hash.memoryPrecisions.A.value,
       hash.memoryPrecisions.B.value,
       hash.memoryPrecisions.C.value,
       hash.memoryPrecisions.bias.value }));
-  combine_64(seed, pack_64(simd::ushort4 {
+  seed = combine_64(seed, pack_64(simd::ushort4 {
       hash.pack,
       hash.executionSIMDGroups,
       uint16_t(hash.useBias),

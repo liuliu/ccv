@@ -1,0 +1,59 @@
+Short-K NAInt8MatMul policy: M5 iPad (10 cores) and M5 Max (40 cores)
+
+Decision: remove the separate <=40-core / K<=8192 register exclusion.
+Keep the existing common >=36 eligibility gate and remaining shape/layout
+restrictions. Favor the measured tail gains over small aligned-case losses;
+add no new threshold, alignment condition, or production option.
+
+GPU milliseconds including activation quantization; median of launch medians.
+Native128 = 128x128x128 / 8 SIMD groups.
+Native64  = 64x128x128 / 4 SIMD groups.
+Register  = 64x128x32  / 8 SIMD groups.
+
+M x N x K             iPad: native128/native64/register    Max: native128/native64/register
+2048x4096x4096                 3.025/2.561/3.156    0.786/0.618/0.625
+4096x6144x6144                 14.154/16.712/14.998    3.309/2.710/2.702
+4096x4096x8192                 12.621/10.860/14.245    2.905/2.408/2.492
+8192x3072x6144                 18.838/28.302/15.370    3.324/2.848/2.834
+4095x6143x6144                 14.531/29.117/15.470    3.513/3.281/2.858
+4096x4096x8160                 14.902/20.137/15.537    3.031/2.495/2.477
+4097x4097x8192 dynamic         13.842/23.537/14.712    3.354/2.860/2.577
+
+Max register vs native64: the two M/N-tail cases improve 12.9% and 9.9%.
+The two losing aligned cases regress 1.2% and 3.5%; the other three cases
+change by less than 1%. For these shapes, 10-core production still selects native128.
+
+Crossover estimates from both measured devices:
+Let D(C)=Tregister(C)-Tnative(C). Two fits to D(10),D(40):
+  linear gap: C=10+30*D(10)/(D(10)-D(40))
+  inverse-core gap A+B/C: C=40*(D(10)-D(40))/(D(10)-4*D(40))
+Against native64, the two losing aligned shapes project ties at 40.4-40.8
+(linear) or 41.6-43.3 (inverse-core) cores. These are extrapolations, since
+neither measured endpoint favors register. Tail cases favor register over
+native64 at BOTH endpoints: there is no bracketed crossing for that pair.
+Against native128, the M/N-tail crossings are 25.9-27.7 (linear) or 16.6-17.9
+(inverse-core). The retained 36-core gate is a conservative policy choice,
+not a newly measured universal crossover. No 36-core or Ultra GPU was tested.
+
+The estimates depend on shape, model, clocks, bandwidth, and cache as well as
+core count. Exact proportional T=B/C scaling cannot create a crossover.
+iPad launch variation was substantial, particularly with native64; all runs
+are retained, including a repeat of 4096x6144x6144 with longer cooldowns.
+
+90 launches: 21 samples each after 0.3 GPU-second warmup; 15-second
+cooldowns, 30 seconds for the six repeat launches. Thermal state nominal
+at every start/end. All finite and sampled CPU-reference checks passed;
+full-output SHA256 agrees across both devices and all three kernels.
+
+Raw samples, run order, source hashes, isolated harness, and validation logs:
+/private/tmp/ccv-short-k-crossover-20261005/
+The measurement-only override exists solely in that temporary source copy.
+
+Final production validation (measurement override removed):
+- Debug integration build passed; rowwise INT8 integration tests 2/2 passed.
+- Max: 88 dynamic-M selection/reuse cases passed. All seven measured shapes
+  select register operands and reproduce the paired-run output hashes.
+- Max and iPad: 549720 descriptor configurations, actual pipeline reuse,
+  and 18 direct register precision/rotation/dynamic-M cases passed per device.
+- iPad: aligned, M/N-tail, and dynamic-M production checks passed with
+  native128 selected and matching hashes. All final iPad thermal checks nominal.

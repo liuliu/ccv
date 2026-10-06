@@ -13,8 +13,8 @@ std::size_t std::hash<SignedSqrtDescriptor>::operator()(const SignedSqrtDescript
   using namespace ccv::nnc::mfa::hash;
   const SignedSqrtKernelDescriptor kernelDesc = { descriptor.gradient, descriptor.value, descriptor.loadM, descriptor.memoryPrecision };
   std::size_t seed = std::hash<SignedSqrtKernelDescriptor>()(kernelDesc);
-  combine_32(seed, descriptor.loadM ? 0 : descriptor.length);
-  combine_64(seed, std::hash<float>()(descriptor.minimum_magnitude));
+  seed = combine_32(seed, descriptor.loadM ? 0 : descriptor.length);
+  seed = combine_64(seed, std::hash<float>()(descriptor.minimum_magnitude));
   return seed;
 }
 

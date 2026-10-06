@@ -4,6 +4,8 @@
 #include "nnc/mfa/3rdparty/metal-cpp/Metal.hpp"
 #include "PipelineValue.hpp"
 #include "DeviceProperties.hpp"
+#include <type_traits>
+#include <cassert>
 
 using TypeInfoRef = std::reference_wrapper<const std::type_info>;
 
@@ -69,6 +71,11 @@ public:
   /// Wrap every call to this function in an autoreleasepool.
   template<typename Kernel, typename Descriptor, typename KernelDescriptor>
   PipelineValue<Kernel>* findKernel(Descriptor descriptor, MTL::Device *const device, const DeviceProperties &dprops) noexcept {
+    // New-style kernel descriptors select the source before pipeline lookup.
+    // Runtime dimensions can then be omitted from the execution descriptor's
+    // equality/hash without conflating different source configurations.
+    if constexpr (std::is_constructible_v<KernelDescriptor, const Descriptor&, const DeviceProperties&>)
+      return findKernel<Kernel, Descriptor, KernelDescriptor>(descriptor, KernelDescriptor(descriptor, dprops), device);
     UnorderedMapWrapper<Descriptor, std::unique_ptr<PipelineValue<Kernel>>> *pipelineCache = static_cast<UnorderedMapWrapper<Descriptor, std::unique_ptr<PipelineValue<Kernel>>> *>(this->pipelineCache.try_emplace(typeid(Descriptor), std::make_unique<UnorderedMapWrapper<Descriptor, std::unique_ptr<PipelineValue<Kernel>>>>()).first->second.get());
     auto iterator = pipelineCache->map.find(descriptor);
     if (iterator != pipelineCache->map.end()) {
@@ -80,6 +87,29 @@ public:
     auto result = descriptor.findKernel(device, dprops, binaryArchivesToRead, binaryArchiveToWrite, this->pathToWrite, &libraryCache->map);
     pipelineCache->map[descriptor] = std::unique_ptr<PipelineValue<Kernel>>(result.second);
     return result.second;
+  }
+
+  template<typename Kernel, typename Descriptor, typename KernelDescriptor>
+  PipelineValue<Kernel>* findKernel(const Descriptor& descriptor, const KernelDescriptor& kernelDescriptor, MTL::Device *const device) noexcept {
+    using Pipelines = std::unordered_map<Descriptor, std::unique_ptr<PipelineValue<Kernel>>>;
+    using Configurations = UnorderedMapWrapper<KernelDescriptor, Pipelines>;
+    auto* configurations = static_cast<Configurations*>(this->pipelineCache.try_emplace(
+        typeid(Descriptor), std::make_unique<Configurations>()).first->second.get());
+    auto& pipelines = configurations->map[kernelDescriptor];
+    auto* libraries = static_cast<UnorderedMapWrapper<KernelDescriptor, std::unique_ptr<Kernel>>*>(this->libraryCache.try_emplace(
+        typeid(KernelDescriptor), std::make_unique<UnorderedMapWrapper<KernelDescriptor, std::unique_ptr<Kernel>>>()).first->second.get());
+    const auto iterator = pipelines.find(descriptor);
+    if (iterator != pipelines.end()) {
+      // Check that a hit belongs to the source selected for this execution.
+      assert(libraries->map.find(kernelDescriptor) != libraries->map.end() &&
+          libraries->map.find(kernelDescriptor)->second.get() == iterator->second->kernel);
+      return iterator->second.get();
+    }
+    auto result = descriptor.findKernel(device, kernelDescriptor, binaryArchivesToRead(device),
+        binaryArchiveToWrite(device), this->pathToWrite, &libraries->map);
+    auto* pipeline = result.second;
+    pipelines.emplace(descriptor, std::unique_ptr<PipelineValue<Kernel>>(pipeline));
+    return pipeline;
   }
 
   void evict() noexcept {

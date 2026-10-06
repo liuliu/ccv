@@ -261,7 +261,6 @@ void ccv_nnc_mfa_encode_scaled_gemm(mfa::context* context, ccv_nnc_mfa_scaled_ge
     matmulDesc.batchStrides = std::nullopt;
   }
   matmulDesc.useBias = params.fused_bias;
-  matmulDesc.inPlace = tensors[0] == tensors[2];
   // Quantize and consume a bounded row range before moving to the next one.
   // Large activation and weight working sets benefit from this ordering; small
   // weight matrices and nearly single-chunk inputs can regress from the extra
@@ -272,9 +271,11 @@ void ccv_nnc_mfa_encode_scaled_gemm(mfa::context* context, ccv_nnc_mfa_scaled_ge
   // The K <= 8192 profile already uses a smaller 64-row kernel tile and does
   // not consistently benefit from adding this second level of partitioning.
   // Keep batching, strided views and rotated activations on their existing path.
+  // Shared A/C storage can let an output chunk overwrite input rows before
+  // the next chunk quantizes them. Quantize all rows first in that case.
   const bool partitionRows =
       !NAInt8MatMulKernelDescriptor(matmulDesc, context->device_properties).useRegisterOperands &&
-      context->device_properties.coreCount >= 40 && params.data_type == MTL::DataTypeHalf &&
+      context->device_properties.coreCount >= 36 && params.data_type == MTL::DataTypeHalf &&
       params.batch_dimension == 1 && !params.leading_dimension_a && !params.leading_dimension_c &&
       !params.activation_hadamard_256 && params.M >= 16384 && params.K > 8192 &&
       uint64_t(params.K) <= uint64_t(3) * params.N &&
@@ -287,6 +288,8 @@ void ccv_nnc_mfa_encode_scaled_gemm(mfa::context* context, ccv_nnc_mfa_scaled_ge
   for (uint32_t chunk = 0; chunk < numChunks; ++chunk) {
     const uint32_t row = chunk * rowsPerChunk;
     params.M = std::min(rowsPerChunk, M - row);
+    // Re-select for each chunk: bounding M can admit register operands when
+    // the complete packed activation exceeds their 32-bit addressing range.
     matmulDesc.matrixDimensions[0] = params.M;
     const size_t activation_offset = tensor_offsets[0] + size_t(row) * params.K * matmulDesc.ioPrecision.size();
     const size_t output_offset = tensor_offsets[2] + size_t(row) * params.N * matmulDesc.ioPrecision.size();

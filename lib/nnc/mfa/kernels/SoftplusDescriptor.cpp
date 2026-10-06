@@ -14,9 +14,9 @@ bool SoftplusDescriptor::operator==(const SoftplusDescriptor& rhs) const {
 std::size_t std::hash<SoftplusDescriptor>::operator()(const SoftplusDescriptor& hash) const noexcept {
   using namespace ccv::nnc::mfa::hash;
   std::size_t seed = 0;
-  combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.memoryPrecision.value, (unsigned int)hash.value }));
-  combine_64(seed, hash.loadM ? 0 : hash.length);
-  combine_32(seed, hash.loadM ? 1 : 0);
+  seed = combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.memoryPrecision.value, (unsigned int)hash.value }));
+  seed = combine_64(seed, hash.loadM ? 0 : hash.length);
+  seed = combine_32(seed, hash.loadM ? 1 : 0);
   return seed;
 }
 

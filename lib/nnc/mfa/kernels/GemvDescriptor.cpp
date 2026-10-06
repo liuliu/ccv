@@ -14,6 +14,7 @@ bool GemvDescriptor::operator==(const GemvDescriptor& rhs) const {
   memoryPrecision == rhs.memoryPrecision &&
   nrows == rhs.nrows &&
   ncols == rhs.ncols &&
+  batchStrides.has_value() == rhs.batchStrides.has_value() &&
   simd_all(batchStrides.value_or(simd::uint3(UINT32_MAX)) == rhs.batchStrides.value_or(simd::uint3(UINT32_MAX)));
 }
 
@@ -44,12 +45,12 @@ uint32_t GemvDescriptor::cooperativeSIMDGroups(MTL::Device* const device, const 
 std::size_t std::hash<GemvDescriptor>::operator()(const GemvDescriptor& hash) const noexcept {
   using namespace ccv::nnc::mfa::hash;
   std::size_t seed = 0;
-  combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.memoryPrecision.value, (unsigned int)hash.fusedBias | ((unsigned int)hash.mrows << 8) | ((unsigned int)hash.cooperative << 16) }));
-  combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.nrows, (unsigned int)hash.ncols }));
+  seed = combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.memoryPrecision.value, (unsigned int)hash.fusedBias | ((unsigned int)hash.mrows << 8) | ((unsigned int)hash.cooperative << 16) }));
+  seed = combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.nrows, (unsigned int)hash.ncols }));
   if (hash.batchStrides.has_value()) {
-    combine_32(seed, hash.batchStrides.value()[0]);
-    combine_32(seed, hash.batchStrides.value()[1]);
-    combine_32(seed, hash.batchStrides.value()[2]);
+    seed = combine_32(seed, hash.batchStrides.value()[0]);
+    seed = combine_32(seed, hash.batchStrides.value()[1]);
+    seed = combine_32(seed, hash.batchStrides.value()[2]);
   }
   return seed;
 }

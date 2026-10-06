@@ -10,9 +10,9 @@ bool ClampDescriptor::operator==(const ClampDescriptor& rhs) const {
 std::size_t std::hash<ClampDescriptor>::operator()(const ClampDescriptor& hash) const noexcept {
   using namespace ccv::nnc::mfa::hash;
   std::size_t seed = 0;
-  combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.memoryPrecision.value, (unsigned int)hash.value }));
-  combine_64(seed, pack_64(simd::uint2 { hash.loadM ? 0 : hash.length, (unsigned int)hash.bounds }));
-  combine_32(seed, hash.loadM ? 1 : 0);
+  seed = combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.memoryPrecision.value, (unsigned int)hash.value }));
+  seed = combine_64(seed, pack_64(simd::uint2 { hash.loadM ? 0 : hash.length, (unsigned int)hash.bounds }));
+  seed = combine_32(seed, hash.loadM ? 1 : 0);
   return seed;
 }
 

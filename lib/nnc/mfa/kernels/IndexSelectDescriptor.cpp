@@ -16,11 +16,11 @@ std::size_t std::hash<IndexSelectDescriptor>::operator()(const IndexSelectDescri
 {
 	using namespace ccv::nnc::mfa::hash;
 	std::size_t seed = 0;
-	combine_32(seed, (uint32_t)value.dataType);
-	combine_32(seed, (uint32_t)value.vectorWidth);
-	combine_32(seed, (uint32_t)value.threadsPerRow);
-	combine_32(seed, value.loadM ? 0 : value.outputRows);
-	combine_32(seed, value.loadM ? 1 : 0);
+	seed = combine_32(seed, (uint32_t)value.dataType);
+	seed = combine_32(seed, (uint32_t)value.vectorWidth);
+	seed = combine_32(seed, (uint32_t)value.threadsPerRow);
+	seed = combine_32(seed, value.loadM ? 0 : value.outputRows);
+	seed = combine_32(seed, value.loadM ? 1 : 0);
 	return seed;
 }
 

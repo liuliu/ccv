@@ -25,6 +25,7 @@ bool AttentionDescriptor::operator==(const AttentionDescriptor& rhs) const {
   (lowPrecisionInputs == rhs.lowPrecisionInputs) &&
   (isBF16 == rhs.isBF16) &&
   (lowPrecisionIntermediates == rhs.lowPrecisionIntermediates) &&
+  leadingDimensions.has_value() == rhs.leadingDimensions.has_value() &&
   simd_all(leadingDimensions.value_or(simd::uint4(UINT32_MAX)) == rhs.leadingDimensions.value_or(simd::uint4(UINT32_MAX))) &&
   ((loadR || loadC) || batchStrides == rhs.batchStrides) &&
   simd_all(lhsDimensions == rhsDimensions) &&
@@ -34,28 +35,28 @@ bool AttentionDescriptor::operator==(const AttentionDescriptor& rhs) const {
 std::size_t std::hash<AttentionDescriptor>::operator()(const AttentionDescriptor& hash) const noexcept {
   std::size_t seed = 0;
   using namespace ccv::nnc::mfa::hash;
-  combine_32(seed, hash.batchDimension);
-  combine_32(seed, hash.Hq);
-  combine_32(seed, hash.Hk);
-  combine_32(seed, hash.loadR ? 0 : hash.matrixDimensions[0]);
-  combine_32(seed, hash.loadC ? 0 : hash.matrixDimensions[1]);
-  combine_32(seed, hash.matrixDimensions[2]);
+  seed = combine_32(seed, hash.batchDimension);
+  seed = combine_32(seed, hash.Hq);
+  seed = combine_32(seed, hash.Hk);
+  seed = combine_32(seed, hash.loadR ? 0 : hash.matrixDimensions[0]);
+  seed = combine_32(seed, hash.loadC ? 0 : hash.matrixDimensions[1]);
+  seed = combine_32(seed, hash.matrixDimensions[2]);
   if (hash.leadingDimensions.has_value()) {
-    combine_32(seed, hash.leadingDimensions.value()[0]);
-    combine_32(seed, hash.leadingDimensions.value()[1]);
-    combine_32(seed, hash.leadingDimensions.value()[2]);
-    combine_32(seed, hash.leadingDimensions.value()[3]);
+    seed = combine_32(seed, hash.leadingDimensions.value()[0]);
+    seed = combine_32(seed, hash.leadingDimensions.value()[1]);
+    seed = combine_32(seed, hash.leadingDimensions.value()[2]);
+    seed = combine_32(seed, hash.leadingDimensions.value()[3]);
   }
-  combine_32(seed, pack_32(simd::uchar4 { hash.transposeState[0], hash.transposeState[1], hash.transposeState[2], hash.transposeState[3] }));
-  combine_32(seed, pack_32(simd::uchar4 { hash.lowPrecisionInputs, hash.isBF16, hash.lowPrecisionIntermediates, hash.isCausal }));
-  combine_32(seed, pack_32(simd::ushort2 {
+  seed = combine_32(seed, pack_32(simd::uchar4 { hash.transposeState[0], hash.transposeState[1], hash.transposeState[2], hash.transposeState[3] }));
+  seed = combine_32(seed, pack_32(simd::uchar4 { hash.lowPrecisionInputs, hash.isBF16, hash.lowPrecisionIntermediates, hash.isCausal }));
+  seed = combine_32(seed, pack_32(simd::ushort2 {
       (uint16_t)(hash.masked ? 1 : 0),
       (uint16_t)(hash.isVarlen ? 1 : 0) }));
-  combine_32(seed, hash.attentionSinks ? 1 : 0);
-  combine_32(seed, hash.slidingWindow);
-  combine_32(seed, (hash.loadR || hash.loadC) ? 0 : hash.maskBatchStride);
-  combine_32(seed, (hash.loadR ? 1 : 0) | (hash.loadC ? 2 : 0));
-  combine_32(seed, pack_32(simd::ushort2 { hash.type.value, 0 } ));
+  seed = combine_32(seed, hash.attentionSinks ? 1 : 0);
+  seed = combine_32(seed, hash.slidingWindow);
+  seed = combine_32(seed, (hash.loadR || hash.loadC) ? 0 : hash.maskBatchStride);
+  seed = combine_32(seed, (hash.loadR ? 1 : 0) | (hash.loadC ? 2 : 0));
+  seed = combine_32(seed, pack_32(simd::ushort2 { hash.type.value, 0 } ));
   return seed;
 }
 

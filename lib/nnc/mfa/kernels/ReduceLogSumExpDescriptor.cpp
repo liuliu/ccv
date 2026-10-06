@@ -28,16 +28,16 @@ std::size_t std::hash<ReduceLogSumExpDescriptor>::operator()(const ReduceLogSumE
 {
   using namespace ccv::nnc::mfa::hash;
   std::size_t seed = 0;
-  combine_64(seed, pack_64(simd::uint2 {
+  seed = combine_64(seed, pack_64(simd::uint2 {
     static_cast<uint32_t>(value.memoryPrecision.value),
     value.columnCount,
   }));
-  combine_64(seed, pack_64(simd::uint2 {
+  seed = combine_64(seed, pack_64(simd::uint2 {
     value.partitionSize,
     value.partitionCount,
   }));
-  combine_64(seed, std::hash<float>()(value.scale));
-  combine_32(seed, value.partitioned ? 1u : 0u);
+  seed = combine_64(seed, std::hash<float>()(value.scale));
+  seed = combine_32(seed, value.partitioned ? 1u : 0u);
   return seed;
 }
 

@@ -1376,15 +1376,15 @@ std::ostream& operator<<(std::ostream& os, const mfa::attention::hash& hash) {
 std::size_t std::hash<mfa::attention::hash>::operator()(const mfa::attention::hash& hash) const noexcept {
   std::size_t seed = 0;
   using namespace mfa::hash;
-  combine_64(seed, hash.data_type);
-  combine_64(seed, pack_64(simd::uint2 { hash.R, hash.C }));
-  combine_64(seed, pack_64(simd::uint2 { hash.Hq, hash.Hk }));
-  combine_64(seed, pack_64(simd::uint2 { hash.D, pack_32(simd::uchar4 { hash.Q_trans, hash.K_trans, hash.V_trans, hash.O_trans })}));
-  combine_64(seed, pack_64(simd::uint2 { *reinterpret_cast<const uint32_t*>(&hash.alpha), pack_32(simd::uchar4 { hash.batched, hash.masked, hash.is_causal, hash.is_varlen })}));
-  combine_32(seed, hash.type);
-  combine_32(seed, hash.use_quantized_attention);
-  combine_32(seed, hash.attention_sinks);
-  combine_32(seed, hash.sliding_window);
-  combine_32(seed, hash.upcast);
+  seed = combine_64(seed, hash.data_type);
+  seed = combine_64(seed, pack_64(simd::uint2 { hash.R, hash.C }));
+  seed = combine_64(seed, pack_64(simd::uint2 { hash.Hq, hash.Hk }));
+  seed = combine_64(seed, pack_64(simd::uint2 { hash.D, pack_32(simd::uchar4 { hash.Q_trans, hash.K_trans, hash.V_trans, hash.O_trans })}));
+  seed = combine_64(seed, pack_64(simd::uint2 { uint32_t(std::hash<float>{}(hash.alpha)), pack_32(simd::uchar4 { hash.batched, hash.masked, hash.is_causal, hash.is_varlen })}));
+  seed = combine_32(seed, hash.type);
+  seed = combine_32(seed, hash.use_quantized_attention);
+  seed = combine_32(seed, hash.attention_sinks);
+  seed = combine_32(seed, hash.sliding_window);
+  seed = combine_32(seed, hash.upcast);
   return seed;
 }

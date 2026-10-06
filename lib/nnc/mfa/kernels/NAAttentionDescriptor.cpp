@@ -54,32 +54,32 @@ bool NAAttentionDescriptor::operator==(const NAAttentionDescriptor& rhs) const {
 std::size_t std::hash<NAAttentionDescriptor>::operator()(const NAAttentionDescriptor& hash) const noexcept {
   std::size_t seed = 0;
   using namespace ccv::nnc::mfa::hash;
-  combine_32(seed, hash.batchDimension);
-  combine_32(seed, hash.Hq);
-  combine_32(seed, hash.Hk);
-  combine_32(seed, hash.loadR ? 0 : hash.matrixDimensions[0]);
-  combine_32(seed, hash.loadC ? 0 : hash.matrixDimensions[1]);
-  combine_32(seed, hash.matrixDimensions[2]);
+  seed = combine_32(seed, hash.batchDimension);
+  seed = combine_32(seed, hash.Hq);
+  seed = combine_32(seed, hash.Hk);
+  seed = combine_32(seed, hash.loadR ? 0 : hash.matrixDimensions[0]);
+  seed = combine_32(seed, hash.loadC ? 0 : hash.matrixDimensions[1]);
+  seed = combine_32(seed, hash.matrixDimensions[2]);
   if (hash.loadR || hash.loadC) {
     const auto blockDimensions = hash.blockDimensions();
     const uint16_t executionSIMDGroups = hash.executionSIMDGroups();
-    combine_64(seed, pack_64(simd_make_ushort4(blockDimensions, 0)));
-    combine_32(seed, pack_32(simd::ushort2 {
+    seed = combine_64(seed, pack_64(simd_make_ushort4(blockDimensions, 0)));
+    seed = combine_32(seed, pack_32(simd::ushort2 {
         executionSIMDGroups,
         hash.splitKV(blockDimensions, executionSIMDGroups) }));
-    combine_32(seed, hash.checkCEdge1(blockDimensions) ? 1 : 0);
-    if (hash.loadR && !hash.isVarlen) combine_32(seed, hash.matrixDimensions[0] % blockDimensions[0] != 0);
-    if (hash.loadC && !hash.isVarlen) combine_32(seed, hash.matrixDimensions[1] % (blockDimensions[1] * ((hash.isCausal || hash.masked) ? 1 : 2)) != 0);
+    seed = combine_32(seed, hash.checkCEdge1(blockDimensions) ? 1 : 0);
+    if (hash.loadR && !hash.isVarlen) seed = combine_32(seed, hash.matrixDimensions[0] % blockDimensions[0] != 0);
+    if (hash.loadC && !hash.isVarlen) seed = combine_32(seed, hash.matrixDimensions[1] % (blockDimensions[1] * ((hash.isCausal || hash.masked) ? 1 : 2)) != 0);
   }
-  combine_32(seed, pack_32(simd::uchar4 { hash.lowPrecisionInputs, hash.isBF16, hash.lowPrecisionIntermediates, hash.isCausal }));
-  combine_32(seed, pack_32(simd::ushort2 {
+  seed = combine_32(seed, pack_32(simd::uchar4 { hash.lowPrecisionInputs, hash.isBF16, hash.lowPrecisionIntermediates, hash.isCausal }));
+  seed = combine_32(seed, pack_32(simd::ushort2 {
       (uint16_t)(hash.masked ? 1 : 0),
       (uint16_t)(hash.isVarlen ? 1 : 0) }));
-  combine_32(seed, hash.attentionSinks ? 1 : 0);
-  combine_32(seed, hash.slidingWindow);
-  combine_32(seed, hash.loadStrides ? 0 : hash.maskBatchStride);
-  combine_32(seed, pack_32(simd::ushort2 { hash.type.value, 0 } ));
-  combine_32(seed, (hash.loadC ? 1 : 0) | (hash.loadR ? 2 : 0) | (hash.loadStrides ? 4 : 0));
+  seed = combine_32(seed, hash.attentionSinks ? 1 : 0);
+  seed = combine_32(seed, hash.slidingWindow);
+  seed = combine_32(seed, hash.loadStrides ? 0 : hash.maskBatchStride);
+  seed = combine_32(seed, pack_32(simd::ushort2 { hash.type.value, 0 } ));
+  seed = combine_32(seed, (hash.loadC ? 1 : 0) | (hash.loadR ? 2 : 0) | (hash.loadStrides ? 4 : 0));
   return seed;
 }
 

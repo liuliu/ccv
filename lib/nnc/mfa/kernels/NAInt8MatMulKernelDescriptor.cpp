@@ -64,21 +64,22 @@ NAInt8MatMulKernelDescriptor::NAInt8MatMulKernelDescriptor(
     const DeviceProperties& dprops) noexcept
 {
   useRegisterOperands = [&]() {
-    // The register kernel consumes contiguous, unbatched rows and writes a
-    // separate output. Scalar IO precision and activation rotation are shared
-    // with the native path and do not restrict this choice.
-    if (descriptor.batchDimension != 1 || descriptor.leadingDimensions.has_value() || descriptor.inPlace)
+    // The register kernel consumes contiguous, unbatched rows and writes output
+    // after activation quantization. Scalar IO precision and rotation are
+    // shared with the native path and do not restrict this choice.
+    if (descriptor.batchDimension != 1 || descriptor.leadingDimensions.has_value())
       return false;
 
     const uint64_t M = descriptor.matrixDimensions[0], N = descriptor.matrixDimensions[1], K = descriptor.matrixDimensions[2];
     if (M > INT32_MAX - 63 || N > INT32_MAX - 127 || M * K > UINT32_MAX)
       return false;
 
-    // The 40-core Max favors the native four-group tile for K <= 8192.
+    // Keep short reductions eligible: tail gains outweigh small aligned-case
+    // losses without needing a separate core threshold or alignment rule.
     // Smaller GPUs retain native tiles unless B or C needs wider offsets.
     const uint64_t cores = dprops.coreCount;
     const bool needsWideOffsets = N * K > UINT32_MAX || M * N > UINT32_MAX;
-    if (!needsWideOffsets && (cores < 40 || (cores == 40 && K <= 8192)))
+    if (!needsWideOffsets && cores < 36)
       return false;
 
     // Keep the measured width / reduction range and the limit on deep

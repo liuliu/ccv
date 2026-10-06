@@ -22,16 +22,16 @@ bool GEMMKernelDescriptor::operator==(const GEMMKernelDescriptor& rhs) const {
 std::size_t std::hash<GEMMKernelDescriptor>::operator()(const GEMMKernelDescriptor& hash) const noexcept {
   std::size_t seed = 0;
   using namespace ccv::nnc::mfa::hash;
-  combine_64(seed, pack_64(simd_make_ushort4(hash.blockDimensions, 0)));
-  combine_64(seed, pack_64(simd::ushort4 { hash.memoryPrecisions.A.value, hash.memoryPrecisions.B.value, hash.memoryPrecisions.C.value, hash.memoryPrecisions.bias.value }));
+  seed = combine_64(seed, pack_64(simd_make_ushort4(hash.blockDimensions, 0)));
+  seed = combine_64(seed, pack_64(simd::ushort4 { hash.memoryPrecisions.A.value, hash.memoryPrecisions.B.value, hash.memoryPrecisions.C.value, hash.memoryPrecisions.bias.value }));
   if (hash.leadingBlockDimensions.has_value()) {
-    combine_64(seed, pack_64(simd_make_ushort4(hash.leadingBlockDimensions.value())));
+    seed = combine_64(seed, pack_64(simd_make_ushort4(hash.leadingBlockDimensions.value())));
   }
-  combine_32(seed, pack_32(simd::uchar4 { hash.preferAsyncLoad, hash.preferAsyncStore, 0, 0 }));
-  combine_64(seed, pack_64(simd::ushort4 { hash.registerPrecisions.A.value, hash.registerPrecisions.B.value, hash.registerPrecisions.C.value, hash.registerPrecisions.bias.value }));
-  combine_32(seed, pack_32(hash.splits));
-  combine_32(seed, pack_32(simd::uchar4 { hash.transposeState[0], hash.transposeState[1], hash.transposeState[2], hash.useBias }));
-  combine_32(seed, pack_32(simd::uchar4 { hash.loadM, 0, 0, 0 }));
+  seed = combine_32(seed, pack_32(simd::uchar4 { hash.preferAsyncLoad, hash.preferAsyncStore, 0, 0 }));
+  seed = combine_64(seed, pack_64(simd::ushort4 { hash.registerPrecisions.A.value, hash.registerPrecisions.B.value, hash.registerPrecisions.C.value, hash.registerPrecisions.bias.value }));
+  seed = combine_32(seed, pack_32(hash.splits));
+  seed = combine_32(seed, pack_32(simd::uchar4 { hash.transposeState[0], hash.transposeState[1], hash.transposeState[2], hash.useBias }));
+  seed = combine_32(seed, pack_32(simd::uchar4 { hash.loadM, 0, 0, 0 }));
   return seed;
 }
 

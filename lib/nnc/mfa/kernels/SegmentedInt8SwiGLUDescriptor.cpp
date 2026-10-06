@@ -21,7 +21,7 @@ std::size_t std::hash<SegmentedInt8SwiGLUDescriptor>::operator()(
   seed = combine_32(seed, value.routeCount);
   seed = combine_32(seed, value.format);
   seed = combine_32(seed, value.broadcastInput);
-  seed = combine_32(seed, reinterpret_cast<const uint32_t&>(value.clamp));
+  seed = combine_32(seed, uint32_t(std::hash<float>{}(value.clamp)));
   seed = combine_32(seed, (uint32_t)value.memoryPrecision.value);
   return seed;
 }

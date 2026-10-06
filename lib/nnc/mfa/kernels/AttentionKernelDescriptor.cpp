@@ -26,14 +26,14 @@ bool AttentionKernelDescriptor::operator==(const AttentionKernelDescriptor& rhs)
 std::size_t std::hash<AttentionKernelDescriptor>::operator()(const AttentionKernelDescriptor& hash) const noexcept {
   std::size_t seed = 0;
   using namespace ccv::nnc::mfa::hash;
-  combine_32(seed, (hash.loadR ? 1 : 0) | (hash.loadC ? 2 : 0));
-  combine_64(seed, pack_64(simd_make_ushort4(hash.blockDimensions, 0)));
-  combine_32(seed, pack_32(simd::ushort2 { hash.headDimension, hash.type.value }));
-  combine_32(seed, pack_32(simd::uchar4 { hash.preferAsyncCache, hash.preferAsyncLoad, hash.isCausal, hash.masked }));
+  seed = combine_32(seed, (hash.loadR ? 1 : 0) | (hash.loadC ? 2 : 0));
+  seed = combine_64(seed, pack_64(simd_make_ushort4(hash.blockDimensions, 0)));
+  seed = combine_32(seed, pack_32(simd::ushort2 { hash.headDimension, hash.type.value }));
+  seed = combine_32(seed, pack_32(simd::uchar4 { hash.preferAsyncCache, hash.preferAsyncLoad, hash.isCausal, hash.masked }));
   if (hash.isVarlen) {
-    combine_32(seed, pack_32(simd::ushort2 { 1, 0 }));
+    seed = combine_32(seed, pack_32(simd::ushort2 { 1, 0 }));
   }
-  combine_32(seed, hash.slidingWindow);
+  seed = combine_32(seed, hash.slidingWindow);
   return seed;
 }
 

@@ -16,9 +16,9 @@ bool SwishDescriptor::operator==(const SwishDescriptor& rhs) const {
 std::size_t std::hash<SwishDescriptor>::operator()(const SwishDescriptor& hash) const noexcept {
   using namespace ccv::nnc::mfa::hash;
   std::size_t seed = 0;
-  combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.memoryPrecision.value, (unsigned int)hash.value }));
-  combine_64(seed, pack_64(simd::uint2 { hash.loadM ? 0 : (unsigned int)hash.length, *reinterpret_cast<const uint32_t*>(&hash.beta) }));
-  combine_32(seed, hash.loadM ? 1 : 0);
+  seed = combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.memoryPrecision.value, (unsigned int)hash.value }));
+  seed = combine_64(seed, pack_64(simd::uint2 { hash.loadM ? 0 : (unsigned int)hash.length, uint32_t(std::hash<float>{}(hash.beta)) }));
+  seed = combine_32(seed, hash.loadM ? 1 : 0);
   return seed;
 }
 

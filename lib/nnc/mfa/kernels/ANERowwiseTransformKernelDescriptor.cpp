@@ -13,9 +13,9 @@ std::size_t std::hash<ANERowwiseTransformKernelDescriptor>::operator()(const ANE
 {
   std::size_t seed = 0;
   using namespace ccv::nnc::mfa::hash;
-  combine_32(seed, (uint32_t)hash.memoryPrecision.value);
-  combine_32(seed, hash.activationHadamard256 ? 1 : 0);
-  combine_32(seed, (uint32_t)hash.supportsApple10);
+  seed = combine_32(seed, (uint32_t)hash.memoryPrecision.value);
+  seed = combine_32(seed, hash.activationHadamard256 ? 1 : 0);
+  seed = combine_32(seed, (uint32_t)hash.supportsApple10);
   return seed;
 }
 

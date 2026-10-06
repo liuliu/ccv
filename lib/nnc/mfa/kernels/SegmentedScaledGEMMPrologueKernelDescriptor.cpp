@@ -10,7 +10,7 @@ std::size_t std::hash<SegmentedScaledGEMMPrologueKernelDescriptor>::operator()(c
 {
   std::size_t seed = 0;
   using namespace ccv::nnc::mfa::hash;
-  combine_32(seed, pack_32(simd::ushort2 { (uint16_t)hash.ioPrecision.value, (uint16_t)hash.useBias }));
+  seed = combine_32(seed, pack_32(simd::ushort2 { (uint16_t)hash.ioPrecision.value, (uint16_t)hash.useBias }));
   return seed;
 }
 

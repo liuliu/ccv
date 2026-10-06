@@ -19,8 +19,6 @@ struct NAInt8MatMulDescriptor {
   std::optional<simd::uint2> leadingDimensions;
   std::optional<uint32_t> packedABatchStride;
   std::optional<uint32_t> aScaleBatchStride;
-  // The source activation and destination share a buffer allocation.
-  bool inPlace = false;
   bool useBias = false;
   // Rotate contiguous groups along K with (H4 / 2) ^ tensor 4 before
   // row-wise quantization. K must be divisible by 256 and <= 65536;

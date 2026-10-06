@@ -30,9 +30,9 @@ bool WalshHadamardTransformDescriptor::operator==(const WalshHadamardTransformDe
 std::size_t std::hash<WalshHadamardTransformDescriptor>::operator()(const WalshHadamardTransformDescriptor& hash) const noexcept {
   using namespace ccv::nnc::mfa::hash;
   std::size_t seed = 0;
-  combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.memoryPrecision.value, hash.loadM ? 0 : hash.rowCount }));
-  combine_64(seed, pack_64(simd::uint2 { hash.dim, *reinterpret_cast<const uint32_t*>(&hash.scale) }));
-  combine_64(seed, hash.loadM ? 1 : 0);
+  seed = combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.memoryPrecision.value, hash.loadM ? 0 : hash.rowCount }));
+  seed = combine_64(seed, pack_64(simd::uint2 { hash.dim, uint32_t(std::hash<float>{}(hash.scale)) }));
+  seed = combine_64(seed, hash.loadM ? 1 : 0);
   return seed;
 }
 

@@ -23,20 +23,20 @@ bool Conv3DDescriptor::operator==(const Conv3DDescriptor& rhs) const {
 std::size_t std::hash<Conv3DDescriptor>::operator()(const Conv3DDescriptor& hash) const noexcept {
   std::size_t seed = 0;
   using namespace ccv::nnc::mfa::hash;
-  combine_64(seed, hash.dataType);
-  combine_32(seed, hash.batchDimension);
-  combine_32(seed, hash.inputChannels);
-  combine_32(seed, hash.outputChannels);
-  combine_32(seed, pack_32(hash.blockDimensions));
-  combine_32(seed, hash.paddingLeft);
-  combine_32(seed, hash.paddingRight);
-  combine_32(seed, hash.paddingTop);
-  combine_32(seed, hash.paddingBottom);
-  combine_64(seed, pack_64(simd_make_uint2(hash.matrixDimensions[0], hash.matrixDimensions[1])));
-  combine_32(seed, hash.matrixDimensions[2]);
-  combine_64(seed, pack_64(simd_make_uint2(hash.kernelDimensions[0], hash.kernelDimensions[1])));
-  combine_32(seed, hash.kernelDimensions[2]);
-  combine_32(seed, pack_32(simd::uchar4 { hash.useBias, 0, 0, 0 }));
+  seed = combine_64(seed, hash.dataType);
+  seed = combine_32(seed, hash.batchDimension);
+  seed = combine_32(seed, hash.inputChannels);
+  seed = combine_32(seed, hash.outputChannels);
+  seed = combine_32(seed, pack_32(hash.blockDimensions));
+  seed = combine_32(seed, hash.paddingLeft);
+  seed = combine_32(seed, hash.paddingRight);
+  seed = combine_32(seed, hash.paddingTop);
+  seed = combine_32(seed, hash.paddingBottom);
+  seed = combine_64(seed, pack_64(simd_make_uint2(hash.matrixDimensions[0], hash.matrixDimensions[1])));
+  seed = combine_32(seed, hash.matrixDimensions[2]);
+  seed = combine_64(seed, pack_64(simd_make_uint2(hash.kernelDimensions[0], hash.kernelDimensions[1])));
+  seed = combine_32(seed, hash.kernelDimensions[2]);
+  seed = combine_32(seed, pack_32(simd::uchar4 { hash.useBias, 0, 0, 0 }));
   return seed;
 }
 

@@ -29,17 +29,17 @@ std::size_t std::hash<ArgmaxDescriptor>::operator()(const ArgmaxDescriptor& valu
 {
   using namespace ccv::nnc::mfa::hash;
   std::size_t seed = 0;
-  combine_64(seed, pack_64(simd::uint2 {
+  seed = combine_64(seed, pack_64(simd::uint2 {
     static_cast<uint32_t>(value.memoryPrecision.value),
     value.columnCount,
   }));
-  combine_64(seed, pack_64(simd::uint2 {
+  seed = combine_64(seed, pack_64(simd::uint2 {
     value.partitionSize,
     value.partitionCount,
   }));
-  combine_32(seed, (value.gumbel ? 1u : 0u) | (value.partitioned ? 2u : 0u));
+  seed = combine_32(seed, (value.gumbel ? 1u : 0u) | (value.partitioned ? 2u : 0u));
   if (value.gumbel)
-    combine_32(seed, *reinterpret_cast<const uint32_t*>(&value.scale));
+    seed = combine_32(seed, uint32_t(std::hash<float>{}(value.scale)));
   return seed;
 }
 

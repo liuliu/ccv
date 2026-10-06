@@ -93,19 +93,19 @@ SparseIndexedAttentionR1Descriptor SparseIndexedAttentionR1Descriptor::select(
 std::size_t std::hash<SparseIndexedAttentionR1Descriptor>::operator()(const SparseIndexedAttentionR1Descriptor& hash) const noexcept {
   using namespace ccv::nnc::mfa::hash;
   std::size_t seed = 0;
-  combine_64(seed, pack_64(simd::uint2 {
+  seed = combine_64(seed, pack_64(simd::uint2 {
       (unsigned int)hash.memoryPrecision.value,
       (unsigned int)hash.mode }));
-  combine_64(seed, pack_64(simd::uint2 {
+  seed = combine_64(seed, pack_64(simd::uint2 {
       hash.loadK ? 0 : hash.denseRows,
       hash.loadK ? 0 : hash.sparseRows }));
-  combine_64(seed, pack_64(simd::uint2 { hash.loadK ? 0 : hash.K, hash.D }));
-  combine_32(seed, hash.H);
-  combine_64(seed, pack_64(simd::uint2 { hash.simdgroups, hash.workgroups }));
-  combine_32(seed, hash.loadK ? 1 : 0);
-  combine_32(seed, hash.slidingWindow);
-  combine_32(seed, hash.attentionSinks ? 1 : 0);
-  combine_32(seed, *reinterpret_cast<const uint32_t*>(&hash.scale));
+  seed = combine_64(seed, pack_64(simd::uint2 { hash.loadK ? 0 : hash.K, hash.D }));
+  seed = combine_32(seed, hash.H);
+  seed = combine_64(seed, pack_64(simd::uint2 { hash.simdgroups, hash.workgroups }));
+  seed = combine_32(seed, hash.loadK ? 1 : 0);
+  seed = combine_32(seed, hash.slidingWindow);
+  seed = combine_32(seed, hash.attentionSinks ? 1 : 0);
+  seed = combine_32(seed, uint32_t(std::hash<float>{}(hash.scale)));
   return seed;
 }
 

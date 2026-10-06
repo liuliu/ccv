@@ -26,16 +26,16 @@ bool SwishMulDescriptor::operator==(const SwishMulDescriptor& rhs) const {
 std::size_t std::hash<SwishMulDescriptor>::operator()(const SwishMulDescriptor& hash) const noexcept {
   using namespace ccv::nnc::mfa::hash;
   std::size_t seed = 0;
-  combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.gradient, (unsigned int)hash.outputMask }));
-  combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.gPrecision.value, (unsigned int)hash.aPrecision.value }));
-  combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.bPrecision.value, (unsigned int)hash.daPrecision.value }));
-  combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.dbPrecision.value, (unsigned int)hash.value }));
-  combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.weightPrecision.value, (unsigned int)hash.weighted }));
-  combine_32(seed, hash.weighted ? hash.length / hash.weightCount : hash.weightCount);
-  combine_64(seed, hash.loadM ? 0 : (uint64_t)hash.length);
-  combine_32(seed, hash.loadM ? 1 : 0);
-  combine_64(seed, pack_64(simd::uint2 { *reinterpret_cast<const uint32_t*>(&hash.beta), *reinterpret_cast<const uint32_t*>(&hash.scale) }));
-  combine_32(seed, *reinterpret_cast<const uint32_t*>(&hash.clamp));
+  seed = combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.gradient, (unsigned int)hash.outputMask }));
+  seed = combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.gPrecision.value, (unsigned int)hash.aPrecision.value }));
+  seed = combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.bPrecision.value, (unsigned int)hash.daPrecision.value }));
+  seed = combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.dbPrecision.value, (unsigned int)hash.value }));
+  seed = combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.weightPrecision.value, (unsigned int)hash.weighted }));
+  seed = combine_32(seed, hash.weighted ? hash.length / hash.weightCount : hash.weightCount);
+  seed = combine_64(seed, hash.loadM ? 0 : (uint64_t)hash.length);
+  seed = combine_32(seed, hash.loadM ? 1 : 0);
+  seed = combine_64(seed, pack_64(simd::uint2 { uint32_t(std::hash<float>{}(hash.beta)), uint32_t(std::hash<float>{}(hash.scale)) }));
+  seed = combine_32(seed, uint32_t(std::hash<float>{}(hash.clamp)));
   return seed;
 }
 

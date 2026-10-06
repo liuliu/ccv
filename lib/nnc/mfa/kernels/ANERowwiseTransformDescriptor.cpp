@@ -25,19 +25,19 @@ std::size_t std::hash<ANERowwiseTransformDescriptor>::operator()(const ANERowwis
 {
   std::size_t seed = 0;
   using namespace ccv::nnc::mfa::hash;
-  combine_32(seed, (uint32_t)hash.memoryPrecision.value);
-  combine_32(seed, hash.activationHadamard256 ? 1 : 0);
-  combine_32(seed, hash.M);
-  combine_32(seed, hash.paddedM);
-  combine_32(seed, hash.batchDimension);
-  combine_32(seed, hash.N);
-  combine_32(seed, hash.K);
-  combine_32(seed, hash.batchStrideA);
-  combine_32(seed, hash.batchStrideC);
-  combine_32(seed, hash.sourceRowOffset);
-  combine_32(seed, hash.outputRowOffset);
-  combine_32(seed, hash.activationScaleBatchStride);
-  combine_32(seed, hash.activationScaleRowOffset);
+  seed = combine_32(seed, (uint32_t)hash.memoryPrecision.value);
+  seed = combine_32(seed, hash.activationHadamard256 ? 1 : 0);
+  seed = combine_32(seed, hash.M);
+  seed = combine_32(seed, hash.paddedM);
+  seed = combine_32(seed, hash.batchDimension);
+  seed = combine_32(seed, hash.N);
+  seed = combine_32(seed, hash.K);
+  seed = combine_32(seed, hash.batchStrideA);
+  seed = combine_32(seed, hash.batchStrideC);
+  seed = combine_32(seed, hash.sourceRowOffset);
+  seed = combine_32(seed, hash.outputRowOffset);
+  seed = combine_32(seed, hash.activationScaleBatchStride);
+  seed = combine_32(seed, hash.activationScaleRowOffset);
   return seed;
 }
 

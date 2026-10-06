@@ -40,26 +40,26 @@ bool NAInt8AttentionDescriptor::operator==(const NAInt8AttentionDescriptor& rhs)
 std::size_t std::hash<NAInt8AttentionDescriptor>::operator()(const NAInt8AttentionDescriptor& hash) const noexcept {
   std::size_t seed = 0;
   using namespace ccv::nnc::mfa::hash;
-  combine_32(seed, hash.batchDimension);
-  combine_32(seed, hash.Hq);
-  combine_32(seed, hash.Hk);
-  combine_32(seed, (uint16_t)hash.type.value);
-  combine_32(seed, pack_32(simd::ushort2 {
+  seed = combine_32(seed, hash.batchDimension);
+  seed = combine_32(seed, hash.Hq);
+  seed = combine_32(seed, hash.Hk);
+  seed = combine_32(seed, (uint16_t)hash.type.value);
+  seed = combine_32(seed, pack_32(simd::ushort2 {
       (uint16_t)hash.ioPrecision.value,
       (uint16_t)(hash.lowPrecisionIntermediates ? 1 : 0) }));
-  combine_32(seed, pack_32(simd::ushort2 {
+  seed = combine_32(seed, pack_32(simd::ushort2 {
       (uint16_t)(hash.isCausal ? 1 : 0),
       (uint16_t)(hash.masked ? 1 : 0) }));
-  combine_32(seed, hash.isVarlen ? 1 : 0);
-  combine_32(seed, hash.attentionSinks ? 1 : 0);
-  combine_32(seed, (hash.loadR || hash.loadC) ? 0 : hash.maskBatchStride);
-  combine_32(seed, hash.loadR ? 0 : hash.matrixDimensions[0]);
-  combine_32(seed, hash.loadC ? 0 : hash.matrixDimensions[1]);
-  combine_32(seed, hash.matrixDimensions[2]);
-  combine_32(seed, *reinterpret_cast<const uint32_t*>(&hash.scale));
-  combine_32(seed, (hash.loadR ? 1 : 0) | (hash.loadC ? 2 : 0));
+  seed = combine_32(seed, hash.isVarlen ? 1 : 0);
+  seed = combine_32(seed, hash.attentionSinks ? 1 : 0);
+  seed = combine_32(seed, (hash.loadR || hash.loadC) ? 0 : hash.maskBatchStride);
+  seed = combine_32(seed, hash.loadR ? 0 : hash.matrixDimensions[0]);
+  seed = combine_32(seed, hash.loadC ? 0 : hash.matrixDimensions[1]);
+  seed = combine_32(seed, hash.matrixDimensions[2]);
+  seed = combine_32(seed, uint32_t(std::hash<float>{}(hash.scale)));
+  seed = combine_32(seed, (hash.loadR ? 1 : 0) | (hash.loadC ? 2 : 0));
   if (hash.loadR || hash.loadC)
-    combine_64(seed, std::hash<NAInt8AttentionKernelDescriptor>{}(hash.kernelDescriptor()));
+    seed = combine_64(seed, std::hash<NAInt8AttentionKernelDescriptor>{}(hash.kernelDescriptor()));
   return seed;
 }
 

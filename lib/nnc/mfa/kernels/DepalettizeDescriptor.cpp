@@ -18,8 +18,8 @@ bool DepalettizeDescriptor::partial() const noexcept {
 std::size_t std::hash<DepalettizeDescriptor>::operator()(const DepalettizeDescriptor& hash) const noexcept {
   using namespace ccv::nnc::mfa::hash;
   std::size_t seed = 0;
-  combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.memoryPrecision.value, (unsigned int)hash.qbits }));
-  combine_64(seed, pack_64(simd::uint2 { hash.numberInBlocks, hash.length }));
+  seed = combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.memoryPrecision.value, (unsigned int)hash.qbits }));
+  seed = combine_64(seed, pack_64(simd::uint2 { hash.numberInBlocks, hash.length }));
   return seed;
 }
 

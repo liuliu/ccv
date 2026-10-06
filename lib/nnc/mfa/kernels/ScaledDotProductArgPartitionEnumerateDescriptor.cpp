@@ -19,11 +19,11 @@ bool ScaledDotProductArgPartitionEnumerateDescriptor::operator==(const ScaledDot
 std::size_t std::hash<ScaledDotProductArgPartitionEnumerateDescriptor>::operator()(const ScaledDotProductArgPartitionEnumerateDescriptor& hash) const noexcept {
   using namespace ccv::nnc::mfa::hash;
   std::size_t seed = 0;
-  combine_64(seed, pack_64(simd::uint2 { hash.loadM ? 0 : hash.T, hash.loadM ? 0 : hash.C }));
-  combine_64(seed, pack_64(simd::uint2 { hash.kth, hash.compressionRatio }));
-  combine_32(seed, hash.loadM ? 0 : static_cast<uint32_t>(hash.queryOffset));
-  combine_32(seed, hash.loadM ? 1 : 0);
-  combine_32(seed, hash.isCausal ? 1 : 0);
+  seed = combine_64(seed, pack_64(simd::uint2 { hash.loadM ? 0 : hash.T, hash.loadM ? 0 : hash.C }));
+  seed = combine_64(seed, pack_64(simd::uint2 { hash.kth, hash.compressionRatio }));
+  seed = combine_32(seed, hash.loadM ? 0 : static_cast<uint32_t>(hash.queryOffset));
+  seed = combine_32(seed, hash.loadM ? 1 : 0);
+  seed = combine_32(seed, hash.isCausal ? 1 : 0);
   return seed;
 }
 

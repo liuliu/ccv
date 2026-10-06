@@ -18,16 +18,16 @@ bool NAConv3DKernelDescriptor::operator==(const NAConv3DKernelDescriptor& rhs) c
 std::size_t std::hash<NAConv3DKernelDescriptor>::operator()(const NAConv3DKernelDescriptor& hash) const noexcept {
   std::size_t seed = 0;
   using namespace ccv::nnc::mfa::hash;
-  combine_32(seed, pack_32(simd::ushort2 { hash.blockDimensions[0], hash.blockDimensions[1] }));
-  combine_64(seed, pack_64(simd_make_ushort4(hash.kernelDimensions, 0)));
-  combine_64(seed, hash.dataType);
-  combine_32(seed, hash.inputChannels);
-  combine_32(seed, hash.outputChannels);
-  combine_32(seed, hash.paddingLeft);
-  combine_32(seed, hash.paddingRight);
-  combine_32(seed, hash.paddingTop);
-  combine_32(seed, hash.paddingBottom);
-  combine_32(seed, pack_32(simd::uchar4 { hash.useBias, 0, 0, 0 }));
+  seed = combine_32(seed, pack_32(simd::ushort2 { hash.blockDimensions[0], hash.blockDimensions[1] }));
+  seed = combine_64(seed, pack_64(simd_make_ushort4(hash.kernelDimensions, 0)));
+  seed = combine_64(seed, hash.dataType);
+  seed = combine_32(seed, hash.inputChannels);
+  seed = combine_32(seed, hash.outputChannels);
+  seed = combine_32(seed, hash.paddingLeft);
+  seed = combine_32(seed, hash.paddingRight);
+  seed = combine_32(seed, hash.paddingTop);
+  seed = combine_32(seed, hash.paddingBottom);
+  seed = combine_32(seed, pack_32(simd::uchar4 { hash.useBias, 0, 0, 0 }));
   return seed;
 }
 

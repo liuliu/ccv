@@ -41,8 +41,8 @@ namespace nnc {
 namespace mfa {
 namespace hash {
 
-// call this function with the old seed and the new key to be hashed and combined into the new seed value, respectively the final hash
-inline size_t combine_32(std::size_t& seed, const uint32_t& v) {
+// Return the combined hash; callers must assign it back to their seed.
+[[nodiscard]] inline size_t combine_32(std::size_t seed, const uint32_t& v) {
     return rotl(seed, std::numeric_limits<size_t>::digits/3) ^ distribute_32(v);
 }
 
@@ -54,7 +54,7 @@ inline uint32_t pack_32(const simd::ushort2& v) {
   return reinterpret_cast<const uint32_t&>(v);
 }
 
-inline size_t combine_64(std::size_t& seed, const uint64_t& v) {
+[[nodiscard]] inline size_t combine_64(std::size_t seed, const uint64_t& v) {
     return rotl(seed, std::numeric_limits<size_t>::digits/3) ^ distribute_64(v);
 }
 

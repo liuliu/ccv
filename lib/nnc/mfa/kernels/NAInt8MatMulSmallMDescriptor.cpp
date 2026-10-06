@@ -87,12 +87,12 @@ NAInt8MatMulSmallMScratchOffsets NAInt8MatMulSmallMDescriptor::scratchOffsets() 
 std::size_t std::hash<NAInt8MatMulSmallMDescriptor>::operator()(const NAInt8MatMulSmallMDescriptor& hash) const noexcept {
   std::size_t seed = 0;
   using namespace ccv::nnc::mfa::hash;
-  combine_64(seed, hash.batchDimension);
-  combine_64(seed, pack_64(simd::uint2 { hash.loadM ? 0 : hash.matrixDimensions[0], hash.matrixDimensions[1] }));
-  combine_32(seed, hash.matrixDimensions[2]);
-  combine_32(seed, (uint32_t)hash.ioPrecision.value);
-  combine_32(seed, hash.useBias ? 1 : 0);
-  combine_32(seed, hash.loadM ? 1 : 0);
+  seed = combine_64(seed, hash.batchDimension);
+  seed = combine_64(seed, pack_64(simd::uint2 { hash.loadM ? 0 : hash.matrixDimensions[0], hash.matrixDimensions[1] }));
+  seed = combine_32(seed, hash.matrixDimensions[2]);
+  seed = combine_32(seed, (uint32_t)hash.ioPrecision.value);
+  seed = combine_32(seed, hash.useBias ? 1 : 0);
+  seed = combine_32(seed, hash.loadM ? 1 : 0);
   return seed;
 }
 

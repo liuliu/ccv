@@ -425,6 +425,17 @@ cc_library(
 	]
 )
 
+config_setting(
+	name = "macos_build",
+	constraint_values = ["@platforms//os:macos"],
+	values = {"apple_platform_type": "macos"},
+)
+
+config_setting(
+	name = "catalyst_build",
+	values = {"apple_platform_type": "catalyst"},
+)
+
 objc_library(
 	name = "nnc_mps_compat",
 	non_arc_srcs = [
@@ -436,7 +447,11 @@ objc_library(
 		"nnc/mps/ccv_nnc_mps.h",
 	],
 	copts = ccv_default_copts(),
-	sdk_frameworks = ["Metal", "IOKit", "MetalPerformanceShaders", "MetalPerformanceShadersGraph", "IOSurface", "CoreVideo", "CoreML"],
+	sdk_frameworks = ["Metal", "MetalPerformanceShaders", "MetalPerformanceShadersGraph", "IOSurface", "CoreVideo", "CoreML"] + select({
+		":macos_build": ["IOKit"],
+		":catalyst_build": ["IOKit"],
+		"//conditions:default": [],
+	}),
 	deps = [
 		":nnc_mfa_compat",
 		":nnc_headers",

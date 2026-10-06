@@ -31,18 +31,18 @@ bool NAAttentionKernelDescriptor::operator==(const NAAttentionKernelDescriptor& 
 std::size_t std::hash<NAAttentionKernelDescriptor>::operator()(const NAAttentionKernelDescriptor& hash) const noexcept {
   std::size_t seed = 0;
   using namespace ccv::nnc::mfa::hash;
-  combine_64(seed, pack_64(simd_make_ushort4(hash.blockDimensions, 0)));
-  combine_32(seed, pack_32(simd::ushort2 { hash.headDimension, hash.type.value }));
-  combine_32(seed, pack_32(simd::ushort2 { hash.Hq, hash.Hk }));
-  combine_32(seed, pack_32(simd::uchar4 { (uint8_t)hash.executionSIMDGroups, (uint8_t)hash.checkCEdge1, (uint8_t)hash.bypassThreadgroupMemory, (uint8_t)hash.isCausal }));
-  combine_32(seed, pack_32(simd::ushort2 {
+  seed = combine_64(seed, pack_64(simd_make_ushort4(hash.blockDimensions, 0)));
+  seed = combine_32(seed, pack_32(simd::ushort2 { hash.headDimension, hash.type.value }));
+  seed = combine_32(seed, pack_32(simd::ushort2 { hash.Hq, hash.Hk }));
+  seed = combine_32(seed, pack_32(simd::uchar4 { (uint8_t)hash.executionSIMDGroups, (uint8_t)hash.checkCEdge1, (uint8_t)hash.bypassThreadgroupMemory, (uint8_t)hash.isCausal }));
+  seed = combine_32(seed, pack_32(simd::ushort2 {
       (uint16_t)(hash.masked ? 1 : 0),
       (uint16_t)(hash.isVarlen ? 1 : 0) }));
-  combine_32(seed, hash.splitKV);
-  combine_32(seed, (hash.hasRemainderR ? 1 : 0) | (hash.hasRemainderC ? 2 : 0));
-  combine_32(seed, (hash.loadC ? 1 : 0) | (hash.loadR ? 2 : 0) | (hash.loadStrides ? 4 : 0));
-  combine_32(seed, hash.attentionSinks ? 1 : 0);
-  combine_32(seed, hash.slidingWindow);
+  seed = combine_32(seed, hash.splitKV);
+  seed = combine_32(seed, (hash.hasRemainderR ? 1 : 0) | (hash.hasRemainderC ? 2 : 0));
+  seed = combine_32(seed, (hash.loadC ? 1 : 0) | (hash.loadR ? 2 : 0) | (hash.loadStrides ? 4 : 0));
+  seed = combine_32(seed, hash.attentionSinks ? 1 : 0);
+  seed = combine_32(seed, hash.slidingWindow);
   return seed;
 }
 

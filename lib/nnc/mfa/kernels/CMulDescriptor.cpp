@@ -21,27 +21,27 @@ bool CMulDescriptor::operator==(const CMulDescriptor& rhs) const {
 std::size_t std::hash<CMulKernelDescriptor>::operator()(const CMulKernelDescriptor& hash) const noexcept {
   using namespace ccv::nnc::mfa::hash;
   std::size_t seed = 0;
-  combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.conjugate, (unsigned int)hash.value }));
-  combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.memoryPrecisionA.value, (unsigned int)hash.memoryPrecisionB.value }));
-  combine_64(seed, (unsigned int)hash.memoryPrecisionC.value);
-  combine_32(seed, hash.loadM ? 1 : 0);
+  seed = combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.conjugate, (unsigned int)hash.value }));
+  seed = combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.memoryPrecisionA.value, (unsigned int)hash.memoryPrecisionB.value }));
+  seed = combine_64(seed, (unsigned int)hash.memoryPrecisionC.value);
+  seed = combine_32(seed, hash.loadM ? 1 : 0);
   return seed;
 }
 
 std::size_t std::hash<CMulDescriptor>::operator()(const CMulDescriptor& hash) const noexcept {
   using namespace ccv::nnc::mfa::hash;
   std::size_t seed = 0;
-  combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.conjugate, (unsigned int)hash.value }));
-  combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.memoryPrecisionA.value, (unsigned int)hash.memoryPrecisionB.value }));
-  combine_64(seed, (unsigned int)hash.memoryPrecisionC.value);
-  combine_32(seed, hash.loadM ? 1 : 0);
+  seed = combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.conjugate, (unsigned int)hash.value }));
+  seed = combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.memoryPrecisionA.value, (unsigned int)hash.memoryPrecisionB.value }));
+  seed = combine_64(seed, (unsigned int)hash.memoryPrecisionC.value);
+  seed = combine_32(seed, hash.loadM ? 1 : 0);
   if (!hash.loadM) {
-    combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.stridesA[0], (unsigned int)hash.stridesA[1] }));
-    combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.stridesA[2], (unsigned int)hash.stridesB[0] }));
-    combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.stridesB[1], (unsigned int)hash.stridesB[2] }));
-    combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.stridesC[0], (unsigned int)hash.stridesC[1] }));
-    combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.stridesC[2], (unsigned int)hash.dimensions[0] }));
-    combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.dimensions[1], (unsigned int)hash.dimensions[2] }));
+    seed = combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.stridesA[0], (unsigned int)hash.stridesA[1] }));
+    seed = combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.stridesA[2], (unsigned int)hash.stridesB[0] }));
+    seed = combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.stridesB[1], (unsigned int)hash.stridesB[2] }));
+    seed = combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.stridesC[0], (unsigned int)hash.stridesC[1] }));
+    seed = combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.stridesC[2], (unsigned int)hash.dimensions[0] }));
+    seed = combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.dimensions[1], (unsigned int)hash.dimensions[2] }));
   }
   return seed;
 }

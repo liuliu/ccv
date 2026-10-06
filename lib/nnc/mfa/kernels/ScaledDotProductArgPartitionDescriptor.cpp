@@ -30,17 +30,17 @@ bool ScaledDotProductArgPartitionDescriptor::operator==(const ScaledDotProductAr
 std::size_t std::hash<ScaledDotProductArgPartitionDescriptor>::operator()(const ScaledDotProductArgPartitionDescriptor& hash) const noexcept {
   using namespace ccv::nnc::mfa::hash;
   std::size_t seed = 0;
-  combine_32(seed, hash.scoreMode);
-  combine_64(seed, pack_64(simd::uint2 { hash.candidateBlockSize, hash.candidateCount }));
-  combine_32(seed, hash.loadM ? 1 : 0);
-  combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.memoryPrecision.value, hash.loadM ? 0 : hash.T }));
-  combine_64(seed, pack_64(simd::uint2 { hash.loadC ? 0 : hash.C, hash.H }));
-  combine_64(seed, pack_64(simd::uint2 { hash.D, hash.kth }));
-  combine_64(seed, pack_64(simd::uint2 { hash.compressionRatio, hash.isCausal ? 1u : 0u }));
-  combine_32(seed, hash.loadC ? 0 : static_cast<uint32_t>(hash.queryOffset));
-  combine_32(seed, pack_32(simd::ushort2 { hash.scoreBlockM, hash.scoreBlockN }));
-  combine_32(seed, pack_32(simd::ushort2 { hash.scoreSIMDGroups, (unsigned short)(hash.loadC ? 1 : 0) }));
-  combine_32(seed, reinterpret_cast<const uint32_t&>(hash.scale));
+  seed = combine_32(seed, hash.scoreMode);
+  seed = combine_64(seed, pack_64(simd::uint2 { hash.candidateBlockSize, hash.candidateCount }));
+  seed = combine_32(seed, hash.loadM ? 1 : 0);
+  seed = combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.memoryPrecision.value, hash.loadM ? 0 : hash.T }));
+  seed = combine_64(seed, pack_64(simd::uint2 { hash.loadC ? 0 : hash.C, hash.H }));
+  seed = combine_64(seed, pack_64(simd::uint2 { hash.D, hash.kth }));
+  seed = combine_64(seed, pack_64(simd::uint2 { hash.compressionRatio, hash.isCausal ? 1u : 0u }));
+  seed = combine_32(seed, hash.loadC ? 0 : static_cast<uint32_t>(hash.queryOffset));
+  seed = combine_32(seed, pack_32(simd::ushort2 { hash.scoreBlockM, hash.scoreBlockN }));
+  seed = combine_32(seed, pack_32(simd::ushort2 { hash.scoreSIMDGroups, (unsigned short)(hash.loadC ? 1 : 0) }));
+  seed = combine_32(seed, uint32_t(std::hash<float>{}(hash.scale)));
   return seed;
 }
 

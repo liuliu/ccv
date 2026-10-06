@@ -31,14 +31,14 @@ std::size_t std::hash<SegmentedScaledGEMMDescriptor>::operator()(const Segmented
 {
   std::size_t seed = 0;
   using namespace ccv::nnc::mfa::hash;
-  combine_32(seed, (uint32_t)hash.ioPrecision.value);
-  combine_32(seed, hash.loadM ? 0 : hash.matrixDimensions[0]);
-  combine_32(seed, hash.matrixDimensions[1]);
-  combine_32(seed, hash.matrixDimensions[2]);
-  combine_32(seed, hash.expertCount);
-  combine_32(seed, hash.binCount);
-  combine_32(seed, hash.useBias ? 1 : 0);
-  combine_32(seed, hash.loadM ? 1 : 0);
+  seed = combine_32(seed, (uint32_t)hash.ioPrecision.value);
+  seed = combine_32(seed, hash.loadM ? 0 : hash.matrixDimensions[0]);
+  seed = combine_32(seed, hash.matrixDimensions[1]);
+  seed = combine_32(seed, hash.matrixDimensions[2]);
+  seed = combine_32(seed, hash.expertCount);
+  seed = combine_32(seed, hash.binCount);
+  seed = combine_32(seed, hash.useBias ? 1 : 0);
+  seed = combine_32(seed, hash.loadM ? 1 : 0);
   return seed;
 }
 

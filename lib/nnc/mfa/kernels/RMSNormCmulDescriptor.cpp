@@ -17,8 +17,8 @@ std::size_t std::hash<RMSNormCmulKernelDescriptor>::operator()(const RMSNormCmul
 {
 	using namespace ccv::nnc::mfa::hash;
 	std::size_t seed = 0;
-	combine_64(seed, pack_64(simd::uint2 { (unsigned int)value.aPrecision.value, (unsigned int)value.rotationPrecision.value }));
-	combine_64(seed, pack_64(simd::uint2 { (unsigned int)value.scalePrecision.value, (unsigned int)value.elementwiseAffine }));
+	seed = combine_64(seed, pack_64(simd::uint2 { (unsigned int)value.aPrecision.value, (unsigned int)value.rotationPrecision.value }));
+	seed = combine_64(seed, pack_64(simd::uint2 { (unsigned int)value.scalePrecision.value, (unsigned int)value.elementwiseAffine }));
 	return seed;
 }
 
@@ -26,11 +26,11 @@ std::size_t std::hash<RMSNormCmulDescriptor>::operator()(const RMSNormCmulDescri
 {
 	using namespace ccv::nnc::mfa::hash;
 	std::size_t seed = 0;
-	combine_64(seed, pack_64(simd::uint2 { (unsigned int)value.aPrecision.value, (unsigned int)value.rotationPrecision.value }));
-	combine_64(seed, pack_64(simd::uint2 { (unsigned int)value.scalePrecision.value, (unsigned int)value.elementwiseAffine }));
-	combine_64(seed, pack_64(simd::uint2 { value.columnCount, value.broadcastRatio }));
-	combine_32(seed, value.rowsPerThreadgroup);
-	combine_32(seed, *reinterpret_cast<const uint32_t*>(&value.epsilon));
+	seed = combine_64(seed, pack_64(simd::uint2 { (unsigned int)value.aPrecision.value, (unsigned int)value.rotationPrecision.value }));
+	seed = combine_64(seed, pack_64(simd::uint2 { (unsigned int)value.scalePrecision.value, (unsigned int)value.elementwiseAffine }));
+	seed = combine_64(seed, pack_64(simd::uint2 { value.columnCount, value.broadcastRatio }));
+	seed = combine_32(seed, value.rowsPerThreadgroup);
+	seed = combine_32(seed, uint32_t(std::hash<float>{}(value.epsilon)));
 	return seed;
 }
 

@@ -18,10 +18,10 @@ std::size_t std::hash<ConformDataFormatDescriptor>::operator()(const ConformData
 {
   using namespace ccv::nnc::mfa::hash;
   std::size_t seed = 0;
-  combine_64(seed, pack_64(simd::uint2 { hash.loadM ? 0 : hash.rowCount, hash.headDim }));
-  combine_32(seed, hash.preservedTail);
-  combine_32(seed, hash.loadM ? 1 : 0);
-  combine_32(seed, hash.memoryPrecision.value);
+  seed = combine_64(seed, pack_64(simd::uint2 { hash.loadM ? 0 : hash.rowCount, hash.headDim }));
+  seed = combine_32(seed, hash.preservedTail);
+  seed = combine_32(seed, hash.loadM ? 1 : 0);
+  seed = combine_32(seed, hash.memoryPrecision.value);
   return seed;
 }
 

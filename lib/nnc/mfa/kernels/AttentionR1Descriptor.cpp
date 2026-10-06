@@ -78,13 +78,13 @@ AttentionR1Descriptor AttentionR1Descriptor::select(
 std::size_t std::hash<AttentionR1Descriptor>::operator()(const AttentionR1Descriptor& hash) const noexcept {
   using namespace ccv::nnc::mfa::hash;
   std::size_t seed = 0;
-  combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.memoryPrecision.value, (unsigned int)hash.mode }));
-  combine_64(seed, pack_64(simd::uint2 { hash.loadC ? 0 : hash.C, hash.D }));
-  combine_64(seed, pack_64(simd::uint2 { hash.Hq, hash.Hk }));
-  combine_64(seed, pack_64(simd::uint2 { hash.simdgroups, hash.workgroups }));
-  combine_32(seed, hash.loadC ? 1 : 0);
-  combine_32(seed, hash.attentionSinks ? 1 : 0);
-  combine_32(seed, *reinterpret_cast<const uint32_t*>(&hash.scale));
+  seed = combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.memoryPrecision.value, (unsigned int)hash.mode }));
+  seed = combine_64(seed, pack_64(simd::uint2 { hash.loadC ? 0 : hash.C, hash.D }));
+  seed = combine_64(seed, pack_64(simd::uint2 { hash.Hq, hash.Hk }));
+  seed = combine_64(seed, pack_64(simd::uint2 { hash.simdgroups, hash.workgroups }));
+  seed = combine_32(seed, hash.loadC ? 1 : 0);
+  seed = combine_32(seed, hash.attentionSinks ? 1 : 0);
+  seed = combine_32(seed, uint32_t(std::hash<float>{}(hash.scale)));
   return seed;
 }
 

@@ -21,14 +21,14 @@ bool GatedDeltaDescriptor::operator==(const GatedDeltaDescriptor& rhs) const {
 std::size_t std::hash<GatedDeltaDescriptor>::operator()(const GatedDeltaDescriptor& hash) const noexcept {
   using namespace ccv::nnc::mfa::hash;
   std::size_t seed = 0;
-  combine_64(seed, pack_64(simd::uint2 { hash.batchSize, hash.loadM ? 0 : hash.sequenceLength }));
-  combine_64(seed, pack_64(simd::uint2 { hash.keyHeadCount, hash.valueHeadCount }));
-  combine_64(seed, pack_64(simd::uint2 { hash.keyDim, hash.valueDim }));
-  combine_64(seed, hash.stateCheckpointCount);
-  combine_64(seed, hash.inputMemoryPrecision.value);
-  combine_64(seed, hash.betaMemoryPrecision.value);
-  combine_64(seed, hash.logDecay ? 1 : 0);
-  combine_64(seed, hash.loadM ? 1 : 0);
+  seed = combine_64(seed, pack_64(simd::uint2 { hash.batchSize, hash.loadM ? 0 : hash.sequenceLength }));
+  seed = combine_64(seed, pack_64(simd::uint2 { hash.keyHeadCount, hash.valueHeadCount }));
+  seed = combine_64(seed, pack_64(simd::uint2 { hash.keyDim, hash.valueDim }));
+  seed = combine_64(seed, hash.stateCheckpointCount);
+  seed = combine_64(seed, hash.inputMemoryPrecision.value);
+  seed = combine_64(seed, hash.betaMemoryPrecision.value);
+  seed = combine_64(seed, hash.logDecay ? 1 : 0);
+  seed = combine_64(seed, hash.loadM ? 1 : 0);
   return seed;
 }
 

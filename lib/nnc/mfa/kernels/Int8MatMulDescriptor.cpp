@@ -14,9 +14,9 @@ std::size_t std::hash<Int8MatMulDescriptor>::operator()(const Int8MatMulDescript
 {
 	using namespace ccv::nnc::mfa::hash;
 	std::size_t seed = 0;
-	combine_64(seed, pack_64(simd::uint2 { hash.M, hash.N }));
-	combine_64(seed, pack_64(simd::uint2 { hash.K, hash.expertCount }));
-	combine_64(seed, pack_64(simd::uint2 { hash.binCount, (uint32_t)hash.operation }));
+	seed = combine_64(seed, pack_64(simd::uint2 { hash.M, hash.N }));
+	seed = combine_64(seed, pack_64(simd::uint2 { hash.K, hash.expertCount }));
+	seed = combine_64(seed, pack_64(simd::uint2 { hash.binCount, (uint32_t)hash.operation }));
 	return seed;
 }
 

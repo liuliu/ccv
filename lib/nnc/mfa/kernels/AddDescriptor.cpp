@@ -23,16 +23,16 @@ bool AddDescriptor::operator==(const AddDescriptor& rhs) const {
 std::size_t std::hash<AddDescriptor>::operator()(const AddDescriptor& hash) const noexcept {
   using namespace ccv::nnc::mfa::hash;
   std::size_t seed = 0;
-  combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.memoryPrecision.value, (unsigned int)hash.value }));
-  combine_64(seed, pack_64(simd::uint2 { hash.loadM ? 0 : (unsigned int)hash.length, (unsigned int)hash.args }));
-  combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.negative_mask, (unsigned int)hash.broadcast }));
-  combine_32(seed, (unsigned int)hash.scaled_mask);
-  combine_32(seed, hash.loadM ? 1 : 0);
-  combine_32(seed, hash.row_broadcast);
-  combine_32(seed, hash.row_length);
-  combine_32(seed, hash.channel_broadcast);
-  combine_32(seed, hash.channel_count);
-  combine_32(seed, hash.channel_length);
+  seed = combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.memoryPrecision.value, (unsigned int)hash.value }));
+  seed = combine_64(seed, pack_64(simd::uint2 { hash.loadM ? 0 : (unsigned int)hash.length, (unsigned int)hash.args }));
+  seed = combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.negative_mask, (unsigned int)hash.broadcast }));
+  seed = combine_32(seed, (unsigned int)hash.scaled_mask);
+  seed = combine_32(seed, hash.loadM ? 1 : 0);
+  seed = combine_32(seed, hash.row_broadcast);
+  seed = combine_32(seed, hash.row_length);
+  seed = combine_32(seed, hash.channel_broadcast);
+  seed = combine_32(seed, hash.channel_count);
+  seed = combine_32(seed, hash.channel_length);
   return seed;
 }
 

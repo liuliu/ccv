@@ -19,9 +19,9 @@ bool IndexSelect8iRowwiseDescriptor::vectorized() const noexcept {
 std::size_t std::hash<IndexSelect8iRowwiseDescriptor>::operator()(const IndexSelect8iRowwiseDescriptor& hash) const noexcept {
 	using namespace ccv::nnc::mfa::hash;
 	std::size_t seed = 0;
-	combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.memoryPrecision.value, hash.rowLength }));
-	combine_64(seed, pack_64(simd::uint2 { hash.inputLength, hash.loadM ? 0 : hash.outputLength }));
-	combine_32(seed, hash.loadM ? 1 : 0);
+	seed = combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.memoryPrecision.value, hash.rowLength }));
+	seed = combine_64(seed, pack_64(simd::uint2 { hash.inputLength, hash.loadM ? 0 : hash.outputLength }));
+	seed = combine_32(seed, hash.loadM ? 1 : 0);
 	return seed;
 }
 
