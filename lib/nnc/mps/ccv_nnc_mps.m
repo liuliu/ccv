@@ -39,6 +39,7 @@ id<MTLDevice> ccv_nnc_default_device(void)
 @property (nonatomic, assign) NSUInteger size;
 @property (nonatomic, assign) NSUInteger pinCount;
 @property (nonatomic, assign) int pinStatus;
+@property (nonatomic, retain) id<MTLResidencySet> residencySet API_AVAILABLE(macos(15.0), ios(18.0));
 @end
 
 // Default callers retain the shared batching behavior. Only an explicit fork
@@ -513,8 +514,38 @@ void* mppinmemory(void* const ptr, int* const status)
 	@synchronized(mapping) {
 		if (mapping.pinCount == 0)
 			mapping.pinStatus = mlock(mapping.base, mapping.size);
-		mapping.pinCount++;
 		*status = mapping.pinStatus;
+		if (@available(macOS 15.0, iOS 18.0, *)) {
+			const BOOL first_residency = !mapping.residencySet;
+			if (!mapping.residencySet)
+			{
+				MTLResidencySetDescriptor* const descriptor = [MTLResidencySetDescriptor new];
+				descriptor.label = @"Pinned model weights";
+				descriptor.initialCapacity = 1024;
+				NSError* error = nil;
+				id<MTLResidencySet> const residency_set = [ccv_nnc_default_device() newResidencySetWithDescriptor:descriptor error:&error];
+				[descriptor release];
+				mapping.residencySet = residency_set;
+				[residency_set release];
+				if (!mapping.residencySet)
+				{
+					fprintf(stderr, "ccv: Metal residency set creation failed: %s\n", error ? error.localizedDescription.UTF8String : "unknown error");
+					*status = -1;
+				}
+			}
+			// Request GPU residency even when the best-effort CPU lock fails.
+			if (mapping.residencySet && ![mapping.residencySet containsAllocation:(id<MTLBuffer>)ptr])
+			{
+				[mapping.residencySet addAllocation:(id<MTLBuffer>)ptr];
+				[mapping.residencySet commit];
+			}
+			if (first_residency && mapping.residencySet)
+			{
+				[_ccv_nnc_default_queue() addResidencySet:mapping.residencySet];
+				[mapping.residencySet requestResidency];
+			}
+		}
+		mapping.pinCount++;
 		[mapping retain];
 	}
 	return mapping;
@@ -527,8 +558,23 @@ int mpunpinmemory(void* const ptr)
 	@synchronized(mapping) {
 		assert(mapping.pinCount > 0);
 		mapping.pinCount--;
-		if (mapping.pinCount == 0 && mapping.pinStatus == 0)
-			status = munlock(mapping.base, mapping.size);
+		if (mapping.pinCount == 0)
+		{
+			if (mapping.pinStatus == 0)
+				status = munlock(mapping.base, mapping.size);
+			if (@available(macOS 15.0, iOS 18.0, *)) {
+				if (mapping.residencySet)
+				{
+					[_ccv_nnc_default_queue() removeResidencySet:mapping.residencySet];
+					[mapping.residencySet endResidency];
+					// Break the set -> buffer -> mapping retain cycle before
+					// dropping the final pin reference.
+					[mapping.residencySet removeAllAllocations];
+					[mapping.residencySet commit];
+					mapping.residencySet = nil;
+				}
+			}
+		}
 	}
 	[mapping release];
 	return status;
