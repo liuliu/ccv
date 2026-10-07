@@ -1,0 +1,163 @@
+Forward output FMA — M5 Max, 2026-10-06
+
+Baseline: c1baf131. Initial experiment: uniform FP32 output update
+  O = fma(O, correction, float(PV_int32) * v_scale / 127)
+using the existing v_scale_recip_127 expression. Dense output accumulators are
+initialized before the traversal. Separate output-rescale loops are removed.
+The initial experiment has no selector, descriptor field, precision mode or
+dispatch change. The final candidate adds the source-generation gate below.
+
+Status: the uniform change regresses dynamic causal workloads. The final
+candidate retains the original rescale schedule for the affected shader class;
+its Max validation is described below.
+
+Initial uniform experiment
+40-core M5 Max GPU milliseconds, including Q/K/V preparation. Baseline and
+candidate alternate ABBA/BAAB in one process on shared input/output buffers,
+with separate MFA contexts. At least 0.2 GPU seconds warmup; 24 measured calls
+per arm normally, 6 for H3, 128 for causal controls and 256 for short causal
+confirmation. H3 pauses between four-call blocks. Thermal state remained 0.
+Negative change means faster. All rows use FP16 I/O unless identified otherwise.
+
+Workload (R x C x D; B, Hq/Hkv)                Baseline     FMA       Change
+4096 x 4096 x 64; 1, 32/32                       1.873      1.830      -2.3%
+4097 x 4097 x 96; 1, 12/12                       1.321      1.275      -3.5%
+4096 x 4096 x 128; 1, 32/32                      3.981      3.574     -10.2%
+4097 x 4097 x 128; 1, 8/8                        1.264      1.148      -9.1%
+4097 x 4097 x 128; 1, 32/32                      4.820      4.421      -8.3%
+4096 x 4096 x 192; 1, 18/6                       4.871      3.912     -19.7%
+512 x 4097 x 128; 1, 18/6, FP32                  0.396      0.362      -8.6%
+512 x 4097 x 128; 1, 18/6, BF16 + FP32 state     0.373      0.325     -12.8%
+1024 x 4097 x 128; 1, 8/8, masked                0.589      0.482     -18.0%
+1024 x 4097 x 128; 2, 8/8, causal varlen         0.605      0.517     -14.6%
+512 x 4097 x 192; 1, 18/6, FP32 + sinks          0.793      0.670     -15.4%
+31018 x 31018 x 128; 1, 32/32                  254.819    239.343      -6.1%
+70186 x 70186 x 128; 1, 32/32                 1544.120   1495.100      -3.2%
+4095 x 4096 x 256; 1, 18/6, unchanged control     5.525      5.531      +0.1%
+
+Causal regression and specialization controls
+All following rows: R4096, C8192, D128, B1, Hq16/Hkv4, FP16.
+R specialization       C specialization       Baseline     FMA       Change
+fixed                  fixed                    3.559      3.045     -14.4%
+runtime                fixed                    3.720      3.109     -16.4%
+fixed                  runtime                  3.749      3.150     -16.0%
+runtime                runtime                  2.944      3.176      +7.9%
+
+Both-runtime FP16 reproduced +7.7% and +7.9% in separate processes. The same
+both-runtime shape with FP32 I/O also regressed: 3.063 -> 3.270 ms (+6.8%).
+Fixed R/C FP32 improved 3.699 -> 3.134 ms (-15.3%). Smaller both-runtime FP16
+causal queries also regress: R64 +2.8% to +3.4% (11-14 us), R256 +2.5%,
+R1024 +4.3%. R64/R256 FP32 improved slightly. Thus the measured issue is not
+explained by a general causal or FP16 restriction. Compiler-level cause remains
+unresolved; the follow-up below narrows the fallback instead of gating all
+dynamic causal attention.
+
+Validation
+- Debug build passed; 12 focused MPS integration tests passed.
+- 52 direct CPU-reference cases passed: D64/96/128/192, FP16/FP32/BF16 I/O,
+  dense, mixed mask, causal/empty rows, sinks, varlen and short-key tails.
+- Full-output comparisons in all timing runs passed; saved LSE buffers were
+  byte-identical. Small output rounding differences are expected from FMA.
+- 864 generated-source comparisons: all 648 backward/compute_d sources and
+  72 tiled forward sources (D256/D264) are byte-identical. All 216 forward
+  helper prefixes are unchanged. Only the 144 untiled forward sources differ.
+- The initial experiment was Max only; subsequent iPad validation is in fma-ipad.txt.
+
+Dynamic causal investigation and final fallback
+
+The per-iteration cS_0 zeroing before QK (cP_0 aliases cS_0) is unchanged.
+Causal cO initialization is also unchanged. The arithmetic/dataflow difference
+is that the original consumes correction to rescale cO before exponentiation,
+row-sum reduction, probability quantization and PV; the fused update needs it
+after each PV result. This establishes the changed dependency/lifetime, but is
+not proof of a particular register-allocation or instruction-scheduling cause.
+
+Controlled shader experiments did not recover the uniform change's regression:
+- Explicit separate multiply/add at the late update: +23.8% vs original.
+- Fuse the PV product instead, or leave the expression to contraction: +17.6-18.0%.
+- Map correction into output layout once, early or late: +7.6-7.9%.
+- Move V-scale calculation later: +7.4%; move L accumulation later: +22.8%.
+- Change runtime-bound uniform annotations: +7.2-7.9%.
+- Set the pipeline thread limit to the actual group size: +7.1%.
+- Retain early scaling for only some output blocks: +5.7-10.1%.
+- Merge causal exponent branches: +6.3%; it also changes one FP16 LSE entry by
+  one representable step. Applying that diagnostic to the original costs 25.1%.
+These are diagnostic-only changes. None is included in the final candidate.
+
+The uniform regression repeats across C4096/8192/16384, FP16/FP32/BF16,
+ordinary H8/H8 and grouped H16/H4 or H32/H8 attention. Row tails, masks and
+other tested head dimensions behave differently: R4097 is 23.6% faster,
+masked attention 10.1% faster, and D112/144/160/176/192 improve 13.5-25.7%.
+A column tail alone still regresses 2.7-2.9%; it is not an exemption.
+
+The final candidate retains early rescaling when all conditions hold:
+  !tileOutput && isCausal && !masked && loadR && loadC && !hasRRemainder
+There is no head-dimension-specific exception. Existing tiled outputs retain
+their original FMA update. All other forward paths use the fused output update. These properties already
+belong to the kernel descriptor/cache key; no new descriptor field, user option,
+runtime shader branch, precision change or dispatch choice is introduced.
+
+This fallback is deliberately conservative. In this shader class, the uniform
+change improved D112/144/160/176/192 by 13.5-25.7%, and D128 H16/H16 or H32/H32
+by 13.0-15.7%. The final rule gives up those new gains. It avoids empirical
+exceptions for particular head dimensions or KV-head counts and preserves the
+original performance throughout the class. Dense, masked, variable-length,
+query-row-tail, and fixed-length gains remain.
+
+Final paired checks use 128 samples per arm, the same ABBA/BAAB protocol and
+thermal-state checks. Original and final outputs/LSE are bit-identical for the
+gated cases. Remaining FMA paths keep the expected tiny rounding differences.
+
+Final GPU ms, including preparation (negative is faster):
+Case                                    Original    Final      Change
+Dynamic causal D64                        1.315      1.325      +0.8%
+Dynamic causal D96                        2.491      2.483      -0.3%
+Dynamic causal D128, FP16                  2.944      2.965      +0.7%
+Dynamic causal D128, FP32                  3.065      3.083      +0.6%
+Dynamic causal D128, BF16 + FP32 state     2.957      2.961      +0.1%
+Dynamic causal D192                       8.451      8.453      +0.0%
+Dynamic causal D128, C8193                 4.134      4.153      +0.5%
+Dynamic causal D128, R4097                 4.640      3.566     -23.2%
+Dynamic causal masked D128                0.955      0.859     -10.1%
+Dynamic causal tiled D256                 9.575      9.552      -0.2%
+Fixed dense D128                          3.981      3.575     -10.2%
+Fixed dense D192                          4.884      3.918     -19.8%
+
+Unless qualified, causal cases use R4096/C8192/B1/Hq16/Hkv4. The masked
+case uses R1024/Hq8/Hkv8. Dense shapes are those in the initial table.
+Rows shared with the earlier narrower-gate check have byte-identical generated
+source in the final rule; their FP32/BF16, tail and masked timings are retained.
+
+Final source audit: 3,072 generated sources across aligned/tail R and C,
+D64/128/192/256, three precisions, dense/causal/masked/varlen, and all four
+R/C specialization combinations. All 18 gated forward sources are byte-identical
+to the original. All other sources are byte-identical to the uniform FMA version;
+all backward/compute_d sources remain byte-identical to the original.
+
+The final debug build and 12 focused MPS integration tests passed. There were
+70 additional direct CPU-reference passes: 34 gated D128 cases, plus 36 cases
+across D64/96/112/160/192 and the unchanged tiled D256 control, with FP16,
+BF16 and FP32 I/O, column tails, causal empty rows and sinks. The D128 source
+is identical between the narrower and final gates. All accepted timing runs
+stayed at thermal state 0. Subsequent iPad validation is in fma-ipad.txt.
+
+Follow-up: isolating hasRRemainder (2026-10-06)
+
+The R4096 -> R4097 comparison also crosses a padded-grid boundary. Controls
+on Max remove that confound: at R4080 and R4081, the grid size is unchanged,
+yet uniform FMA goes from +7.1% to -24.3%. R4112 is aligned but uses the larger
+grid and again regresses (+7.0%). All use C8192/D128/Hq16/Hkv4, runtime R/C.
+
+A stronger diagnostic keeps R4096, inputs, quantization, dispatch, and loop
+initialization identical and changes only the forward runtime constant:
+  R_remainder = 0u  ->  R_remainder = uint(R) % 16u
+The actual value remains zero. This retains the runtime output/LSE tail branch
+instead of allowing it to be removed at compile time. Original output and LSE
+remain bit-identical. Max GPU ms:
+  Compile-time zero: original 2.950, uniform FMA approximately 3.18.
+  Runtime remainder: original 4.561, uniform FMA 3.494 (-23.4%, paired).
+Thus the row-tail predicate affects compiler output, not merely workload size
+or grid padding. The precise instruction-scheduling/register-allocation change
+is still unobserved. The diagnostic is not a production change and is not a
+fix: retaining the runtime remainder slows both versions versus their normal
+aligned forms. The cP/cS zeroing inside the KV loop is unchanged throughout.

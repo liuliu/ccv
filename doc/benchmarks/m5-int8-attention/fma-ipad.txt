@@ -1,0 +1,98 @@
+Forward output FMA — M5 iPad, 2026-10-06
+
+Baseline: c1baf131. Device: 10-core M5 iPad Pro, iPadOS 27.0.1 (24A446).
+Compare original output rescaling, uniform FMA, and the gated candidate in
+fma.txt. The candidate preserves early rescaling for untiled, unmasked causal
+attention with runtime R/C and aligned query rows. It has no D-specific gate.
+Candidate NAInt8AttentionKernel.cpp SHA256:
+65bb1338af3c5bd087c499d5b360da257a8257bc6f8df46576261a7bbe52708b
+
+Method
+Three variants alternate in one process with separate MFA contexts and the
+same inputs, buffers and command queue. Submission order is 0,1,2,2,1,0,
+rotating the variant labels each block. Timings include Q/K/V preparation.
+Normally 24 samples per variant after at least six warmup submissions and
+0.3 aggregate GPU seconds; confirmations use 96 samples. Thermal state is
+checked before and after each submission. Pause 100 ms after each six calls
+and 15 seconds between cases. No samples are removed from accepted runs.
+The harness copies the three loop generators verbatim. All 2,304 generated
+source comparisons match their standalone generators exactly.
+
+GPU milliseconds (negative change is faster)
+Case                         Original    Uniform FMA    Gated    Gated change
+Dynamic causal D128 *          12.563         13.279     12.544       -0.1%
+Dynamic causal D192 *          33.095         35.444     33.494       +1.2%
+Dynamic causal FP32            12.931         13.768     12.983       +0.4%
+Dynamic causal BF16            12.479         13.269     12.543       +0.5%
+Dynamic causal C8193           17.331         17.709     17.411       +0.5%
+Dynamic causal R64              2.970          3.038      2.967       -0.1%
+Fixed causal D128              15.129         12.707     12.713      -16.0%
+Dynamic causal R4097           19.934         14.755     14.720      -26.2%
+Dynamic causal varlen           3.175          3.046      3.026       -4.7%
+Dense D128                    16.450         14.862     14.864       -9.6%
+Dense D192                    16.718         14.143     14.194      -15.1%
+Dense R=C4097                  4.616          4.221      4.269       -7.5%
+Dense R=C8192                 15.268         13.700     13.816       -9.5%
+Tiled causal D256 control      39.700         38.811     39.568       -0.3%
+
+* 96 samples per variant. Other rows: 24 samples. FP16 unless noted; BF16
+uses FP32 softmax state. Unless qualified, causal shapes are R4096/C8192,
+D128/B1/Hq16/Hkv4. Varlen: R1024/C4097/B2/H8/H8. Dense D128:
+R=C4096/B1/H32/H32. Dense D192: R=C4096/B1/H18/H6. Dense R=C4097 and
+R=C8192: D128/B1/H8/H8. The D256 control already uses FMA in all variants;
+its small timing differences are noise, not a new optimization.
+
+The aligned dynamic causal regression is not specific to D128. Uniform FMA
+regresses D192 by 5.2% initially and 7.1% on confirmation, despite improving
+this shape on Max. The gated D192 repeats are -0.4% and +1.2% vs original.
+
+Row alignment controls (96 samples per variant, otherwise main causal shape):
+R          Original    Uniform FMA     Gated    Uniform change
+4080         12.962         13.539    12.953             +4.5%
+4081         19.986         14.776    14.814            -26.1%
+4112         13.000         13.583    13.000             +4.5%
+R4080 and R4081 have the same padded dispatch grid. R4112 has the larger
+grid but aligned rows. These repeat the Max result: grid padding alone does
+not explain the change. See fma.txt for the same-shape runtime-remainder
+diagnostic. The exact compiler scheduling/allocation mechanism is unresolved.
+
+Short-workload timing control
+For dense BF16, the first single-encode comparison reports gated +5.1%; a
+96-sample confirmation reports -12.6%. Uniform and gated emit identical
+shaders here, yet their medians differ by 4-9%. These runs are retained.
+Periodic latency spikes and differences between identical shaders prevent
+a reliable 2% conclusion from the single-encode samples for this shape.
+
+Control: eight complete attention encodes per command buffer, 48 samples per
+variant; times below are per encode. Preparation still runs for every encode.
+This amortizes command-buffer overhead and measures sustained execution.
+Case                   Original    Uniform FMA     Gated    Gated change
+Dense BF16                1.427          1.266      1.265          -11.3%
+Dense FP32                1.586          1.454      1.457           -8.2%
+Dynamic causal masked     3.499          3.274      3.280           -6.2%
+Identical uniform/gated variants agree within 0.03% for BF16 and 0.21% for
+FP32/masked. Dense: R512/C4097/D128/B1/H18/H6, runtime R/C. Masked:
+R1024/C8192/D128/B1/H8/H8, runtime R/C. The single-encode masked runs
+improve 8.6-10.6%, consistent in direction but different in magnitude.
+
+Long-sequence check
+H3 480p/10s: R=C31018/D128/B1/H32/H32, fixed lengths, FP16. Five-second
+cooling pauses after every submission, including warmup; one encode per
+command buffer. Original 1009.414 ms, uniform 963.160 ms, gated 964.476 ms
+(-4.5%). Only two measured samples per variant: useful as a final long-shape
+check, not a precise regression bound. The S70186 case was not run on iPad.
+
+Correctness
+Fourteen dedicated cases pass with all three variants: causal R>C empty
+rows for D64/128/192/256 with FP16 and FP32; short key lengths 1 and 29;
+D192 sinks and varlen; packed masks split at token 100, both noncausal
+D128 and causal D192. These short runs are for correctness, not timing.
+Every performance run also compares the full outputs between variants and
+checks sampled outputs against a CPU reference. LSE buffers are byte-identical
+between all three variants. Small output rounding differences from FMA remain
+within the checks. No backward code is changed by this work.
+
+All 42 launches passed (28 timing comparisons and 14 dedicated correctness
+cases). Every thermal check remained nominal (state 0); no thermal retries
+or rejected runs. Production changes remain limited to the forward output
+update and its source-generation gate; the test switches are scratch-only.

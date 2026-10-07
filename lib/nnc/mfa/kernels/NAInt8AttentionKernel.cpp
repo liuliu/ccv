@@ -2036,8 +2036,11 @@ void NAInt8AttentionKernel::loopForward(CodeWriter& source) const noexcept {
   } else {
     source.SetValue("BLOCK_DIMENSIONS_TRAVERSAL_OR_DYNAMIC_LENGTH_V", "dynamic_length_v<int>");
   }
-  // Fuse rescaling into each FP32 PV update for tiled outputs.
   const bool tileOutput = outputTileSize < headDimension;
+  // Fusing rescaling can slow the aligned-query dynamic causal path on M5 Max.
+  // Preserve the earlier rescale for untiled outputs in this path.
+  const bool fuseOutputRescale = tileOutput ||
+      !(isCausal && !masked && loadR && loadC && !hasRRemainder);
   const unsigned short kBlocks =
       (outputTileSize + blockDimensions[2] - 1) / blockDimensions[2];
   source.SetValue("L_STORE", tileOutput ?
@@ -2133,7 +2136,7 @@ void NAInt8AttentionKernel::loopForward(CodeWriter& source) const noexcept {
     source.SetValue("LOOP_INDEX", std::to_string(i));
     source += "  auto cO_{{LOOP_INDEX}} = matmul_pv_op.get_destination_cooperative_tensor<pv_float_left_tensor_t, decltype(mV), float>();\n";
   }
-  if ((tileOutput || attentionSinks) && !isCausal && !masked) {
+  if (!isCausal && !masked) {
     source += R"(
   #pragma clang loop unroll(full)
   for (unsigned short k = 0; k < cO_0.get_capacity(); ++k) {
@@ -2353,7 +2356,7 @@ void NAInt8AttentionKernel::loopForward(CodeWriter& source) const noexcept {
       }
     }
 )";
-  if (!tileOutput && isCausal) {
+  if (!fuseOutputRescale) {
     source += R"(
     #pragma clang loop unroll(full)
     for (unsigned short k = 0; k < cO_0.get_capacity(); ++k) {
@@ -2366,36 +2369,6 @@ void NAInt8AttentionKernel::loopForward(CodeWriter& source) const noexcept {
       source += "        cO_{{LOOP_INDEX}}[k] *= *dst_it;\n";
     }
     source += R"(
-      }
-    }
-)";
-  } else if (!tileOutput) {
-    source += R"(
-    if (c == 0) {
-      #pragma clang loop unroll(full)
-      for (unsigned short k = 0; k < cO_0.get_capacity(); ++k) {
-        if (cO_0.is_valid_element(k)) {
-)";
-  for (unsigned short i = 0; i < kBlocks; ++i) {
-    source.SetValue("LOOP_INDEX", std::to_string(i));
-    source += "          cO_{{LOOP_INDEX}}[k] = 0;\n";
-  }
-  source += R"(
-        }
-      }
-    } else {
-      #pragma clang loop unroll(full)
-      for (unsigned short k = 0; k < cO_0.get_capacity(); ++k) {
-        if (cO_0.is_valid_element(k)) {
-          auto it = cO_0.get_iterator(k);
-          auto dst_it = correction.map_iterator(it);
-)";
-  for (unsigned short i = 0; i < kBlocks; ++i) {
-    source.SetValue("LOOP_INDEX", std::to_string(i));
-    source += "          cO_{{LOOP_INDEX}}[k] *= *dst_it;\n";
-  }
-  source += R"(
-        }
       }
     }
 )";
@@ -2467,7 +2440,8 @@ void NAInt8AttentionKernel::loopForward(CodeWriter& source) const noexcept {
     for (unsigned short k = 0; k < cOq.get_capacity(); ++k) {
       if (cOq.is_valid_element(k)) {
 )";
-    if (tileOutput) {
+    if (fuseOutputRescale) {
+      // Rescale the previous output while adding this tile's PV contribution.
       source += R"(
         auto it = cO_0.get_iterator(k);
         auto factor = correction.map_iterator(it);
@@ -2599,7 +2573,7 @@ void NAInt8AttentionKernel::loopForward(CodeWriter& source) const noexcept {
       }
     }
 )";
-    if (!tileOutput && isCausal) {
+    if (!fuseOutputRescale) {
       source += R"(
     #pragma clang loop unroll(full)
     for (unsigned short k = 0; k < cO_0.get_capacity(); ++k) {
@@ -2612,36 +2586,6 @@ void NAInt8AttentionKernel::loopForward(CodeWriter& source) const noexcept {
         source += "        cO_{{LOOP_INDEX}}[k] *= *dst_it;\n";
       }
       source += R"(
-      }
-    }
-)";
-    } else if (!tileOutput) {
-      source += R"(
-    if (c == 0) {
-      #pragma clang loop unroll(full)
-      for (unsigned short k = 0; k < cO_0.get_capacity(); ++k) {
-        if (cO_0.is_valid_element(k)) {
-)";
-    for (unsigned short i = 0; i < kBlocks; ++i) {
-      source.SetValue("LOOP_INDEX", std::to_string(i));
-      source += "          cO_{{LOOP_INDEX}}[k] = 0;\n";
-    }
-    source += R"(
-        }
-      }
-    } else {
-      #pragma clang loop unroll(full)
-      for (unsigned short k = 0; k < cO_0.get_capacity(); ++k) {
-        if (cO_0.is_valid_element(k)) {
-          auto it = cO_0.get_iterator(k);
-          auto dst_it = correction.map_iterator(it);
-)";
-    for (unsigned short i = 0; i < kBlocks; ++i) {
-      source.SetValue("LOOP_INDEX", std::to_string(i));
-      source += "          cO_{{LOOP_INDEX}}[k] *= *dst_it;\n";
-    }
-    source += R"(
-        }
       }
     }
 )";
@@ -2706,7 +2650,7 @@ void NAInt8AttentionKernel::loopForward(CodeWriter& source) const noexcept {
     for (unsigned short k = 0; k < cOq_remainder.get_capacity(); ++k) {
       if (cOq_remainder.is_valid_element(k)) {
 )";
-      if (tileOutput) {
+      if (fuseOutputRescale) {
         source += R"(
         auto it = cO_0.get_iterator(k);
         auto factor = correction.map_iterator(it);
