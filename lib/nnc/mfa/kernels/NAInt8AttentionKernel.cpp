@@ -78,7 +78,11 @@ NAInt8AttentionKernel::NAInt8AttentionKernel(
 
   auto string = NS::String::string(source.c_str(), NS::UTF8StringEncoding);
   NS::Error* error = nil;
-  library = NS::TransferPtr(device->newLibrary(string, nullptr, &error));
+  auto options = NS::TransferPtr(MTL::CompileOptions::alloc()->init());
+  // MPP tensor operations require Metal 4, including when built with an older SDK.
+  if (options->languageVersion() < MTL::LanguageVersion(0x40000))
+    options->setLanguageVersion(MTL::LanguageVersion(0x40000));
+  library = NS::TransferPtr(device->newLibrary(string, options.get(), &error));
   CCV_NNC_MFA_CHECK_ERROR(error);
 }
 

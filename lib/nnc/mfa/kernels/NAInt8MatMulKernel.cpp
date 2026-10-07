@@ -45,7 +45,11 @@ NAInt8MatMulKernel::NAInt8MatMulKernel(
   source = createSource();
   auto string = NS::String::string(source.c_str(), NS::UTF8StringEncoding);
   NS::Error* error = nil;
-  library = NS::TransferPtr(device->newLibrary(string, nil, &error));
+  auto options = NS::TransferPtr(MTL::CompileOptions::alloc()->init());
+  // MPP tensor operations require Metal 4, including when built with an older SDK.
+  if (options->languageVersion() < MTL::LanguageVersion(0x40000))
+    options->setLanguageVersion(MTL::LanguageVersion(0x40000));
+  library = NS::TransferPtr(device->newLibrary(string, options.get(), &error));
   CCV_NNC_MFA_CHECK_ERROR(error);
 }
 
@@ -85,8 +89,8 @@ std::string NAInt8MatMulKernel::createSource() const noexcept {
   source.SetValue("SIMDGROUPS", std::to_string(executionSIMDGroups));
   source.SetValue("QUANT_THREADS", std::to_string(activationQuantizeThreads));
   source.SetValue("QUANT_SIMDGROUPS", std::to_string(activationQuantizeThreads / 32));
-  source.SetValue("GROUP_M", std::to_string(groupM));
-  source.SetValue("GROUP_N", std::to_string(groupN));
+  source.SetValue("M_GROUP_START", groupM > 0 ? "(M_block_start / " + std::to_string(groupM) + ") * " + std::to_string(groupM) : "M_block_start");
+  source.SetValue("N_GROUP_START", groupN > 0 ? "(N_block_start / " + std::to_string(groupN) + ") * " + std::to_string(groupN) : "N_block_start");
   source.SetValue("IO_TYPE", ioPrecision.name());
   source.SetValue("LEADING_DIMENSION_CONSTANTS", useLeadingDimensions ? "constant uint A_leading_dimension [[function_constant(22)]];\nconstant uint C_leading_dimension [[function_constant(23)]];\n" : "");
   source.SetValue("QUANTIZATION_BASES", useLeadingDimensions ? "  const uint src_base = row * A_leading_dimension;\n  const uint dst_base = row * K;\n" : "  const uint base = row * K;\n");
@@ -602,10 +606,10 @@ inline void multiply_register(const device int8_t* A, const device int8_t* B,
   const uint M_block_size = min((uint){{BLOCK_M}}, M - M_block_start);
   const uint N_block_start = tgid.x * {{BLOCK_N}};
   const uint N_block_size = min((uint){{BLOCK_N}}, N - N_block_start);
-  const uint M_group_start = {{GROUP_M}} ? (M_block_start / {{GROUP_M}}) * {{GROUP_M}} : M_block_start;
+  const uint M_group_start = {{M_GROUP_START}};
   const uint M_group_offset = M_block_start - M_group_start;
   const uint M_group_size = M - M_group_start;
-  const uint N_group_start = {{GROUP_N}} ? (N_block_start / {{GROUP_N}}) * {{GROUP_N}} : N_block_start;
+  const uint N_group_start = {{N_GROUP_START}};
   const uint N_group_offset = N_block_start - N_group_start;
   const uint N_group_size = N - N_group_start;
 
