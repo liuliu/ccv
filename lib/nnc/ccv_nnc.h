@@ -4498,11 +4498,15 @@ CCV_WARN_UNUSED(uint64_t) ccv_cnnp_model_memory_size(const ccv_cnnp_model_t* con
  * Pin or unpin whole-file-backed weight mappings of already loaded model parameters. This
  * does not compile the model or materialize on-demand weights. Other allocations
  * are untouched. Call after loading the parameters.
+ * On Metal, pinned parameter buffers are kept GPU-resident with a residency set, and each
+ * backing mapping is also mlocked as best effort unless it is larger than half of physical
+ * memory. Where residency sets are unavailable, mlock is the only pin.
  * Repeated calls are idempotent; unpin before replacing parameters.
  * Currently implemented for Metal whole-file mappings; other backends are no-ops.
  * @param model The composed model.
  * @param pin_memory Nonzero to pin, zero to unpin.
- * @return 0 for success or no work, -1 if any pin or unpin failed during this call.
+ * @return 0 for success or no work, -1 if any pin or unpin failed during this call. A failed
+ *         mlock is not a failure when GPU residency succeeded.
  */
 int ccv_cnnp_model_pin_memory(ccv_cnnp_model_t* const model, const int pin_memory);
 /**

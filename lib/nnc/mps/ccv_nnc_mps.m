@@ -39,6 +39,8 @@ id<MTLDevice> ccv_nnc_default_device(void)
 @property (nonatomic, assign) NSUInteger size;
 @property (nonatomic, assign) NSUInteger pinCount;
 @property (nonatomic, assign) int pinStatus;
+@property (nonatomic, assign) BOOL locked;
+@property (nonatomic, retain) id<MTLResidencySet> residencySet API_AVAILABLE(macos(15.0), ios(18.0), macCatalyst(18.0), tvos(18.0), visionos(2.0));
 @end
 
 // Default callers retain the shared batching behavior. Only an explicit fork
@@ -443,6 +445,9 @@ int ccv_nnc_mps_file_backed_region(const ccv_nnc_tensor_t* const tensor, ccv_nnc
 
 - (void)dealloc
 {
+	if (@available(macOS 15.0, iOS 18.0, macCatalyst 18.0, tvOS 18.0, visionOS 2.0, *)) {
+		[_residencySet release];
+	}
 	if (_base && _size)
 		munmap(_base, _size);
 	[super dealloc];
@@ -512,9 +517,52 @@ void* mppinmemory(void* const ptr, int* const status)
 		return 0; // No ordinary Metal buffers, per-tensor mmap, or on-demand sources.
 	@synchronized(mapping) {
 		if (mapping.pinCount == 0)
-			mapping.pinStatus = mlock(mapping.base, mapping.size);
-		mapping.pinCount++;
+		{
+			// Set up once per pin session, so a failure is reported (and logged) once
+			// rather than retried for every buffer of the mapping.
+			// The status reports GPU residency where residency sets are available; the CPU
+			// lock is best effort on top of it, and only reported where it is the sole pin.
+			int pin_status = -1;
+			BOOL residency_available = NO;
+			if (@available(macOS 15.0, iOS 18.0, macCatalyst 18.0, tvOS 18.0, visionOS 2.0, *)) {
+				residency_available = YES;
+				MTLResidencySetDescriptor* const descriptor = [MTLResidencySetDescriptor new];
+				descriptor.label = @"Pinned model weights";
+				descriptor.initialCapacity = 1024;
+				NSError* error = nil;
+				id<MTLResidencySet> const residency_set = [ccv_nnc_default_device() newResidencySetWithDescriptor:descriptor error:&error];
+				[descriptor release];
+				if (residency_set)
+				{
+					mapping.residencySet = residency_set;
+					[residency_set release];
+					[_ccv_nnc_default_queue() addResidencySet:residency_set];
+					pin_status = 0;
+				} else
+					fprintf(stderr, "ccv: Metal residency set creation failed: %s\n", error ? error.localizedDescription.UTF8String : "unknown error");
+			}
+			// Wiring more than half of physical memory on the CPU side can starve the
+			// rest of the system, so such mappings rely on GPU residency alone.
+			if (mapping.size <= [NSProcessInfo processInfo].physicalMemory / 2)
+			{
+				mapping.locked = mlock(mapping.base, mapping.size) == 0;
+				if (!residency_available && mapping.locked)
+					pin_status = 0;
+			}
+			mapping.pinStatus = pin_status;
+		}
 		*status = mapping.pinStatus;
+		if (@available(macOS 15.0, iOS 18.0, macCatalyst 18.0, tvOS 18.0, visionOS 2.0, *)) {
+			// Request GPU residency even when the CPU lock failed or was skipped.
+			if (mapping.residencySet && ![mapping.residencySet containsAllocation:(id<MTLBuffer>)ptr])
+			{
+				[mapping.residencySet addAllocation:(id<MTLBuffer>)ptr];
+				[mapping.residencySet commit];
+				// Request after every commit so buffers added by later pins are covered too.
+				[mapping.residencySet requestResidency];
+			}
+		}
+		mapping.pinCount++;
 		[mapping retain];
 	}
 	return mapping;
@@ -527,8 +575,26 @@ int mpunpinmemory(void* const ptr)
 	@synchronized(mapping) {
 		assert(mapping.pinCount > 0);
 		mapping.pinCount--;
-		if (mapping.pinCount == 0 && mapping.pinStatus == 0)
-			status = munlock(mapping.base, mapping.size);
+		if (mapping.pinCount == 0)
+		{
+			if (mapping.locked)
+			{
+				status = munlock(mapping.base, mapping.size);
+				mapping.locked = NO;
+			}
+			if (@available(macOS 15.0, iOS 18.0, macCatalyst 18.0, tvOS 18.0, visionOS 2.0, *)) {
+				if (mapping.residencySet)
+				{
+					[_ccv_nnc_default_queue() removeResidencySet:mapping.residencySet];
+					[mapping.residencySet endResidency];
+					// Break the set -> buffer -> mapping retain cycle before
+					// dropping the final pin reference.
+					[mapping.residencySet removeAllAllocations];
+					[mapping.residencySet commit];
+					mapping.residencySet = nil;
+				}
+			}
+		}
 	}
 	[mapping release];
 	return status;

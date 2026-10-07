@@ -16,7 +16,9 @@ void mpheapfree(int device, void* ptr);
 void* mpobjmalloc(int device, size_t size);
 void* mpobjcreate(void* ptr, off_t offset, size_t size);
 void mpobjfree(int device, void* ptr);
-// Acquire a whole-file mapping pin reference, or null for other buffer kinds.
+// Acquire a whole-file mapping pin reference, or null for other buffer kinds. The buffer
+// is made GPU-resident, and the mapping is mlocked unless it exceeds half of physical memory.
+// The status is the GPU residency result where available, otherwise the mlock result.
 void* mppinmemory(void* ptr, int* status);
 // Release the mapping reference returned by mppinmemory (including failed pins).
 int mpunpinmemory(void* ptr);

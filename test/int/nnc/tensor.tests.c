@@ -6,6 +6,9 @@
 #include "nnc/ccv_nnc_easy.h"
 #include "3rdparty/sqlite3/sqlite3.h"
 #include "3rdparty/dsfmt/dSFMT.h"
+#ifdef HAVE_MPS
+#include "nnc/mps/ccv_nnc_mps.h"
+#endif
 
 TEST_SETUP()
 {
@@ -145,6 +148,59 @@ TEST_CASE("Metal whole-file mapping size limit falls back outside the shared pre
 	ccv_nnc_tensor_free(tensor_b);
 	ccv_nnc_tensor_free(a);
 	ccv_nnc_tensor_free(b);
+}
+
+TEST_CASE("Metal whole-file mapping pins outlive one owner and can be pinned again")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_DATA_TRANSFER_FORWARD, CCV_NNC_BACKEND_MPS));
+#ifdef HAVE_MPS
+	FILE* const file = fopen("tensor-whole-file-pin.bin", "w+");
+	float* const values = (float*)ccmalloc(sizeof(float) * 4096 * 5);
+	int i;
+	for (i = 0; i < 4096 * 5; i++)
+		values[i] = (float)(i + 1);
+	fwrite(values, 1, sizeof(float) * 4096 * 5, file);
+	fclose(file);
+	ccfree(values);
+	ccv_nnc_tensor_t* const tensor_a = ccv_nnc_tensor_new_from_file(GPU_TENSOR_NHWC(000, 32F, 5), "tensor-whole-file-pin.bin", 0, CCV_NNC_TENSOR_MEMORY_MAP_WHOLE_FILE);
+	ccv_nnc_tensor_t* const tensor_b = ccv_nnc_tensor_new_from_file(GPU_TENSOR_NHWC(000, 32F, 4), "tensor-whole-file-pin.bin", 4096 * 4 * 4, CCV_NNC_TENSOR_MEMORY_MAP_WHOLE_FILE);
+	ccv_nnc_tensor_t* const tensor_c = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 4), 0);
+	remove("tensor-whole-file-pin.bin");
+	int status_a, status_b, status_c;
+	void* const pin_a = mppinmemory(tensor_a->data.u8, &status_a);
+	void* const pin_b = mppinmemory(tensor_b->data.u8, &status_b);
+	void* const pin_c = mppinmemory(tensor_c->data.u8, &status_c);
+	REQUIRE(pin_a != 0, "a whole-file tensor should return a pin reference");
+	REQUIRE(pin_a == pin_b, "tensors from one file should share the mapping pin reference");
+	REQUIRE(pin_c == 0, "an ordinary Metal buffer should not be pinned");
+	REQUIRE_EQ(status_a, 0, "pinning a small mapping should succeed");
+	REQUIRE_EQ(status_b, 0, "later pins should report the mapping pin status");
+	REQUIRE_EQ(status_c, 0, "skipping an ordinary Metal buffer is not a failure");
+	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 5), 0);
+	ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 4), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(tensor_a, tensor_b), TENSOR_LIST(a, b), 0);
+	const float expected_a[] = {1, 2, 3, 4, 5};
+	const float expected_b[] = {4096 * 4 + 1, 4096 * 4 + 2, 4096 * 4 + 3, 4096 * 4 + 4};
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, a->data.f32, expected_a, 5, 1e-5, "the first pinned tensor should match its file range");
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, b->data.f32, expected_b, 4, 1e-5, "the second pinned tensor should match its file range");
+	REQUIRE_EQ(mpunpinmemory(pin_a), 0, "unpinning one owner should succeed");
+	ccv_nnc_tensor_free(tensor_a);
+	memset(b->data.f32, 0, sizeof(float) * 4);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(tensor_b), TENSOR_LIST(b), 0);
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, b->data.f32, expected_b, 4, 1e-5, "the remaining owner should still read its pinned range");
+	REQUIRE_EQ(mpunpinmemory(pin_b), 0, "the final unpin should succeed");
+	void* const pin_b_again = mppinmemory(tensor_b->data.u8, &status_b);
+	REQUIRE(pin_b_again == pin_b, "the mapping should be pinned again after the final unpin");
+	REQUIRE_EQ(status_b, 0, "pinning again should succeed");
+	memset(b->data.f32, 0, sizeof(float) * 4);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(tensor_b), TENSOR_LIST(b), 0);
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, b->data.f32, expected_b, 4, 1e-5, "the pinned again tensor should match its file range");
+	REQUIRE_EQ(mpunpinmemory(pin_b_again), 0, "unpinning again should succeed");
+	ccv_nnc_tensor_free(tensor_b);
+	ccv_nnc_tensor_free(tensor_c);
+	ccv_nnc_tensor_free(a);
+	ccv_nnc_tensor_free(b);
+#endif
 }
 
 static int _tensor_xor_encode(const void* const data, const size_t data_size, const int datatype, const int* const dimensions, const int dimension_count, void* const context, void* const encoded, size_t* const encoded_size, ccv_nnc_tensor_param_t* const params, unsigned int* const identifier)
