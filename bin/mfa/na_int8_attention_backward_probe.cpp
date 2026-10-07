@@ -397,7 +397,8 @@ BackwardPipelines create_backward_pipelines(
       false,
       false,
       false,
-      false);
+      false,
+      true /* mortonTraversal */);
   const NAInt8AttentionKernelDescriptor keyvalue_descriptor(
       keyvalue_block_dimensions,
       attention.D,
@@ -416,7 +417,8 @@ BackwardPipelines create_backward_pipelines(
       false,
       false,
       false,
-      false);
+      false,
+      true /* mortonTraversal */);
   bundle.query_kernel = std::make_unique<NAInt8AttentionKernel>(query_descriptor, device);
   bundle.keyvalue_kernel = std::make_unique<NAInt8AttentionKernel>(keyvalue_descriptor, device);
   auto attention_constants = create_attention_constants(

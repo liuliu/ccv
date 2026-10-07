@@ -34,6 +34,7 @@ struct NAInt8AttentionKernel {
   GEMMOperandPrecision ioPrecision;
   // Output channels owned by each threadgroup; QK still reduces over the full head.
   unsigned short outputTileSize;
+  bool mortonTraversal;
   bool lowPrecisionIntermediates;
   float scale;
   bool isCausal;

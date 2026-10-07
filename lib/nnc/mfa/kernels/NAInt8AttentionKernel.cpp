@@ -60,6 +60,7 @@ NAInt8AttentionKernel::NAInt8AttentionKernel(
   ioPrecision = descriptor.ioPrecision;
   lowPrecisionIntermediates = descriptor.lowPrecisionIntermediates;
   outputTileSize = descriptor.outputTileSize;
+  mortonTraversal = descriptor.mortonTraversal;
   scale = descriptor.scale;
   isCausal = descriptor.isCausal;
   masked = descriptor.masked;
@@ -104,13 +105,14 @@ MTL::Size NAInt8AttentionKernel::threadgroupsPerGrid(uint32_t batchDimension, ui
       return (target + int64_t(granularity) - 1) / int64_t(granularity);
     };
   const int64_t row_groups = ceilDivide(rowDimension, blockDimensions[0] * executionSIMDGroups);
-  const uint32_t row_bits = ceilLog2(row_groups);
   const uint32_t heads =
       type == AttentionKernelType::backwardKeyValue ? Hk : Hq;
-  if (outputTileSize < headDimension)
-    return MTL::Size(row_groups * heads, 1, batchDimension * ceilDivide(headDimension, outputTileSize));
+  const int64_t batches = batchDimension * ceilDivide(headDimension, outputTileSize);
+  if (!mortonTraversal)
+    return MTL::Size(row_groups * heads, 1, batches);
+  const uint32_t row_bits = ceilLog2(row_groups);
   const uint32_t head_bits = ceilLog2(heads);
-  return MTL::Size(int64_t(1) << (row_bits + head_bits), 1, batchDimension);
+  return MTL::Size(int64_t(1) << (row_bits + head_bits), 1, batches);
 }
 
 uint16_t NAInt8AttentionKernel::vMeanThreadgroupSize() const noexcept {
@@ -777,6 +779,17 @@ kernel void generate_int8_attention_block_mask(
   if (type == AttentionKernelType::backwardQuery) {
     source += createComputeD();
   }
+  source.SetValue("ROW_HEAD_MAPPING", mortonTraversal ? R"(
+  const uint row_group_bits = ceil_log2_u32(row_group_count);
+  const uint head_bits = ceil_log2_u32()" +
+      (type == AttentionKernelType::forward ? std::string("Hq") :
+       std::to_string(type == AttentionKernelType::backwardKeyValue ? Hk : Hq)) + R"();
+  const uint tile_code = tgid.x;
+  const uint2 morton_tile = morton_decode_rectangular_2d(tile_code, row_group_bits, head_bits);
+  tgid = uint3(morton_tile.x, morton_tile.y, tgid.z);
+)" : R"(
+  tgid = uint3(tgid.x % row_group_count, tgid.x / row_group_count, tgid.z);
+)");
   switch (type.value) {
   case AttentionKernelType::forward: {
     const uint16_t outputTiles = (headDimension + outputTileSize - 1) / outputTileSize;
@@ -784,16 +797,6 @@ kernel void generate_int8_attention_block_mask(
         "  const uint output_tile = tgid.z % " + std::to_string(outputTiles) + ";\n" +
         "  tgid.z /= " + std::to_string(outputTiles) + ";\n" +
         "  const uint output_channel_offset = output_tile * " + std::to_string(outputTileSize) + ";\n" : "");
-    // Each output tile visits only live head/query groups, in head-major order.
-    source.SetValue("ROW_HEAD_MAPPING", outputTiles > 1 ? R"(
-  tgid = uint3(tgid.x % row_group_count, tgid.x / row_group_count, tgid.z);
-)" : R"(
-  const uint row_group_bits = ceil_log2_u32(row_group_count);
-  const uint head_bits = ceil_log2_u32(Hq);
-  const uint tile_code = tgid.x;
-  const uint2 morton_tile = morton_decode_rectangular_2d(tile_code, row_group_bits, head_bits);
-  tgid = uint3(morton_tile.x, morton_tile.y, tgid.z);
-)");
     source.SetValue("MAIN_KERNEL_NAME", "int8_attention");
     source.SetValue("ROW_DIMENSION_SYMBOL", "R");
     source.SetValue("GRID_HEADS", std::to_string(Hq));
@@ -844,12 +847,7 @@ kernel void {{MAIN_KERNEL_NAME}}(
 	    uint3 tgid [[threadgroup_position_in_grid]]
 	  ) {
   const uint row_group_count = ({{ROW_DIMENSION_SYMBOL}} + {{BLOCK_DIMENSIONS_PARALLELIZATION}} * {{EXECUTION_SIMD_GROUPS}} - 1) / ({{BLOCK_DIMENSIONS_PARALLELIZATION}} * {{EXECUTION_SIMD_GROUPS}});
-  const uint row_group_bits = ceil_log2_u32(row_group_count);
-  const uint head_bits = ceil_log2_u32({{GRID_HEADS}});
-  const uint tile_code = tgid.x;
-  const uint2 morton_tile = morton_decode_rectangular_2d(tile_code, row_group_bits, head_bits);
-  tgid = uint3(morton_tile.x, morton_tile.y, tgid.z);
-  if (tgid.y >= {{GRID_HEADS}} || tgid.x >= row_group_count) {
+{{ROW_HEAD_MAPPING}}  if (tgid.y >= {{GRID_HEADS}} || tgid.x >= row_group_count) {
     return;
   }
   tgid.x = tgid.x * {{EXECUTION_SIMD_GROUPS}} + sgid;
@@ -879,12 +877,7 @@ kernel void {{MAIN_KERNEL_NAME}}(
 	    uint3 tgid [[threadgroup_position_in_grid]]
 	  ) {
   const uint row_group_count = ({{ROW_DIMENSION_SYMBOL}} + {{BLOCK_DIMENSIONS_PARALLELIZATION}} * {{EXECUTION_SIMD_GROUPS}} - 1) / ({{BLOCK_DIMENSIONS_PARALLELIZATION}} * {{EXECUTION_SIMD_GROUPS}});
-  const uint row_group_bits = ceil_log2_u32(row_group_count);
-  const uint head_bits = ceil_log2_u32({{GRID_HEADS}});
-  const uint tile_code = tgid.x;
-  const uint2 morton_tile = morton_decode_rectangular_2d(tile_code, row_group_bits, head_bits);
-  tgid = uint3(morton_tile.x, morton_tile.y, tgid.z);
-  if (tgid.y >= {{GRID_HEADS}} || tgid.x >= row_group_count) {
+{{ROW_HEAD_MAPPING}}  if (tgid.y >= {{GRID_HEADS}} || tgid.x >= row_group_count) {
     return;
   }
   tgid.x = tgid.x * {{EXECUTION_SIMD_GROUPS}} + sgid;

@@ -64,6 +64,7 @@ static NAInt8AttentionKernel* create_kernel(const NAInt8AttentionKernelDescripto
   kernel->hasRRemainder = kernel_descriptor.hasRRemainder;
   kernel->loadC = kernel_descriptor.loadC;
   kernel->outputTileSize = kernel_descriptor.outputTileSize;
+  kernel->mortonTraversal = kernel_descriptor.mortonTraversal;
   return kernel;
 }
 

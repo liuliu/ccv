@@ -34,6 +34,8 @@ struct NAInt8AttentionKernelDescriptor {
   bool attentionSinks;
   // Output channels owned by each threadgroup; QK still reduces over the full head.
   unsigned short outputTileSize;
+  // Otherwise visit all row groups for one head before the next head.
+  bool mortonTraversal = false;
 
   NAInt8AttentionKernelDescriptor() = delete;
   NAInt8AttentionKernelDescriptor(const NAInt8AttentionDescriptor& descriptor,
@@ -57,6 +59,7 @@ struct NAInt8AttentionKernelDescriptor {
       bool masked,
       bool hasCausalEmptyRows,
       bool isVarlen,
+      bool mortonTraversal,
       bool attentionSinks = false) noexcept;
 
   bool operator==(const NAInt8AttentionKernelDescriptor& rhs) const;

@@ -1,0 +1,91 @@
+NAInt8Attention traversal policy — 2026-10-07
+
+Baseline: unstable c8349464e6e4398effbef97992a015f3e3ff3404.
+Devices: M5 Max (40 GPU cores), M5 iPad Pro (10 GPU cores).
+
+Final policy, selected in NAInt8AttentionKernelDescriptor:
+  mortonTraversal = type != forward ||
+      (outputTileSize == headDimension && isCausal && (loadR || loadC));
+
+Head-major is the forward default. Untiled dynamic causal attention retains
+Morton; output-tiled forward retains its existing head-major order. Backward
+retains Morton. There is no precision, core-count, explicit D, or sequence-length
+threshold. The flag participates in kernel-descriptor equality/hash and controls
+both generated row/head mapping and dispatch geometry. Grid z preserves every
+batch/output-tile combination for either traversal. Runtime R remains a dispatch
+argument, not a cached kernel dimension. No execution-descriptor or ShaderCache
+change is needed.
+
+Selector evidence: GPU milliseconds, including quantization
+Max; FP16; B1; Hq16/Hkv4. Dynamic means R/C are runtime values as indicated.
+R     C     D   Runtime   Morton    Head-major   Head-major change
+4096  8192  128 R          3.0901       3.1786       +2.9%
+4096  8192  128 C          3.1404       3.2369       +3.1%
+4096  8192  128 R,C        2.9527       3.0068       +1.8%
+2048  8192  128 R,C        1.7844       1.8301       +2.6%
+2048  8192  128 C          1.9116       2.0095       +5.1%
+4096  4096  128 R,C        1.1028       1.1647       +5.6%
+4096  8192   64 R,C        1.3228       1.3542       +2.4%
+ 256  8192   64 R,C        0.2009       0.2008        0.0%
+4096  8192  128 fixed      3.0368       2.9061       -4.3%
+The matching dynamic dense 4096x8192/D128 case was unchanged (3.3439 ms).
+Fixed causal on iPad improved from 12.7499 to 12.0975 ms (-5.1%).
+These measurements support retaining Morton for dynamic causal attention,
+rather than excluding all causal attention or restricting the rule to D128.
+They do not establish a hardware-counter explanation for the difference.
+
+Why output-tiled kernels keep head-major
+Forcing Morton into the existing tiled D256 path was roughly neutral on the
+large causal and short-prefill controls on both devices. However, Max batched
+varlen causal R257/C385/D256, B2, Hq6/Hkv2 regressed from 0.0651 to 0.0743 ms
+(+14.0%), then from 0.0656 to 0.0731 ms (+11.4%) in reverse order. Preserving
+the existing tiled head-major path removes that regression without introducing
+a separate varlen exception. Both orders were numerically identical.
+
+Why there is no attention-sink exception
+The earlier iPad R1025/C2049/D128/Hq12/Hkv4 sink regression was +2.2–2.5%; the
+new repeat was +1.9%. Neighbors were -0.4% at R1024, -1.7% at R2048, -1.7% at
+C4096, -3.7% at D64, and +1.9% at Hq16. Removing sinks at the original shape
+still measured +1.2%. This does not support a blanket sink gate. A small residual
+tradeoff near 2% remains; this is not a universal zero-regression claim.
+
+Final gate vs baseline: controls (GPU ms)
+Device  Case                         Baseline     Final     Change
+Max     dynamic causal 4096^2/D128      1.0946      1.1040     +0.9%
+iPad    dynamic causal 4096^2/D128      4.4211      4.4328     +0.3%
+Max     tiled causal varlen above      0.0660      0.0658     -0.3%
+iPad    tiled causal varlen above      0.1376      0.1369     -0.5%
+Max     dense 4096^2/D128/H32           3.5994      3.6012     +0.0%
+iPad    dense 4096^2/D128/H32          14.9288     14.9200     -0.1%
+
+Final full H3 confirmation: FP16, R=C=31018, D128, B1, Hq32/Hkv32
+Device  Baseline     Final       Change
+Max      263.418     234.768       -10.9%
+iPad     949.526     845.126       -11.0%
+These use 4 timed samples/arm on Max and 2 on iPad, with 5-second pauses
+between submissions. Absolute Max times drifted relative to the earlier
+head-major experiment; both arms were paired in the same process here.
+The large improvement is consistent; this sample count does not establish
+sub-2% precision. Thermal state stayed nominal on both devices.
+
+Validation
+Debug build and all 12 focused quantized-forward/varlen integration tests pass.
+Direct cache tests distinguish both traversal variants, check reuse across
+runtime R65/R1025 in both lookup orders, and verify grid dimensions for D128,
+D256, batch 2, and non-power-of-two head/row counts. The generated backward
+query/key-value shaders for D128/D256 match baseline ignoring whitespace;
+restored D128 Morton and existing D256 head-major forward shaders also match.
+Additional GPU coverage includes FP16/BF16/FP32, causal empty rows, masks,
+varlen, sinks, batched output tiling, and a partial D320 output tile.
+
+Paired runs use one device/queue and identical buffers, ABBA/BAAB order,
+at least 0.3 combined GPU seconds of warmup, and nominal thermal checks.
+The selector table uses the reverse-order Max confirmation sweep, with 64
+samples per arm. The earlier sweep had intermittent GPU stalls and is retained
+in the raw evidence but is not used for the small-difference selector table.
+No heavy builds ran during Max timing. Final ordinary controls use 48 samples
+per arm on Max and 32 on iPad. No Ultra results are claimed.
+
+This follow-up retained 59 paired launches (38 Max, 21 iPad),
+5132 timed submissions plus warmup, with no numerical or thermal failures.
+Every output and LSE pair was identical. No full backward suite was rerun.

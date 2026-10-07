@@ -26,6 +26,7 @@ bool NAInt8AttentionKernelDescriptor::operator==(const NAInt8AttentionKernelDesc
     hasCausalEmptyRows == rhs.hasCausalEmptyRows &&
     attentionSinks == rhs.attentionSinks &&
     outputTileSize == rhs.outputTileSize &&
+    mortonTraversal == rhs.mortonTraversal &&
     scale == rhs.scale;
 }
 
@@ -55,6 +56,7 @@ std::size_t std::hash<NAInt8AttentionKernelDescriptor>::operator()(const NAInt8A
   seed = combine_32(seed, hash.isVarlen ? 1 : 0);
   seed = combine_32(seed, hash.attentionSinks ? 1 : 0);
   seed = combine_32(seed, hash.outputTileSize);
+  seed = combine_32(seed, hash.mortonTraversal ? 1 : 0);
   seed = combine_32(seed, uint32_t(std::hash<float>{}(hash.scale)));
   return seed;
 }
@@ -78,12 +80,14 @@ NAInt8AttentionKernelDescriptor::NAInt8AttentionKernelDescriptor(
     bool masked,
     bool hasCausalEmptyRows,
     bool isVarlen,
+    bool mortonTraversal,
     bool attentionSinks) noexcept
 {
   this->blockDimensions = blockDimensions;
   this->type = type;
   this->headDimension = headDimension;
   this->outputTileSize = headDimension;
+  this->mortonTraversal = mortonTraversal;
   this->Hq = Hq;
   this->Hk = Hk;
   this->qScaleTileSize = qScaleTileSize;
@@ -157,4 +161,8 @@ NAInt8AttentionKernelDescriptor::NAInt8AttentionKernelDescriptor(
   hasCRemainder = type == AttentionKernelType::forward &&
       (isVarlen || (descriptor.matrixDimensions[1] % blockDimensions[1]) != 0);
   hasRRemainder = !loadR || isVarlen || descriptor.matrixDimensions[0] % blockDimensions[0] != 0;
+  // Untiled dynamic causal kernels retain a measured advantage with Morton.
+  // Output tiling keeps head-major order; backward keeps its existing Morton order.
+  mortonTraversal = type != AttentionKernelType::forward ||
+      (outputTileSize == headDimension && isCausal && (loadR || loadC));
 }
