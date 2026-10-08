@@ -1,0 +1,90 @@
+Saved evidence and comparison controls
+
+final:
+  fp16: candidate before the final sparse-query traversal guard, base bd7f3d37.
+  previous_fp16: earlier register-based candidate with four logical heads per
+    workgroup but one head per SIMD (group4-source snapshot). This is a strong
+    development baseline, not unchanged unstable.
+  mlx: actual MLX 25532871329fe4cafdada9fa0941a1cdbfb3a9f2 plus the archived
+    D256 JIT signature patch. No selector overrides or manual input conversion.
+    MLX internal layout copies, when selected for batches >1, are timed.
+  Two passes, reversed case/variant order, 64 samples, two GPU seconds warmup.
+
+gqa2-final / gqa2-numerical:
+  Six Hq/Hkv=16/8, D128 shapes exercise the one-SIMD workgroup boundary.
+  Both precisions passed; two timed passes with group4 and actual MLX completed.
+
+numerical-final:
+  96 permanent shapes in each of FP16 and BF16, one pass, eight timing samples,
+  0.01 GPU seconds warmup. These 192 runs are correctness coverage only; their
+  cold timings are not evidence of parity or regression.
+
+paired-focus:
+  20 D128 shapes, current paired-head candidate versus group4 and actual MLX.
+  One pass, 64 samples, two GPU seconds warmup. One R1/C32768/H64:4 result was
+  348 us and flagged a regression. The raw flag remains in the saved evidence.
+
+private-repeats:
+  Three fresh processes with the diagnostic application (2,2,5 GPU seconds
+  warmup), and three with the exact original paired-focus binary (2 seconds),
+  rechecked R1/C32768/H64:4. All six gave approximately 149-151 us. A cause for
+  the original slow process was not established. Do not silently discard it.
+
+profile-private:
+  Stage profiling now uses context::request_scratch, matching production's
+  private, capacity-rounded allocation. Production and selected complete
+  dispatches agree on the checked long contexts. Isolated stage times are
+  diagnostic and should not be added or compared to complete MLX SDPA.
+
+profile-ablation:
+  Same-source one-head/two-head controls with matching partitions. These
+  precede the scratch-allocation correction; selected stages used a separate
+  shared scratch buffer. They establish hypotheses, with production results
+  and profile-private supplying the later validation.
+
+integration:
+  Final candidate: full DNN suite, five focused decode filters, and full BLAS
+  attempt. Baseline GEMM shader failure reproduces on clean bd7f3d37. The old
+  generic attention-sinks shader failure also has an unchanged-baseline log.
+  Expanded cache and FP16/BF16 saved-logsumexp tests are rebuilt after the
+  final selector change; expanded-tests.json records those results and the
+  final DNN rerun. Inspect their exit codes before claiming a passing result.
+
+Source/binary hashes and exact commands accompany each phase. The final CSV
+uses the usual median of all 64 raw samples, then the median across two process
+medians. The archived MLX executable itself prints the upper middle sample;
+recomputing from raw samples gives both implementations the same convention.
+A material comparison flag requires >5 percent and >2 us additional GPU time.
+
+initial / validation:
+  Earlier development phases, retained to document the change from unchanged
+  unstable bd7f3d37. Their previous_fp16 binary is the clean unstable build,
+  unlike final's group4 development baseline. Its binary hash and clean-source
+  provenance are verified in unstable-baseline-metadata.json. Initial used
+  32 samples and 0.25 GPU seconds warmup; validation used 64 and one second.
+  These runs contain earlier candidate code and are historical evidence, not
+  the final parity measurements. Do not substitute their candidate medians
+  for the final two-pass comparison.
+
+profile-long-d256 / profile-cap-controls:
+  Same shader, FP32 state, two GPU seconds warmup and 64 samples per stage.
+  These expose the tradeoff between shorter serial traversal and merge work.
+  A uniform 128-row limit was rejected after the B4 control regressed about
+  26 percent. The final policy shortens single-head traversal only when
+  independent queries are fewer than GPU cores. All raw controls are retained.
+
+policy-final / policy-numerical:
+  Five shapes compared against the same group4 and MLX controls: the affected
+  original 64K case and four batch/MHA controls. The numerical supplement has
+  15 shapes in both precisions: ten timed shapes previously missing from the
+  permanent numerical manifest, four new controls, and the affected old case.
+  The final permanent manifest has 116 shapes, 232 precision combinations.
+  There are 234 numerical processes including the rechecked original case.
+
+Final comparison.csv:
+  The evidence_phase column identifies which phase measured each row.
+  policy-final supplies five rows; 67 rows reuse earlier measurements only
+  after comparing the actual before/after C++ selector results and proving
+  identical GPU source and pipeline geometry. selection-audit.json records
+  all 232 selections. pre-policy-comparison.csv preserves the original
+  5.36-percent MLX gap and the intermittent baseline regression flag.

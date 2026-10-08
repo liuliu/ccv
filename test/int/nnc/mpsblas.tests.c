@@ -7669,6 +7669,222 @@ TEST_CASE("scaled dot product attention with BF16 R1 mps decode")
 	}
 }
 
+TEST_CASE("scaled dot product attention R1 and R2 mps decode cache transitions")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SCALED_DOT_PRODUCT_ATTENTION_FORWARD, CCV_NNC_BACKEND_MPS));
+	const struct { int B, R, C, Hq, Hk, D; } cases[] = {
+		{ 2, 1, 7, 8, 2, 128 },
+		{ 2, 2, 1, 8, 2, 128 }, // Empty first causal row.
+		{ 2, 2, 33, 8, 2, 128 },
+		{ 2, 2, 129, 16, 4, 256 },
+		{ 1, 1, 513, 24, 4, 256 },
+		{ 1, 1, 777, 24, 4, 256 }, // Exercise another runtime C within the split path.
+		{ 2, 2, 2049, 16, 4, 256 },
+		{ 2, 2, 3073, 16, 4, 256 }, // Reuse the R2 pipeline with a different causal limit.
+		{ 3, 2, 8193, 8, 2, 128 },
+		{ 1, 1, 32768, 64, 4, 128 }, // Paired GQA heads and long split reductions.
+		{ 1, 2, 8193, 64, 4, 128 },
+		{ 2, 2, 513, 16, 8, 128 }, // One SIMD per row when the GQA ratio is two.
+		{ 2, 2, 8192, 16, 4, 256 }, // Large finite V must not overflow unnormalized partials.
+		{ 2, 2, 257, 7, 1, 256 }, // GQA ratio does not divide eight.
+		{ 2, 1, 7, 8, 2, 128 }, // Revisit the direct pipeline after splits.
+	};
+	for (int precision = 0; precision < 2; ++precision)
+		for (int is_causal = 0; is_causal <= 1; ++is_causal)
+			for (int c = 0; c < sizeof(cases) / sizeof(cases[0]); ++c)
+			{
+				const int B = cases[c].B, R = cases[c].R, C = cases[c].C;
+				const int Hq = cases[c].Hq, Hk = cases[c].Hk, D = cases[c].D;
+				const int datatype = precision ? CCV_16BF : CCV_16F;
+				const int q_count = B * R * Hq * D, kv_count = B * C * Hk * D;
+				const int offset = Hq * D;
+				ccv_nnc_tensor_t* const q = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, B, R, Hq, D), 0);
+				ccv_nnc_tensor_t* const k = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, B, C, Hk, D), 0);
+				ccv_nnc_tensor_t* const v = ccv_nnc_tensor_new(0, k->info, 0);
+				ccv_nnc_tensor_t* const expected = ccv_nnc_tensor_new(0, q->info, 0);
+				ccv_nnc_tensor_t* const actual = ccv_nnc_tensor_new(0, q->info, 0);
+				ccv_nnc_tensor_param_t q_input_info = q->info, kv_input_info = k->info;
+				q_input_info.datatype = kv_input_info.datatype = datatype;
+				ccv_nnc_tensor_t* const q_input = ccv_nnc_tensor_new(0, q_input_info, 0);
+				ccv_nnc_tensor_t* const k_input = ccv_nnc_tensor_new(0, kv_input_info, 0);
+				ccv_nnc_tensor_t* const v_input = ccv_nnc_tensor_new(0, kv_input_info, 0);
+				dsfmt_t dsfmt;
+				dsfmt_init_gen_rand(&dsfmt, c + 511);
+				for (int i = 0; i < q_count; ++i)
+					q->data.f32[i] = (dsfmt_genrand_open_close(&dsfmt) - 0.5) * 4;
+				for (int i = 0; i < kv_count; ++i)
+				{
+					k->data.f32[i] = (dsfmt_genrand_open_close(&dsfmt) - 0.5) * 4;
+					v->data.f32[i] = (dsfmt_genrand_open_close(&dsfmt) - 0.5) * 2;
+				}
+				if (C == 8192)
+				{
+					memset(q->data.f32, 0, q_count * sizeof(float));
+					memset(k->data.f32, 0, kv_count * sizeof(float));
+					for (int i = 0; i < kv_count; ++i)
+						v->data.f32[i] = 65504;
+				}
+				_mps_sdpa_store_float_as_datatype(datatype, q->data.f32, q_input->data.u8, q_count);
+				_mps_sdpa_store_float_as_datatype(datatype, k->data.f32, k_input->data.u8, kv_count);
+				_mps_sdpa_store_float_as_datatype(datatype, v->data.f32, v_input->data.u8, kv_count);
+				_mps_forward_scaled_gemm_to_float(datatype, q_input->data.u8, q_count, q->data.f32);
+				_mps_forward_scaled_gemm_to_float(datatype, k_input->data.u8, kv_count, k->data.f32);
+				_mps_forward_scaled_gemm_to_float(datatype, v_input->data.u8, kv_count, v->data.f32);
+				const ccv_nnc_cmd_t cmd = CMD_SCALED_DOT_PRODUCT_ATTENTION_FORWARD(1.0 / sqrtf((float)D), is_causal);
+				REQUIRE_EQ(ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(q, k, v), TENSOR_LIST(expected), 0), CCV_NNC_EXEC_SUCCESS, "decode CPU reference should execute");
+				ccv_nnc_tensor_param_t storage_info = CPU_TENSOR_NHWC(16F, q_count + 2 * offset);
+				storage_info.datatype = datatype;
+				ccv_nnc_tensor_t* const storage = ccv_nnc_tensor_new(0, storage_info, 0);
+				uint16_t* const storage_data = (uint16_t*)storage->data.f16;
+				// Raw bits represent a finite guard in both half and bfloat16.
+				for (int i = 0; i < q_count + 2 * offset; ++i)
+					storage_data[i] = 0x4242;
+				storage_info.type = q_input_info.type = kv_input_info.type = CCV_TENSOR_GPU_MEMORY;
+				ccv_nnc_tensor_t* const gpu_storage = ccv_nnc_tensor_new(0, storage_info, 0);
+				ccv_nnc_tensor_view_t* const gpu_q = ccv_nnc_tensor_view_new(gpu_storage, q_input_info, DIM_ALLOC(0, 1, 0, 0), DIM_ALLOC(R * Hq * D, Hq * D, D, 1));
+				ccv_nnc_tensor_t* const gpu_k = ccv_nnc_tensor_new(0, kv_input_info, 0);
+				ccv_nnc_tensor_t* const gpu_v = ccv_nnc_tensor_new(0, kv_input_info, 0);
+				ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(storage, k_input, v_input), TENSOR_LIST(gpu_storage, gpu_k, gpu_v), 0);
+				ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(q_input), TENSOR_LIST((ccv_nnc_tensor_t*)gpu_q), 0);
+				const uint64_t old_flags = ccv_nnc_flags();
+				ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M | CCV_NNC_DISABLE_MFA_ATTENTION_SPECIALIZING_C);
+				const int status = ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST((ccv_nnc_tensor_t*)gpu_q, gpu_k, gpu_v), TENSOR_LIST((ccv_nnc_tensor_t*)gpu_q), 0);
+				ccv_nnc_disable_flag((CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M | CCV_NNC_DISABLE_MFA_ATTENTION_SPECIALIZING_C) & ~old_flags);
+				REQUIRE_EQ(status, CCV_NNC_EXEC_SUCCESS, "decode should execute for precision %d causal %d case %d", precision, is_causal, c);
+				ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(gpu_storage), TENSOR_LIST(storage), 0);
+				_mps_forward_scaled_gemm_to_float(datatype, storage_data + offset, q_count, actual->data.f32);
+				double error = 0, norm = 0;
+				for (int i = 0; i < q_count; ++i)
+				{
+					REQUIRE(isfinite(actual->data.f32[i]), "decode output should be finite at %d", i);
+					const double diff = actual->data.f32[i] - expected->data.f32[i];
+					error += diff * diff;
+					norm += expected->data.f32[i] * expected->data.f32[i];
+				}
+				REQUIRE(sqrt(error / fmax(norm, 1e-30)) < (precision ? 0.008 : 0.001), "decode should match CPU for precision %d causal %d case %d (relative L2 %g)", precision, is_causal, c, sqrt(error / fmax(norm, 1e-30)));
+				for (int i = 0; i < offset; ++i)
+				{
+					REQUIRE_EQ(storage_data[i], 0x4242, "decode should preserve prefix");
+					REQUIRE_EQ(storage_data[offset + q_count + i], 0x4242, "decode should preserve suffix");
+				}
+				ccv_nnc_tensor_free(gpu_v);
+				ccv_nnc_tensor_free(gpu_k);
+				ccv_nnc_tensor_view_free(gpu_q);
+				ccv_nnc_tensor_free(gpu_storage);
+				ccv_nnc_tensor_free(storage);
+				ccv_nnc_tensor_free(v_input);
+				ccv_nnc_tensor_free(k_input);
+				ccv_nnc_tensor_free(q_input);
+				ccv_nnc_tensor_free(actual);
+				ccv_nnc_tensor_free(expected);
+				ccv_nnc_tensor_free(v);
+				ccv_nnc_tensor_free(k);
+				ccv_nnc_tensor_free(q);
+			}
+}
+
+TEST_CASE("scaled dot product attention decode preserves saved logsumexp")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SCALED_DOT_PRODUCT_ATTENTION_FORWARD, CCV_NNC_BACKEND_MPS));
+	const int B = 2, C = 129, Hq = 8, Hk = 2;
+	for (int precision = 0; precision < 2; ++precision)
+		for (int R = 1; R <= 2; ++R)
+			for (int D = 128; D <= 256; D *= 2)
+			{
+				const int datatype = precision ? CCV_16BF : CCV_16F;
+				const int q_count = B * R * Hq * D, kv_count = B * C * Hk * D;
+				ccv_nnc_tensor_t* const q = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, B, R, Hq, D), 0);
+				ccv_nnc_tensor_t* const k = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, B, C, Hk, D), 0);
+				ccv_nnc_tensor_t* const v = ccv_nnc_tensor_new(0, k->info, 0);
+				ccv_nnc_tensor_param_t q_input_info = CPU_TENSOR_NHWC(16F, B, R, Hq, D);
+				ccv_nnc_tensor_param_t kv_input_info = CPU_TENSOR_NHWC(16F, B, C, Hk, D);
+				q_input_info.datatype = kv_input_info.datatype = datatype;
+				ccv_nnc_tensor_t* const q_input = ccv_nnc_tensor_new(0, q_input_info, 0);
+				ccv_nnc_tensor_t* const k_input = ccv_nnc_tensor_new(0, kv_input_info, 0);
+				ccv_nnc_tensor_t* const v_input = ccv_nnc_tensor_new(0, k_input->info, 0);
+				ccv_nnc_tensor_t* const expected = ccv_nnc_tensor_new(0, q->info, 0);
+				ccv_nnc_tensor_t* const actual = ccv_nnc_tensor_new(0, q_input->info, 0);
+				ccv_nnc_tensor_t* const lse = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, B, Hq, R), 0);
+				dsfmt_t dsfmt;
+				dsfmt_init_gen_rand(&dsfmt, D + R);
+				for (int i = 0; i < q_count; ++i)
+					q->data.f32[i] = dsfmt_genrand_open_close(&dsfmt) - 0.5;
+				for (int i = 0; i < kv_count; ++i)
+				{
+					k->data.f32[i] = dsfmt_genrand_open_close(&dsfmt) - 0.5;
+					v->data.f32[i] = dsfmt_genrand_open_close(&dsfmt) - 0.5;
+				}
+				for (int i = 0; i < B * Hq * R; ++i)
+					lse->data.f32[i] = NAN;
+				_mps_sdpa_store_float_as_datatype(datatype, q->data.f32, q_input->data.u8, q_count);
+				_mps_sdpa_store_float_as_datatype(datatype, k->data.f32, k_input->data.u8, kv_count);
+				_mps_sdpa_store_float_as_datatype(datatype, v->data.f32, v_input->data.u8, kv_count);
+				_mps_forward_scaled_gemm_to_float(datatype, q_input->data.u8, q_count, q->data.f32);
+				_mps_forward_scaled_gemm_to_float(datatype, k_input->data.u8, kv_count, k->data.f32);
+				_mps_forward_scaled_gemm_to_float(datatype, v_input->data.u8, kv_count, v->data.f32);
+				q_input_info.type = kv_input_info.type = CCV_TENSOR_GPU_MEMORY;
+				ccv_nnc_tensor_t* const gpu_q = ccv_nnc_tensor_new(0, q_input_info, 0);
+				ccv_nnc_tensor_t* const gpu_k = ccv_nnc_tensor_new(0, kv_input_info, 0);
+				ccv_nnc_tensor_t* const gpu_v = ccv_nnc_tensor_new(0, gpu_k->info, 0);
+				ccv_nnc_tensor_t* const gpu_o = ccv_nnc_tensor_new(0, gpu_q->info, 0);
+				ccv_nnc_tensor_t* const gpu_lse = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, B, Hq, R), 0);
+				ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(q_input, k_input, v_input, lse), TENSOR_LIST(gpu_q, gpu_k, gpu_v, gpu_lse), 0);
+				const float scale = 1.0 / sqrtf((float)D);
+				const ccv_nnc_cmd_t cmd = CMD_SCALED_DOT_PRODUCT_ATTENTION_FORWARD(scale, 1);
+				REQUIRE_EQ(ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(q, k, v), TENSOR_LIST(expected), 0), CCV_NNC_EXEC_SUCCESS, "CPU decode should execute");
+				REQUIRE_EQ(ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(gpu_q, gpu_k, gpu_v), TENSOR_LIST(gpu_o, gpu_lse), 0), CCV_NNC_EXEC_SUCCESS, "decode with saved statistics should execute");
+				ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(gpu_o, gpu_lse), TENSOR_LIST(actual, lse), 0);
+				_mps_forward_scaled_gemm_to_float(datatype, actual->data.u8, q_count, q->data.f32);
+				REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, q->data.f32, expected->data.f32, q_count, 1e-3, "decode with saved statistics should match CPU");
+				// Restore rounded Q for an independent base-two logsumexp reference.
+				_mps_forward_scaled_gemm_to_float(datatype, q_input->data.u8, q_count, q->data.f32);
+				for (int b = 0; b < B; ++b)
+					for (int h = 0; h < Hq; ++h)
+						for (int r = 0; r < R; ++r)
+						{
+							double sum = 0;
+							for (int c = 0; c < C - R + r + 1; ++c)
+							{
+								double dot = 0;
+								for (int d = 0; d < D; ++d)
+									dot += q->data.f32[((b * R + r) * Hq + h) * D + d] * k->data.f32[((b * C + c) * Hk + h / (Hq / Hk)) * D + d];
+								sum += exp(dot * scale);
+							}
+							const float value = lse->data.f32[(b * Hq + h) * R + r];
+							REQUIRE(isfinite(value) && fabs(value - log2(sum)) < 2e-3, "saved statistics must be written for precision %d R %d D %d batch %d head %d row %d (got %g expected %g)", precision, R, D, b, h, r, value, log2(sum));
+						}
+				ccv_nnc_tensor_free(gpu_lse);
+				ccv_nnc_tensor_free(gpu_o);
+				ccv_nnc_tensor_free(gpu_v);
+				ccv_nnc_tensor_free(gpu_k);
+				ccv_nnc_tensor_free(gpu_q);
+				ccv_nnc_tensor_free(lse);
+				ccv_nnc_tensor_free(actual);
+				ccv_nnc_tensor_free(expected);
+				ccv_nnc_tensor_free(v_input);
+				ccv_nnc_tensor_free(k_input);
+				ccv_nnc_tensor_free(q_input);
+				ccv_nnc_tensor_free(v);
+				ccv_nnc_tensor_free(k);
+				ccv_nnc_tensor_free(q);
+			}
+}
+
+TEST_CASE("scaled dot product attention R2 mps decode with attention sinks")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SCALED_DOT_PRODUCT_ATTENTION_FORWARD, CCV_NNC_BACKEND_MPS));
+	const int lengths[] = { 1, 33, 2049 };
+	for (int precision = 0; precision < 2; ++precision)
+		for (int c = 0; c < 3; ++c)
+			for (int per_head = 0; per_head <= 1; ++per_head)
+			{
+				float max_abs = 0, max_relative = 0, expected = 0, actual = 0;
+				int max_idx = 0;
+				const int status = _mps_sdpa_attention_sinks_compare(precision ? CCV_16BF : CCV_16F, 0, 0, 2, 2, lengths[c], 8, 2, 256, 1, per_head ? 8 : 1, 0, precision ? 3e-3 : 5e-4, &max_abs, &max_relative, &max_idx, &expected, &actual);
+				REQUIRE_EQ(status, 0, "R2 sinks should match CPU for precision %d C %d per-head %d (max abs %g relative %g at %d: CPU %g GPU %g)", precision, lengths[c], per_head, max_abs, max_relative, max_idx, expected, actual);
+			}
+}
+
 TEST_CASE("scaled dot product attention with attention sinks on mps")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SCALED_DOT_PRODUCT_ATTENTION_FORWARD, CCV_NNC_BACKEND_MPS));

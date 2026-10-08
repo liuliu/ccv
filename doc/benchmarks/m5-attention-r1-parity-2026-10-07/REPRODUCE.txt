@@ -1,0 +1,70 @@
+Reproduce AttentionR1 validation on another physical M5
+
+1. Build this branch with the local MPS toolchain:
+     make -C lib lib DEBUG=1 -j4
+     make -C bin/mfa attention_r1_bench attention_r1_thermal
+   The portable source and workload manifest live in bin/mfa. Use:
+     python3 bin/mfa/attention_r1_sweep.py --list
+     python3 bin/mfa/attention_r1_sweep.py --output /tmp/decode-fp16
+     python3 bin/mfa/attention_r1_sweep.py --precision bf16 --output /tmp/decode-bf16
+   Save an old statically linked probe before rebuilding, then pass --baseline.
+   Every output directory must be new. Inspect failures as well as summary.json.
+
+2. Rebuild changed test objects before forcing the final link. Passing -W for
+   an object on the compilation command can incorrectly suppress rebuilding it:
+     make -C test/int/nnc -o libccv.a mpsblas.tests.o mpsdnn.tests.o DEBUG=1 -j4
+     make -C test/int/nnc -o libccv.a -W mpsblas.tests.o -W mpsdnn.tests.o \
+       mpsblas.tests mpsdnn.tests DEBUG=1 -j4
+   From test/int/nnc run the filters listed in bin/mfa/attention_r1_bench.txt.
+   Check that each filter actually runs a test. Metal execution needs GPU access.
+
+3. For actual MLX comparison, use the archived harness/mlx_na_bench.cpp with
+   MLX revision 25532871329fe4cafdada9fa0941a1cdbfb3a9f2 and the archived D256
+   JIT signature patch. It calls MLX SDPA; there is no emulated MLX kernel.
+   Build MLX with -DMLX_BUILD_METAL=ON -DMLX_METAL_JIT=ON and preserve
+   its default mlx.metallib resource. The archive also provides a small CMake
+   wrapper linking the probe against MLX's own target. With the patch applied
+   to a separate MLX checkout, a rebuild command is:
+     cmake -S harness -B mlx-probe-build -DCMAKE_BUILD_TYPE=Release \
+       -DMLX_SOURCE_DIR=/absolute/path/to/patched/mlx
+     cmake --build mlx-probe-build --target mlx-probe -j4
+   Use mlx-probe-build/mlx-probe and keep that build tree's metallib resource.
+   This wrapper is a reproduction convenience, not the historical build
+   command of the already-linked executable measured here.
+   Pass --mlx /path/to/mlx-probe to the permanent runner (FP16 only).
+   This standalone randomized probe and the MLX probe have different inputs;
+   each has its own independent CPU check.
+
+4. The report's matched-input measurements instead use archived
+   harness/na_application_bench.cpp for CCV and mlx_na_bench.cpp for MLX.
+   Their deterministic input formula and B/S/H/D storage agree. MLX's input
+   transpose calls create shared-buffer stride views (common.cpp:229-261), not
+   physical layout conversions. Its vector SDPA internally makes contiguous
+   copies for these multi-batch layouts (scaled_dot_product_attention.cpp:1503-
+   1541); those copies are inside the measured operation. Single-batch decode
+   accepts the views directly. Interpret batch speedups as complete-operation
+   results, not isolated kernel speedups. Rebuild the
+   application probe with the archived build arguments, substituting checkout,
+   source and executable paths. CURRENT_ATTENTION changes diagnostics only.
+   For the group4 development baseline, apply the archived group4-source files
+   to a separate bd7f3d37 worktree and build its library. Compile
+   harness/application-group4.cpp against it: that source omits the final
+   descriptor diagnostics, whose headsPerSIMD field did not exist there.
+   Its input fixture and timed production dispatch are the same.
+   Set ROOT in a copied harness/sweep.py to the actual checkout, rebuild its
+   adjacent thermal helper, and preserve that runner with the new results.
+   Use --manifest final-manifest.json --suite coverage --frontend CURRENT,
+   --baseline-frontend BASELINE --mlx MLX --samples 64 --warmup-seconds 2
+   --repeats 2 --absolute-ms .002 --output NEW_DIRECTORY.
+
+5. Run GPU work serially, with no CPU compilation during measurements. The
+   final comparison warms each process for at least two GPU seconds, checks
+   nominal thermal state, and reverses cases and variant order on pass two.
+   Compilation, allocation, initialization and CPU comparisons are outside
+   GPU timestamps; timing covers the complete attention dispatch, including
+   both kernels and scratch traffic when split reduction is selected.
+   Stage overrides diagnose bottlenecks and are not complete MLX comparisons.
+
+A ratio above one in the comparison CSV means CCV is slower. Use the actual
+MLX implementation on the new machine as the reference; these Ultra times
+are observations, not cross-device performance guarantees.

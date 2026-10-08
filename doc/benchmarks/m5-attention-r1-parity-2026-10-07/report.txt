@@ -1,0 +1,100 @@
+AttentionR1 decode parity review, 2026-10-07
+
+Machine: Apple M5 Ultra, 80 GPU cores, 256 GiB, macOS 27.0.1.
+CCV branch: m5-attention-r1-parity, based on bd7f3d37.
+MLX: 25532871329fe4cafdada9fa0941a1cdbfb3a9f2, actual SDPA primitive,
+with the archived D256 JIT signature compatibility patch.
+
+Scope: FP16 decode GPU time, R=1 and R=2, D=128/256, contexts through
+65536. The permanent suite also validates BF16. H16/Hkv4/D256 and
+H24/Hkv4/D256 match Local Code Qwen3.5 4B/9B and 27B configurations.
+See model-reference.txt for the exact source revision and call site.
+
+Final matched-input comparison: 72 shapes, 438 processes,
+three implementations, two reversed passes, 64 samples per process,
+two GPU seconds warmup. All recorded thermal states are nominal.
+The final CSV uses the final policy timings for five shapes. For 67 shapes,
+the actual C++ selector and unchanged shader source prove identical GPU
+configurations, allowing the earlier measurements to carry forward.
+pre-policy-comparison.csv preserves the earlier gap and all flags.
+Medians are recomputed from raw samples with the same convention for
+CCV and MLX. No measurement is silently discarded.
+
+Representative single-batch cases; microseconds, smaller is better:
+ R      C  Hq/Hkv   D      CCV      MLX  CCV/MLX
+ 1    128  16/4   256     6.62    10.83    0.612
+ 1   8192  16/4   256    34.40    38.06    0.904
+ 1   8192  24/4   256    40.59    46.86    0.866
+ 2   8192  16/4   256    52.69    58.12    0.906
+ 2   8192  24/4   256    62.92    70.36    0.894
+ 1  32768  64/4   128   150.44   156.04    0.964
+ 2  32768  64/4   128   259.37   349.84    0.741
+ 1  65536  16/4   256   304.98   291.41    1.047
+ 1  65536  24/4   256   336.49   337.01    0.998
+
+The full comparison.csv contains every measured shape and both current
+process medians. audit.json lists all material flags (>5 percent AND
+>2 microseconds), plus separate single-batch and multi-batch summaries.
+Material MLX gaps: 1; development-baseline flags: 1.
+
+The final previous_candidate column refers to the earlier group4
+register-based candidate, not unchanged unstable. Historical initial /
+validation data separately record the unchanged unstable comparison.
+Read phase-key.txt before combining evidence across development phases.
+
+MLX uses stride-only views of the same B/S/H/D input storage. For B>1,
+its vector attention path creates internal contiguous Q/K/V copies;
+those are inside the timing. Batch speedups describe the complete
+operation, including those copies. CCV adds no physical transpose.
+
+Implementation and selection rationale are in implementation.txt and
+gating-review.txt: register-resident query/state, related GQA head reuse,
+workload/core-count split selection, a parallel FP32 merge, and a
+single-dispatch cooperative kernel for short contexts. The last refinement
+shortens single-head traversal when B*R*Hq is below GPU core count; it
+retains the dense-query policy after the forced B4 split regressed.
+No model-name, M5, or Ultra exception is used. Constants were calibrated
+on this host; another physical M5 must validate performance there.
+
+Correctness: 116 permanent shapes in each of FP16/BF16 (232 unique
+combinations, 234 processes including a rerun). Every process has a full
+finiteness scan and sampled double-precision CPU reference.
+Integration tests compare full randomized outputs with the CPU backend,
+including dynamic cache transitions, offset/in-place
+guards, empty causal rows, odd GQA, large finite V, sinks, and saved LSE.
+See integration/expanded-tests.json and final-tests.json in the archive.
+
+Build and suite status: targeted debug library and MPS binary builds
+passed; the full DNN suite passed 126/126. The generic debug make target
+encountered an unrelated missing wget during VGG sample download.
+The full BLAS attempt stopped at the H256 rowwise-x GEMM fallback test
+with a Metal simdgroup_matrix_storage address-space compilation error.
+The same failure was reproduced on clean bd7f3d37. This is not a claim
+that the full BLAS suite passed. Focused decode filters passed; exact
+commands, outputs and source/binary hashes are preserved.
+
+Remaining repeatable MLX gap:
+R2/C32768/B1/H16:8/D128: CCV 139.333 us versus MLX 130.730 us,
+6.58 percent slower. The two CCV process medians were 139.542 and
+139.125 us. This is separate from the intermittent observations below.
+Near-parity across the suite does not mean every shape reaches parity.
+
+Intermittent timing observations:
+R1/C32768/H64:4/D128 in paired-focus once measured 348 us. Six fresh
+process rechecks (including the exact original binary) gave 149-151 us,
+and the final comparison repeated the fast result. The original sample
+and flag remain in the archive; its cause was not established.
+R2/C2049/B2/H24:4/D256 noncausal in final measured 80.875 us on pass 0
+and 36.375 us on pass 1. The two-pass aggregate retains that regression
+flag against the earlier candidate. Separate six-process rechecks for
+each implementation are preserved in outlier-recheck.
+  fp16: process medians (us): 36.625, 36.396, 36.625, 36.875, 36.500, 36.500
+  previous_fp16: process medians (us): 36.500, 36.333, 36.625, 36.500, 36.667, 36.667
+  mlx: process medians (us): 81.375, 81.062, 81.396, 81.500, 81.229, 80.854
+These observations do not establish a specific hardware or allocator
+cause. Preserve this watchlist when validating the next physical M5.
+
+validation-raw.tar.gz holds raw samples, commands, stage ablations,
+integration logs, source snapshots and harnesses. raw-sha256.json and
+archive-sha256.txt verify the evidence. REPRODUCE.txt gives the next
+machine workflow; bin/mfa contains the permanent standalone suite.

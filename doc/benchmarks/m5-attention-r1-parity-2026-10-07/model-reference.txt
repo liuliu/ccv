@@ -1,0 +1,16 @@
+Local Code workload reference
+
+Repository: ~/workspace/draw-things
+Observed revision: b7461959bf709fb17395df026bd0c7b24f174c26
+Libraries/SwiftLLM/Sources/Models/Qwen3_5.swift:58-80:
+  4B/9B configuration: Hq=16, Hkv=4, D=256.
+  27B configuration: Hq=24, Hkv=4, D=256.
+Qwen3_5.swift:181-194 writes B/S/H/D KV-cache views and calls causal SDPA
+with flags [.Float16], matching the timed FP16 attention route. R=1 is token
+decode; R=2 exercises two-token verification. Context lengths are swept through
+65536. Additional head ratios, batches, precisions and boundary shapes provide
+coverage and are not claimed to represent particular models.
+
+No physical tensor transpose was added to CCV. MLX starts with matching memory
+storage and creates stride-only views; any internal copies made by its selected
+SDPA primitive are included in the measured complete operation.

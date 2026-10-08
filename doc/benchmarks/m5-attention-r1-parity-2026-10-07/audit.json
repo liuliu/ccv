@@ -1,0 +1,184 @@
+{
+  "shapes": 72,
+  "timed_processes": 438,
+  "samples_per_process": 64,
+  "numerical_processes": 234,
+  "numerical_unique_combinations": 232,
+  "numerical_failures": 0,
+  "mlx_gaps": [
+    {
+      "id": "r2-c32768-h16-8-d128",
+      "R": 2,
+      "C": 32768,
+      "D": 128,
+      "B": 1,
+      "Hq": 16,
+      "Hkv": 8,
+      "causal": true,
+      "current_us": 139.3333515,
+      "previous_candidate_us": 134.96875175,
+      "mlx_us": 130.7295,
+      "current_over_mlx": 1.0658141544180924,
+      "current_over_previous": 1.0323378537136096,
+      "mlx_gap_us": 8.60385149999999,
+      "previous_gap_us": 4.3645997499999964,
+      "mlx_gap": true,
+      "previous_regression": false,
+      "current_pass0_us": 139.54169100000001,
+      "current_pass1_us": 139.125012,
+      "evidence_phase": "gqa2-final",
+      "pre_policy_current_us": ""
+    }
+  ],
+  "previous_regressions": [
+    {
+      "id": "r2-c2049-b2-h24-4-d256-noncausal",
+      "R": 2,
+      "C": 2049,
+      "D": 256,
+      "B": 2,
+      "Hq": 24,
+      "Hkv": 4,
+      "causal": false,
+      "current_us": 58.624980699999995,
+      "previous_candidate_us": 36.58334025,
+      "mlx_us": 81.458325,
+      "current_over_mlx": 0.719692931324085,
+      "current_over_previous": 1.602504864218898,
+      "mlx_gap_us": -22.833344300000007,
+      "previous_gap_us": 22.041640449999996,
+      "mlx_gap": false,
+      "previous_regression": true,
+      "current_pass0_us": 80.8749464,
+      "current_pass1_us": 36.375015,
+      "evidence_phase": "final",
+      "pre_policy_current_us": ""
+    }
+  ],
+  "geometric_mean_current_over_mlx": 0.6802336755456753,
+  "outlier_recheck_process_medians_us": {
+    "fp16": [
+      36.6250169,
+      36.39582425,
+      36.6250169,
+      36.8750188,
+      36.4999869,
+      36.4999869
+    ],
+    "previous_fp16": [
+      36.4999869,
+      36.333338399999995,
+      36.6250169,
+      36.4999869,
+      36.6666936,
+      36.6666645
+    ],
+    "mlx": [
+      81.375,
+      81.0625,
+      81.39580000000001,
+      81.5,
+      81.2292,
+      80.85415
+    ]
+  },
+  "source_equivalence": {
+    "changed_sources": [
+      "lib/nnc/mfa/kernels/AttentionR1Descriptor.cpp"
+    ],
+    "selection_records": 232,
+    "changed_selections": [
+      {
+        "id": "r1-c65536-b1-h24-4-d256",
+        "shape": [
+          1,
+          65536,
+          256,
+          1,
+          24,
+          4
+        ],
+        "causal": true,
+        "precision": 0,
+        "before": "1 256 3 1 16",
+        "after": "1 512 3 1 32",
+        "changed": true
+      },
+      {
+        "id": "r1-c65536-b1-h24-4-d256",
+        "shape": [
+          1,
+          65536,
+          256,
+          1,
+          24,
+          4
+        ],
+        "causal": true,
+        "precision": 1,
+        "before": "1 256 3 1 16",
+        "after": "1 512 3 1 32",
+        "changed": true
+      },
+      {
+        "id": "r1-c32768-b4-h16-16-d128",
+        "shape": [
+          1,
+          32768,
+          128,
+          4,
+          16,
+          16
+        ],
+        "causal": true,
+        "precision": 0,
+        "before": "1 128 1 1 16",
+        "after": "1 256 1 1 16",
+        "changed": true
+      },
+      {
+        "id": "r1-c32768-b4-h16-16-d128",
+        "shape": [
+          1,
+          32768,
+          128,
+          4,
+          16,
+          16
+        ],
+        "causal": true,
+        "precision": 1,
+        "before": "1 128 1 1 16",
+        "after": "1 256 1 1 16",
+        "changed": true
+      }
+    ],
+    "reused_timed_shapes": 67
+  },
+  "groups": {
+    "R1": {
+      "shapes": 37,
+      "maximum_current_over_mlx": 1.0868799020477695,
+      "material_mlx_gaps": 0,
+      "geometric_mean_current_over_mlx": 0.6692546921351648
+    },
+    "R2": {
+      "shapes": 35,
+      "maximum_current_over_mlx": 1.0658141544180924,
+      "material_mlx_gaps": 1,
+      "geometric_mean_current_over_mlx": 0.6920359302016482
+    },
+    "single_batch": {
+      "shapes": 56,
+      "maximum_current_over_mlx": 1.0868799020477695,
+      "material_mlx_gaps": 1,
+      "geometric_mean_current_over_mlx": 0.8031705063370332
+    },
+    "multiple_batches": {
+      "shapes": 16,
+      "maximum_current_over_mlx": 0.8871397543307086,
+      "material_mlx_gaps": 0,
+      "geometric_mean_current_over_mlx": 0.3803071098705592
+    }
+  }
+}

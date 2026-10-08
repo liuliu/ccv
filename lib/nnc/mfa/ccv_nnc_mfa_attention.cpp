@@ -100,14 +100,16 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
         !hash.is_varlen &&
         hash.sliding_window == 0 &&
         attentionR1DataType &&
-        hash.R == 1 &&
+        (hash.R == 1 || hash.R == 2) &&
+        !tensors[5] && // Saved logsumexp requires the general attention path.
         hash.C > 0 &&
         (hash.D == 128 || hash.D == 256) &&
         hash.Hk > 0 &&
         (hash.Hq % hash.Hk) == 0;
     if (useAttentionR1) {
       AttentionR1Descriptor attentionDesc = AttentionR1Descriptor::select(
-          attentionR1Precision, hash.C, hash.Hq, hash.Hk, hash.D, hash.alpha, true, hash.attention_sinks);
+          attentionR1Precision, hash.C, hash.Hq, hash.Hk, hash.D, hash.alpha, true, hash.attention_sinks,
+          hash.R, hash.is_causal, batch_sizes[0], context->device_properties.coreCount);
       auto pool = NS::AutoreleasePool::alloc()->init();
       auto &shaderCache = context->kernel_cache;
       DeviceProperties dprops = DeviceProperties();
@@ -117,7 +119,7 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
       auto pipeline = pipelineValue->pipeline;
       const uint32_t threadgroupSize = kernel->threadgroupSize(attentionDesc);
       CCV_NNC_MFA_PRECONDITION(threadgroupSize <= pipeline->maxTotalThreadsPerThreadgroup());
-      if (attentionDesc.mode == AttentionR1Descriptor::Mode::direct) {
+      if (attentionDesc.mode != AttentionR1Descriptor::Mode::splitReduce) {
         auto encoder = command_batch->startCommand();
         encoder->setComputePipelineState(pipeline.get());
         encoder->setThreadgroupMemoryLength(kernel->threadgroupMemoryAllocation(attentionDesc), 0);
@@ -138,14 +140,16 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
           encoder->setBytes(&params.sink_head_stride, sizeof(params.sink_head_stride), 20);
         }
         encoder->dispatchThreadgroups(
-            MTL::Size(hash.Hq, batch_sizes[0], 1),
+            attentionDesc.mode == AttentionR1Descriptor::Mode::cooperative
+                ? MTL::Size(hash.Hq, batch_sizes[0], hash.R)
+                : MTL::Size(hash.Hq / (attentionDesc.simdgroups / hash.R * attentionDesc.headsPerSIMD), batch_sizes[0], 1),
             MTL::Size(threadgroupSize, 1, 1));
         command_batch->finishCommand(encoder);
         return;
       }
 
       const size_t partialBytes =
-          (size_t)batch_sizes[0] * hash.Hq * attentionDesc.workgroups * (hash.D + 2) * sizeof(float);
+          (size_t)batch_sizes[0] * hash.R * hash.Hq * attentionDesc.workgroups * (hash.D + 2) * sizeof(float);
       auto scratch = context->request_scratch(partialBytes);
       auto encoder = command_batch->startCommand();
       encoder->setComputePipelineState(pipeline.get());
@@ -167,19 +171,21 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
         encoder->setBytes(&params.sink_head_stride, sizeof(params.sink_head_stride), 20);
       }
       encoder->dispatchThreadgroups(
-          MTL::Size(hash.Hq, batch_sizes[0], attentionDesc.workgroups),
+          MTL::Size(hash.Hq / (attentionDesc.simdgroups / hash.R * attentionDesc.headsPerSIMD), batch_sizes[0], attentionDesc.workgroups),
           MTL::Size(threadgroupSize, 1, 1));
       command_batch->finishCommand(encoder);
 
+      CCV_NNC_MFA_PRECONDITION(32 * attentionDesc.reductionSIMDGroups <= pipelineValue->second->maxTotalThreadsPerThreadgroup());
       auto reduceEncoder = command_batch->startCommand();
       reduceEncoder->setComputePipelineState(pipelineValue->second.get());
+      reduceEncoder->setThreadgroupMemoryLength(attentionDesc.reductionSIMDGroups * hash.D * sizeof(float), 0);
       reduceEncoder->useResource(scratch, MTL::ResourceUsageRead);
       reduceEncoder->useResource(tensors[3], MTL::ResourceUsageWrite);
       reduceEncoder->setBuffer(scratch, 0, 0);
       reduceEncoder->setBuffer(tensors[3], tensor_offsets[3], 1);
       reduceEncoder->dispatchThreadgroups(
-          MTL::Size(hash.Hq, batch_sizes[0], 1),
-          MTL::Size(32, 1, 1));
+          MTL::Size(hash.Hq, batch_sizes[0], hash.R),
+          MTL::Size(32 * attentionDesc.reductionSIMDGroups, 1, 1));
       command_batch->finishCommand(reduceEncoder);
       return;
     }

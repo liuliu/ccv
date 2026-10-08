@@ -6,6 +6,7 @@ LDFLAGS := $(LDFLAGS) -framework QuartzCore
 TARGETS = dynamic_m_bench gemm_scaffold int8_matmul_bench gemv_thin_tensorop_bench scaled_gemv_bench index_select_bench transpose_bench na_gemm_splitk_bench na_int8_attention_bench na_attention_causal_bench na_attention_decode1_bench na_scaled_dot_product_arg_partition_bench na_sparse_indexed_attention_bench na_int8_attention_backward_probe na_attention_backward_bench attention_backward_compare_probe sdpa_backward_compare_bench rotate_half_bench walsh_hadamard_transform_bench gated_delta_bench hyper_connection_bench na_int8_matmul_bench na_int8_rowwise_x_bench ane_fp16_matmul_harness ane_int8_matmul_probe ane_int8_conv_matmul_harness ane_int8_rowwise_conv_harness ane_na_int8_matmul_harness ane_coreml_split_matmul_bench dump_attention_source dump_na_attention_source dump_na_int8_attention_source conv3d_layout_scaffold implicit_conv3d_scaffold gemm_kernel_introspect implicit_conv3d_bench conv3d_kernel_bench conv3d_branch_validate
 
 MPSGRAPH_LDFLAGS := $(LDFLAGS) -framework Foundation -framework MetalPerformanceShaders -framework MetalPerformanceShadersGraph
+TARGETS += attention_r1_bench attention_r1_thermal
 TARGETS += moe_routing_bench scaled_dot_product_arg_partition_candidates_bench
 TARGETS += na_int8_convrot_bench na_int8_sol_attention_bench na_int8_matmul_forward_bench na_int8_wide_offsets_bench na_int8_attention_forward_bench
 ANE_LDFLAGS := $(LDFLAGS) -framework IOSurface -ldl
@@ -494,3 +495,9 @@ na_int8_matmul_forward_bench: na_int8_matmul_forward_bench.cpp ../../lib/libccv.
 # Forward INT8 attention probe, including Q/K/V quantization.
 na_int8_attention_forward_bench: na_int8_attention_forward_bench.cpp ../../lib/libccv.a
 	$(CC) $(CFLAGS) -O2 -Wno-deprecated-declarations $< ../../lib/libccv.a -o $@ $(LDFLAGS) -lsqlite3 -lz
+
+attention_r1_bench: attention_r1_bench.cpp ../../lib/libccv.a
+	$(CC) $(CFLAGS) -O2 -Wno-deprecated-declarations $< ../../lib/libccv.a -o $@ $(LDFLAGS) -lsqlite3 -lz
+
+attention_r1_thermal: attention_r1_thermal.m
+	$(CC) -O2 -framework Foundation $< -o $@
