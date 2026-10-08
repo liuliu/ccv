@@ -4970,6 +4970,7 @@ typedef struct {
 	int max_seqlen_q;
 	int max_seqlen_kv;
 	int flags;
+	int use_hadamard;
 	int attention_sinks;
 	int sliding_window;
 	int fused_unify_head_weights;
@@ -5010,6 +5011,7 @@ static void _ccv_cnnp_scaled_dot_product_attention_build(ccv_cnnp_model_t* const
 	cmd.info.scaled_dot_product_attention.max_seqlen_q = self->max_seqlen_q;
 	cmd.info.scaled_dot_product_attention.max_seqlen_kv = self->max_seqlen_kv;
 	cmd.info.scaled_dot_product_attention.flags = self->flags;
+	cmd.info.scaled_dot_product_attention.use_hadamard = self->use_hadamard;
 	cmd.info.scaled_dot_product_attention.attention_sinks = self->attention_sinks;
 	cmd.info.scaled_dot_product_attention.sliding_window = self->sliding_window;
 	ccv_nnc_tensor_param_t output_params[3];
@@ -5139,7 +5141,7 @@ static const ccv_cnnp_model_vtab_t ccv_cnnp_scaled_dot_product_attention_fused_i
 	.copy = _ccv_cnnp_scaled_dot_product_attention_copy,
 };
 
-ccv_cnnp_model_t* ccv_cnnp_scaled_dot_product_attention(const float scale, const int is_causal, const int has_attn_mask, const int is_varlen, const int max_seqlen_q, const int max_seqlen_kv, const int flags, const int attention_sinks, const int sliding_window, const int fused_unify_head_weights, const int no_bias, const int is_trainable, const char* const name)
+ccv_cnnp_model_t* ccv_cnnp_scaled_dot_product_attention(const float scale, const int is_causal, const int has_attn_mask, const int is_varlen, const int max_seqlen_q, const int max_seqlen_kv, const int flags, const int use_hadamard, const int attention_sinks, const int sliding_window, const int fused_unify_head_weights, const int no_bias, const int is_trainable, const char* const name)
 {
 	assert(!is_varlen || !has_attn_mask);
 	assert(!is_varlen || !fused_unify_head_weights);
@@ -5164,6 +5166,7 @@ ccv_cnnp_model_t* ccv_cnnp_scaled_dot_product_attention(const float scale, const
 	model_scaled_dot_product_attention->max_seqlen_q = max_seqlen_q;
 	model_scaled_dot_product_attention->max_seqlen_kv = max_seqlen_kv;
 	model_scaled_dot_product_attention->flags = flags;
+	model_scaled_dot_product_attention->use_hadamard = use_hadamard;
 	model_scaled_dot_product_attention->attention_sinks = has_attention_sinks;
 	model_scaled_dot_product_attention->sliding_window = sliding_window;
 	model_scaled_dot_product_attention->fused_unify_head_weights = fused_unify_head_weights;
@@ -5174,7 +5177,7 @@ ccv_cnnp_model_t* ccv_cnnp_scaled_dot_product_attention(const float scale, const
 static ccv_cnnp_model_t* _ccv_cnnp_scaled_dot_product_attention_copy(const ccv_cnnp_model_t* const super, void* const context)
 {
 	const ccv_cnnp_model_scaled_dot_product_attention_t* const self = (const ccv_cnnp_model_scaled_dot_product_attention_t*)super;
-	return ccv_cnnp_scaled_dot_product_attention(self->scale, self->is_causal, self->has_attn_mask, self->is_varlen, self->max_seqlen_q, self->max_seqlen_kv, self->flags, self->attention_sinks, self->sliding_window, self->fused_unify_head_weights, self->no_bias, self->super.is_trainable, self->super.name);
+	return ccv_cnnp_scaled_dot_product_attention(self->scale, self->is_causal, self->has_attn_mask, self->is_varlen, self->max_seqlen_q, self->max_seqlen_kv, self->flags, self->use_hadamard, self->attention_sinks, self->sliding_window, self->fused_unify_head_weights, self->no_bias, self->super.is_trainable, self->super.name);
 }
 
 // MARK - Debug Layer

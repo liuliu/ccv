@@ -32,6 +32,7 @@ struct NAInt8AttentionKernelDescriptor {
   bool hasRRemainder = true;
   bool loadC = false;
   bool attentionSinks;
+  bool qkHadamard = false;
   // Output channels owned by each threadgroup; QK still reduces over the full head.
   unsigned short outputTileSize;
   // Otherwise visit all row groups for one head before the next head.

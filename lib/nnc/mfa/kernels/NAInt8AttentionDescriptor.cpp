@@ -31,6 +31,7 @@ bool NAInt8AttentionDescriptor::operator==(const NAInt8AttentionDescriptor& rhs)
     masked == rhs.masked &&
     isVarlen == rhs.isVarlen &&
     attentionSinks == rhs.attentionSinks &&
+    qkHadamard == rhs.qkHadamard &&
     ((loadR || loadC) || maskBatchStride == rhs.maskBatchStride) &&
     ((loadR || loadC) || batchStrides == rhs.batchStrides) &&
     simd_all(lhsDimensions == rhsDimensions);
@@ -51,6 +52,7 @@ std::size_t std::hash<NAInt8AttentionDescriptor>::operator()(const NAInt8Attenti
       (uint16_t)(hash.masked ? 1 : 0) }));
   seed = combine_32(seed, hash.isVarlen ? 1 : 0);
   seed = combine_32(seed, hash.attentionSinks ? 1 : 0);
+  seed = combine_32(seed, hash.qkHadamard ? 1 : 0);
   seed = combine_32(seed, (hash.loadR || hash.loadC) ? 0 : hash.maskBatchStride);
   seed = combine_32(seed, hash.loadR ? 0 : hash.matrixDimensions[0]);
   seed = combine_32(seed, hash.loadC ? 0 : hash.matrixDimensions[1]);

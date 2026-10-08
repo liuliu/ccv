@@ -1,0 +1,132 @@
+diff --git a/lib/nnc/mfa/kernels/NAInt8AttentionKernel.cpp b/lib/nnc/mfa/kernels/NAInt8AttentionKernel.cpp
+index e1693964..cbb82c9b 100644
+--- a/lib/nnc/mfa/kernels/NAInt8AttentionKernel.cpp
++++ b/lib/nnc/mfa/kernels/NAInt8AttentionKernel.cpp
+@@ -537,27 +537,9 @@ inline void quantize_qk_tile(
+     // Two-wide loads fill complete SIMD groups at D=64/192 and reduce register
+     // pressure. Other heads retain the native quantizer's four-wide accesses.
+     const uint32_t vectorWidth = (headDimension == 64 || headDimension == 192) ? 2 : 4;
+-    const std::string vectorSuffix = std::to_string(vectorWidth);
+     source.SetValue("HADAMARD_VECTOR_WIDTH", std::to_string(vectorWidth));
+-    source.SetValue("HADAMARD_CHUNKS", std::to_string((headDimension + vectorWidth * 32 - 1) / (vectorWidth * 32)));
+-    source.SetValue("HADAMARD_VALUE_TYPE", "float" + vectorSuffix);
+-    source.SetValue("HADAMARD_IO_TYPE", "vec<" + std::string(ioPrecision.name()) + ", " + vectorSuffix + ">");
+-    source.SetValue("HADAMARD_INT_TYPE", "int" + vectorSuffix);
+-    source.SetValue("HADAMARD_CHAR_TYPE", "char" + vectorSuffix);
+-    source.SetValue("HADAMARD_SHUFFLE_LIMIT", std::to_string(std::min<uint32_t>(32, hadamardBlock / vectorWidth)));
++    source.SetValue("HADAMARD_BLOCK", std::to_string(hadamardBlock));
+     source.SetValue("HADAMARD_NORMALIZATION", high_precision_to_string(1.0f / std::sqrt(float(hadamardBlock))));
+-    source.SetValue("HADAMARD_LOCAL_TRANSFORM", vectorWidth == 4 ? R"(
+-      const float4 a = float4(x.x + x.y, x.x - x.y, x.z + x.w, x.z - x.w);
+-      x = float4(a.x + a.z, a.y + a.w, a.x - a.z, a.y - a.w);
+-)" : "      x = float2(x.x + x.y, x.x - x.y);\n");
+-    source.SetValue("HADAMARD_CROSS_CHUNKS", hadamardBlock == 256 ? R"(
+-    const float4 a = values[i * chunks], b = values[i * chunks + 1];
+-    values[i * chunks] = a + b;
+-    values[i * chunks + 1] = a - b;
+-)" : "");
+-    source.SetValue("HADAMARD_MAX_ABS", vectorWidth == 4 ?
+-        "max(max(fabs(x.x), fabs(x.y)), max(fabs(x.z), fabs(x.w)))" :
+-        "max(fabs(x.x), fabs(x.y))");
+     source.SetValue("HADAMARD_SEQUENCE_ARGUMENT", isVarlen ? "" :
+         "    uint sequence,\n" + source.GetValue("QUANTIZE_REMAINDER_ARGUMENT"));
+     source.SetValue("HADAMARD_BATCH_ARGUMENT", isVarlen ? "" : "    uint batch_stride,\n");
+@@ -592,32 +574,61 @@ inline void quantize_qk_tile(
+   const uint tile = tgid.x, head = tgid.y, batch = tgid.z;
+   const uint start = tile * tile_size;
+ {{HADAMARD_SEQUENCE_SETUP}}
+-  using hadamard_io = {{HADAMARD_IO_TYPE}};
+-  device const hadamard_io *src_vec = reinterpret_cast<device const hadamard_io *>(src);
+-  device {{HADAMARD_CHAR_TYPE}} *dst_vec = reinterpret_cast<device {{HADAMARD_CHAR_TYPE}} *>(dst);
+-  constexpr ushort chunks = {{HADAMARD_CHUNKS}};
+-  {{HADAMARD_VALUE_TYPE}} values[((tile_rows + simdgroups - 1) / simdgroups) * chunks];
++  constexpr ushort width = {{HADAMARD_VECTOR_WIDTH}}, block = {{HADAMARD_BLOCK}};
++  constexpr ushort chunks = ({{HEAD_DIMENSION}} + 32 * width - 1) / (32 * width);
++  constexpr ushort rows = (tile_rows + simdgroups - 1) / simdgroups;
++  constexpr ushort lanes = block / width < 32 ? block / width : 32;
++  using value_t = vec<float, width>;
++  using io_t = vec<{{IO_MEMORY_NAME}}, width>;
++  using int_t = vec<int, width>;
++  using char_t = vec<char, width>;
++  device const io_t *src_vec = reinterpret_cast<device const io_t *>(src);
++  device char_t *dst_vec = reinterpret_cast<device char_t *>(dst);
++  value_t values[rows * chunks];
+   float local_max = 0.0f;
+   #pragma clang loop unroll(full)
+-  for (ushort i = 0; i < (tile_rows + simdgroups - 1) / simdgroups; ++i) {
++  for (ushort i = 0; i < rows; ++i) {
+     const uint row = i * simdgroups + sgid;
+     #pragma clang loop unroll(full)
+     for (ushort j = 0; j < chunks; ++j) {
+-      const uint dim = (j * 32 + lane_id) * {{HADAMARD_VECTOR_WIDTH}};
++      const uint dim = (j * 32 + lane_id) * width;
+       const uint index = input_offset + ((start + row) * heads + head) * {{HEAD_DIMENSION}} + dim;
+-      {{HADAMARD_VALUE_TYPE}} x = row < extent && dim < {{HEAD_DIMENSION}} ?
+-          {{HADAMARD_VALUE_TYPE}}(src_vec[index / {{HADAMARD_VECTOR_WIDTH}}]) : {{HADAMARD_VALUE_TYPE}}(0.0f);
+-{{HADAMARD_LOCAL_TRANSFORM}}      #pragma clang loop unroll(full)
+-      for (ushort stride = 1; stride < {{HADAMARD_SHUFFLE_LIMIT}}; stride <<= 1) {
+-        const {{HADAMARD_VALUE_TYPE}} peer = simd_shuffle_xor(x, stride);
++      value_t x = row < extent && dim < {{HEAD_DIMENSION}} ?
++          value_t(src_vec[index / width]) : value_t(0.0f);
++      #pragma clang loop unroll(full)
++      for (ushort h = 1; h < width; h <<= 1) {
++        #pragma clang loop unroll(full)
++        for (ushort e = 0; e < width; ++e) {
++          if (!(e & h)) {
++            const float a = x[e], b = x[e + h];
++            x[e] = a + b;
++            x[e + h] = a - b;
++          }
++        }
++      }
++      #pragma clang loop unroll(full)
++      for (ushort stride = 1; stride < lanes; stride <<= 1) {
++        const value_t peer = simd_shuffle_xor(x, stride);
+         x = (lane_id & stride) ? peer - x : x + peer;
+       }
+       values[i * chunks + j] = x;
+     }
+-{{HADAMARD_CROSS_CHUNKS}}    #pragma clang loop unroll(full)
++    #pragma clang loop unroll(full)
++    for (ushort h = 1; h < block / (32 * width); h <<= 1) {
++      #pragma clang loop unroll(full)
++      for (ushort j = 0; j < chunks; ++j) {
++        if (!(j & h)) {
++          const value_t a = values[i * chunks + j], b = values[i * chunks + j + h];
++          values[i * chunks + j] = a + b;
++          values[i * chunks + j + h] = a - b;
++        }
++      }
++    }
++    #pragma clang loop unroll(full)
+     for (ushort j = 0; j < chunks; ++j) {
+-      const {{HADAMARD_VALUE_TYPE}} x = values[i * chunks + j];
+-      local_max = max(local_max, {{HADAMARD_MAX_ABS}});
++      #pragma clang loop unroll(full)
++      for (ushort e = 0; e < width; ++e)
++        local_max = max(local_max, fabs(values[i * chunks + j][e]));
+     }
+   }
+   const float max_abs = quantize_reduce_max(local_max, scratch, sgid, lane_id, simdgroups);
+@@ -626,16 +637,16 @@ inline void quantize_qk_tile(
+   if (tid == 0)
+     scales[batch * scale_batch_stride + head * scale_tiles + tile] = scale;
+   #pragma clang loop unroll(full)
+-  for (ushort i = 0; i < (tile_rows + simdgroups - 1) / simdgroups; ++i) {
++  for (ushort i = 0; i < rows; ++i) {
+     const uint row = i * simdgroups + sgid;
+     #pragma clang loop unroll(full)
+     for (ushort j = 0; j < chunks; ++j) {
+-      const uint dim = (j * 32 + lane_id) * {{HADAMARD_VECTOR_WIDTH}};
++      const uint dim = (j * 32 + lane_id) * width;
+       if (row < extent && dim < {{HEAD_DIMENSION}}) {
+         const uint index = input_offset + ((start + row) * heads + head) * {{HEAD_DIMENSION}} + dim;
+-        dst_vec[index / {{HADAMARD_VECTOR_WIDTH}}] = {{HADAMARD_CHAR_TYPE}}(clamp(
+-            {{HADAMARD_INT_TYPE}}(rint(values[i * chunks + j] * inv_scale)),
+-            {{HADAMARD_INT_TYPE}}(-127), {{HADAMARD_INT_TYPE}}(127)));
++        dst_vec[index / width] = char_t(clamp(
++            int_t(rint(values[i * chunks + j] * inv_scale)),
++            int_t(-127), int_t(127)));
+       }
+     }
+   }

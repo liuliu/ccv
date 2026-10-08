@@ -1,0 +1,342 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		001000000000000000000001 /* NAInt8TuningApp.mm in Sources */ = {isa = PBXBuildFile; fileRef = 001000000000000000000010 /* NAInt8TuningApp.mm */; };
+		00A100000000000000000001 /* na_int8_tuning.mm in Sources */ = {isa = PBXBuildFile; fileRef = 00A200000000000000000001 /* na_int8_tuning.mm */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		001000000000000000000010 /* NAInt8TuningApp.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = NAInt8TuningApp.mm; sourceTree = "<group>"; };
+		001000000000000000000011 /* NAInt8TuningApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = NAInt8TuningApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		00A200000000000000000001 /* na_int8_tuning.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = /private/tmp/ccv-attn-hadamard-ios-20261007/probe.cpp; sourceTree = "<group>"; };
+		00A200000000000000000002 /* Metal.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = ../../../../lib/nnc/mfa/Metal.cpp; sourceTree = "<group>"; };
+		00A200000000000000000003 /* Dispatch.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = "../../../../lib/nnc/mfa/3rdparty/metal-cpp/Dispatch.cpp"; sourceTree = "<group>"; };
+		00A200000000000000000004 /* ccv_nnc_mfa_error.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = ../../../../lib/nnc/mfa/ccv_nnc_mfa_error.cpp; sourceTree = "<group>"; };
+		00A200000000000000000005 /* CodeWriter.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = ../../../../lib/nnc/mfa/kernels/CodeWriter.cpp; sourceTree = "<group>"; };
+		00A20000000000000000000F /* NAInt8MatMulKernelDescriptor.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = ../../../../lib/nnc/mfa/kernels/NAInt8MatMulKernelDescriptor.cpp; sourceTree = "<group>"; };
+		00A200000000000000000010 /* NAInt8MatMulKernel.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = ../../../../lib/nnc/mfa/kernels/NAInt8MatMulKernel.cpp; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		001000000000000000000020 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		001000000000000000000030 = {
+			isa = PBXGroup;
+			children = (
+				001000000000000000000031 /* App */,
+				001000000000000000000032 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		001000000000000000000031 /* App */ = {
+			isa = PBXGroup;
+			children = (
+				001000000000000000000010 /* NAInt8TuningApp.mm */,
+				00A200000000000000000001 /* na_int8_tuning.mm */,
+				00A200000000000000000002 /* Metal.cpp */,
+				00A200000000000000000003 /* Dispatch.cpp */,
+				00A200000000000000000004 /* ccv_nnc_mfa_error.cpp */,
+				00A200000000000000000005 /* CodeWriter.cpp */,
+				00A20000000000000000000F /* NAInt8MatMulKernelDescriptor.cpp */,
+				00A200000000000000000010 /* NAInt8MatMulKernel.cpp */,
+			);
+			name = App;
+			sourceTree = "<group>";
+		};
+		001000000000000000000032 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				001000000000000000000011 /* NAInt8TuningApp.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		001000000000000000000040 /* NAInt8TuningApp */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 001000000000000000000060 /* Build configuration list for PBXNativeTarget "NAInt8TuningApp" */;
+			buildPhases = (
+				001000000000000000000021 /* Sources */,
+				001000000000000000000020 /* Frameworks */,
+				001000000000000000000022 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = NAInt8TuningApp;
+			productName = NAInt8TuningApp;
+			productReference = 001000000000000000000011 /* NAInt8TuningApp.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		001000000000000000000050 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastUpgradeCheck = 2600;
+				TargetAttributes = {
+					001000000000000000000040 = {
+						CreatedOnToolsVersion = 26.0;
+						ProvisioningStyle = Automatic;
+					};
+				};
+			};
+			buildConfigurationList = 001000000000000000000061 /* Build configuration list for PBXProject "NAInt8TuningApp" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = 001000000000000000000030;
+			productRefGroup = 001000000000000000000032 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				001000000000000000000040 /* NAInt8TuningApp */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		001000000000000000000022 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		001000000000000000000021 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				001000000000000000000001 /* NAInt8TuningApp.mm in Sources */,
+				00A100000000000000000001 /* na_int8_tuning.mm in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		001000000000000000000070 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++17";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 6HP3U6Z7P6;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"HAVE_CBLAS=1",
+					"HAVE_PTHREAD=1",
+					"HAVE_ACCELERATE_FRAMEWORK=1",
+					"USE_DISPATCH=1",
+					"HAVE_MPS=1",
+					"CCV_NA_HADAMARD_EMBEDDED=1",
+				);
+				GENERATE_INFOPLIST_FILE = YES;
+				HEADER_SEARCH_PATHS = (
+					"$(inherited)",
+					"/Users/liu/workspace/ccv/bin/mfa",
+					"/Users/liu/workspace/ccv/lib",
+					"/Users/liu/workspace/ccv/lib/nnc",
+					"/Users/liu/workspace/ccv/lib/nnc/mfa",
+					"/Users/liu/workspace/ccv/lib/nnc/mfa/3rdparty/metal-cpp",
+					"/Users/liu/workspace/ccv/lib/nnc/mfa/kernels",
+				);
+				INFOPLIST_KEY_CFBundleDisplayName = NAInt8Tuning;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = NO;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UIRequiresFullScreen = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				OTHER_CFLAGS = (
+					"$(inherited)",
+					"-fblocks",
+					"-w",
+				);
+				OTHER_CPLUSPLUSFLAGS = (
+					"$(inherited)",
+					"-w",
+				);
+				OTHER_LDFLAGS = (
+                    "/private/tmp/ccv-attn-hadamard-ios-20261007/libmfa.a",
+					"$(inherited)",
+					"-framework",
+					UIKit,
+					"-framework",
+					QuartzCore,
+					"-framework",
+					Foundation,
+					"-framework",
+					Metal,
+					"-framework",
+					CoreML,
+					"-framework",
+					CoreVideo,
+					"-framework",
+					IOSurface,
+					"-framework",
+					Accelerate,
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.liu.NAHadamardAttentionExperiment;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = iphoneos;
+				TARGETED_DEVICE_FAMILY = 2;
+			};
+			name = Debug;
+		};
+		001000000000000000000071 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++17";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 6HP3U6Z7P6;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"HAVE_CBLAS=1",
+					"HAVE_PTHREAD=1",
+					"HAVE_ACCELERATE_FRAMEWORK=1",
+					"USE_DISPATCH=1",
+					"HAVE_MPS=1",
+					"CCV_NA_HADAMARD_EMBEDDED=1",
+				);
+				GENERATE_INFOPLIST_FILE = YES;
+				HEADER_SEARCH_PATHS = (
+					"$(inherited)",
+					"/Users/liu/workspace/ccv/bin/mfa",
+					"/Users/liu/workspace/ccv/lib",
+					"/Users/liu/workspace/ccv/lib/nnc",
+					"/Users/liu/workspace/ccv/lib/nnc/mfa",
+					"/Users/liu/workspace/ccv/lib/nnc/mfa/3rdparty/metal-cpp",
+					"/Users/liu/workspace/ccv/lib/nnc/mfa/kernels",
+				);
+				INFOPLIST_KEY_CFBundleDisplayName = NAInt8Tuning;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = NO;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UIRequiresFullScreen = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				OTHER_CFLAGS = (
+					"$(inherited)",
+					"-fblocks",
+					"-w",
+				);
+				OTHER_CPLUSPLUSFLAGS = (
+					"$(inherited)",
+					"-w",
+				);
+				OTHER_LDFLAGS = (
+                    "/private/tmp/ccv-attn-hadamard-ios-20261007/libmfa.a",
+					"$(inherited)",
+					"-framework",
+					UIKit,
+					"-framework",
+					QuartzCore,
+					"-framework",
+					Foundation,
+					"-framework",
+					Metal,
+					"-framework",
+					CoreML,
+					"-framework",
+					CoreVideo,
+					"-framework",
+					IOSurface,
+					"-framework",
+					Accelerate,
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.liu.NAHadamardAttentionExperiment;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = iphoneos;
+				TARGETED_DEVICE_FAMILY = 2;
+			};
+			name = Release;
+		};
+		001000000000000000000072 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_MODULES = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				SDKROOT = iphoneos;
+			};
+			name = Debug;
+		};
+		001000000000000000000073 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_MODULES = YES;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				SDKROOT = iphoneos;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		001000000000000000000060 /* Build configuration list for PBXNativeTarget "NAInt8TuningApp" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				001000000000000000000070 /* Debug */,
+				001000000000000000000071 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		001000000000000000000061 /* Build configuration list for PBXProject "NAInt8TuningApp" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				001000000000000000000072 /* Debug */,
+				001000000000000000000073 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 001000000000000000000050 /* Project object */;
+}

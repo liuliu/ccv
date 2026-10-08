@@ -7896,9 +7896,9 @@ TEST_CASE("scaled dot product attention with varlen NA mps")
 	};
 	const int max_seqlen_q[2] = { 78, 79 };
 	const int max_seqlen_kv[2] = { 79, 80 };
-	for (int trial = 0; trial < 4; ++trial)
+	for (int trial = 0; trial < 8; ++trial)
 	{
-		const int D = trial < 2 ? 64 : 256;
+		const int D = trial % 4 < 2 ? 64 : 256;
 		const int is_causal = trial % 2;
 		const int total_q = q_offsets[trial % 2][B];
 		const int total_k = kv_offsets[trial % 2][B];
@@ -7967,6 +7967,7 @@ TEST_CASE("scaled dot product attention with varlen NA mps")
 		REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, copy_of_gpu_o_tensor->data.f32, o_tensor->data.f32, total_q * Hq * D, 5e-3, "varlen MPS computed output should match packed CPU output when causal=%d", is_causal);
 		ccv_nnc_cmd_t int8_cmd = cmd;
 		int8_cmd.info.scaled_dot_product_attention.flags = CCV_NNC_GEMM_16F | CCV_NNC_GEMM_8I;
+		int8_cmd.info.scaled_dot_product_attention.use_hadamard = trial >= 4;
 		ccv_nnc_tensor_t* const gpu_o_tensor_int8 = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, 1, total_q, Hq, D), 0);
 		ccv_nnc_cmd_exec(int8_cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(gpu_q_tensor, gpu_k_tensor, gpu_v_tensor, NULL, NULL, NULL, gpu_q_seq_offsets, gpu_kv_seq_offsets), TENSOR_LIST(gpu_o_tensor_int8, NULL), 0);
 		ccv_nnc_tensor_t* const copy_of_gpu_o_tensor_int8_f16 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, 1, total_q, Hq, D), 0);
@@ -8007,6 +8008,128 @@ TEST_CASE("scaled dot product attention with varlen NA mps")
 	}
 }
 
+TEST_CASE("scaled dot product attention with quantized NA mps and use_hadamard")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SCALED_DOT_PRODUCT_ATTENTION_FORWARD, CCV_NNC_BACKEND_MPS));
+#ifdef HAVE_MPS
+	extern uint8_t ccv_nnc_mfa_has_neural_accelerators(ccv_nnc_mfa_context_t* context);
+	GUARD_ELSE_RETURN(ccv_nnc_mfa_has_neural_accelerators(ccv_nnc_default_mfa_context()));
+	GUARD_ELSE_RETURN(!(ccv_nnc_flags() & (CCV_NNC_DISABLE_MFA | CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS)));
+	const int B = 2, R = 33, C = 65, Hq = 4, Hk = 2;
+	const int Ds[] = { 64, 80, 96, 128, 192, 256, 130, 320 };
+	const uint64_t old_flags = ccv_nnc_flags();
+	for (int trial = 0; trial < 8; ++trial)
+	{
+		const int D = Ds[trial];
+		const int q_count = B * R * Hq * D, kv_count = B * C * Hk * D;
+		ccv_nnc_tensor_t* const q = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, B, R, Hq, D), 0);
+		ccv_nnc_tensor_t* const k = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, B, C, Hk, D), 0);
+		ccv_nnc_tensor_t* const v = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, B, C, Hk, D), 0);
+		ccv_nnc_tensor_t* const mask = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, 1, R, C), 0);
+		ccv_nnc_tensor_t* const sinks = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, Hq), 0);
+		ccv_nnc_tensor_t* const reference = ccv_nnc_tensor_new(0, q->info, 0);
+		ccv_nnc_tensor_t* const baseline = ccv_nnc_tensor_new(0, q->info, 0);
+		ccv_nnc_tensor_t* const actual = ccv_nnc_tensor_new(0, q->info, 0);
+		dsfmt_t dsfmt;
+		dsfmt_init_gen_rand(&dsfmt, 401 + trial);
+		for (int i = 0; i < q_count; ++i)
+			q->data.f32[i] = (dsfmt_genrand_open_close(&dsfmt) - 0.5) * (i % D == 7 ? 8 : 1);
+		for (int i = 0; i < kv_count; ++i)
+		{
+			k->data.f32[i] = (dsfmt_genrand_open_close(&dsfmt) - 0.5) * (i % D == 7 ? 8 : 1);
+			v->data.f32[i] = dsfmt_genrand_open_close(&dsfmt) - 0.25;
+		}
+		for (int i = 0; i < R * C; ++i)
+			mask->data.f32[i] = i % 7 == 0 ? -0.75 : 0;
+		for (int i = 0; i < Hq; ++i)
+			sinks->data.f32[i] = (i - 2) / 8.0;
+		ccv_nnc_cmd_t cmd = CMD_SCALED_DOT_PRODUCT_ATTENTION_FORWARD(1.0 / sqrtf(D), trial % 2);
+		cmd.info.scaled_dot_product_attention.attention_sinks = 1;
+		ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(q, k, v, mask, 0, 0, 0, 0, sinks), TENSOR_LIST(reference), 0);
+		cmd.info.scaled_dot_product_attention.use_hadamard = 1;
+		ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(q, k, v, mask, 0, 0, 0, 0, sinks), TENSOR_LIST(actual), 0);
+		REQUIRE_TENSOR_EQ(actual, reference, "CPU attention should ignore use_hadamard");
+		ccv_nnc_tensor_t* const gpu_q = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, B, R, Hq, D), 0);
+		ccv_nnc_tensor_t* const gpu_k = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, B, C, Hk, D), 0);
+		ccv_nnc_tensor_t* const gpu_v = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, B, C, Hk, D), 0);
+		ccv_nnc_tensor_t* const gpu_mask = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 1, 1, R, C), 0);
+		ccv_nnc_tensor_t* const gpu_sinks = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, Hq), 0);
+		ccv_nnc_tensor_t* const gpu_o = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, B, R, Hq, D), 0);
+		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(q, k, v, mask, sinks), TENSOR_LIST(gpu_q, gpu_k, gpu_v, gpu_mask, gpu_sinks), 0);
+		if (trial % 2)
+			ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M | CCV_NNC_DISABLE_MFA_ATTENTION_SPECIALIZING_C);
+		cmd.info.scaled_dot_product_attention.flags = CCV_NNC_GEMM_8I;
+		// Toggle off/on/off using identical shapes to exercise both cache entries.
+		for (int pass = 0; pass < 3; ++pass)
+		{
+			cmd.info.scaled_dot_product_attention.use_hadamard = pass == 1;
+			ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(gpu_q, gpu_k, gpu_v, gpu_mask, 0, 0, 0, 0, gpu_sinks), TENSOR_LIST(gpu_o), 0);
+			ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(gpu_o), TENSOR_LIST(pass == 0 ? baseline : actual), 0);
+			if (pass == 1)
+			{
+				double error2 = 0, reference2 = 0, change2 = 0;
+				for (int i = 0; i < q_count; ++i)
+				{
+					REQUIRE(isfinite(actual->data.f32[i]), "Hadamard attention should be finite for D=%d", D);
+					const double error = actual->data.f32[i] - reference->data.f32[i];
+					const double change = actual->data.f32[i] - baseline->data.f32[i];
+					error2 += error * error;
+					reference2 += (double)reference->data.f32[i] * reference->data.f32[i];
+					change2 += change * change;
+				}
+				REQUIRE(error2 < reference2 * 2.5e-3, "Hadamard attention should match CPU within 5%% relative L2 for D=%d", D);
+				if (D <= 256 && D % 8 == 0)
+				{
+					REQUIRE(change2 > 1e-10, "supported NA INT8 forward should honor use_hadamard for D=%d", D);
+				} else {
+					REQUIRE_TENSOR_EQ(actual, baseline, "unsupported head dimensions should ignore use_hadamard");
+				}
+				if (D == 128)
+				{
+					ccv_cnnp_model_t* const model = ccv_cnnp_scaled_dot_product_attention(cmd.info.scaled_dot_product_attention.scale, cmd.info.scaled_dot_product_attention.is_causal, 1, 0, 0, 0, CCV_NNC_GEMM_8I, 1, 1, 0, 0, 0, 0, "hadamard");
+					ccv_cnnp_model_t* const copy = ccv_cnnp_model_copy(model, 0);
+					ccv_cnnp_model_free(model);
+					ccv_nnc_tensor_param_t input_params[] = { gpu_q->info, gpu_k->info, gpu_v->info, gpu_mask->info, gpu_sinks->info };
+					ccv_cnnp_model_compile(copy, input_params, 5, CMD_NOOP(), CMD_NOOP());
+					ccv_cnnp_model_evaluate(copy, (ccv_cnnp_evaluate_param_t){}, TENSOR_LIST(gpu_q, gpu_k, gpu_v, gpu_mask, gpu_sinks), TENSOR_LIST(gpu_o), 0, 0);
+					ccv_nnc_tensor_t* const model_output = ccv_nnc_tensor_new(0, q->info, 0);
+					ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(gpu_o), TENSOR_LIST(model_output), 0);
+					REQUIRE_TENSOR_EQ(model_output, actual, "CNNP construction and copying should preserve use_hadamard");
+					ccv_nnc_tensor_free(model_output);
+					ccv_cnnp_model_free(copy);
+				}
+			} else if (pass == 2) {
+				REQUIRE_TENSOR_EQ(actual, baseline, "disabling use_hadamard should recover the original cached pipeline");
+			}
+		}
+		// Floating-point NA attention should ignore the same command property.
+		cmd.info.scaled_dot_product_attention.flags = 0;
+		for (int pass = 0; pass < 2; ++pass)
+		{
+			cmd.info.scaled_dot_product_attention.use_hadamard = pass;
+			ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(gpu_q, gpu_k, gpu_v, gpu_mask, 0, 0, 0, 0, gpu_sinks), TENSOR_LIST(gpu_o), 0);
+			ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(gpu_o), TENSOR_LIST(pass == 0 ? baseline : actual), 0);
+		}
+		REQUIRE_TENSOR_EQ(actual, baseline, "floating-point attention should ignore use_hadamard");
+		ccv_nnc_disable_flag((CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M | CCV_NNC_DISABLE_MFA_ATTENTION_SPECIALIZING_C) & ~old_flags);
+		ccv_nnc_tensor_free(gpu_o);
+		ccv_nnc_tensor_free(gpu_sinks);
+		ccv_nnc_tensor_free(gpu_mask);
+		ccv_nnc_tensor_free(gpu_v);
+		ccv_nnc_tensor_free(gpu_k);
+		ccv_nnc_tensor_free(gpu_q);
+		ccv_nnc_tensor_free(actual);
+		ccv_nnc_tensor_free(baseline);
+		ccv_nnc_tensor_free(reference);
+		ccv_nnc_tensor_free(sinks);
+		ccv_nnc_tensor_free(mask);
+		ccv_nnc_tensor_free(v);
+		ccv_nnc_tensor_free(k);
+		ccv_nnc_tensor_free(q);
+	}
+#endif
+}
+
 TEST_CASE("scaled dot product attention with quantized NA mps")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SCALED_DOT_PRODUCT_ATTENTION_FORWARD, CCV_NNC_BACKEND_MPS));
@@ -8044,8 +8167,9 @@ TEST_CASE("scaled dot product attention with quantized NA mps")
 		ccv_nnc_cmd_t cpu_cmd = CMD_SCALED_DOT_PRODUCT_ATTENTION_FORWARD(scale, 0);
 		ccv_nnc_cmd_exec(cpu_cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(q_tensor, k_tensor, v_tensor), TENSOR_LIST(o_tensor), 0);
 
-		for (int datatype_idx = 0; datatype_idx < 3; ++datatype_idx)
+		for (int precision_trial = 0; precision_trial < 6; ++precision_trial)
 		{
+			const int datatype_idx = precision_trial / 2;
 			const int datatype = datatypes[datatype_idx];
 			ccv_nnc_tensor_t* q_input = q_tensor;
 			ccv_nnc_tensor_t* k_input = k_tensor;
@@ -8090,6 +8214,7 @@ TEST_CASE("scaled dot product attention with quantized NA mps")
 			ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(q_input, k_input, v_input), TENSOR_LIST(gpu_q_tensor, gpu_k_tensor, gpu_v_tensor), 0);
 			ccv_nnc_cmd_t gpu_cmd = CMD_SCALED_DOT_PRODUCT_ATTENTION_FORWARD(scale, 0);
 			gpu_cmd.info.scaled_dot_product_attention.flags = CCV_NNC_GEMM_16F | CCV_NNC_GEMM_8I;
+			gpu_cmd.info.scaled_dot_product_attention.use_hadamard = precision_trial % 2;
 			ccv_nnc_cmd_exec(gpu_cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(gpu_q_tensor, gpu_k_tensor, gpu_v_tensor), TENSOR_LIST(gpu_o_tensor), 0);
 			ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(gpu_o_tensor), TENSOR_LIST(copy_of_gpu_o_tensor), 0);
 
@@ -10198,7 +10323,11 @@ TEST_CASE("scaled dot product attention grouped-query gradient with mps")
 	const uint64_t old_flags = ccv_nnc_flags();
 	ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA);
 	ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA_ATTENTION);
-	ccv_nnc_cmd_exec(CMD_SCALED_DOT_PRODUCT_ATTENTION_FORWARD(scale, 0), ccv_nnc_no_hint, 0, TENSOR_LIST(gpu_q_tensor, gpu_k_tensor, gpu_v_tensor, NULL, NULL, NULL), TENSOR_LIST(gpu_o_tensor, gpu_softmax_lse), 0);
+	ccv_nnc_cmd_t forward_cmd = CMD_SCALED_DOT_PRODUCT_ATTENTION_FORWARD(scale, 0);
+	forward_cmd.info.scaled_dot_product_attention.use_hadamard = 1;
+	ccv_nnc_cmd_t backward_cmd = CMD_SCALED_DOT_PRODUCT_ATTENTION_BACKWARD(scale, 0);
+	backward_cmd.info.scaled_dot_product_attention.use_hadamard = 1;
+	ccv_nnc_cmd_exec(forward_cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(gpu_q_tensor, gpu_k_tensor, gpu_v_tensor, NULL, NULL, NULL), TENSOR_LIST(gpu_o_tensor, gpu_softmax_lse), 0);
 	for (int use_mps_graph = 0; use_mps_graph < 2; ++use_mps_graph)
 	{
 		if (use_mps_graph)
@@ -10208,7 +10337,7 @@ TEST_CASE("scaled dot product attention grouped-query gradient with mps")
 			ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA);
 			ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA_ATTENTION);
 		}
-		const int status = ccv_nnc_cmd_exec(CMD_SCALED_DOT_PRODUCT_ATTENTION_BACKWARD(scale, 0), ccv_nnc_no_hint, 0, TENSOR_LIST(gpu_do_tensor, 0, 0, gpu_q_tensor, gpu_k_tensor, gpu_v_tensor, 0, 0, 0, gpu_o_tensor, gpu_softmax_lse), TENSOR_LIST(gpu_dq_tensor, gpu_dk_tensor, gpu_dv_tensor), 0);
+		const int status = ccv_nnc_cmd_exec(backward_cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(gpu_do_tensor, 0, 0, gpu_q_tensor, gpu_k_tensor, gpu_v_tensor, 0, 0, 0, gpu_o_tensor, gpu_softmax_lse), TENSOR_LIST(gpu_dq_tensor, gpu_dk_tensor, gpu_dv_tensor), 0);
 		if (old_flags & CCV_NNC_DISABLE_MFA)
 			ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA);
 		else

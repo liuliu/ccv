@@ -45,6 +45,7 @@ struct NAInt8AttentionKernel {
   bool hasRRemainder = true;
   bool loadC = false;
   bool attentionSinks;
+  bool qkHadamard;
 
   NAInt8AttentionKernel(NAInt8AttentionKernelDescriptor descriptor, MTL::Device *const device);
 

@@ -1,0 +1,2502 @@
+{
+  "date": "2026-10-07",
+  "mac": "Apple M5 Max; macOS 27.0.1 (26A434)",
+  "ipad": "Physical M5 iPad Pro 11-inch, iPad17,1; Apple M5 GPU; iPadOS 27.0.1 (24A446)",
+  "xcode": "27.0 (27A266a)",
+  "gpu_timestamps": true,
+  "main_samples": 48,
+  "long_ipad_samples": 24,
+  "ipad_thermal_states": "0 before and after every recorded run",
+  "flag": "qkHadamard, default false; forward only",
+  "packing": "two-wide for D64/D192, four-wide otherwise",
+  "records": [
+    {
+      "log": "mac-square-d64.log",
+      "arguments": [
+        "4096",
+        "4096",
+        "1",
+        "24",
+        "24",
+        "0",
+        "0",
+        "0",
+        "1",
+        "0",
+        "64"
+      ],
+      "device_name": "Apple M5 Max",
+      "correct": true,
+      "timing": [
+        {
+          "full": "0",
+          "baseline_ms": "0.0434609392",
+          "hadamard_ms": "0.0510078135",
+          "paired_overhead_pct": "17.37",
+          "samples": "48"
+        },
+        {
+          "full": "1",
+          "baseline_ms": "1.39625001",
+          "hadamard_ms": "1.39968749",
+          "paired_overhead_pct": "0.229781",
+          "samples": "48"
+        }
+      ]
+    },
+    {
+      "log": "mac-decode-d64.log",
+      "arguments": [
+        "1",
+        "4097",
+        "1",
+        "32",
+        "8",
+        "0",
+        "1",
+        "3",
+        "0",
+        "0",
+        "64"
+      ],
+      "device_name": "Apple M5 Max",
+      "correct": true,
+      "timing": [
+        {
+          "full": "0",
+          "baseline_ms": "0.00740624819",
+          "hadamard_ms": "0.011653643",
+          "paired_overhead_pct": "57.6132",
+          "samples": "48"
+        },
+        {
+          "full": "1",
+          "baseline_ms": "0.174270855",
+          "hadamard_ms": "0.178624992",
+          "paired_overhead_pct": "2.52238",
+          "samples": "48"
+        }
+      ]
+    },
+    {
+      "log": "ipad-square-d64.log",
+      "arguments": [
+        "4096",
+        "4096",
+        "1",
+        "24",
+        "24",
+        "0",
+        "0",
+        "0",
+        "1",
+        "0",
+        "64"
+      ],
+      "device_name": "Apple M5 GPU",
+      "correct": true,
+      "timing": [
+        {
+          "full": "0",
+          "baseline_ms": "0.279708336",
+          "hadamard_ms": "0.283502604",
+          "paired_overhead_pct": "1.26614",
+          "samples": "48"
+        },
+        {
+          "full": "1",
+          "baseline_ms": "5.84900001",
+          "hadamard_ms": "5.85710417",
+          "paired_overhead_pct": "0.158202",
+          "samples": "48"
+        }
+      ]
+    },
+    {
+      "log": "ipad-decode-d64.log",
+      "arguments": [
+        "1",
+        "4097",
+        "1",
+        "32",
+        "8",
+        "0",
+        "1",
+        "3",
+        "0",
+        "0",
+        "64"
+      ],
+      "device_name": "Apple M5 GPU",
+      "correct": true,
+      "timing": [
+        {
+          "full": "0",
+          "baseline_ms": "0.0300026059",
+          "hadamard_ms": "0.0359739588",
+          "paired_overhead_pct": "19.8197",
+          "samples": "48"
+        },
+        {
+          "full": "1",
+          "baseline_ms": "0.243000002",
+          "hadamard_ms": "0.25064584",
+          "paired_overhead_pct": "3.03297",
+          "samples": "48"
+        }
+      ]
+    },
+    {
+      "log": "mac-vector-square-d80.log",
+      "arguments": [
+        "4096",
+        "4096",
+        "1",
+        "24",
+        "24",
+        "0",
+        "0",
+        "0",
+        "1",
+        "0",
+        "80"
+      ],
+      "device_name": "Apple M5 Max",
+      "correct": true,
+      "timing": [
+        {
+          "full": "0",
+          "baseline_ms": "0.0693515649",
+          "hadamard_ms": "0.0773906249",
+          "paired_overhead_pct": "11.5611",
+          "samples": "48"
+        },
+        {
+          "full": "1",
+          "baseline_ms": "2.22324999",
+          "hadamard_ms": "2.22939585",
+          "paired_overhead_pct": "0.260046",
+          "samples": "48"
+        }
+      ]
+    },
+    {
+      "log": "mac-vector-decode-d80.log",
+      "arguments": [
+        "1",
+        "4097",
+        "1",
+        "32",
+        "8",
+        "0",
+        "1",
+        "3",
+        "0",
+        "0",
+        "80"
+      ],
+      "device_name": "Apple M5 Max",
+      "correct": true,
+      "timing": [
+        {
+          "full": "0",
+          "baseline_ms": "0.0105416657",
+          "hadamard_ms": "0.0145520826",
+          "paired_overhead_pct": "38.06",
+          "samples": "48"
+        },
+        {
+          "full": "1",
+          "baseline_ms": "0.214604166",
+          "hadamard_ms": "0.220729184",
+          "paired_overhead_pct": "2.95373",
+          "samples": "48"
+        }
+      ]
+    },
+    {
+      "log": "ipad-vector-square-d80.log",
+      "arguments": [
+        "4096",
+        "4096",
+        "1",
+        "24",
+        "24",
+        "0",
+        "0",
+        "0",
+        "1",
+        "0",
+        "80"
+      ],
+      "device_name": "Apple M5 GPU",
+      "correct": true,
+      "timing": [
+        {
+          "full": "0",
+          "baseline_ms": "0.364039062",
+          "hadamard_ms": "0.369427082",
+          "paired_overhead_pct": "1.54654",
+          "samples": "48"
+        },
+        {
+          "full": "1",
+          "baseline_ms": "9.04170834",
+          "hadamard_ms": "9.04879166",
+          "paired_overhead_pct": "0.0731132",
+          "samples": "48"
+        }
+      ]
+    },
+    {
+      "log": "ipad-vector-decode-d80.log",
+      "arguments": [
+        "1",
+        "4097",
+        "1",
+        "32",
+        "8",
+        "0",
+        "1",
+        "3",
+        "0",
+        "0",
+        "80"
+      ],
+      "device_name": "Apple M5 GPU",
+      "correct": true,
+      "timing": [
+        {
+          "full": "0",
+          "baseline_ms": "0.0397239583",
+          "hadamard_ms": "0.0458645827",
+          "paired_overhead_pct": "15.3441",
+          "samples": "48"
+        },
+        {
+          "full": "1",
+          "baseline_ms": "0.315208337",
+          "hadamard_ms": "0.32508334",
+          "paired_overhead_pct": "3.03148",
+          "samples": "48"
+        }
+      ]
+    },
+    {
+      "log": "mac-vector-square-d96.log",
+      "arguments": [
+        "4096",
+        "4096",
+        "1",
+        "24",
+        "24",
+        "0",
+        "0",
+        "0",
+        "1",
+        "0",
+        "96"
+      ],
+      "device_name": "Apple M5 Max",
+      "correct": true,
+      "timing": [
+        {
+          "full": "0",
+          "baseline_ms": "0.0907265603",
+          "hadamard_ms": "0.0950234389",
+          "paired_overhead_pct": "5.2855",
+          "samples": "48"
+        },
+        {
+          "full": "1",
+          "baseline_ms": "2.10970832",
+          "hadamard_ms": "2.11691667",
+          "paired_overhead_pct": "0.298568",
+          "samples": "48"
+        }
+      ]
+    },
+    {
+      "log": "mac-vector-decode-d96.log",
+      "arguments": [
+        "1",
+        "4097",
+        "1",
+        "32",
+        "8",
+        "0",
+        "1",
+        "3",
+        "0",
+        "0",
+        "96"
+      ],
+      "device_name": "Apple M5 Max",
+      "correct": true,
+      "timing": [
+        {
+          "full": "0",
+          "baseline_ms": "0.0136145864",
+          "hadamard_ms": "0.0162890647",
+          "paired_overhead_pct": "19.337",
+          "samples": "48"
+        },
+        {
+          "full": "1",
+          "baseline_ms": "0.235500018",
+          "hadamard_ms": "0.241229165",
+          "paired_overhead_pct": "2.45846",
+          "samples": "48"
+        }
+      ]
+    },
+    {
+      "log": "ipad-vector-square-d96.log",
+      "arguments": [
+        "4096",
+        "4096",
+        "1",
+        "24",
+        "24",
+        "0",
+        "0",
+        "0",
+        "1",
+        "0",
+        "96"
+      ],
+      "device_name": "Apple M5 GPU",
+      "correct": true,
+      "timing": [
+        {
+          "full": "0",
+          "baseline_ms": "0.434479167",
+          "hadamard_ms": "0.435723958",
+          "paired_overhead_pct": "0.685212",
+          "samples": "48"
+        },
+        {
+          "full": "1",
+          "baseline_ms": "8.88941667",
+          "hadamard_ms": "8.89649999",
+          "paired_overhead_pct": "-0.0133356",
+          "samples": "48"
+        }
+      ]
+    },
+    {
+      "log": "ipad-vector-decode-d96.log",
+      "arguments": [
+        "1",
+        "4097",
+        "1",
+        "32",
+        "8",
+        "0",
+        "1",
+        "3",
+        "0",
+        "0",
+        "96"
+      ],
+      "device_name": "Apple M5 GPU",
+      "correct": true,
+      "timing": [
+        {
+          "full": "0",
+          "baseline_ms": "0.0469453116",
+          "hadamard_ms": "0.0520755202",
+          "paired_overhead_pct": "10.9203",
+          "samples": "48"
+        },
+        {
+          "full": "1",
+          "baseline_ms": "0.36825001",
+          "hadamard_ms": "0.375104151",
+          "paired_overhead_pct": "1.64321",
+          "samples": "48"
+        }
+      ]
+    },
+    {
+      "log": "mac-square-d128.log",
+      "arguments": [
+        "4096",
+        "4096",
+        "1",
+        "24",
+        "24",
+        "0",
+        "0",
+        "0",
+        "1",
+        "0",
+        "128"
+      ],
+      "device_name": "Apple M5 Max",
+      "correct": true,
+      "timing": [
+        {
+          "full": "0",
+          "baseline_ms": "0.141109369",
+          "hadamard_ms": "0.142651039",
+          "paired_overhead_pct": "1.12492",
+          "samples": "48"
+        },
+        {
+          "full": "1",
+          "baseline_ms": "2.61635415",
+          "hadamard_ms": "2.61889584",
+          "paired_overhead_pct": "0.170354",
+          "samples": "48"
+        }
+      ]
+    },
+    {
+      "log": "mac-decode-d128.log",
+      "arguments": [
+        "1",
+        "4097",
+        "1",
+        "32",
+        "8",
+        "0",
+        "1",
+        "3",
+        "0",
+        "0",
+        "128"
+      ],
+      "device_name": "Apple M5 Max",
+      "correct": true,
+      "timing": [
+        {
+          "full": "0",
+          "baseline_ms": "0.017671875",
+          "hadamard_ms": "0.0224062533",
+          "paired_overhead_pct": "27.0843",
+          "samples": "48"
+        },
+        {
+          "full": "1",
+          "baseline_ms": "0.296312501",
+          "hadamard_ms": "0.303499983",
+          "paired_overhead_pct": "2.50347",
+          "samples": "48"
+        }
+      ]
+    },
+    {
+      "log": "ipad-square-d128.log",
+      "arguments": [
+        "4096",
+        "4096",
+        "1",
+        "24",
+        "24",
+        "0",
+        "0",
+        "0",
+        "1",
+        "0",
+        "128"
+      ],
+      "device_name": "Apple M5 GPU",
+      "correct": true,
+      "timing": [
+        {
+          "full": "0",
+          "baseline_ms": "0.567554689",
+          "hadamard_ms": "0.562757812",
+          "paired_overhead_pct": "-0.539506",
+          "samples": "48"
+        },
+        {
+          "full": "1",
+          "baseline_ms": "10.8870417",
+          "hadamard_ms": "10.8887917",
+          "paired_overhead_pct": "0.0057455",
+          "samples": "48"
+        }
+      ]
+    },
+    {
+      "log": "ipad-decode-d128.log",
+      "arguments": [
+        "1",
+        "4097",
+        "1",
+        "32",
+        "8",
+        "0",
+        "1",
+        "3",
+        "0",
+        "0",
+        "128"
+      ],
+      "device_name": "Apple M5 GPU",
+      "correct": true,
+      "timing": [
+        {
+          "full": "0",
+          "baseline_ms": "0.0590624986",
+          "hadamard_ms": "0.0624817694",
+          "paired_overhead_pct": "5.81935",
+          "samples": "48"
+        },
+        {
+          "full": "1",
+          "baseline_ms": "0.486979174",
+          "hadamard_ms": "0.490645834",
+          "paired_overhead_pct": "0.811821",
+          "samples": "48"
+        }
+      ]
+    },
+    {
+      "log": "mac-final-square-d192.log",
+      "arguments": [
+        "4096",
+        "4096",
+        "1",
+        "24",
+        "24",
+        "0",
+        "0",
+        "0",
+        "1",
+        "0",
+        "192"
+      ],
+      "device_name": "Apple M5 Max",
+      "correct": true,
+      "timing": [
+        {
+          "full": "0",
+          "baseline_ms": "0.21540104",
+          "hadamard_ms": "0.245231771",
+          "paired_overhead_pct": "13.7324",
+          "samples": "48"
+        },
+        {
+          "full": "1",
+          "baseline_ms": "5.05074998",
+          "hadamard_ms": "5.08972918",
+          "paired_overhead_pct": "0.614598",
+          "samples": "48"
+        }
+      ]
+    },
+    {
+      "log": "mac-final-decode-d192.log",
+      "arguments": [
+        "1",
+        "4097",
+        "1",
+        "32",
+        "8",
+        "0",
+        "1",
+        "3",
+        "0",
+        "0",
+        "192"
+      ],
+      "device_name": "Apple M5 Max",
+      "correct": true,
+      "timing": [
+        {
+          "full": "0",
+          "baseline_ms": "0.026062502",
+          "hadamard_ms": "0.0554687504",
+          "paired_overhead_pct": "112.847",
+          "samples": "48"
+        },
+        {
+          "full": "1",
+          "baseline_ms": "0.400208315",
+          "hadamard_ms": "0.437687529",
+          "paired_overhead_pct": "9.22827",
+          "samples": "48"
+        }
+      ]
+    },
+    {
+      "log": "ipad-final-square-d192.log",
+      "arguments": [
+        "4096",
+        "4096",
+        "1",
+        "24",
+        "24",
+        "0",
+        "0",
+        "0",
+        "1",
+        "0",
+        "192"
+      ],
+      "device_name": "Apple M5 GPU",
+      "correct": true,
+      "timing": [
+        {
+          "full": "0",
+          "baseline_ms": "0.873776044",
+          "hadamard_ms": "0.879546875",
+          "paired_overhead_pct": "0.818004",
+          "samples": "48"
+        },
+        {
+          "full": "1",
+          "baseline_ms": "20.0598958",
+          "hadamard_ms": "20.0770625",
+          "paired_overhead_pct": "0.105226",
+          "samples": "48"
+        }
+      ]
+    },
+    {
+      "log": "ipad-final-decode-d192.log",
+      "arguments": [
+        "1",
+        "4097",
+        "1",
+        "32",
+        "8",
+        "0",
+        "1",
+        "3",
+        "0",
+        "0",
+        "192"
+      ],
+      "device_name": "Apple M5 GPU",
+      "correct": true,
+      "timing": [
+        {
+          "full": "0",
+          "baseline_ms": "0.117278645",
+          "hadamard_ms": "0.14068229",
+          "paired_overhead_pct": "21.4881",
+          "samples": "48"
+        },
+        {
+          "full": "1",
+          "baseline_ms": "0.739437499",
+          "hadamard_ms": "0.759833332",
+          "paired_overhead_pct": "2.90675",
+          "samples": "48"
+        }
+      ]
+    },
+    {
+      "log": "mac-square-d256.log",
+      "arguments": [
+        "4096",
+        "4096",
+        "1",
+        "24",
+        "24",
+        "0",
+        "0",
+        "0",
+        "1",
+        "0",
+        "256"
+      ],
+      "device_name": "Apple M5 Max",
+      "correct": true,
+      "timing": [
+        {
+          "full": "0",
+          "baseline_ms": "0.286687497",
+          "hadamard_ms": "0.295460937",
+          "paired_overhead_pct": "3.02374",
+          "samples": "48"
+        },
+        {
+          "full": "1",
+          "baseline_ms": "8.02570832",
+          "hadamard_ms": "8.08237496",
+          "paired_overhead_pct": "0.525217",
+          "samples": "48"
+        }
+      ]
+    },
+    {
+      "log": "mac-decode-d256.log",
+      "arguments": [
+        "1",
+        "4097",
+        "1",
+        "32",
+        "8",
+        "0",
+        "1",
+        "3",
+        "0",
+        "0",
+        "256"
+      ],
+      "device_name": "Apple M5 Max",
+      "correct": true,
+      "timing": [
+        {
+          "full": "0",
+          "baseline_ms": "0.0381145837",
+          "hadamard_ms": "0.0558229149",
+          "paired_overhead_pct": "46.3916",
+          "samples": "48"
+        },
+        {
+          "full": "1",
+          "baseline_ms": "0.433229143",
+          "hadamard_ms": "0.459916657",
+          "paired_overhead_pct": "6.05902",
+          "samples": "48"
+        }
+      ]
+    },
+    {
+      "log": "ipad-square-d256.log",
+      "arguments": [
+        "4096",
+        "4096",
+        "1",
+        "24",
+        "24",
+        "0",
+        "0",
+        "0",
+        "1",
+        "0",
+        "256"
+      ],
+      "device_name": "Apple M5 GPU",
+      "correct": true,
+      "timing": [
+        {
+          "full": "0",
+          "baseline_ms": "1.17502604",
+          "hadamard_ms": "1.14938281",
+          "paired_overhead_pct": "-1.99822",
+          "samples": "48"
+        },
+        {
+          "full": "1",
+          "baseline_ms": "32.3135",
+          "hadamard_ms": "32.3389792",
+          "paired_overhead_pct": "0.0063003",
+          "samples": "48"
+        }
+      ]
+    },
+    {
+      "log": "ipad-decode-d256.log",
+      "arguments": [
+        "1",
+        "4097",
+        "1",
+        "32",
+        "8",
+        "0",
+        "1",
+        "3",
+        "0",
+        "0",
+        "256"
+      ],
+      "device_name": "Apple M5 GPU",
+      "correct": true,
+      "timing": [
+        {
+          "full": "0",
+          "baseline_ms": "0.192859374",
+          "hadamard_ms": "0.202445312",
+          "paired_overhead_pct": "5.00623",
+          "samples": "48"
+        },
+        {
+          "full": "1",
+          "baseline_ms": "0.879625004",
+          "hadamard_ms": "0.891812495",
+          "paired_overhead_pct": "1.25235",
+          "samples": "48"
+        }
+      ]
+    },
+    {
+      "log": "ipad-8k-d128.log",
+      "arguments": [
+        "8192",
+        "8192",
+        "1",
+        "24",
+        "24",
+        "0",
+        "0",
+        "0",
+        "1",
+        "0",
+        "128"
+      ],
+      "device_name": "Apple M5 GPU",
+      "correct": true,
+      "timing": [
+        {
+          "full": "0",
+          "baseline_ms": "1.13130729",
+          "hadamard_ms": "1.11916667",
+          "paired_overhead_pct": "-0.95109",
+          "samples": "24"
+        },
+        {
+          "full": "1",
+          "baseline_ms": "41.7645",
+          "hadamard_ms": "41.79825",
+          "paired_overhead_pct": "-0.00671268",
+          "samples": "24"
+        }
+      ]
+    },
+    {
+      "log": "ipad-8k-d256.log",
+      "arguments": [
+        "8192",
+        "8192",
+        "1",
+        "24",
+        "24",
+        "0",
+        "0",
+        "0",
+        "1",
+        "0",
+        "256"
+      ],
+      "device_name": "Apple M5 GPU",
+      "correct": true,
+      "timing": [
+        {
+          "full": "0",
+          "baseline_ms": "2.33986719",
+          "hadamard_ms": "2.28375781",
+          "paired_overhead_pct": "-2.33041",
+          "samples": "24"
+        },
+        {
+          "full": "1",
+          "baseline_ms": "125.799854",
+          "hadamard_ms": "125.834021",
+          "paired_overhead_pct": "0.123757",
+          "samples": "24"
+        }
+      ]
+    },
+    {
+      "log": "ipad-short-d128.log",
+      "arguments": [
+        "29",
+        "29",
+        "1",
+        "32",
+        "32",
+        "0",
+        "1",
+        "0",
+        "0",
+        "0",
+        "128"
+      ],
+      "device_name": "Apple M5 GPU",
+      "correct": true,
+      "timing": [
+        {
+          "full": "0",
+          "baseline_ms": "0.00426562474",
+          "hadamard_ms": "0.00721354263",
+          "paired_overhead_pct": "69.0665",
+          "samples": "48"
+        },
+        {
+          "full": "1",
+          "baseline_ms": "0.0360625127",
+          "hadamard_ms": "0.0388749904",
+          "paired_overhead_pct": "7.63886",
+          "samples": "48"
+        }
+      ]
+    },
+    {
+      "log": "mac-validate-d64-p0.log",
+      "arguments": [
+        "65",
+        "129",
+        "2",
+        "8",
+        "2",
+        "0",
+        "0",
+        "3",
+        "1",
+        "1",
+        "64"
+      ],
+      "device_name": "Apple M5 Max",
+      "correct": true,
+      "timing": [
+        {
+          "full": "0",
+          "baseline_ms": "0.0104921892",
+          "hadamard_ms": "0.0145833328",
+          "paired_overhead_pct": "39.2342",
+          "samples": "2"
+        }
+      ]
+    },
+    {
+      "log": "mac-validate-d64-p1.log",
+      "arguments": [
+        "65",
+        "129",
+        "2",
+        "8",
+        "2",
+        "1",
+        "0",
+        "3",
+        "1",
+        "1",
+        "64"
+      ],
+      "device_name": "Apple M5 Max",
+      "correct": true,
+      "timing": [
+        {
+          "full": "0",
+          "baseline_ms": "0.0104583341",
+          "hadamard_ms": "0.0150598971",
+          "paired_overhead_pct": "44.0042",
+          "samples": "2"
+        }
+      ]
+    },
+    {
+      "log": "mac-validate-d64-p2.log",
+      "arguments": [
+        "65",
+        "129",
+        "2",
+        "8",
+        "2",
+        "2",
+        "0",
+        "3",
+        "1",
+        "1",
+        "64"
+      ],
+      "device_name": "Apple M5 Max",
+      "correct": true,
+      "timing": [
+        {
+          "full": "0",
+          "baseline_ms": "0.0874348952",
+          "hadamard_ms": "0.0602187538",
+          "paired_overhead_pct": "-30.7889",
+          "samples": "2"
+        }
+      ]
+    },
+    {
+      "log": "mac-validate-d80-p0.log",
+      "arguments": [
+        "65",
+        "129",
+        "2",
+        "8",
+        "2",
+        "0",
+        "0",
+        "3",
+        "1",
+        "1",
+        "80"
+      ],
+      "device_name": "Apple M5 Max",
+      "correct": true,
+      "timing": [
+        {
+          "full": "0",
+          "baseline_ms": "0.139317712",
+          "hadamard_ms": "0.293476562",
+          "paired_overhead_pct": "106.413",
+          "samples": "2"
+        }
+      ]
+    },
+    {
+      "log": "mac-validate-d80-p1.log",
+      "arguments": [
+        "65",
+        "129",
+        "2",
+        "8",
+        "2",
+        "1",
+        "0",
+        "3",
+        "1",
+        "1",
+        "80"
+      ],
+      "device_name": "Apple M5 Max",
+      "correct": true,
+      "timing": [
+        {
+          "full": "0",
+          "baseline_ms": "0.279466145",
+          "hadamard_ms": "0.254054688",
+          "paired_overhead_pct": "-19.7885",
+          "samples": "2"
+        }
+      ]
+    },
+    {
+      "log": "mac-validate-d80-p2.log",
+      "arguments": [
+        "65",
+        "129",
+        "2",
+        "8",
+        "2",
+        "2",
+        "0",
+        "3",
+        "1",
+        "1",
+        "80"
+      ],
+      "device_name": "Apple M5 Max",
+      "correct": true,
+      "timing": [
+        {
+          "full": "0",
+          "baseline_ms": "0.13100521",
+          "hadamard_ms": "0.641453124",
+          "paired_overhead_pct": "391.779",
+          "samples": "2"
+        }
+      ]
+    },
+    {
+      "log": "mac-validate-d96-p0.log",
+      "arguments": [
+        "65",
+        "129",
+        "2",
+        "8",
+        "2",
+        "0",
+        "0",
+        "3",
+        "1",
+        "1",
+        "96"
+      ],
+      "device_name": "Apple M5 Max",
+      "correct": true,
+      "timing": [
+        {
+          "full": "0",
+          "baseline_ms": "0.0861666667",
+          "hadamard_ms": "0.272692709",
+          "paired_overhead_pct": "278.228",
+          "samples": "2"
+        }
+      ]
+    },
+    {
+      "log": "mac-validate-d96-p1.log",
+      "arguments": [
+        "65",
+        "129",
+        "2",
+        "8",
+        "2",
+        "1",
+        "0",
+        "3",
+        "1",
+        "1",
+        "96"
+      ],
+      "device_name": "Apple M5 Max",
+      "correct": true,
+      "timing": [
+        {
+          "full": "0",
+          "baseline_ms": "0.0123072896",
+          "hadamard_ms": "0.0170182284",
+          "paired_overhead_pct": "38.2789",
+          "samples": "2"
+        }
+      ]
+    },
+    {
+      "log": "mac-validate-d96-p2.log",
+      "arguments": [
+        "65",
+        "129",
+        "2",
+        "8",
+        "2",
+        "2",
+        "0",
+        "3",
+        "1",
+        "1",
+        "96"
+      ],
+      "device_name": "Apple M5 Max",
+      "correct": true,
+      "timing": [
+        {
+          "full": "0",
+          "baseline_ms": "0.0120260411",
+          "hadamard_ms": "0.0160546879",
+          "paired_overhead_pct": "33.4983",
+          "samples": "2"
+        }
+      ]
+    },
+    {
+      "log": "mac-validate-d128-p0.log",
+      "arguments": [
+        "65",
+        "129",
+        "2",
+        "8",
+        "2",
+        "0",
+        "0",
+        "3",
+        "1",
+        "1",
+        "128"
+      ],
+      "device_name": "Apple M5 Max",
+      "correct": true,
+      "timing": [
+        {
+          "full": "0",
+          "baseline_ms": "0.0130833359",
+          "hadamard_ms": "0.0158463517",
+          "paired_overhead_pct": "21.1185",
+          "samples": "2"
+        }
+      ]
+    },
+    {
+      "log": "mac-validate-d128-p1.log",
+      "arguments": [
+        "65",
+        "129",
+        "2",
+        "8",
+        "2",
+        "1",
+        "0",
+        "3",
+        "1",
+        "1",
+        "128"
+      ],
+      "device_name": "Apple M5 Max",
+      "correct": true,
+      "timing": [
+        {
+          "full": "0",
+          "baseline_ms": "0.013455734",
+          "hadamard_ms": "0.0167656253",
+          "paired_overhead_pct": "24.6024",
+          "samples": "2"
+        }
+      ]
+    },
+    {
+      "log": "mac-validate-d128-p2.log",
+      "arguments": [
+        "65",
+        "129",
+        "2",
+        "8",
+        "2",
+        "2",
+        "0",
+        "3",
+        "1",
+        "1",
+        "128"
+      ],
+      "device_name": "Apple M5 Max",
+      "correct": true,
+      "timing": [
+        {
+          "full": "0",
+          "baseline_ms": "0.0132838541",
+          "hadamard_ms": "0.0160807285",
+          "paired_overhead_pct": "21.055",
+          "samples": "2"
+        }
+      ]
+    },
+    {
+      "log": "mac-validate-d256-p0.log",
+      "arguments": [
+        "65",
+        "129",
+        "2",
+        "8",
+        "2",
+        "0",
+        "0",
+        "3",
+        "1",
+        "1",
+        "256"
+      ],
+      "device_name": "Apple M5 Max",
+      "correct": true,
+      "timing": [
+        {
+          "full": "0",
+          "baseline_ms": "0.0192265652",
+          "hadamard_ms": "0.0257994761",
+          "paired_overhead_pct": "34.1866",
+          "samples": "2"
+        }
+      ]
+    },
+    {
+      "log": "mac-validate-d256-p1.log",
+      "arguments": [
+        "65",
+        "129",
+        "2",
+        "8",
+        "2",
+        "1",
+        "0",
+        "3",
+        "1",
+        "1",
+        "256"
+      ],
+      "device_name": "Apple M5 Max",
+      "correct": true,
+      "timing": [
+        {
+          "full": "0",
+          "baseline_ms": "0.0227343735",
+          "hadamard_ms": "0.0274843769",
+          "paired_overhead_pct": "22.906",
+          "samples": "2"
+        }
+      ]
+    },
+    {
+      "log": "mac-validate-d256-p2.log",
+      "arguments": [
+        "65",
+        "129",
+        "2",
+        "8",
+        "2",
+        "2",
+        "0",
+        "3",
+        "1",
+        "1",
+        "256"
+      ],
+      "device_name": "Apple M5 Max",
+      "correct": true,
+      "timing": [
+        {
+          "full": "0",
+          "baseline_ms": "0.0192291664",
+          "hadamard_ms": "0.0254270817",
+          "paired_overhead_pct": "32.2315",
+          "samples": "2"
+        }
+      ]
+    },
+    {
+      "log": "mac-final-validate-d192-p0.log",
+      "arguments": [
+        "65",
+        "129",
+        "2",
+        "8",
+        "2",
+        "0",
+        "0",
+        "3",
+        "1",
+        "1",
+        "192"
+      ],
+      "device_name": "Apple M5 Max",
+      "correct": true,
+      "timing": [
+        {
+          "full": "0",
+          "baseline_ms": "0.0164114535",
+          "hadamard_ms": "0.0292187506",
+          "paired_overhead_pct": "78.0399",
+          "samples": "2"
+        }
+      ]
+    },
+    {
+      "log": "mac-final-validate-d192-p1.log",
+      "arguments": [
+        "65",
+        "129",
+        "2",
+        "8",
+        "2",
+        "1",
+        "0",
+        "3",
+        "1",
+        "1",
+        "192"
+      ],
+      "device_name": "Apple M5 Max",
+      "correct": true,
+      "timing": [
+        {
+          "full": "0",
+          "baseline_ms": "0.0169713567",
+          "hadamard_ms": "0.0312500015",
+          "paired_overhead_pct": "84.1365",
+          "samples": "2"
+        }
+      ]
+    },
+    {
+      "log": "mac-final-validate-d192-p2.log",
+      "arguments": [
+        "65",
+        "129",
+        "2",
+        "8",
+        "2",
+        "2",
+        "0",
+        "3",
+        "1",
+        "1",
+        "192"
+      ],
+      "device_name": "Apple M5 Max",
+      "correct": true,
+      "timing": [
+        {
+          "full": "0",
+          "baseline_ms": "0.0165312522",
+          "hadamard_ms": "0.0299583371",
+          "paired_overhead_pct": "81.2299",
+          "samples": "2"
+        }
+      ]
+    },
+    {
+      "log": "mac-vector-check-d8.log",
+      "arguments": [
+        "65",
+        "129",
+        "2",
+        "8",
+        "2",
+        "0",
+        "0",
+        "3",
+        "1",
+        "1",
+        "8"
+      ],
+      "device_name": "Apple M5 Max",
+      "correct": true,
+      "timing": [
+        {
+          "full": "0",
+          "baseline_ms": "0.00337500023",
+          "hadamard_ms": "0.00523958442",
+          "paired_overhead_pct": "55.2489",
+          "samples": "2"
+        }
+      ]
+    },
+    {
+      "log": "mac-vector-check-d16.log",
+      "arguments": [
+        "65",
+        "129",
+        "2",
+        "8",
+        "2",
+        "0",
+        "0",
+        "3",
+        "1",
+        "1",
+        "16"
+      ],
+      "device_name": "Apple M5 Max",
+      "correct": true,
+      "timing": [
+        {
+          "full": "0",
+          "baseline_ms": "0.00338281097",
+          "hadamard_ms": "0.00550781624",
+          "paired_overhead_pct": "62.8191",
+          "samples": "2"
+        }
+      ]
+    },
+    {
+      "log": "mac-vector-check-d24.log",
+      "arguments": [
+        "65",
+        "129",
+        "2",
+        "8",
+        "2",
+        "0",
+        "0",
+        "3",
+        "1",
+        "1",
+        "24"
+      ],
+      "device_name": "Apple M5 Max",
+      "correct": true,
+      "timing": [
+        {
+          "full": "0",
+          "baseline_ms": "0.00959895624",
+          "hadamard_ms": "0.0338671889",
+          "paired_overhead_pct": "174.18",
+          "samples": "2"
+        }
+      ]
+    },
+    {
+      "log": "mac-vector-check-d32.log",
+      "arguments": [
+        "65",
+        "129",
+        "2",
+        "8",
+        "2",
+        "0",
+        "0",
+        "3",
+        "1",
+        "1",
+        "32"
+      ],
+      "device_name": "Apple M5 Max",
+      "correct": true,
+      "timing": [
+        {
+          "full": "0",
+          "baseline_ms": "0.0036692727",
+          "hadamard_ms": "0.00575260492",
+          "paired_overhead_pct": "56.7792",
+          "samples": "2"
+        }
+      ]
+    },
+    {
+      "log": "mac-vector-check-d40.log",
+      "arguments": [
+        "65",
+        "129",
+        "2",
+        "8",
+        "2",
+        "0",
+        "0",
+        "3",
+        "1",
+        "1",
+        "40"
+      ],
+      "device_name": "Apple M5 Max",
+      "correct": true,
+      "timing": [
+        {
+          "full": "0",
+          "baseline_ms": "0.00431250373",
+          "hadamard_ms": "0.00546354204",
+          "paired_overhead_pct": "26.6907",
+          "samples": "2"
+        }
+      ]
+    },
+    {
+      "log": "mac-vector-check-d48.log",
+      "arguments": [
+        "65",
+        "129",
+        "2",
+        "8",
+        "2",
+        "0",
+        "0",
+        "3",
+        "1",
+        "1",
+        "48"
+      ],
+      "device_name": "Apple M5 Max",
+      "correct": true,
+      "timing": [
+        {
+          "full": "0",
+          "baseline_ms": "0.00426822953",
+          "hadamard_ms": "0.00577343963",
+          "paired_overhead_pct": "35.2656",
+          "samples": "2"
+        }
+      ]
+    },
+    {
+      "log": "mac-vector-check-d56.log",
+      "arguments": [
+        "65",
+        "129",
+        "2",
+        "8",
+        "2",
+        "0",
+        "0",
+        "3",
+        "1",
+        "1",
+        "56"
+      ],
+      "device_name": "Apple M5 Max",
+      "correct": true,
+      "timing": [
+        {
+          "full": "0",
+          "baseline_ms": "0.00457812712",
+          "hadamard_ms": "0.00551301855",
+          "paired_overhead_pct": "20.4207",
+          "samples": "2"
+        }
+      ]
+    },
+    {
+      "log": "mac-vector-check-d64.log",
+      "arguments": [
+        "65",
+        "129",
+        "2",
+        "8",
+        "2",
+        "0",
+        "0",
+        "3",
+        "1",
+        "1",
+        "64"
+      ],
+      "device_name": "Apple M5 Max",
+      "correct": true,
+      "timing": [
+        {
+          "full": "0",
+          "baseline_ms": "0.00418749551",
+          "hadamard_ms": "0.00525260475",
+          "paired_overhead_pct": "25.4355",
+          "samples": "2"
+        }
+      ]
+    },
+    {
+      "log": "mac-vector-check-d72.log",
+      "arguments": [
+        "65",
+        "129",
+        "2",
+        "8",
+        "2",
+        "0",
+        "0",
+        "3",
+        "1",
+        "1",
+        "72"
+      ],
+      "device_name": "Apple M5 Max",
+      "correct": true,
+      "timing": [
+        {
+          "full": "0",
+          "baseline_ms": "0.00504166746",
+          "hadamard_ms": "0.0056067729",
+          "paired_overhead_pct": "11.208",
+          "samples": "2"
+        }
+      ]
+    },
+    {
+      "log": "mac-vector-check-d80.log",
+      "arguments": [
+        "65",
+        "129",
+        "2",
+        "8",
+        "2",
+        "0",
+        "0",
+        "3",
+        "1",
+        "1",
+        "80"
+      ],
+      "device_name": "Apple M5 Max",
+      "correct": true,
+      "timing": [
+        {
+          "full": "0",
+          "baseline_ms": "0.00502864714",
+          "hadamard_ms": "0.00580989581",
+          "paired_overhead_pct": "15.5361",
+          "samples": "2"
+        }
+      ]
+    },
+    {
+      "log": "mac-vector-check-d88.log",
+      "arguments": [
+        "65",
+        "129",
+        "2",
+        "8",
+        "2",
+        "0",
+        "0",
+        "3",
+        "1",
+        "1",
+        "88"
+      ],
+      "device_name": "Apple M5 Max",
+      "correct": true,
+      "timing": [
+        {
+          "full": "0",
+          "baseline_ms": "0.00525260839",
+          "hadamard_ms": "0.00562760397",
+          "paired_overhead_pct": "7.13938",
+          "samples": "2"
+        }
+      ]
+    },
+    {
+      "log": "mac-vector-check-d96.log",
+      "arguments": [
+        "65",
+        "129",
+        "2",
+        "8",
+        "2",
+        "0",
+        "0",
+        "3",
+        "1",
+        "1",
+        "96"
+      ],
+      "device_name": "Apple M5 Max",
+      "correct": true,
+      "timing": [
+        {
+          "full": "0",
+          "baseline_ms": "0.00516406726",
+          "hadamard_ms": "0.00594010271",
+          "paired_overhead_pct": "15.027",
+          "samples": "2"
+        }
+      ]
+    },
+    {
+      "log": "mac-vector-check-d104.log",
+      "arguments": [
+        "65",
+        "129",
+        "2",
+        "8",
+        "2",
+        "0",
+        "0",
+        "3",
+        "1",
+        "1",
+        "104"
+      ],
+      "device_name": "Apple M5 Max",
+      "correct": true,
+      "timing": [
+        {
+          "full": "0",
+          "baseline_ms": "0.00560155968",
+          "hadamard_ms": "0.00557292151",
+          "paired_overhead_pct": "-0.510801",
+          "samples": "2"
+        }
+      ]
+    },
+    {
+      "log": "mac-vector-check-d112.log",
+      "arguments": [
+        "65",
+        "129",
+        "2",
+        "8",
+        "2",
+        "0",
+        "0",
+        "3",
+        "1",
+        "1",
+        "112"
+      ],
+      "device_name": "Apple M5 Max",
+      "correct": true,
+      "timing": [
+        {
+          "full": "0",
+          "baseline_ms": "0.00562239802",
+          "hadamard_ms": "0.00580728738",
+          "paired_overhead_pct": "3.28878",
+          "samples": "2"
+        }
+      ]
+    },
+    {
+      "log": "mac-vector-check-d120.log",
+      "arguments": [
+        "65",
+        "129",
+        "2",
+        "8",
+        "2",
+        "0",
+        "0",
+        "3",
+        "1",
+        "1",
+        "120"
+      ],
+      "device_name": "Apple M5 Max",
+      "correct": true,
+      "timing": [
+        {
+          "full": "0",
+          "baseline_ms": "0.00591406206",
+          "hadamard_ms": "0.00568749965",
+          "paired_overhead_pct": "-3.83016",
+          "samples": "2"
+        }
+      ]
+    },
+    {
+      "log": "mac-vector-check-d128.log",
+      "arguments": [
+        "65",
+        "129",
+        "2",
+        "8",
+        "2",
+        "0",
+        "0",
+        "3",
+        "1",
+        "1",
+        "128"
+      ],
+      "device_name": "Apple M5 Max",
+      "correct": true,
+      "timing": [
+        {
+          "full": "0",
+          "baseline_ms": "0.00542187627",
+          "hadamard_ms": "0.00625781104",
+          "paired_overhead_pct": "15.4178",
+          "samples": "2"
+        }
+      ]
+    },
+    {
+      "log": "mac-vector-check-d136.log",
+      "arguments": [
+        "65",
+        "129",
+        "2",
+        "8",
+        "2",
+        "0",
+        "0",
+        "3",
+        "1",
+        "1",
+        "136"
+      ],
+      "device_name": "Apple M5 Max",
+      "correct": true,
+      "timing": [
+        {
+          "full": "0",
+          "baseline_ms": "0.00635156539",
+          "hadamard_ms": "0.00884375186",
+          "paired_overhead_pct": "39.2385",
+          "samples": "2"
+        }
+      ]
+    },
+    {
+      "log": "mac-vector-check-d144.log",
+      "arguments": [
+        "65",
+        "129",
+        "2",
+        "8",
+        "2",
+        "0",
+        "0",
+        "3",
+        "1",
+        "1",
+        "144"
+      ],
+      "device_name": "Apple M5 Max",
+      "correct": true,
+      "timing": [
+        {
+          "full": "0",
+          "baseline_ms": "0.00632812589",
+          "hadamard_ms": "0.0101250007",
+          "paired_overhead_pct": "60",
+          "samples": "2"
+        }
+      ]
+    },
+    {
+      "log": "mac-vector-check-d152.log",
+      "arguments": [
+        "65",
+        "129",
+        "2",
+        "8",
+        "2",
+        "0",
+        "0",
+        "3",
+        "1",
+        "1",
+        "152"
+      ],
+      "device_name": "Apple M5 Max",
+      "correct": true,
+      "timing": [
+        {
+          "full": "0",
+          "baseline_ms": "0.00666927372",
+          "hadamard_ms": "0.00909114533",
+          "paired_overhead_pct": "36.3142",
+          "samples": "2"
+        }
+      ]
+    },
+    {
+      "log": "mac-vector-check-d160.log",
+      "arguments": [
+        "65",
+        "129",
+        "2",
+        "8",
+        "2",
+        "0",
+        "0",
+        "3",
+        "1",
+        "1",
+        "160"
+      ],
+      "device_name": "Apple M5 Max",
+      "correct": true,
+      "timing": [
+        {
+          "full": "0",
+          "baseline_ms": "0.00652083691",
+          "hadamard_ms": "0.0111354166",
+          "paired_overhead_pct": "70.7667",
+          "samples": "2"
+        }
+      ]
+    },
+    {
+      "log": "mac-vector-check-d168.log",
+      "arguments": [
+        "65",
+        "129",
+        "2",
+        "8",
+        "2",
+        "0",
+        "0",
+        "3",
+        "1",
+        "1",
+        "168"
+      ],
+      "device_name": "Apple M5 Max",
+      "correct": true,
+      "timing": [
+        {
+          "full": "0",
+          "baseline_ms": "0.00723697667",
+          "hadamard_ms": "0.00926302164",
+          "paired_overhead_pct": "27.9959",
+          "samples": "2"
+        }
+      ]
+    },
+    {
+      "log": "mac-vector-check-d176.log",
+      "arguments": [
+        "65",
+        "129",
+        "2",
+        "8",
+        "2",
+        "0",
+        "0",
+        "3",
+        "1",
+        "1",
+        "176"
+      ],
+      "device_name": "Apple M5 Max",
+      "correct": true,
+      "timing": [
+        {
+          "full": "0",
+          "baseline_ms": "0.0134192669",
+          "hadamard_ms": "0.0105130202",
+          "paired_overhead_pct": "1.99378",
+          "samples": "2"
+        }
+      ]
+    },
+    {
+      "log": "mac-vector-check-d184.log",
+      "arguments": [
+        "65",
+        "129",
+        "2",
+        "8",
+        "2",
+        "0",
+        "0",
+        "3",
+        "1",
+        "1",
+        "184"
+      ],
+      "device_name": "Apple M5 Max",
+      "correct": true,
+      "timing": [
+        {
+          "full": "0",
+          "baseline_ms": "0.00723176709",
+          "hadamard_ms": "0.00924218693",
+          "paired_overhead_pct": "27.8",
+          "samples": "2"
+        }
+      ]
+    },
+    {
+      "log": "mac-quant-d192.log",
+      "arguments": [
+        "65",
+        "129",
+        "2",
+        "8",
+        "2",
+        "0",
+        "0",
+        "3",
+        "1",
+        "1",
+        "192"
+      ],
+      "device_name": "Apple M5 Max",
+      "correct": true,
+      "timing": [
+        {
+          "full": "0",
+          "baseline_ms": "0.00706510036",
+          "hadamard_ms": "0.0111718728",
+          "paired_overhead_pct": "58.1281",
+          "samples": "2"
+        }
+      ]
+    },
+    {
+      "log": "mac-vector-check-d200.log",
+      "arguments": [
+        "65",
+        "129",
+        "2",
+        "8",
+        "2",
+        "0",
+        "0",
+        "3",
+        "1",
+        "1",
+        "200"
+      ],
+      "device_name": "Apple M5 Max",
+      "correct": true,
+      "timing": [
+        {
+          "full": "0",
+          "baseline_ms": "0.00767187521",
+          "hadamard_ms": "0.00930989336",
+          "paired_overhead_pct": "21.3509",
+          "samples": "2"
+        }
+      ]
+    },
+    {
+      "log": "mac-vector-check-d208.log",
+      "arguments": [
+        "65",
+        "129",
+        "2",
+        "8",
+        "2",
+        "0",
+        "0",
+        "3",
+        "1",
+        "1",
+        "208"
+      ],
+      "device_name": "Apple M5 Max",
+      "correct": true,
+      "timing": [
+        {
+          "full": "0",
+          "baseline_ms": "0.00777603782",
+          "hadamard_ms": "0.0138359392",
+          "paired_overhead_pct": "78.1091",
+          "samples": "2"
+        }
+      ]
+    },
+    {
+      "log": "mac-vector-check-d216.log",
+      "arguments": [
+        "65",
+        "129",
+        "2",
+        "8",
+        "2",
+        "0",
+        "0",
+        "3",
+        "1",
+        "1",
+        "216"
+      ],
+      "device_name": "Apple M5 Max",
+      "correct": true,
+      "timing": [
+        {
+          "full": "0",
+          "baseline_ms": "0.00802343493",
+          "hadamard_ms": "0.00935676871",
+          "paired_overhead_pct": "16.6179",
+          "samples": "2"
+        }
+      ]
+    },
+    {
+      "log": "mac-vector-check-d224.log",
+      "arguments": [
+        "65",
+        "129",
+        "2",
+        "8",
+        "2",
+        "0",
+        "0",
+        "3",
+        "1",
+        "1",
+        "224"
+      ],
+      "device_name": "Apple M5 Max",
+      "correct": true,
+      "timing": [
+        {
+          "full": "0",
+          "baseline_ms": "0.00782812276",
+          "hadamard_ms": "0.0112552079",
+          "paired_overhead_pct": "43.7791",
+          "samples": "2"
+        }
+      ]
+    },
+    {
+      "log": "mac-vector-check-d232.log",
+      "arguments": [
+        "65",
+        "129",
+        "2",
+        "8",
+        "2",
+        "0",
+        "0",
+        "3",
+        "1",
+        "1",
+        "232"
+      ],
+      "device_name": "Apple M5 Max",
+      "correct": true,
+      "timing": [
+        {
+          "full": "0",
+          "baseline_ms": "0.0094921852",
+          "hadamard_ms": "0.00934895797",
+          "paired_overhead_pct": "0.00812645",
+          "samples": "2"
+        }
+      ]
+    },
+    {
+      "log": "mac-vector-check-d240.log",
+      "arguments": [
+        "65",
+        "129",
+        "2",
+        "8",
+        "2",
+        "0",
+        "0",
+        "3",
+        "1",
+        "1",
+        "240"
+      ],
+      "device_name": "Apple M5 Max",
+      "correct": true,
+      "timing": [
+        {
+          "full": "0",
+          "baseline_ms": "0.00837760672",
+          "hadamard_ms": "0.0104635437",
+          "paired_overhead_pct": "24.9037",
+          "samples": "2"
+        }
+      ]
+    },
+    {
+      "log": "mac-vector-check-d248.log",
+      "arguments": [
+        "65",
+        "129",
+        "2",
+        "8",
+        "2",
+        "0",
+        "0",
+        "3",
+        "1",
+        "1",
+        "248"
+      ],
+      "device_name": "Apple M5 Max",
+      "correct": true,
+      "timing": [
+        {
+          "full": "0",
+          "baseline_ms": "0.00876302147",
+          "hadamard_ms": "0.00939843449",
+          "paired_overhead_pct": "7.25116",
+          "samples": "2"
+        }
+      ]
+    },
+    {
+      "log": "mac-vector-check-d256.log",
+      "arguments": [
+        "65",
+        "129",
+        "2",
+        "8",
+        "2",
+        "0",
+        "0",
+        "3",
+        "1",
+        "1",
+        "256"
+      ],
+      "device_name": "Apple M5 Max",
+      "correct": true,
+      "timing": [
+        {
+          "full": "0",
+          "baseline_ms": "0.00800521229",
+          "hadamard_ms": "0.0118255193",
+          "paired_overhead_pct": "47.7227",
+          "samples": "2"
+        }
+      ]
+    },
+    {
+      "log": "ipad-check-d80-p1.log",
+      "arguments": [
+        "256",
+        "512",
+        "2",
+        "8",
+        "2",
+        "1",
+        "0",
+        "3",
+        "1",
+        "0",
+        "80"
+      ],
+      "device_name": "Apple M5 GPU",
+      "correct": true,
+      "timing": [
+        {
+          "full": "0",
+          "baseline_ms": "0.00920573075",
+          "hadamard_ms": "0.0120520835",
+          "paired_overhead_pct": "30.9235",
+          "samples": "2"
+        },
+        {
+          "full": "1",
+          "baseline_ms": "0.083979161",
+          "hadamard_ms": "0.0871458324",
+          "paired_overhead_pct": "3.77216",
+          "samples": "2"
+        }
+      ]
+    },
+    {
+      "log": "ipad-check-d80-p2.log",
+      "arguments": [
+        "256",
+        "512",
+        "2",
+        "8",
+        "2",
+        "2",
+        "0",
+        "3",
+        "1",
+        "0",
+        "80"
+      ],
+      "device_name": "Apple M5 GPU",
+      "correct": true,
+      "timing": [
+        {
+          "full": "0",
+          "baseline_ms": "0.0171484371",
+          "hadamard_ms": "0.0178385417",
+          "paired_overhead_pct": "4.02457",
+          "samples": "2"
+        },
+        {
+          "full": "1",
+          "baseline_ms": "0.0946249929",
+          "hadamard_ms": "0.0971458358",
+          "paired_overhead_pct": "2.66389",
+          "samples": "2"
+        }
+      ]
+    },
+    {
+      "log": "ipad-check-d192-p1.log",
+      "arguments": [
+        "256",
+        "512",
+        "2",
+        "8",
+        "2",
+        "1",
+        "0",
+        "3",
+        "1",
+        "0",
+        "192"
+      ],
+      "device_name": "Apple M5 GPU",
+      "correct": true,
+      "timing": [
+        {
+          "full": "0",
+          "baseline_ms": "0.021695314",
+          "hadamard_ms": "0.0239114579",
+          "paired_overhead_pct": "10.2152",
+          "samples": "2"
+        },
+        {
+          "full": "1",
+          "baseline_ms": "0.165083329",
+          "hadamard_ms": "0.168062499",
+          "paired_overhead_pct": "1.79817",
+          "samples": "2"
+        }
+      ]
+    },
+    {
+      "log": "ipad-check-d192-p2.log",
+      "arguments": [
+        "256",
+        "512",
+        "2",
+        "8",
+        "2",
+        "2",
+        "0",
+        "3",
+        "1",
+        "0",
+        "192"
+      ],
+      "device_name": "Apple M5 GPU",
+      "correct": true,
+      "timing": [
+        {
+          "full": "0",
+          "baseline_ms": "0.0373828116",
+          "hadamard_ms": "0.0357708323",
+          "paired_overhead_pct": "-4.31211",
+          "samples": "2"
+        },
+        {
+          "full": "1",
+          "baseline_ms": "0.188770835",
+          "hadamard_ms": "0.191020838",
+          "paired_overhead_pct": "1.19524",
+          "samples": "2"
+        }
+      ]
+    },
+    {
+      "log": "ipad-check-d256-p1.log",
+      "arguments": [
+        "256",
+        "512",
+        "2",
+        "8",
+        "2",
+        "1",
+        "0",
+        "3",
+        "1",
+        "0",
+        "256"
+      ],
+      "device_name": "Apple M5 GPU",
+      "correct": true,
+      "timing": [
+        {
+          "full": "0",
+          "baseline_ms": "0.0272890629",
+          "hadamard_ms": "0.0319218743",
+          "paired_overhead_pct": "16.9765",
+          "samples": "2"
+        },
+        {
+          "full": "1",
+          "baseline_ms": "0.245562507",
+          "hadamard_ms": "0.25099999",
+          "paired_overhead_pct": "2.21428",
+          "samples": "2"
+        }
+      ]
+    },
+    {
+      "log": "ipad-check-d256-p2.log",
+      "arguments": [
+        "256",
+        "512",
+        "2",
+        "8",
+        "2",
+        "2",
+        "0",
+        "3",
+        "1",
+        "0",
+        "256"
+      ],
+      "device_name": "Apple M5 GPU",
+      "correct": true,
+      "timing": [
+        {
+          "full": "0",
+          "baseline_ms": "0.0499114576",
+          "hadamard_ms": "0.0493020816",
+          "paired_overhead_pct": "-1.22089",
+          "samples": "2"
+        },
+        {
+          "full": "1",
+          "baseline_ms": "0.282062509",
+          "hadamard_ms": "0.284270835",
+          "paired_overhead_pct": "0.783001",
+          "samples": "2"
+        }
+      ]
+    },
+    {
+      "log": "forward-regressions.log"
+    },
+    {
+      "log": "varlen-regression.log"
+    }
+  ],
+  "source_sha256": {
+    "bin/mfa/na_int8_attention_hadamard_bench.cpp": "e76e23d106db1bfedd6ca55f62824d59f158be884ccb70fea93c0dbacee2bd66",
+    "lib/nnc/mfa/kernels/NAInt8AttentionDescriptor.hpp": "343da4b6da29d2024e0e27579a5d5a4875fa679284f6e7c42c9808148fd7cd0a",
+    "lib/nnc/mfa/kernels/NAInt8AttentionDescriptor.cpp": "4384a4905d95b7d203fae40f039bea619b62a8a98d17766343e04655254c6d3c",
+    "lib/nnc/mfa/kernels/NAInt8AttentionKernelDescriptor.hpp": "212c62f09ef7bdcd6f094933bdec38fb5d54665d8362c32ec49c594d726bda1a",
+    "lib/nnc/mfa/kernels/NAInt8AttentionKernelDescriptor.cpp": "f9c3894988fcc73973e13a33a2bb13d841b41667d4667c8f3054dd49cd8a0be7",
+    "lib/nnc/mfa/kernels/NAInt8AttentionKernel.hpp": "55330e8948a3da070548d65febcc2e0c9685b53e15465c424c8612f633afc3dd",
+    "lib/nnc/mfa/kernels/NAInt8AttentionKernel.cpp": "e771255c27dae46c2c6859bb5a86e82cdc5a5f3d4f41d2425b35eb5354d47f09"
+  },
+  "ipad_binary_sha256": "a75caafddb8b213b7fb8787c98d46d7216afde5b2789d8478d9cab4033b92125"
+}

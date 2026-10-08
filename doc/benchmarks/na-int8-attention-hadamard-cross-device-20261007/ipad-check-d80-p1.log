@@ -1,0 +1,22 @@
+thermal_state=0 os=Version 27.0.1 (Build 24A446)
+Launched application with com.liu.NAHadamardAttentionExperiment bundle identifier.
+Waiting for the application to terminate…
+resources variant=0 q_tg_bytes=16 k_tg_bytes=32 q_threads=1024 k_threads=1024
+resources variant=1 q_tg_bytes=16 k_tg_bytes=32 q_threads=1024 k_threads=1024
+attention_source_identical=1
+quant_check variant=0 operand=0 max_int8_diff=0 scale_rel_diff=1.0587118e-07
+quant_check variant=0 operand=1 max_int8_diff=0 scale_rel_diff=0
+quant_check variant=1 operand=0 max_int8_diff=0 scale_rel_diff=7.78994718e-08
+quant_check variant=1 operand=1 max_int8_diff=0 scale_rel_diff=6.49636647e-08
+attention_check variant=0 sampled_rel_l2=0.0181038458 max_abs=0.0141916354
+attention_check variant=1 sampled_rel_l2=0.0162288515 max_abs=0.0117374248
+case device=Apple M5 GPU R=256 C=512 D=80 B=2 Hq=8 Hk=2 precision=1 causal=0 dynamic=3 distribution=1 varlen=0 quant_only=0 hadamard_block=16
+pair full=0 round=0 baseline_ms=0.00925000131 hadamard_ms=0.0120312507 ratio=1.30067556
+pair full=0 round=1 baseline_ms=0.00916146018 hadamard_ms=0.0120729164 ratio=1.31779391
+timing full=0 baseline_ms=0.00920573075 hadamard_ms=0.0120520835 paired_overhead_pct=30.9235 samples=2
+pair full=1 round=0 baseline_ms=0.0837499974 hadamard_ms=0.0873333192 ratio=1.04278593
+pair full=1 round=1 baseline_ms=0.0842083246 hadamard_ms=0.0869583455 ratio=1.03265735
+timing full=1 baseline_ms=0.083979161 hadamard_ms=0.0871458324 paired_overhead_pct=3.77216 samples=2
+correct=1
+probe_exit=0 thermal_end=0
+The app terminated with the exit code 0.

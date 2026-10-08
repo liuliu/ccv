@@ -396,6 +396,7 @@ static int _ccv_nnc_scaled_dot_product_attention_forw_mps(const ccv_nnc_cmd_t cm
 			.upcast = !is_downcast,
 			.use_neural_accelerators = use_neural_accelerators,
 			.use_quantized_attention = use_quantized_attention,
+			.use_hadamard = cmd.info.scaled_dot_product_attention.use_hadamard != 0,
 			.attention_sinks = attention_sinks,
 			.sliding_window = (uint32_t)sliding_window,
 			.sink_head_stride = sink_head_stride,
@@ -812,6 +813,7 @@ static int _ccv_nnc_scaled_dot_product_attention_back(const ccv_nnc_cmd_t cmd, c
 				.upcast = !is_downcast,
 				.use_neural_accelerators = !(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS) && ccv_nnc_mfa_has_neural_accelerators(context) && (mtl_data_type != 121 || ccv_nnc_mfa_neural_accelerators_support_bfloat(context)),
 				.use_quantized_attention = (cmd.info.scaled_dot_product_attention.flags & CCV_NNC_GEMM_8I) != 0,
+				.use_hadamard = cmd.info.scaled_dot_product_attention.use_hadamard != 0,
 
 				.batch_dims_q = { 0 },
 				.batch_dims_mask = { 0 },

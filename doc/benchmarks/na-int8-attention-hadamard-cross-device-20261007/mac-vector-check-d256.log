@@ -1,0 +1,12 @@
+resources variant=0 q_tg_bytes=16 k_tg_bytes=32 q_threads=1024 k_threads=1024
+resources variant=1 q_tg_bytes=16 k_tg_bytes=32 q_threads=1024 k_threads=1024
+attention_source_identical=1
+quant_check variant=0 operand=0 max_int8_diff=1 scale_rel_diff=7.33151566e-08
+quant_check variant=0 operand=1 max_int8_diff=0 scale_rel_diff=6.77007463e-08
+quant_check variant=1 operand=0 max_int8_diff=0 scale_rel_diff=1.13592527e-07
+quant_check variant=1 operand=1 max_int8_diff=0 scale_rel_diff=0
+case device=Apple M5 Max R=65 C=129 D=256 B=2 Hq=8 Hk=2 precision=0 causal=0 dynamic=3 distribution=1 varlen=1 quant_only=1 hadamard_block=256
+pair full=0 round=0 baseline_ms=0.00800521229 hadamard_ms=0.0117812524 ratio=1.47169768
+pair full=0 round=1 baseline_ms=0.00800521229 hadamard_ms=0.0118697862 ratio=1.48275721
+timing full=0 baseline_ms=0.00800521229 hadamard_ms=0.0118255193 paired_overhead_pct=47.7227 samples=2
+correct=1

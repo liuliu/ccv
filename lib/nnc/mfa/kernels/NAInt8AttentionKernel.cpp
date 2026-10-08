@@ -4,6 +4,7 @@
 #include "../ccv_nnc_mfa.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <iomanip>
 #include <limits>
 #include <sstream>
@@ -67,12 +68,16 @@ NAInt8AttentionKernel::NAInt8AttentionKernel(
   isVarlen = descriptor.isVarlen;
   hasCausalEmptyRows = descriptor.hasCausalEmptyRows;
   attentionSinks = descriptor.attentionSinks;
+  qkHadamard = descriptor.qkHadamard;
   loadR = descriptor.loadR;
   hasRRemainder = descriptor.hasRRemainder;
   loadC = descriptor.loadC;
 
   CCV_NNC_MFA_PRECONDITION(outputTileSize > 0 && outputTileSize <= headDimension);
   CCV_NNC_MFA_PRECONDITION(outputTileSize == headDimension || type == AttentionKernelType::forward);
+  CCV_NNC_MFA_PRECONDITION(!qkHadamard ||
+      (headDimension >= 8 && headDimension <= 256 && headDimension % 8 == 0 &&
+       type == AttentionKernelType::forward));
 
   source = createSource();
 
@@ -298,8 +303,11 @@ inline float quantize_reduce_max(float value,
 using io_vec4 = vec<{{IO_MEMORY_NAME}}, 4>;
 using v_mean_vec4 = vec<{{V_MEAN_MEMORY_NAME}}, 4>;
 )";
+  }
+  if (!qkHadamard && vectorizeQuantize) {
     if (isVarlen) {
-      source += R"(inline void quantize_tile(
+      source += R"(template <ushort tile_rows, ushort simdgroups>
+inline void quantize_qk_tile(
     device const {{IO_MEMORY_NAME}} *src [[buffer(0)]],
     device int8_t *dst [[buffer(1)]],
     device float *scales [[buffer(2)]],
@@ -356,7 +364,8 @@ using v_mean_vec4 = vec<{{V_MEAN_MEMORY_NAME}}, 4>;
 
 )";
     } else {
-      source += R"(inline void quantize_tile(
+      source += R"(template <ushort tile_rows, ushort simdgroups>
+inline void quantize_qk_tile(
     device const {{IO_MEMORY_NAME}} *src [[buffer(0)]],
     device int8_t *dst [[buffer(1)]],
     device float *scales [[buffer(2)]],
@@ -410,10 +419,11 @@ using v_mean_vec4 = vec<{{V_MEAN_MEMORY_NAME}}, 4>;
 
 )";
     }
-  } else {
+  } else if (!qkHadamard) {
     if (isVarlen) {
       source += R"(
-inline void quantize_tile(
+template <ushort tile_rows, ushort simdgroups>
+inline void quantize_qk_tile(
     device const {{IO_MEMORY_NAME}} *src [[buffer(0)]],
     device int8_t *dst [[buffer(1)]],
     device float *scales [[buffer(2)]],
@@ -464,7 +474,8 @@ inline void quantize_tile(
 )";
     } else {
       source += R"(
-inline void quantize_tile(
+template <ushort tile_rows, ushort simdgroups>
+inline void quantize_qk_tile(
     device const {{IO_MEMORY_NAME}} *src [[buffer(0)]],
     device int8_t *dst [[buffer(1)]],
     device float *scales [[buffer(2)]],
@@ -517,6 +528,131 @@ inline void quantize_tile(
   source.SetValue("QUANTIZE_KV_SEQUENCE_ARG", isVarlen ? "" : "QUANTIZE_KV_SEQUENCE,\n      " + std::string((loadR || loadC) ? ((loadC && !hasCRemainder) ? "false, " : "true, ") : ""));
   source.SetValue("QUANTIZE_Q_BATCH_STRIDE_ARG", isVarlen ? "" : "QUANTIZE_Q_BATCH_STRIDE,\n      ");
   source.SetValue("QUANTIZE_K_BATCH_STRIDE_ARG", isVarlen ? "" : "QUANTIZE_K_BATCH_STRIDE,\n      ");
+  source.SetValue("QUANTIZE_Q_TEMPLATE_ARGS", std::to_string(qScaleTileSize) + ", " +
+      std::to_string(qQuantizeThreads / 32));
+  source.SetValue("QUANTIZE_K_TEMPLATE_ARGS", std::to_string(kvScaleTileSize) + ", " +
+      std::to_string(kvQuantizeThreads / 32));
+  if (qkHadamard) {
+    const uint32_t hadamardBlock = std::min<uint32_t>(headDimension & -uint32_t(headDimension), 256);
+    // Two-wide loads fill complete SIMD groups at D=64/192 and reduce register
+    // pressure. Other heads retain the native quantizer's four-wide accesses.
+    const uint32_t vectorWidth = (headDimension == 64 || headDimension == 192) ? 2 : 4;
+    source.SetValue("HADAMARD_VECTOR_WIDTH", std::to_string(vectorWidth));
+    source.SetValue("HADAMARD_BLOCK", std::to_string(hadamardBlock));
+    source.SetValue("HADAMARD_NORMALIZATION", high_precision_to_string(1.0f / std::sqrt(float(hadamardBlock))));
+    source.SetValue("HADAMARD_SEQUENCE_ARGUMENT", isVarlen ? "" :
+        "    uint sequence,\n" + source.GetValue("QUANTIZE_REMAINDER_ARGUMENT"));
+    source.SetValue("HADAMARD_BATCH_ARGUMENT", isVarlen ? "" : "    uint batch_stride,\n");
+    source.SetValue("HADAMARD_SEQUENCE_SETUP", isVarlen ?
+        "\n  const uint sequence_start = uint(SeqOffsets[batch]);\n"
+        "  const uint sequence_length = uint(SeqOffsets[batch + 1]) - sequence_start;\n"
+        "  const uint extent = start < sequence_length ? min(tile_size, sequence_length - start) : 0;\n"
+        "  const uint input_offset = sequence_start * heads * " + std::to_string(headDimension) + ";\n" :
+        "\n  const uint extent = " + source.GetValue("QUANTIZE_EXTENT") +
+        ";\n  const uint input_offset = batch * batch_stride;\n");
+    source += R"(
+// One SIMD group transforms one row in FP32 registers. Independent power-of-two
+// blocks cover non-power-of-two heads. Keep the transformed
+// rows across scale reduction, eliminating a second input read and transform.
+// Normalization is folded into the dequantization scale; V stays unrotated.
+template <ushort tile_rows, ushort simdgroups>
+inline void quantize_qk_tile(
+    device const {{IO_MEMORY_NAME}} *src,
+    device int8_t *dst,
+    device float *scales,
+    threadgroup float *scratch,
+    uint tid,
+    ushort sgid,
+    ushort lane_id,
+    uint3 tgid,
+{{HADAMARD_SEQUENCE_ARGUMENT}}    uint heads,
+    uint tile_size,
+    uint scale_tiles,
+{{HADAMARD_BATCH_ARGUMENT}}    uint scale_batch_stride,
+    uint thread_count,
+    uint simdgroup_count{{QUANTIZE_VARLEN_BUFFER}}) {
+  const uint tile = tgid.x, head = tgid.y, batch = tgid.z;
+  const uint start = tile * tile_size;
+{{HADAMARD_SEQUENCE_SETUP}}
+  constexpr ushort width = {{HADAMARD_VECTOR_WIDTH}}, block = {{HADAMARD_BLOCK}};
+  constexpr ushort chunks = ({{HEAD_DIMENSION}} + 32 * width - 1) / (32 * width);
+  constexpr ushort rows = (tile_rows + simdgroups - 1) / simdgroups;
+  constexpr ushort lanes = block / width < 32 ? block / width : 32;
+  using value_t = vec<float, width>;
+  using io_t = vec<{{IO_MEMORY_NAME}}, width>;
+  using int_t = vec<int, width>;
+  using char_t = vec<char, width>;
+  device const io_t *src_vec = reinterpret_cast<device const io_t *>(src);
+  device char_t *dst_vec = reinterpret_cast<device char_t *>(dst);
+  value_t values[rows * chunks];
+  float local_max = 0.0f;
+  #pragma clang loop unroll(full)
+  for (ushort i = 0; i < rows; ++i) {
+    const uint row = i * simdgroups + sgid;
+    #pragma clang loop unroll(full)
+    for (ushort j = 0; j < chunks; ++j) {
+      const uint dim = (j * 32 + lane_id) * width;
+      const uint index = input_offset + ((start + row) * heads + head) * {{HEAD_DIMENSION}} + dim;
+      value_t x = row < extent && dim < {{HEAD_DIMENSION}} ?
+          value_t(src_vec[index / width]) : value_t(0.0f);
+      #pragma clang loop unroll(full)
+      for (ushort h = 1; h < width; h <<= 1) {
+        #pragma clang loop unroll(full)
+        for (ushort e = 0; e < width; ++e) {
+          if (!(e & h)) {
+            const float a = x[e], b = x[e + h];
+            x[e] = a + b;
+            x[e + h] = a - b;
+          }
+        }
+      }
+      #pragma clang loop unroll(full)
+      for (ushort stride = 1; stride < lanes; stride <<= 1) {
+        const value_t peer = simd_shuffle_xor(x, stride);
+        x = (lane_id & stride) ? peer - x : x + peer;
+      }
+      values[i * chunks + j] = x;
+    }
+    #pragma clang loop unroll(full)
+    for (ushort h = 1; h < block / (32 * width); h <<= 1) {
+      #pragma clang loop unroll(full)
+      for (ushort j = 0; j < chunks; ++j) {
+        if (!(j & h)) {
+          const value_t a = values[i * chunks + j], b = values[i * chunks + j + h];
+          values[i * chunks + j] = a + b;
+          values[i * chunks + j + h] = a - b;
+        }
+      }
+    }
+    #pragma clang loop unroll(full)
+    for (ushort j = 0; j < chunks; ++j) {
+      #pragma clang loop unroll(full)
+      for (ushort e = 0; e < width; ++e)
+        local_max = max(local_max, fabs(values[i * chunks + j][e]));
+    }
+  }
+  const float max_abs = quantize_reduce_max(local_max, scratch, sgid, lane_id, simdgroups);
+  const float scale = max_abs > 0 ? max_abs * ({{HADAMARD_NORMALIZATION}} / 127.0f) : 1.0f / 127.0f;
+  const float inv_scale = max_abs > 0 ? 127.0f / max_abs : 127.0f;
+  if (tid == 0)
+    scales[batch * scale_batch_stride + head * scale_tiles + tile] = scale;
+  #pragma clang loop unroll(full)
+  for (ushort i = 0; i < rows; ++i) {
+    const uint row = i * simdgroups + sgid;
+    #pragma clang loop unroll(full)
+    for (ushort j = 0; j < chunks; ++j) {
+      const uint dim = (j * 32 + lane_id) * width;
+      if (row < extent && dim < {{HEAD_DIMENSION}}) {
+        const uint index = input_offset + ((start + row) * heads + head) * {{HEAD_DIMENSION}} + dim;
+        dst_vec[index / width] = char_t(clamp(
+            int_t(rint(values[i * chunks + j] * inv_scale)),
+            int_t(-127), int_t(127)));
+      }
+    }
+  }
+}
+)";
+  }
   source += R"(
 kernel void quantize_q(
 {{RUNTIME_ARGUMENT}}    device const {{IO_MEMORY_NAME}} *src [[buffer(0)]],
@@ -528,7 +664,7 @@ kernel void quantize_q(
     uint3 tgid [[threadgroup_position_in_grid]]{{QUANTIZE_VARLEN_BUFFER}}
   ) {
 {{QUANTIZE_RUNTIME_CONSTANTS}}  threadgroup float scratch[QUANTIZE_Q_SIMDGROUPS];
-  quantize_tile(src, dst, scales, scratch, tid, sgid, lane_id, tgid,
+  quantize_qk_tile<{{QUANTIZE_Q_TEMPLATE_ARGS}}>(src, dst, scales, scratch, tid, sgid, lane_id, tgid,
       {{QUANTIZE_Q_SEQUENCE_ARG}}QUANTIZE_Q_HEADS,
       QUANTIZE_Q_TILE_SIZE,
       QUANTIZE_Q_SCALE_TILES,
@@ -547,7 +683,7 @@ kernel void quantize_k(
     uint3 tgid [[threadgroup_position_in_grid]]{{QUANTIZE_VARLEN_BUFFER}}
   ) {
 {{QUANTIZE_RUNTIME_CONSTANTS}}  threadgroup float scratch[QUANTIZE_KV_SIMDGROUPS];
-  quantize_tile(src, dst, scales, scratch, tid, sgid, lane_id, tgid,
+  quantize_qk_tile<{{QUANTIZE_K_TEMPLATE_ARGS}}>(src, dst, scales, scratch, tid, sgid, lane_id, tgid,
       {{QUANTIZE_KV_SEQUENCE_ARG}}QUANTIZE_KV_HEADS,
       QUANTIZE_KV_TILE_SIZE,
       QUANTIZE_KV_SCALE_TILES,

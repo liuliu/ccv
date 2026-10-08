@@ -211,6 +211,7 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
       attentionDesc.masked = hash.masked;
       attentionDesc.isVarlen = hash.is_varlen;
       attentionDesc.attentionSinks = hash.attention_sinks;
+      attentionDesc.qkHadamard = hash.use_hadamard;
       if (hash.masked && batch_sizes[1] > 1) {
         attentionDesc.maskBatchStride = hash.R * hash.C;
       }
@@ -1319,6 +1320,11 @@ mfa::attention::hash::hash(ccv_nnc_mfa_attention_params_t params) {
   upcast = params.upcast;
   type = params.type;
   use_quantized_attention = params.use_quantized_attention;
+  // Only NA INT8 forward consumes this hint. Keep ignored hints out of cache
+  // keys, including the forward quantizer descriptors constructed by backward.
+  use_hadamard = params.use_hadamard && params.type == 0 &&
+      params.use_neural_accelerators && params.use_quantized_attention &&
+      params.D >= 8 && params.D <= 256 && params.D % 8 == 0;
   attention_sinks = params.attention_sinks;
   sliding_window = params.sliding_window;
 }
@@ -1343,6 +1349,7 @@ bool mfa::attention::hash::operator==(const mfa::attention::hash& hash) const {
   (upcast == hash.upcast) &&
   (type == hash.type) &&
   (use_quantized_attention == hash.use_quantized_attention) &&
+  (use_hadamard == hash.use_hadamard) &&
   (attention_sinks == hash.attention_sinks) &&
   (sliding_window == hash.sliding_window);
 }
@@ -1366,6 +1373,7 @@ std::ostream& operator<<(std::ostream& os, const mfa::attention::hash& hash) {
   os << " .is_varlen = " << bool(hash.is_varlen) << ", ";
   os << " .upcast = " << bool(hash.upcast) << " ";
   os << " .use_quantized_attention = " << bool(hash.use_quantized_attention) << " ";
+  os << " .use_hadamard = " << bool(hash.use_hadamard) << " ";
   os << " .attention_sinks = " << bool(hash.attention_sinks) << " ";
   os << " .sliding_window = " << hash.sliding_window << " ";
   os << " .type = " << hash.type << " ";
@@ -1383,6 +1391,7 @@ std::size_t std::hash<mfa::attention::hash>::operator()(const mfa::attention::ha
   seed = combine_64(seed, pack_64(simd::uint2 { uint32_t(std::hash<float>{}(hash.alpha)), pack_32(simd::uchar4 { hash.batched, hash.masked, hash.is_causal, hash.is_varlen })}));
   seed = combine_32(seed, hash.type);
   seed = combine_32(seed, hash.use_quantized_attention);
+  seed = combine_32(seed, hash.use_hadamard);
   seed = combine_32(seed, hash.attention_sinks);
   seed = combine_32(seed, hash.sliding_window);
   seed = combine_32(seed, hash.upcast);

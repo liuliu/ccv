@@ -14,6 +14,7 @@ typedef struct {
   uint8_t type;
   uint8_t use_neural_accelerators;
   uint8_t use_quantized_attention;
+  uint8_t use_hadamard;
   uint8_t attention_sinks;
   uint32_t sliding_window;
   uint32_t sink_head_stride;
@@ -54,6 +55,7 @@ public:
   uint8_t upcast;
   uint8_t type;
   uint8_t use_quantized_attention;
+  uint8_t use_hadamard;
   uint8_t attention_sinks;
   uint32_t sliding_window;
   uint32_t R;

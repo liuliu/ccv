@@ -1,0 +1,14 @@
+2026-10-07 18:41:13.261 na_int8_attention_hadamard_bench[19581:7851606] Metal API Validation Enabled
+2026-10-07 18:41:13.262 na_int8_attention_hadamard_bench[19581:7851606] Metal GPU Validation Enabled
+resources variant=0 q_tg_bytes=32 k_tg_bytes=64 q_threads=1024 k_threads=1024
+resources variant=1 q_tg_bytes=32 k_tg_bytes=64 q_threads=1024 k_threads=1024
+attention_source_identical=1
+quant_check variant=0 operand=0 max_int8_diff=0 scale_rel_diff=8.75776749e-08
+quant_check variant=0 operand=1 max_int8_diff=0 scale_rel_diff=9.10329874e-08
+quant_check variant=1 operand=0 max_int8_diff=0 scale_rel_diff=1.08754911e-07
+quant_check variant=1 operand=1 max_int8_diff=0 scale_rel_diff=9.7040143e-08
+case device=Apple M5 Max R=65 C=129 D=128 B=2 Hq=8 Hk=2 precision=2 causal=0 dynamic=3 distribution=1 varlen=1 quant_only=1 hadamard_block=128
+pair full=0 round=0 baseline_ms=0.0132552086 hadamard_ms=0.0160677082 ratio=1.21218071
+pair full=0 round=1 baseline_ms=0.0133124995 hadamard_ms=0.0160937489 ratio=1.20892015
+timing full=0 baseline_ms=0.0132838541 hadamard_ms=0.0160807285 paired_overhead_pct=21.055 samples=2
+correct=1

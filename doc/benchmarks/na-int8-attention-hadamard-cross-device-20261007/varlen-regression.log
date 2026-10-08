@@ -1,0 +1,3 @@
+[1/1] [RUN] scaled dot product attention with varlen NA mps ...
+[1/1] [PASS] scaled dot product attention with varlen NA mps
+all test case(s) passed, congratulations!

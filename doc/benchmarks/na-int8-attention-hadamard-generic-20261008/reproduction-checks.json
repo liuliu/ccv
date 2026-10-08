@@ -1,0 +1,17 @@
+[
+  {
+    "name": "zeros-d8-p2",
+    "old_metal_sha256": "622f53fb41a44839d6b93b31e7583ef54d9e483e62a88af2c03ec4c8ae3d940b",
+    "bit_identity": true
+  },
+  {
+    "name": "tail-d192-p0",
+    "old_metal_sha256": "61d3067d96833d2ef73fc6368bcc3ec094f4cb4962da8ca1fad04cdffdc5a5c9",
+    "bit_identity": true
+  },
+  {
+    "name": "packed-d256-p1",
+    "old_metal_sha256": "64a69c4a514992fa78e5fb7858ab11691a14bc705d0e13b5f7fa58afd43b57ee",
+    "bit_identity": true
+  }
+]

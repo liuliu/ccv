@@ -1,0 +1,114 @@
+Launched application with com.liu.NAHadamardAttentionExperiment bundle identifier.
+Waiting for the application to terminate…
+thermal_state=0 os=Version 27.0.1 (Build 24A446)
+resources variant=0 q_tg_bytes=16 k_tg_bytes=32 q_threads=1024 k_threads=1024
+resources variant=1 q_tg_bytes=16 k_tg_bytes=32 q_threads=1024 k_threads=1024
+attention_source_identical=1
+quant_check variant=0 operand=0 max_int8_diff=0 scale_rel_diff=0
+quant_check variant=0 operand=1 max_int8_diff=1 scale_rel_diff=8.61426983e-08
+quant_check variant=1 operand=0 max_int8_diff=0 scale_rel_diff=1.04307794e-07
+quant_check variant=1 operand=1 max_int8_diff=0 scale_rel_diff=9.89969919e-08
+attention_check variant=0 sampled_rel_l2=0.0286286086 max_abs=0.0297985556
+attention_check variant=1 sampled_rel_l2=0.0193616639 max_abs=0.0143357671
+case device=Apple M5 GPU R=4096 C=4096 D=80 B=1 Hq=24 Hk=24 precision=0 causal=0 dynamic=0 distribution=1 varlen=0 quant_only=0 hadamard_block=16
+pair full=0 round=0 baseline_ms=0.365666667 hadamard_ms=0.425968752 ratio=1.16490999
+pair full=0 round=1 baseline_ms=0.438999999 hadamard_ms=0.368979167 ratio=0.840499241
+pair full=0 round=2 baseline_ms=0.361937498 hadamard_ms=0.455973961 ratio=1.25981409
+pair full=0 round=3 baseline_ms=0.363828127 hadamard_ms=0.364473959 ratio=1.0017751
+pair full=0 round=4 baseline_ms=0.454213539 hadamard_ms=0.369697915 ratio=0.813929755
+pair full=0 round=5 baseline_ms=0.356781249 hadamard_ms=0.454364585 ratio=1.27351027
+pair full=0 round=6 baseline_ms=0.370109374 hadamard_ms=0.461656247 ratio=1.24735086
+pair full=0 round=7 baseline_ms=0.440651042 hadamard_ms=0.367598961 ratio=0.834217842
+pair full=0 round=8 baseline_ms=0.359692705 hadamard_ms=0.377609373 ratio=1.04981104
+pair full=0 round=9 baseline_ms=0.364276042 hadamard_ms=0.428260417 ratio=1.17564805
+pair full=0 round=10 baseline_ms=0.450067706 hadamard_ms=0.362437499 ratio=0.805295501
+pair full=0 round=11 baseline_ms=0.439109375 hadamard_ms=0.374067709 ratio=0.851878212
+pair full=0 round=12 baseline_ms=0.374432293 hadamard_ms=0.464557292 ratio=1.24069772
+pair full=0 round=13 baseline_ms=0.40996875 hadamard_ms=0.372083334 ratio=0.907589502
+pair full=0 round=14 baseline_ms=0.360557293 hadamard_ms=0.374067709 ratio=1.03747093
+pair full=0 round=15 baseline_ms=0.355010419 hadamard_ms=0.394229166 ratio=1.1104721
+pair full=0 round=16 baseline_ms=0.402874997 hadamard_ms=0.369156249 ratio=0.916304688
+pair full=0 round=17 baseline_ms=0.386786458 hadamard_ms=0.372421873 ratio=0.962861717
+pair full=0 round=18 baseline_ms=0.36586979 hadamard_ms=0.373218751 ratio=1.02008627
+pair full=0 round=19 baseline_ms=0.363838539 hadamard_ms=0.371343751 ratio=1.02062786
+pair full=0 round=20 baseline_ms=0.37449479 hadamard_ms=0.372921877 ratio=0.995799907
+pair full=0 round=21 baseline_ms=0.369635418 hadamard_ms=0.375677086 ratio=1.01634494
+pair full=0 round=22 baseline_ms=0.378625002 hadamard_ms=0.407619791 ratio=1.07657917
+pair full=0 round=23 baseline_ms=0.368494791 hadamard_ms=0.379531251 ratio=1.02995011
+pair full=0 round=24 baseline_ms=0.373479164 hadamard_ms=0.371072918 ratio=0.993557214
+pair full=0 round=25 baseline_ms=0.362197919 hadamard_ms=0.377124998 ratio=1.04121249
+pair full=0 round=26 baseline_ms=0.369661459 hadamard_ms=0.380630208 ratio=1.02967242
+pair full=0 round=27 baseline_ms=0.3625625 hadamard_ms=0.368640627 ratio=1.01676436
+pair full=0 round=28 baseline_ms=0.36643229 hadamard_ms=0.363499999 ratio=0.991997728
+pair full=0 round=29 baseline_ms=0.356916666 hadamard_ms=0.368671874 ratio=1.03293544
+pair full=0 round=30 baseline_ms=0.364015625 hadamard_ms=0.367380209 ratio=1.00924297
+pair full=0 round=31 baseline_ms=0.359671874 hadamard_ms=0.36315625 ratio=1.00968765
+pair full=0 round=32 baseline_ms=0.360078124 hadamard_ms=0.365687501 ratio=1.01557822
+pair full=0 round=33 baseline_ms=0.355302083 hadamard_ms=0.370052083 ratio=1.04151397
+pair full=0 round=34 baseline_ms=0.365645836 hadamard_ms=0.364760417 ratio=0.99757848
+pair full=0 round=35 baseline_ms=0.361078124 hadamard_ms=0.363656251 ratio=1.00714008
+pair full=0 round=36 baseline_ms=0.358984373 hadamard_ms=0.362750001 ratio=1.01048967
+pair full=0 round=37 baseline_ms=0.355515625 hadamard_ms=0.368249999 ratio=1.03581945
+pair full=0 round=38 baseline_ms=0.364833333 hadamard_ms=0.378484376 ratio=1.0374172
+pair full=0 round=39 baseline_ms=0.362328126 hadamard_ms=0.363937499 ratio=1.00444175
+pair full=0 round=40 baseline_ms=0.36028125 hadamard_ms=0.365812499 ratio=1.01535258
+pair full=0 round=41 baseline_ms=0.355630211 hadamard_ms=0.367156252 ratio=1.03241018
+pair full=0 round=42 baseline_ms=0.363406249 hadamard_ms=0.364208336 ratio=1.00220714
+pair full=0 round=43 baseline_ms=0.3640625 hadamard_ms=0.362734376 ratio=0.996351934
+pair full=0 round=44 baseline_ms=0.362499999 hadamard_ms=0.363781248 ratio=1.00353448
+pair full=0 round=45 baseline_ms=0.361140625 hadamard_ms=0.368677083 ratio=1.02086849
+pair full=0 round=46 baseline_ms=0.365489585 hadamard_ms=0.367223958 ratio=1.00474534
+pair full=0 round=47 baseline_ms=0.362312501 hadamard_ms=0.36784375 ratio=1.01526651
+timing full=0 baseline_ms=0.364039062 hadamard_ms=0.369427082 paired_overhead_pct=1.54654 samples=48
+pair full=1 round=0 baseline_ms=8.97524998 hadamard_ms=8.9895 ratio=1.0015877
+pair full=1 round=1 baseline_ms=8.97533333 hadamard_ms=9.03824999 ratio=1.00700995
+pair full=1 round=2 baseline_ms=9.03183332 hadamard_ms=9.03300001 ratio=1.00012917
+pair full=1 round=3 baseline_ms=9.00458335 hadamard_ms=9.01925002 ratio=1.0016288
+pair full=1 round=4 baseline_ms=9.01779169 hadamard_ms=8.98958332 ratio=0.996871921
+pair full=1 round=5 baseline_ms=8.98899999 hadamard_ms=9.00645833 ratio=1.00194219
+pair full=1 round=6 baseline_ms=8.99962502 hadamard_ms=8.994 ratio=0.999374972
+pair full=1 round=7 baseline_ms=9.00595833 hadamard_ms=9.012125 ratio=1.00068473
+pair full=1 round=8 baseline_ms=9.04837501 hadamard_ms=9.01862502 ratio=0.996712118
+pair full=1 round=9 baseline_ms=9.02675002 hadamard_ms=9.01420834 ratio=0.998610609
+pair full=1 round=10 baseline_ms=9.04183334 hadamard_ms=9.05312499 ratio=1.00124882
+pair full=1 round=11 baseline_ms=9.00287498 hadamard_ms=9.00987501 ratio=1.00077753
+pair full=1 round=12 baseline_ms=9.03737501 hadamard_ms=9.06683336 ratio=1.00325961
+pair full=1 round=13 baseline_ms=8.99237499 hadamard_ms=9.01449998 ratio=1.00246042
+pair full=1 round=14 baseline_ms=9.01012501 hadamard_ms=9.03737498 ratio=1.00302437
+pair full=1 round=15 baseline_ms=9.04158334 hadamard_ms=9.01275 ratio=0.99681103
+pair full=1 round=16 baseline_ms=9.00925 hadamard_ms=9.02779165 ratio=1.00205807
+pair full=1 round=17 baseline_ms=9.02208334 hadamard_ms=9.02816665 ratio=1.00067427
+pair full=1 round=18 baseline_ms=9.05070835 hadamard_ms=9.016625 ratio=0.996234179
+pair full=1 round=19 baseline_ms=9.03699998 hadamard_ms=9.04475001 ratio=1.00085759
+pair full=1 round=20 baseline_ms=9.00620833 hadamard_ms=9.0885 ratio=1.00913722
+pair full=1 round=21 baseline_ms=9.04145834 hadamard_ms=9.04912499 ratio=1.00084794
+pair full=1 round=22 baseline_ms=9.04600002 hadamard_ms=9.02775 ratio=0.997982531
+pair full=1 round=23 baseline_ms=9.017125 hadamard_ms=9.051125 ratio=1.0037706
+pair full=1 round=24 baseline_ms=9.04224999 hadamard_ms=9.01641665 ratio=0.99714304
+pair full=1 round=25 baseline_ms=9.00799999 hadamard_ms=9.05475 ratio=1.00518983
+pair full=1 round=26 baseline_ms=9.03737498 hadamard_ms=9.073375 ratio=1.00398346
+pair full=1 round=27 baseline_ms=9.101 hadamard_ms=9.05341667 ratio=0.994771636
+pair full=1 round=28 baseline_ms=9.14029166 hadamard_ms=9.14904167 ratio=1.0009573
+pair full=1 round=29 baseline_ms=9.12320832 hadamard_ms=9.33874998 ratio=1.02362564
+pair full=1 round=30 baseline_ms=9.18212501 hadamard_ms=9.188125 ratio=1.00065344
+pair full=1 round=31 baseline_ms=9.12254167 hadamard_ms=9.04162502 ratio=0.991130032
+pair full=1 round=32 baseline_ms=9.15725 hadamard_ms=9.12441668 ratio=0.996414501
+pair full=1 round=33 baseline_ms=9.11824999 hadamard_ms=9.23149998 ratio=1.01242015
+pair full=1 round=34 baseline_ms=9.23608331 hadamard_ms=9.15912501 ratio=0.991667648
+pair full=1 round=35 baseline_ms=9.12354168 hadamard_ms=9.08125 ratio=0.995364555
+pair full=1 round=36 baseline_ms=9.10350002 hadamard_ms=9.20758332 ratio=1.01143333
+pair full=1 round=37 baseline_ms=9.34749999 hadamard_ms=9.17125001 ratio=0.981144694
+pair full=1 round=38 baseline_ms=9.211875 hadamard_ms=9.23112498 ratio=1.00208969
+pair full=1 round=39 baseline_ms=9.05699999 hadamard_ms=9.04487498 ratio=0.998661256
+pair full=1 round=40 baseline_ms=9.04 hadamard_ms=9.08104167 ratio=1.00454001
+pair full=1 round=41 baseline_ms=9.07087501 hadamard_ms=9.06924999 ratio=0.999820854
+pair full=1 round=42 baseline_ms=9.050625 hadamard_ms=9.03637501 ratio=0.998425524
+pair full=1 round=43 baseline_ms=9.02620834 hadamard_ms=9.08650001 ratio=1.00667962
+pair full=1 round=44 baseline_ms=9.06083334 hadamard_ms=9.06412501 ratio=1.00036329
+pair full=1 round=45 baseline_ms=9.054125 hadamard_ms=9.04845833 ratio=0.999374135
+pair full=1 round=46 baseline_ms=9.08566668 hadamard_ms=9.08049999 ratio=0.999431337
+pair full=1 round=47 baseline_ms=9.05075 hadamard_ms=9.09020833 ratio=1.00435968
+timing full=1 baseline_ms=9.04170834 hadamard_ms=9.04879166 paired_overhead_pct=0.0731132 samples=48
+correct=1
+probe_exit=0 thermal_end=0
+The app terminated with the exit code 0.
