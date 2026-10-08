@@ -1,0 +1,114 @@
+AttentionR1 decode validation
+
+The forward decode path supports FP16/BF16, R1/R2 and D128/D256. Its kernel
+and selector are described in implementation.txt and gating-review.txt.
+
+M5 Ultra comparison, 2026-10-07
+  Hardware: 80 GPU cores, 256 GiB, macOS 27.0.1.
+  CCV baseline: bd7f3d37. MLX: 25532871329fe4cafdada9fa0941a1cdbfb3a9f2,
+  with the D256 JIT signature compatibility patch preserved in external evidence.
+  comparison.csv records 72 matched-input FP16 shapes, 438 processes, two
+  reversed passes, 64 samples per process and two GPU seconds of warmup.
+  Five shapes use the final policy measurements; 67 retain earlier timings
+  whose source and selected GPU configuration were verified unchanged.
+  previous_candidate refers to an earlier group4 register-based candidate,
+  not unchanged unstable. Historical unstable comparisons remain external.
+
+Representative medians, microseconds:
+ R      C  Hq/Hkv   D      CCV      MLX
+ 1    128  16/4   256     6.62    10.83
+ 1   8192  16/4   256    34.40    38.06
+ 2   8192  16/4   256    52.69    58.12
+ 1  32768  64/4   128   150.44   156.04
+ 2  32768  64/4   128   259.37   349.84
+ 1  65536  24/4   256   336.49   337.01
+
+MLX uses stride views of the same B/S/H/D input storage. Its multi-batch
+vector attention performs internal contiguous copies inside the timing;
+comparisons measure complete operations. CCV adds no physical transpose.
+A material slowdown requires both >5 percent and >2 microseconds.
+The repeatable MLX gap is R2/C32768/B1/H16:8/D128: 139.333 vs 130.730 us
+(6.58 percent). An intermittent R2/C2049/B2/H24:4/D256 noncausal observation
+also retains its flag; fresh controls measured about 36.4-36.9 us. Raw attempts
+and rechecks are preserved outside Git, without discarding unfavorable results.
+
+M5 Max and physical iPad validation, 2026-10-08
+  Baseline: unstable 36c168ed70fe709953b8735bc1d9e6da3942c362.
+  Candidate: m5-attention-r1-parity 8572dd9c3b486123dae0783bfe5ed0a0b1010f19
+  applied alongside the newer baseline Hadamard changes.
+  M5 Max: 40 GPU cores, macOS 27.0.1; 232 FP16/BF16 correctness cases and
+  116 FP16 paired performance comparisons.
+  Physical iPad Pro M5: 10 GPU cores, iPadOS 27.0.1; 264 correctness cases
+  including sinks and 38 performance comparisons (32 FP16, 6 BF16).
+  No new correctness failure or material performance slowdown was found.
+  Worst sampled normalized L2: FP16 0.000341533303, BF16 0.00277100303.
+  M5 Max R1/C8192/B1/H16:4/D256: 134.92 -> 52.83 us against baseline.
+  iPad corresponding case: 608.14 -> 294.93 us.
+  Integration checks: debug build, 126/126 DNN, 5/5 decode, 12/12 quantized
+  forward cases (including use_hadamard), NA varlen, and focused Metal API /
+  shader validation passed. Standalone checks scan every output for finiteness
+  and sample an independent double CPU reference; integration tests compare
+  full randomized outputs and include offsets, in-place output and saved LSE.
+  Timings use two reversed passes, 64 single-dispatch samples and >=2 GPU
+  seconds of warmup. Only warmup batches dispatches. All accepted timings
+  have nominal thermal state before/after. Thermal rejections and one iPad
+  transport failure were retained; incomplete comparisons were repeated.
+
+Full BLAS validation is limited by existing Metal compilation failures:
+simdgroup_matrix_storage address-space errors in GEMMKernel/AttentionKernel,
+and get_destination_cooperative_tensor in quantized backward. The unchanged
+baseline reproduced identical diagnostics; a full BLAS pass is not claimed.
+
+Post-review cleanup normalizes the R1 causal pipeline key, restores explicit
+16-byte threadgroup allocation alignment and preserves the original C++
+conditional style. Descriptor selection requires all arguments explicitly.
+The cooperative merge's 32-SIMD limit is documented. Cache-transition coverage
+now uses an explicit large-V flag without ineffective specialization flags.
+Its 68 FP16/BF16 causal/noncausal configurations include B1/R1 and B1/R2 at
+C65537/D256, exercising >=512 partitions and the 32-SIMD, 1024-thread,
+32-KiB reduction. All five decode tests and Metal API/shader validation passed.
+Long-sequence scratch controls are recorded below.
+Raw archives, hashes, harnesses and detailed logs are kept outside Git; REPRODUCE.txt identifies the evidence and permanent validation commands.
+
+Batch-one long-sequence scratch controls, M5 Max, 2026-10-08
+  FP16, R1, B1, causal; 10 configurations, two reversed passes, 64 complete
+  selected-dispatch GPU samples and >=2 GPU seconds warmup per process.
+  All 20 attempts had nominal thermal state and passed sampled CPU-reference
+  and full finiteness checks. The temporary harness runs only the complete
+  overridden dispatch, uses production private scratch allocation and batches
+  eight warmup dispatches; recorded command buffers contain one dispatch.
+  These are controlled partition overrides, not old-kernel comparisons.
+
+    D Hq/Hk      C    P  time ms  scratch capacity MiB
+  128 32/8  65536   32   0.7504      1
+  128 32/8  65536  256   0.6624      8
+  128 32/8  65536  512   0.5596     16
+  128 32/8 131072  512   1.2630     16
+  128 32/8 131072 1024   1.0756     32
+  256 16/4  65536   32   0.7547      1
+  256 16/4  65536  256   0.5377      8
+  256 16/4  65536  512   0.5338     16
+  256 16/4 131072  512   1.0370     16
+  256 16/4 131072 1024   1.0418     32
+
+  Production selects P512 at 64K and P1024 at 128K for both layouts here.
+  At 64K, forcing P32 costs 34.1% (D128) or 41.4% (D256) more time while
+  reducing scratch allocation from 16 MiB to 1 MiB. At D128, halving P costs
+  18.4% at 64K and 17.4% at 128K. At D256, halving P costs 0.7% at 64K and
+  is 0.5% faster at 128K; the two-pass result suggests a memory tradeoff for
+  this layout, not a cross-device tuning rule. No selector change is made.
+  With B1/R1, these layouts are capped at 32 MiB rounded scratch allocation
+  once P reaches 1024. Longer sequences grow KV storage but not scratch.
+  R2 doubles the requested partial-buffer size; larger head counts increase
+  it proportionally. The small-buffer allocator retains the grown capacity.
+  Post-cleanup checks: debug build and 5/5 decode integration tests pass;
+  focused Metal API/shader validation passes both cache transitions and R2
+  sinks. R1 causal/noncausal descriptor keys match in both precisions across
+  10/40/80-core selections; R2 causal keys remain distinct.
+
+At B1/R2/C262144, P=1024 for these layouts. D256/Hq16 requests 32.25 MiB,
+D256/Hq24 requests 48.375 MiB and D128/Hq32 requests 32.5 MiB; all round
+to 64 MiB. D128/Hq64 requests 65 MiB and rounds to 128 MiB. These are
+partial-buffer requirements for this call; an already larger shared MFA
+scratch buffer retains its existing capacity. Quantized attention has its
+own scratch accounting and does not use this decode path.

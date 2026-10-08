@@ -1,0 +1,71 @@
+AttentionR1 selection review
+
+Support: forward FP16/BF16, R=1 or 2, D=128 or 256, positive KV length,
+integer GQA ratio, no explicit mask, varlen, sliding window, quantized attention,
+or saved-logsumexp output. Saved statistics use the existing general path.
+R2 uses C-R+r+1 causal columns for each row; an empty row returns zero.
+Attention sinks contribute once per query/head, including across KV partitions.
+All Q/K/V/output buffers retain B/S/H/D storage. There is no layout conversion.
+
+Kernel-object cache: precision, runtime-C mode and attention-sink support only.
+Pipeline constants: heads, D, R, causal mode, scale and dispatch geometry.
+R1 canonicalizes causal mode to false because its visible column count is C.
+Runtime C and batch grids come from the current call. Batch affects selection
+through the resulting geometry, not a stale grid cached in the kernel object.
+
+Grouped heads: largest divisor of GQA no larger than four. This keeps each
+workgroup within a single KV head and bounds its scheduling granularity at
+128 threads for R1 or 256 for R2 before pairing. Odd ratios remain supported.
+
+Paired heads: D128 and an even logical head group. Two related query heads
+reuse each K/V load. Their Q and accumulator vectors require the same number
+of lane-local float elements as one D256 head (softmax scalar state is extra).
+D256 pairing stays a profiling override; it is not selected in production.
+
+Partitions: powers of two, at most 1024, with at least roughly eight KV rows
+per partition. Three considerations govern the split count:
+- Workgroup occupancy scales with GPU core count. Paired heads halve the SIMD
+  groups in a workgroup, so more workgroups restore independent SIMD streams.
+- A square-root budget balances serial traversal against partial-buffer merge
+  work, using context length, R, batch, query heads and paired-head count.
+- Paired heads keep a limit of 128 KV rows per head (256 combined head/row
+  steps per SIMD). A single-head SIMD also uses 128 rows when B*R*Hq is less
+  than the GPU core count. In that sparse-query regime, extra KV splits shorten
+  the serial recurrence. With at least one independent query per core, the
+  single-head limit stays at 256 rows to avoid excessive partial/merge work.
+The traversal limit is independent of batch size and can dominate the other
+budgets. Scratch is B*R*Hq*P*(D+2)*4 bytes; the allocator rounds allocations
+below 512 MiB to a power of two. P never exceeds 1024, so scratch stops growing
+with sequence length once that cap is reached. For B1/R1, D128/Hq32 or D256/Hq16,
+its maximum requested size is about 16.2 MiB (32 MiB rounded); R2 doubles it.
+These constants are calibrated on this machine, not mathematical optima.
+
+Merge: 4 to 16 SIMD groups, allowing 32 when there are at least 512 partitions.
+This amortizes wider reductions over more partial vectors and caps D256 shared
+memory at 32 KiB. All partial vectors, maxima, denominators and reductions stay
+FP32. Pipeline thread limits are checked before dispatch.
+
+Short contexts: C=8..256 can use 16 cooperative SIMD streams and one dispatch.
+For C<=64 there are at most four KV rows per stream. Above that, use the path
+only when B*R*Hq<=2*core_count; larger batches benefit from smaller grouped
+workgroups. C<8 uses the simple direct kernel to avoid a large cooperative group.
+
+There is no M5, Ultra, model-name, or fixed head-count exception. The choices
+use workload geometry, a bounded register footprint, shared memory, and GPU
+core count. Performance portability to another M5 must be measured there;
+matching this Ultra's times or selector choices does not establish it.
+
+The sparse-query guard is supported by same-shader controls, not a model or
+sequence-name exception. R1/C65536/B1/H24:4/D256 improved from about 351 to
+339 us when moving P256->P512. Applying that change at B4 instead regressed
+from about 1.46 to 1.84 ms, so the dense-query configuration keeps P256.
+The B4/H16:16/D128 MHA control has 64 independent queries on 80 cores and
+benefited slightly from P128->P256. B16 controls retain their prior geometry.
+The final C++ selector audit checks both precisions on all 116 permanent
+shapes; only the sparse 64K case and that MHA control change geometry.
+
+Batch-one long-sequence controls on the 40-core M5 Max are in report.txt.
+At 64K, forcing P32 instead of P512 loses 34-41% on the tested layouts. D128
+also loses 17-18% when halving P at 64K/128K; D256 is approximately unchanged
+when halving P. The selector remains as calibrated; the D256 observation is
+a potential layout-specific memory tradeoff requiring cross-device checks.

@@ -40,6 +40,7 @@ struct AttentionR1Descriptor {
   enum class Mode : uint8_t {
     direct = 0,
     splitReduce = 1,
+    cooperative = 2,
   };
 
   GEMMOperandPrecision memoryPrecision;
@@ -52,6 +53,10 @@ struct AttentionR1Descriptor {
 
   uint32_t D;
 
+  uint32_t R;
+
+  bool isCausal;
+
   float scale;
 
   bool loadC;
@@ -59,6 +64,10 @@ struct AttentionR1Descriptor {
   bool attentionSinks;
 
   uint32_t simdgroups;
+
+  uint32_t headsPerSIMD;
+
+  uint32_t reductionSIMDGroups;
 
   uint32_t workgroups;
 
@@ -74,7 +83,11 @@ struct AttentionR1Descriptor {
       uint32_t D,
       float scale,
       bool loadC,
-      bool attentionSinks = false) noexcept;
+      bool attentionSinks,
+      uint32_t R,
+      bool isCausal,
+      uint32_t batchDimension,
+      uint32_t coreCount) noexcept;
 
   std::pair<AttentionR1KernelDescriptor, PipelineValue<AttentionR1Kernel>*> findKernel(
       MTL::Device* const device,

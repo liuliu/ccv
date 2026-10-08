@@ -1,0 +1,41 @@
+AttentionR1 implementation changes
+
+The base implementation staged Q in threadgroup memory, synchronized before
+traversal, and locally merged token streams in every partition. Its split
+path used 32 partitions, eight SIMD token streams within each partition,
+and a single SIMD group for the final merge. The base
+frontend selected this path only for R=1.
+
+The new grouped direct / split first stage keeps Q and the output accumulator
+in lane-local float arrays. One SIMD owns a whole query head, or two related
+D128 heads, so it needs no threadgroup memory or barriers. Each lane owns four
+contiguous dimensions for D128 or eight for D256. Scaling Q once also removes
+repeated score scaling from the KV loop. The accumulation was already float
+in the base implementation; the change does not reduce its precision.
+
+Small groups of query heads that share a KV head are scheduled together.
+For D128, two such heads share each loaded key/value within one SIMD. This
+uses the same number of Q and accumulator vector elements as one D256 head,
+plus additional softmax scalar state. D256 keeps one head per SIMD. Each head
+retains its own maximum, denominator, and output vector.
+
+The split count now balances occupancy, the serial online-softmax loop, and
+partial-buffer merge work. More batches and independent heads reduce the
+occupancy need for splitting. More cores or a longer context increase it.
+The final merge distributes partial vectors over several SIMD groups, then
+shares the output-component work, so the wider split does not funnel through
+a single SIMD. Intermediate vectors and softmax statistics remain FP32.
+
+For short contexts, a cooperative kernel uses 16 token streams per query
+head, with register-resident Q/accumulators, one shared-memory merge barrier,
+and a single GPU dispatch. This avoids the split/reduce launch cost. Tiny
+contexts use the simple direct path.
+
+R=2 uses the same family with separate state for each query row and causal
+limits C-R+r+1. An empty causal row returns zero. Attention sinks enter the
+softmax exactly once per row/head. Saved logsumexp requests use the general
+attention implementation because this decode family does not emit them.
+
+All buffers preserve B/S/H/D storage. Dispatch selection contains no model,
+M5, or Ultra name check. See gating-review.txt for the exact rules and the
+limits of the cross-device performance claim.

@@ -28,7 +28,6 @@ struct NAInt8AttentionDescriptor {
   bool loadR = false;
   bool loadC = false;
   bool attentionSinks = false;
-  // Experimental forward block-Hadamard Q/K rotation, fused into INT8 quantizers.
   bool qkHadamard = false;
   uint32_t maskBatchStride = 0;
 

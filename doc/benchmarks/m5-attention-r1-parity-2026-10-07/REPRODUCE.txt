@@ -1,0 +1,60 @@
+Reproduce AttentionR1 validation
+
+From the checkout root:
+  make -C test/int/nnc debug -j4
+  make -C bin/mfa attention_r1_bench attention_r1_thermal
+  cd test/int/nnc
+  ./mpsblas.tests "decode"
+  ./mpsdnn.tests
+
+The permanent randomized benchmark and shape manifest live in bin/mfa:
+  python3 bin/mfa/attention_r1_sweep.py --list
+  python3 bin/mfa/attention_r1_sweep.py --output /tmp/decode-fp16
+  python3 bin/mfa/attention_r1_sweep.py --precision bf16 --output /tmp/decode-bf16
+Every output directory must be new. Inspect failed records as well as summary.
+Metal tests require GPU access; restricted execution may crash before testing.
+
+For before/after timings, save a statically linked probe before rebuilding,
+then pass --baseline /absolute/path/to/saved-probe. The input fixture must
+agree between probes. When the baseline predates the probe's descriptor API,
+use the compatibility baseline_bench.cpp from the external workspace evidence;
+it removes candidate-only descriptor diagnostics and profiling, while retaining
+identical inputs, production dispatch and CPU checking. Link it against a
+separately built baseline library. Keep GPU work serial and avoid compilation
+during measurement. The runner warms >=2 GPU seconds, takes 64 complete
+single-dispatch GPU samples, reverses both orders and checks thermal state.
+The workspace timing harness batches warmup only; recorded samples are single
+dispatches. Thermal-rejected measurements must be retained and repeated.
+
+Historical MLX reproduction uses the external validation-raw artifact. It
+contains harness/mlx_na_bench.cpp, its CMake wrapper, the D256 JIT patch and
+matched-input CCV harness. Build MLX revision
+25532871329fe4cafdada9fa0941a1cdbfb3a9f2 with Metal/JIT enabled, apply the
+archived patch in a separate checkout, and preserve mlx.metallib. The permanent
+runner accepts --mlx /path/to/probe for FP16. Historical group4 development
+comparisons require the archived group4 sources; previous_candidate in the
+CSV is not unchanged unstable. Historical measurements and their full
+provenance are preserved separately from permanent current-code validation.
+
+The workspace artifact folder is outside the Git checkout:
+  ../ccv-attention-validation/2026-10-08/original-doc-evidence/
+It includes original reports, raw archives, source snapshots, hashes and exact
+Mac/iPad harnesses. Other machines need a copy of these artifacts to reproduce
+historical comparisons; current-code checks use only the permanent sources.
+Archive SHA256:
+  validation-raw.tar.gz
+    9903de2fb38b71f08ac012ab86a1500e2ac61c403e8401128067257f092d5910
+  workspace-review-2026-10-08.tar.gz
+    beeae6cb1f54a69fc93f4607358b719f352b2bdcee251f149cd701c701483ded
+
+Post-review raw checks are kept outside Git in the sibling artifact folder:
+  ../ccv-attention-validation/2026-10-08/review-items/
+The long-sequence manifest, selected-dispatch-only harness, build arguments,
+runner and every sample are included. Rebuild scratch_bench.cpp against the
+candidate library after updating absolute paths in scratch.mk. Run
+run-long-sequence.py with a fresh output directory. Permanent stage profiling
+also accepts partition/reduction overrides; see bin/mfa/attention_r1_bench.txt.
+The temporary harness isolates allocation capacity by omitting the production
+stage that could grow scratch before the overridden stage is measured.
+Expanded cache-transition checks and explicit-argument build logs are in:
+  ../ccv-attention-validation/2026-10-08/review-test-nits/
