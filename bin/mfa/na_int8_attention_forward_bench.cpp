@@ -17,8 +17,8 @@ extern "C" {
 
 int main(int argc, char** argv)
 {
-  if (argc < 11 || argc > 13) {
-    fprintf(stderr, "Usage: %s R C D B Hq Hkv warmup samples causal dynamic_flags [precision] [upcast]\n", argv[0]);
+  if (argc < 11 || argc > 14) {
+    fprintf(stderr, "Usage: %s R C D B Hq Hkv warmup samples causal dynamic_flags [precision] [upcast] [hadamard]\n", argv[0]);
     return 2;
   }
   for (int i = 1; i < argc; ++i) {
@@ -32,8 +32,9 @@ int main(int argc, char** argv)
   const int causal = atoi(argv[9]), flags = atoi(argv[10]);
   const int precision = argc > 11 ? atoi(argv[11]) : 0;
   const int upcast = argc > 12 ? atoi(argv[12]) : (precision == 1);
+  const int hadamard = argc > 13 ? atoi(argv[13]) : 0;
   if (std::min({r,c,d,b,hq,hk,timed}) <= 0 || hq % hk || hq > USHRT_MAX || d > USHRT_MAX ||
-      causal > 1 || precision > 2 || upcast > 1 || (flags & ~3) || uint64_t(r) * b > INT_MAX || r > INT_MAX - 128 || c > INT_MAX - 128)
+      causal > 1 || precision > 2 || upcast > 1 || hadamard > 1 || (flags & ~3) || uint64_t(r) * b > INT_MAX || r > INT_MAX - 128 || c > INT_MAX - 128)
     return 2;
   auto pool = NS::TransferPtr(NS::AutoreleasePool::alloc()->init());
   auto device = NS::TransferPtr(MTL::CreateSystemDefaultDevice());
@@ -82,9 +83,11 @@ int main(int argc, char** argv)
   params.output_rows = r*b; params.K_trans = 1; params.alpha = 1/std::sqrt(float(d));
   params.is_causal = causal; params.batched = b > 1; params.batch_dims_q[0] = b > 1 ? b : 0;
   params.use_neural_accelerators = 1; params.use_quantized_attention = 1;
+  params.use_hadamard = hadamard;
   printf("device=%s gpu_core_count=%u R=%d C=%d D=%d B=%d Hq=%d Hkv=%d causal=%d dynamic_flags=%d precision=%d upcast=%d\n",
       device->name()->utf8String(), context->device_properties.coreCount, r, c, d, b, hq, hk, causal, flags, precision, upcast);
-  const double minimum_warmup = getenv("CCV_NA_WARMUP_SECONDS") ? atof(getenv("CCV_NA_WARMUP_SECONDS")) : 0.4;
+  printf("hadamard=%d\n", hadamard);
+  const double minimum_warmup = 1.0;
   double warm_seconds = 0;
   std::vector<double> samples;
   for (int i = 0; samples.size() < size_t(timed); ++i) {

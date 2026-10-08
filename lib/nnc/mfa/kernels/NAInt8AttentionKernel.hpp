@@ -15,6 +15,10 @@ struct NAInt8AttentionKernel {
   static constexpr uint16_t blockMaskThreads = 256;
   static constexpr uint16_t smallSequenceVMeanThreads = 256;
   static constexpr uint16_t largeSequenceVMeanThreads = 128;
+  // KV rows summed by one mean threadgroup. Longer sequences add a fixed-order
+  // second pass over the per-chunk sums.
+  static constexpr uint32_t vMeanChunkRows = 512;
+  static constexpr uint16_t vMeanFinalizeThreads = 64;
   static constexpr uint16_t computeDThreads = 32;
 
   NS::SharedPtr<MTL::Library> library;
@@ -46,18 +50,28 @@ struct NAInt8AttentionKernel {
   bool loadC = false;
   bool attentionSinks;
   bool qkHadamard;
+  bool qkMeanCorrection;
 
   NAInt8AttentionKernel(NAInt8AttentionKernelDescriptor descriptor, MTL::Device *const device);
 
   uint16_t vMeanThreadgroupSize() const noexcept;
-  MTL::Size vMeanThreadgroupsPerGrid(uint32_t batchDimension) const noexcept;
+  uint32_t vMeanChunks(uint32_t sequenceLength) const noexcept;
+  // Device scratch for per-chunk sums; zero when one chunk covers the sequence.
+  size_t vMeanPartialBytes(uint32_t batchDimension, uint32_t sequenceLength) const noexcept;
+  // Encodes compute_v_mean and, for multiple chunks, finalize_v_mean. The caller
+  // binds V (0), V mean (1), K (2) and K mean (3) for Hadamard, and any varlen or
+  // runtime-dimension buffers. Partial sums bind at index 4.
+  void encodeVMean(MTL::ComputeCommandEncoder* encoder,
+                   MTL::ComputePipelineState* reducePipeline,
+                   MTL::ComputePipelineState* finalizePipeline,
+                   MTL::Buffer* partials, size_t partialsOffset,
+                   uint32_t batchDimension, uint32_t sequenceLength) const noexcept;
 
   uint32_t threadgroupMemoryAllocation() const noexcept;
   uint16_t threadgroupSize(MTL::ComputePipelineState *const pipelineState) const noexcept;
   MTL::Size threadgroupsPerGrid(uint32_t batchDimension, uint32_t rowDimension) const noexcept;
 
 private:
-  uint16_t vMeanVectorsPerTile() const noexcept;
   void createVMean(CodeWriter& source) const noexcept;
   std::string createSource() const noexcept;
   void createConstants(CodeWriter& source) const noexcept;

@@ -69,6 +69,7 @@ NAInt8AttentionKernel::NAInt8AttentionKernel(
   hasCausalEmptyRows = descriptor.hasCausalEmptyRows;
   attentionSinks = descriptor.attentionSinks;
   qkHadamard = descriptor.qkHadamard;
+  qkMeanCorrection = descriptor.qkMeanCorrection;
   loadR = descriptor.loadR;
   hasRRemainder = descriptor.hasRRemainder;
   loadC = descriptor.loadC;
@@ -78,6 +79,8 @@ NAInt8AttentionKernel::NAInt8AttentionKernel(
   CCV_NNC_MFA_PRECONDITION(!qkHadamard ||
       (headDimension >= 8 && headDimension <= 256 && headDimension % 8 == 0 &&
        type == AttentionKernelType::forward));
+  CCV_NNC_MFA_PRECONDITION(!qkMeanCorrection || qkHadamard);
+  CCV_NNC_MFA_PRECONDITION(!qkHadamard || !attentionSinks || qkMeanCorrection);
 
   source = createSource();
 
@@ -125,99 +128,171 @@ MTL::Size NAInt8AttentionKernel::threadgroupsPerGrid(uint32_t batchDimension, ui
 }
 
 uint16_t NAInt8AttentionKernel::vMeanThreadgroupSize() const noexcept {
-  return std::max<uint16_t>(32 * vMeanVectorsPerTile(), vMeanThreads);
+  return vMeanThreads;
 }
 
-uint16_t NAInt8AttentionKernel::vMeanVectorsPerTile() const noexcept {
-  CCV_NNC_MFA_PRECONDITION(vMeanThreads >= 32 && vMeanThreads <= 1024 &&
-      (vMeanThreads & (vMeanThreads - 1)) == 0);
-  // Keep enough threadgroups for small head counts while coalescing adjacent
-  // vectors when there is sufficient parallel work. These are all cache keys.
-  const uint32_t vectors = (headDimension % 4) == 0 ? headDimension / 4 : headDimension;
-  const uint16_t maxVectors = std::min<uint16_t>(8, 1024 / vMeanThreads);
-  uint16_t tile = 1;
-  while (tile < maxVectors && uint32_t(Hk) * vectors >= 128 * tile * 2)
-    tile *= 2;
-  return tile;
+uint32_t NAInt8AttentionKernel::vMeanChunks(uint32_t sequenceLength) const noexcept {
+  return std::max<uint32_t>(1, (sequenceLength + vMeanChunkRows - 1) / vMeanChunkRows);
 }
 
-MTL::Size NAInt8AttentionKernel::vMeanThreadgroupsPerGrid(uint32_t batchDimension) const noexcept {
-  const uint32_t vectors = (headDimension % 4) == 0 ? headDimension / 4 : headDimension;
-  const uint32_t meanTiles = (vectors + vMeanVectorsPerTile() - 1) / vMeanVectorsPerTile();
-  return MTL::Size(uint64_t(1) << (ceilLog2(meanTiles) + ceilLog2(Hk)), 1, batchDimension);
+size_t NAInt8AttentionKernel::vMeanPartialBytes(uint32_t batchDimension, uint32_t sequenceLength) const noexcept {
+  const uint32_t chunks = vMeanChunks(sequenceLength);
+  if (chunks == 1)
+    return 0;
+  return size_t(batchDimension) * (qkHadamard ? 2 : 1) * Hk * chunks * headDimension * sizeof(float);
+}
+
+void NAInt8AttentionKernel::encodeVMean(MTL::ComputeCommandEncoder* encoder,
+                                        MTL::ComputePipelineState* reducePipeline,
+                                        MTL::ComputePipelineState* finalizePipeline,
+                                        MTL::Buffer* partials, size_t partialsOffset,
+                                        uint32_t batchDimension, uint32_t sequenceLength) const noexcept {
+  const uint32_t operandHeads = uint32_t(Hk) * (qkHadamard ? 2 : 1);
+  const uint32_t chunks = vMeanChunks(sequenceLength);
+  encoder->setComputePipelineState(reducePipeline);
+  // A single chunk writes the mean directly, but the argument still needs a binding.
+  encoder->setBuffer(partials, partialsOffset, 4);
+  encoder->dispatchThreadgroups(MTL::Size(chunks, operandHeads, batchDimension),
+      MTL::Size(vMeanThreadgroupSize(), 1, 1));
+  if (chunks == 1)
+    return;
+  const uint32_t vectors = headDimension % 4 == 0 ? headDimension / 4 : headDimension;
+  encoder->setComputePipelineState(finalizePipeline);
+  encoder->dispatchThreadgroups(
+      MTL::Size((vectors + vMeanFinalizeThreads - 1) / vMeanFinalizeThreads, operandHeads, batchDimension),
+      MTL::Size(vMeanFinalizeThreads, 1, 1));
 }
 
 void NAInt8AttentionKernel::createVMean(CodeWriter& source) const noexcept {
+  // Each lane loads four channels when D allows, otherwise one.
   const bool vectorized = (headDimension % 4) == 0;
-  source.SetValue("V_MEAN_VECTORS", std::to_string(vectorized ? headDimension / 4 : headDimension));
-  source.SetValue("V_MEAN_TILE", std::to_string(vMeanVectorsPerTile()));
-  source.SetValue("V_MEAN_DISPATCH_THREADS", std::to_string(vMeanThreadgroupSize()));
-  source.SetValue("V_MEAN_ALIASES", vectorized ? R"(
-  device const io_vec4 *src4 = reinterpret_cast<device const io_vec4 *>(src);
-  device v_mean_vec4 *mean4 = reinterpret_cast<device v_mean_vec4 *>(mean);)" : "");
-  source.SetValue("V_MEAN_LOAD", vectorized ?
-      "const uint index = " + source.GetValue("V_MEAN_SRC_INDEX_VEC") + ";\n        local_sum += float4(src4[index / 4]);" :
-      "const uint dim = vec_dim;\n        const uint index = " + source.GetValue("V_MEAN_SRC_INDEX") + ";\n        local_sum.x += (float)src[index];");
-  source.SetValue("V_MEAN_STORE", vectorized ?
-      "mean4[(batch * QUANTIZE_KV_HEADS + head) * " + source.GetValue("V_MEAN_VECTORS") + " + vec_dim] = reduced * (1.0f / float(" + source.GetValue("V_SEQUENCE_DIVISOR") + "));" :
-      "mean[(batch * QUANTIZE_KV_HEADS + head) * " + source.GetValue("HEAD_DIMENSION") + " + vec_dim] = reduced.x * (1.0f / float(" + source.GetValue("V_SEQUENCE_DIVISOR") + "));");
+  const uint32_t vectors = vectorized ? headDimension / 4 : headDimension;
+  // Short rows pack several rows into one SIMD group, so every SIMD load still
+  // covers complete contiguous rows.
+  uint32_t lanesPerRow = 1;
+  while (lanesPerRow < std::min<uint32_t>(vectors, 32))
+    lanesPerRow *= 2;
+  const std::string headDimensionString = std::to_string(headDimension);
+  source.SetValue("V_MEAN_VECTORS", std::to_string(vectors));
+  source.SetValue("V_MEAN_LANES_PER_ROW", std::to_string(lanesPerRow));
+  source.SetValue("V_MEAN_LANE_VECTORS", std::to_string((vectors + lanesPerRow - 1) / lanesPerRow));
+  source.SetValue("V_MEAN_STREAMS", std::to_string(vMeanThreads / lanesPerRow));
+  source.SetValue("V_MEAN_CHUNK_ROWS", std::to_string(vMeanChunkRows) + "u");
+  source.SetValue("V_MEAN_SUM", vectorized ? "float4" : "float");
+  source.SetValue("V_MEAN_LOAD", vectorized ? "io_vec4" : ioPrecision.name());
+  // Hadamard also centers K, whose mean is a second operand of the same
+  // dispatch. With one operand the K arguments are dead and need no binding.
+  source.SetValue("V_MEAN_OPERANDS", qkHadamard ? "2" : "1");
+  source.SetValue("V_MEAN_ROW_OFFSET", isVarlen ?
+      "((sequence_start + row) * QUANTIZE_KV_HEADS + head) * " + headDimensionString :
+      "batch * (operand ? QUANTIZE_K_BATCH_STRIDE : QUANTIZE_V_BATCH_STRIDE) + (row * QUANTIZE_KV_HEADS + head) * " + headDimensionString);
   source += R"(
+// Each threadgroup sums one chunk of rows for one batch, KV head and operand.
+// SIMD groups read complete rows, so no cache line is split across
+// threadgroups. Rows, SIMD groups and chunks combine in a fixed order, so the
+// mean is deterministic for a given shape.
 kernel void compute_v_mean(
-{{RUNTIME_ARGUMENT}}    device const {{IO_MEMORY_NAME}} *src [[buffer(0)]],
-    device {{V_MEAN_MEMORY_NAME}} *mean [[buffer(1)]],
+{{RUNTIME_ARGUMENT}}    device const {{IO_MEMORY_NAME}} *v_src [[buffer(0)]],
+    device float *v_mean [[buffer(1)]],
+    device const {{IO_MEMORY_NAME}} *k_src [[buffer(2)]],
+    device float *k_mean [[buffer(3)]],
+    device {{V_MEAN_SUM}} *partials [[buffer(4)]],
     uint tid [[thread_index_in_threadgroup]],
+    ushort sgid [[simdgroup_index_in_threadgroup]],
     ushort lane_id [[thread_index_in_simdgroup]],
     uint3 tgid [[threadgroup_position_in_grid]]{{QUANTIZE_VARLEN_BUFFER}}
   ) {
-{{QUANTIZE_RUNTIME_CONSTANTS}}{{V_MEAN_ALIASES}}
-  const uint mean_tiles = ({{V_MEAN_VECTORS}} + {{V_MEAN_TILE}} - 1) / {{V_MEAN_TILE}};
-  const uint2 morton = morton_decode_rectangular_2d(tgid.x,
-      ceil_log2_u32(mean_tiles), ceil_log2_u32(QUANTIZE_KV_HEADS));
-  const uint head = morton.y, batch = tgid.z;
-  if (morton.x >= mean_tiles || head >= QUANTIZE_KV_HEADS)
-    return;{{V_VARLEN_SEQUENCE_SETUP}}
-  // Adjacent vectors keep input reads coalesced. Transpose the partials in
-  // threadgroup memory to preserve the original accumulation and shuffle order.
-  // A fixed allocation keeps the memory bound independent of H and D.
-  threadgroup float4 partials[1024];
-  const uint vec_dim = morton.x * {{V_MEAN_TILE}} + tid % {{V_MEAN_TILE}};
-  const uint rows_per_part = {{V_MEAN_DISPATCH_THREADS}} / {{V_MEAN_TILE}};
-  for (uint part = 0; part < QUANTIZE_V_MEAN_THREADS / rows_per_part; ++part) {
-    const uint row = tid / {{V_MEAN_TILE}} + part * rows_per_part;
-    float4 local_sum = float4(0.0f);
-    if (vec_dim < {{V_MEAN_VECTORS}}) {
-      for (uint column = row; column < {{V_SEQUENCE_LENGTH}}; column += QUANTIZE_V_MEAN_THREADS) {
-        {{V_MEAN_LOAD}}
+{{QUANTIZE_RUNTIME_CONSTANTS}}  const uint chunk = tgid.x, operand_head = tgid.y, batch = tgid.z;
+  const uint head = operand_head % QUANTIZE_KV_HEADS;
+  const uint operand = {{V_MEAN_OPERANDS}} > 1 ? operand_head / QUANTIZE_KV_HEADS : 0;{{V_VARLEN_SEQUENCE_SETUP}}
+  device const {{IO_MEMORY_NAME}} *src = operand ? k_src : v_src;
+  const uint start = min(chunk * {{V_MEAN_CHUNK_ROWS}}, uint({{V_SEQUENCE_LENGTH}}));
+  const uint end = min(start + {{V_MEAN_CHUNK_ROWS}}, uint({{V_SEQUENCE_LENGTH}}));
+  const uint stream = sgid * (32 / {{V_MEAN_LANES_PER_ROW}}) + lane_id / {{V_MEAN_LANES_PER_ROW}};
+  const uint lane = lane_id % {{V_MEAN_LANES_PER_ROW}};
+  {{V_MEAN_SUM}} sums[{{V_MEAN_LANE_VECTORS}}];
+  #pragma clang loop unroll(full)
+  for (uint i = 0; i < {{V_MEAN_LANE_VECTORS}}; ++i)
+    sums[i] = 0.0f;
+  // Issue four rows' loads before accumulating them. Short grids have too few
+  // SIMD groups to hide one dependent load per row; row order is unchanged.
+  uint first = start + stream;
+  for (; first + 3 * {{V_MEAN_STREAMS}} < end; first += 4 * {{V_MEAN_STREAMS}}) {
+    {{V_MEAN_LOAD}} loaded[4][{{V_MEAN_LANE_VECTORS}}];
+    #pragma clang loop unroll(full)
+    for (uint u = 0; u < 4; ++u) {
+      const uint row = first + u * {{V_MEAN_STREAMS}};
+      device const {{V_MEAN_LOAD}} *values = reinterpret_cast<device const {{V_MEAN_LOAD}} *>(src + {{V_MEAN_ROW_OFFSET}});
+      #pragma clang loop unroll(full)
+      for (uint i = 0; i < {{V_MEAN_LANE_VECTORS}}; ++i) {
+        const uint vec = i * {{V_MEAN_LANES_PER_ROW}} + lane;
+        loaded[u][i] = vec < {{V_MEAN_VECTORS}} ? values[vec] : {{V_MEAN_LOAD}}(0);
       }
     }
-    partials[(tid % {{V_MEAN_TILE}}) * QUANTIZE_V_MEAN_THREADS + row] = local_sum;
+    #pragma clang loop unroll(full)
+    for (uint u = 0; u < 4; ++u)
+      #pragma clang loop unroll(full)
+      for (uint i = 0; i < {{V_MEAN_LANE_VECTORS}}; ++i)
+        sums[i] += {{V_MEAN_SUM}}(loaded[u][i]);
+  }
+  for (uint row = first; row < end; row += {{V_MEAN_STREAMS}}) {
+    device const {{V_MEAN_LOAD}} *values = reinterpret_cast<device const {{V_MEAN_LOAD}} *>(src + {{V_MEAN_ROW_OFFSET}});
+    #pragma clang loop unroll(full)
+    for (uint i = 0; i < {{V_MEAN_LANE_VECTORS}}; ++i) {
+      const uint vec = i * {{V_MEAN_LANES_PER_ROW}} + lane;
+      if (vec < {{V_MEAN_VECTORS}})
+        sums[i] += {{V_MEAN_SUM}}(values[vec]);
+    }
+  }
+  // Fold rows packed into one SIMD group, then add SIMD groups in index order.
+  #pragma clang loop unroll(full)
+  for (uint i = 0; i < {{V_MEAN_LANE_VECTORS}}; ++i)
+    for (ushort offset = {{V_MEAN_LANES_PER_ROW}}; offset < 32; offset *= 2)
+      sums[i] += simd_shuffle_xor(sums[i], offset);
+  threadgroup {{V_MEAN_SUM}} simd_sums[QUANTIZE_V_MEAN_SIMDGROUPS * {{V_MEAN_VECTORS}}];
+  if (lane_id < {{V_MEAN_LANES_PER_ROW}}) {
+    #pragma clang loop unroll(full)
+    for (uint i = 0; i < {{V_MEAN_LANE_VECTORS}}; ++i) {
+      const uint vec = i * {{V_MEAN_LANES_PER_ROW}} + lane;
+      if (vec < {{V_MEAN_VECTORS}})
+        simd_sums[sgid * {{V_MEAN_VECTORS}} + vec] = sums[i];
+    }
   }
   threadgroup_barrier(mem_flags::mem_threadgroup);
-  const uint row = tid % QUANTIZE_V_MEAN_THREADS;
-  const uint sgid = row / 32;
-  for (uint vec = tid / QUANTIZE_V_MEAN_THREADS; vec < {{V_MEAN_TILE}}; vec += {{V_MEAN_DISPATCH_THREADS}} / QUANTIZE_V_MEAN_THREADS) {
-    float4 local_sum = partials[vec * QUANTIZE_V_MEAN_THREADS + row];
-    for (uint offset = 16; offset > 0; offset /= 2)
-      for (uint component = 0; component < 4; ++component)
-        local_sum[component] += simd_shuffle_xor(local_sum[component], offset);
-    // All SIMD groups must finish reading before reusing the tile for sums.
-    // This keeps shared memory at 16 KiB (32 KiB under shader validation).
-    threadgroup_barrier(mem_flags::mem_threadgroup);
-    if (lane_id == 0)
-      partials[vec * QUANTIZE_V_MEAN_THREADS + sgid] = local_sum;
-    threadgroup_barrier(mem_flags::mem_threadgroup);
-    if (sgid == 0) {
-      float4 reduced = lane_id < QUANTIZE_V_MEAN_SIMDGROUPS ?
-          partials[vec * QUANTIZE_V_MEAN_THREADS + lane_id] : float4(0.0f);
-      for (uint offset = 16; offset > 0; offset /= 2)
-        for (uint component = 0; component < 4; ++component)
-          reduced[component] += simd_shuffle_xor(reduced[component], offset);
-      const uint vec_dim = morton.x * {{V_MEAN_TILE}} + vec;
-      if (lane_id == 0 && vec_dim < {{V_MEAN_VECTORS}}) {
-        {{V_MEAN_STORE}}
-      }
-    }
+  // One chunk covers the sequence: write the mean and skip finalize_v_mean.
+  const bool single_chunk = uint(QUANTIZE_KV_SEQUENCE) <= {{V_MEAN_CHUNK_ROWS}};
+  const uint chunks = (uint(QUANTIZE_KV_SEQUENCE) + {{V_MEAN_CHUNK_ROWS}} - 1) / {{V_MEAN_CHUNK_ROWS}};
+  for (uint vec = tid; vec < {{V_MEAN_VECTORS}}; vec += QUANTIZE_V_MEAN_THREADS) {
+    {{V_MEAN_SUM}} total = simd_sums[vec];
+    for (uint s = 1; s < QUANTIZE_V_MEAN_SIMDGROUPS; ++s)
+      total += simd_sums[s * {{V_MEAN_VECTORS}} + vec];
+    if (single_chunk)
+      reinterpret_cast<device {{V_MEAN_SUM}} *>(operand ? k_mean : v_mean)[(batch * QUANTIZE_KV_HEADS + head) * {{V_MEAN_VECTORS}} + vec] =
+          total * (1.0f / float({{V_SEQUENCE_DIVISOR}}));
+    else
+      partials[((batch * {{V_MEAN_OPERANDS}} * QUANTIZE_KV_HEADS + operand_head) * chunks + chunk) * {{V_MEAN_VECTORS}} + vec] = total;
   }
+}
+
+// Sums the per-chunk partials in chunk order.
+kernel void finalize_v_mean(
+{{RUNTIME_ARGUMENT}}    device float *v_mean [[buffer(1)]],
+    device float *k_mean [[buffer(3)]],
+    device const {{V_MEAN_SUM}} *partials [[buffer(4)]],
+    uint3 gid [[thread_position_in_grid]]{{QUANTIZE_VARLEN_BUFFER}}
+  ) {
+{{QUANTIZE_RUNTIME_CONSTANTS}}  const uint vec = gid.x, operand_head = gid.y, batch = gid.z;
+  const uint head = operand_head % QUANTIZE_KV_HEADS;
+  const uint operand = {{V_MEAN_OPERANDS}} > 1 ? operand_head / QUANTIZE_KV_HEADS : 0;
+  if (vec >= {{V_MEAN_VECTORS}})
+    return;{{V_VARLEN_SEQUENCE_SETUP}}
+  const uint chunks = (uint(QUANTIZE_KV_SEQUENCE) + {{V_MEAN_CHUNK_ROWS}} - 1) / {{V_MEAN_CHUNK_ROWS}};
+  device const {{V_MEAN_SUM}} *chunk_sums = partials + (batch * {{V_MEAN_OPERANDS}} * QUANTIZE_KV_HEADS + operand_head) * chunks * {{V_MEAN_VECTORS}} + vec;
+  {{V_MEAN_SUM}} total = chunk_sums[0];
+  for (uint chunk = 1; chunk < chunks; ++chunk)
+    total += chunk_sums[chunk * {{V_MEAN_VECTORS}}];
+  reinterpret_cast<device {{V_MEAN_SUM}} *>(operand ? k_mean : v_mean)[(batch * QUANTIZE_KV_HEADS + head) * {{V_MEAN_VECTORS}} + vec] =
+      total * (1.0f / float({{V_SEQUENCE_DIVISOR}}));
 }
 )";
 }
@@ -540,6 +615,10 @@ inline void quantize_qk_tile(
     source.SetValue("HADAMARD_VECTOR_WIDTH", std::to_string(vectorWidth));
     source.SetValue("HADAMARD_BLOCK", std::to_string(hadamardBlock));
     source.SetValue("HADAMARD_NORMALIZATION", high_precision_to_string(1.0f / std::sqrt(float(hadamardBlock))));
+    source.SetValue("QUANTIZE_Q_TEMPLATE_ARGS", source.GetValue("QUANTIZE_Q_TEMPLATE_ARGS") +
+        ", false, " + (qkMeanCorrection ? "true" : "false"));
+    source.SetValue("QUANTIZE_K_TEMPLATE_ARGS", source.GetValue("QUANTIZE_K_TEMPLATE_ARGS") + ", true, false");
+    source.SetValue("HADAMARD_CORRECTION_SCALE", dot_product_scale(scale));
     source.SetValue("HADAMARD_SEQUENCE_ARGUMENT", isVarlen ? "" :
         "    uint sequence,\n" + source.GetValue("QUANTIZE_REMAINDER_ARGUMENT"));
     source.SetValue("HADAMARD_BATCH_ARGUMENT", isVarlen ? "" : "    uint batch_stride,\n");
@@ -555,11 +634,14 @@ inline void quantize_qk_tile(
 // blocks cover non-power-of-two heads. Keep the transformed
 // rows across scale reduction, eliminating a second input read and transform.
 // Normalization is folded into the dequantization scale; V stays unrotated.
-template <ushort tile_rows, ushort simdgroups>
+template <ushort tile_rows, ushort simdgroups, bool center_key, bool correct_query>
 inline void quantize_qk_tile(
     device const {{IO_MEMORY_NAME}} *src,
     device int8_t *dst,
     device float *scales,
+    device const float *mean,
+    device float *correction,
+    uint correction_stride,
     threadgroup float *scratch,
     uint tid,
     ushort sgid,
@@ -584,17 +666,29 @@ inline void quantize_qk_tile(
   using char_t = vec<char, width>;
   device const io_t *src_vec = reinterpret_cast<device const io_t *>(src);
   device char_t *dst_vec = reinterpret_cast<device char_t *>(dst);
+  device const value_t *mean_vec = reinterpret_cast<device const value_t *>(mean);
   value_t values[rows * chunks];
   float local_max = 0.0f;
   #pragma clang loop unroll(full)
   for (ushort i = 0; i < rows; ++i) {
     const uint row = i * simdgroups + sgid;
+    float row_correction = 0.0f;
     #pragma clang loop unroll(full)
     for (ushort j = 0; j < chunks; ++j) {
       const uint dim = (j * 32 + lane_id) * width;
       const uint index = input_offset + ((start + row) * heads + head) * {{HEAD_DIMENSION}} + dim;
       value_t x = row < extent && dim < {{HEAD_DIMENSION}} ?
           value_t(src_vec[index / width]) : value_t(0.0f);
+      if (center_key || correct_query) {
+        const uint mean_head = center_key ? head : head / (QUANTIZE_Q_HEADS / QUANTIZE_KV_HEADS);
+        const value_t mu = dim < {{HEAD_DIMENSION}} ?
+            mean_vec[((batch * QUANTIZE_KV_HEADS + mean_head) * {{HEAD_DIMENSION}} + dim) / width] : value_t(0.0f);
+        if (correct_query)
+          row_correction += dot(x, mu);
+        // Invalid rows must stay zero so padding cannot inflate the tile scale.
+        if (center_key && row < extent)
+          x -= mu;
+      }
       #pragma clang loop unroll(full)
       for (ushort h = 1; h < width; h <<= 1) {
         #pragma clang loop unroll(full)
@@ -612,6 +706,12 @@ inline void quantize_qk_tile(
         x = (lane_id & stride) ? peer - x : x + peer;
       }
       values[i * chunks + j] = x;
+    }
+    if (correct_query) {
+      row_correction = simd_sum(row_correction);
+      if (lane_id == 0 && row < extent)
+        correction[(batch * QUANTIZE_Q_HEADS + head) * correction_stride + start + row] =
+            row_correction * {{HADAMARD_CORRECTION_SCALE}};
     }
     #pragma clang loop unroll(full)
     for (ushort h = 1; h < block / (32 * width); h <<= 1) {
@@ -653,18 +753,23 @@ inline void quantize_qk_tile(
 }
 )";
   }
+  source.SetValue("QK_MEAN_BUFFER", qkHadamard ? "    device const float *mean [[buffer(3)]],\n" : "");
+  source.SetValue("QK_CORRECTION_BUFFER", qkMeanCorrection ? "    device float *correction [[buffer(4)]],\n" : "");
+  source.SetValue("QK_Q_MEAN_ARGS", qkHadamard ? (qkMeanCorrection ?
+      "mean, correction, QUANTIZE_Q_SEQUENCE, " : "mean, nullptr, 0, ") : "");
+  source.SetValue("QK_K_MEAN_ARGS", qkHadamard ? "mean, nullptr, 0, " : "");
   source += R"(
 kernel void quantize_q(
 {{RUNTIME_ARGUMENT}}    device const {{IO_MEMORY_NAME}} *src [[buffer(0)]],
     device int8_t *dst [[buffer(1)]],
     device float *scales [[buffer(2)]],
-    uint tid [[thread_index_in_threadgroup]],
+{{QK_MEAN_BUFFER}}{{QK_CORRECTION_BUFFER}}    uint tid [[thread_index_in_threadgroup]],
     ushort sgid [[simdgroup_index_in_threadgroup]],
     ushort lane_id [[thread_index_in_simdgroup]],
     uint3 tgid [[threadgroup_position_in_grid]]{{QUANTIZE_VARLEN_BUFFER}}
   ) {
 {{QUANTIZE_RUNTIME_CONSTANTS}}  threadgroup float scratch[QUANTIZE_Q_SIMDGROUPS];
-  quantize_qk_tile<{{QUANTIZE_Q_TEMPLATE_ARGS}}>(src, dst, scales, scratch, tid, sgid, lane_id, tgid,
+  quantize_qk_tile<{{QUANTIZE_Q_TEMPLATE_ARGS}}>(src, dst, scales, {{QK_Q_MEAN_ARGS}}scratch, tid, sgid, lane_id, tgid,
       {{QUANTIZE_Q_SEQUENCE_ARG}}QUANTIZE_Q_HEADS,
       QUANTIZE_Q_TILE_SIZE,
       QUANTIZE_Q_SCALE_TILES,
@@ -677,13 +782,13 @@ kernel void quantize_k(
 {{RUNTIME_ARGUMENT}}    device const {{IO_MEMORY_NAME}} *src [[buffer(0)]],
     device int8_t *dst [[buffer(1)]],
     device float *scales [[buffer(2)]],
-    uint tid [[thread_index_in_threadgroup]],
+{{QK_MEAN_BUFFER}}    uint tid [[thread_index_in_threadgroup]],
     ushort sgid [[simdgroup_index_in_threadgroup]],
     ushort lane_id [[thread_index_in_simdgroup]],
     uint3 tgid [[threadgroup_position_in_grid]]{{QUANTIZE_VARLEN_BUFFER}}
   ) {
 {{QUANTIZE_RUNTIME_CONSTANTS}}  threadgroup float scratch[QUANTIZE_KV_SIMDGROUPS];
-  quantize_qk_tile<{{QUANTIZE_K_TEMPLATE_ARGS}}>(src, dst, scales, scratch, tid, sgid, lane_id, tgid,
+  quantize_qk_tile<{{QUANTIZE_K_TEMPLATE_ARGS}}>(src, dst, scales, {{QK_K_MEAN_ARGS}}scratch, tid, sgid, lane_id, tgid,
       {{QUANTIZE_KV_SEQUENCE_ARG}}QUANTIZE_KV_HEADS,
       QUANTIZE_KV_TILE_SIZE,
       QUANTIZE_KV_SCALE_TILES,
@@ -750,12 +855,6 @@ inline uint ceil_log2_u32(uint x) {
   source.SetValue("V_SEQUENCE_LENGTH", isVarlen ? "sequence_length" : "QUANTIZE_KV_SEQUENCE");
   source.SetValue("V_SEQUENCE_DIVISOR", isVarlen ? "max(sequence_length, 1u)" : "QUANTIZE_KV_SEQUENCE");
   const std::string headDimensionString = std::to_string(headDimension);
-  source.SetValue("V_MEAN_SRC_INDEX_VEC", isVarlen ?
-      "((sequence_start + column) * QUANTIZE_KV_HEADS + head) * " + headDimensionString + " + vec_dim * 4" :
-      "batch * QUANTIZE_V_BATCH_STRIDE +\n        ((column * QUANTIZE_KV_HEADS + head) * " + headDimensionString + " + vec_dim * 4)");
-  source.SetValue("V_MEAN_SRC_INDEX", isVarlen ?
-      "((sequence_start + column) * QUANTIZE_KV_HEADS + head) * " + headDimensionString + " + dim" :
-      "batch * QUANTIZE_V_BATCH_STRIDE +\n        ((column * QUANTIZE_KV_HEADS + head) * " + headDimensionString + " + dim)");
   source.SetValue("V_QUANTIZE_EXTENT", isVarlen ?
       "const uint extent = start < sequence_length ? min(QUANTIZE_KV_TILE_SIZE, sequence_length - start) : 0;" :
       ((loadC && !hasCRemainder) ? "const uint extent = QUANTIZE_KV_TILE_SIZE;" : "const uint extent = min(QUANTIZE_KV_TILE_SIZE, QUANTIZE_KV_SEQUENCE - start);"));
@@ -1166,6 +1265,8 @@ std::string NAInt8AttentionKernel::createRuntimeConstants(bool quantize) const n
 
 std::string NAInt8AttentionKernel::createBufferBindings() const noexcept {
   CodeWriter source;
+  source.SetValue("QK_CORRECTION_BINDING", qkMeanCorrection ?
+      "    device const float *QK_correction_buf [[buffer(22)]]," : "");
   const GEMMOperandPrecision lPrecision =
       lowPrecisionIntermediates ?
       (ioPrecision == GEMMOperandPrecision::BF16 ? GEMMOperandPrecision::BF16 :
@@ -1195,6 +1296,7 @@ std::string NAInt8AttentionKernel::createBufferBindings() const noexcept {
     device float *K_scale_buf [[buffer(11)]],
     device float *V_scale_buf [[buffer(12)]],
     device const {{V_MEAN_MEMORY_NAME}} *V_mean_buf [[buffer(14)]],
+{{QK_CORRECTION_BINDING}}
 )";
     if (masked) {
       source += R"(
@@ -1263,6 +1365,8 @@ std::string NAInt8AttentionKernel::createAdjustOffsets() const noexcept {
   }
   switch (type.value) {
   case AttentionKernelType::forward:
+    if (qkMeanCorrection)
+      source += "  QK_correction_buf += (tgid.z * Hq + tgid.y) * R + tgid.x * {{BLOCK_DIMENSIONS_PARALLELIZATION}};\n";
     if (outputTileSize < headDimension) {
       source += R"(
   O_buf += output_channel_offset;
@@ -2176,9 +2280,20 @@ void NAInt8AttentionKernel::loopForward(CodeWriter& source) const noexcept {
       !(isCausal && !masked && loadR && loadC && !hasRRemainder);
   const unsigned short kBlocks =
       (outputTileSize + blockDimensions[2] - 1) / blockDimensions[2];
+  const std::string logsumexp = "cM[k] + fast::log2(cL[k])" +
+      std::string(qkMeanCorrection ? " + QK_correction_buf[idx[0]]" : "");
   source.SetValue("L_STORE", tileOutput ?
-      "if (output_tile == 0) { L[idx[0]] = cM[k] + fast::log2(cL[k]); }" :
-      "L[idx[0]] = cM[k] + fast::log2(cL[k]);");
+      "if (output_tile == 0) { L[idx[0]] = " + logsumexp + "; }" :
+      "L[idx[0]] = " + logsumexp + ";");
+  source.SetValue("SINK_MEAN_CORRECTION", qkMeanCorrection ?
+      " - (tgid.x * " + std::to_string(blockDimensions[0]) +
+      " + uint(cM.get_multidimensional_index(k)[0]) < " + std::string(isVarlen ? "R_seq" : "R") +
+      " ? QK_correction_buf[cM.get_multidimensional_index(k)[0]] : 0.0f)" : "");
+  // The sink contributes no V, so its probability must not restore V's mean.
+  source.SetValue("V_MEAN_WEIGHT", attentionSinks ?
+      " * max(0.0f, 1.0f - fast::exp2(sink_m" +
+      std::string(qkMeanCorrection ? " - QK_correction_buf[idx[1]]" : "") +
+      " - *cM.map_iterator(it)) * L_reciprocal)" : "");
   source.SetValue("OUTPUT_CHANNEL_OFFSET", tileOutput && headDimension % outputTileSize != 0 ? " + output_channel_offset" : "");
   source.SetValue("OUTPUT_HEAD_DIMENSION", tileOutput ?
       "min(" + std::to_string(outputTileSize) + "u, " + std::to_string(headDimension) + "u - output_channel_offset)" :
@@ -2233,7 +2348,7 @@ void NAInt8AttentionKernel::loopForward(CodeWriter& source) const noexcept {
   #pragma clang loop unroll(full)
   for (unsigned short k = 0; k < cM.get_capacity(); ++k) {
     if (cM.is_valid_element(k)) {
-      cM[k] = sink_m;
+      cM[k] = sink_m{{SINK_MEAN_CORRECTION}};
       cL[k] = 1;
     }
   }
@@ -2841,20 +2956,20 @@ void NAInt8AttentionKernel::loopForward(CodeWriter& source) const noexcept {
     if (((i < kBlocks - 1) || (outputTileSize % blockDimensions[2] == 0)) && headDimension % outputTileSize == 0) {
       if (masked || hasCausalEmptyRows) {
         source += R"(
-          const float output_{{LOOP_INDEX}} = valid_output_row ? cO_{{LOOP_INDEX}}[k] * L_reciprocal + (float)V_mean_buf[idx[0] + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}}] : 0.0f;
+          const float output_{{LOOP_INDEX}} = valid_output_row ? cO_{{LOOP_INDEX}}[k] * L_reciprocal + (float)V_mean_buf[idx[0] + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}}]{{V_MEAN_WEIGHT}} : 0.0f;
           O[idx[0] + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}} + idx[1] * K_Hq] = ({{IO_MEMORY_NAME}})output_{{LOOP_INDEX}};
 )";
       } else {
         source += R"(
           O[idx[0] + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}} + idx[1] * K_Hq] = ({{IO_MEMORY_NAME}})(cO_{{LOOP_INDEX}}[k] * L_reciprocal)";
-        source += " + (float)V_mean_buf[idx[0] + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}}]";
+        source += " + (float)V_mean_buf[idx[0] + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}}]{{V_MEAN_WEIGHT}}";
         source += ");\n";
       }
     } else {
       if (masked || hasCausalEmptyRows) {
         source += R"(
           if (idx[0] + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}} < {{OUTPUT_HEAD_DIMENSION}}) {
-            const float output_{{LOOP_INDEX}} = valid_output_row ? cO_{{LOOP_INDEX}}[k] * L_reciprocal + (float)V_mean_buf[idx[0] + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}}] : 0.0f;
+            const float output_{{LOOP_INDEX}} = valid_output_row ? cO_{{LOOP_INDEX}}[k] * L_reciprocal + (float)V_mean_buf[idx[0] + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}}]{{V_MEAN_WEIGHT}} : 0.0f;
             O[idx[0] + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}} + idx[1] * K_Hq] = ({{IO_MEMORY_NAME}})output_{{LOOP_INDEX}};
           }
 )";
@@ -2862,7 +2977,7 @@ void NAInt8AttentionKernel::loopForward(CodeWriter& source) const noexcept {
         source += R"(
           if (idx[0] + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}} < {{OUTPUT_HEAD_DIMENSION}}) {
             O[idx[0] + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}} + idx[1] * K_Hq] = ({{IO_MEMORY_NAME}})(cO_{{LOOP_INDEX}}[k] * L_reciprocal)";
-        source += " + (float)V_mean_buf[idx[0] + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}}]";
+        source += " + (float)V_mean_buf[idx[0] + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}}]{{V_MEAN_WEIGHT}}";
         source += ");\n";
         source += R"(
           }
@@ -2921,20 +3036,20 @@ void NAInt8AttentionKernel::loopForward(CodeWriter& source) const noexcept {
     if (((i < kBlocks - 1) || (outputTileSize % blockDimensions[2] == 0)) && headDimension % outputTileSize == 0) {
       if (masked || hasCausalEmptyRows) {
         source += R"(
-        const float output_{{LOOP_INDEX}} = valid_output_row ? cO_{{LOOP_INDEX}}[k] * L_reciprocal + (float)V_mean_buf[idx[0] + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}}] : 0.0f;
+        const float output_{{LOOP_INDEX}} = valid_output_row ? cO_{{LOOP_INDEX}}[k] * L_reciprocal + (float)V_mean_buf[idx[0] + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}}]{{V_MEAN_WEIGHT}} : 0.0f;
         O[idx[0] + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}} + idx[1] * K_Hq] = ({{IO_MEMORY_NAME}})output_{{LOOP_INDEX}};
 )";
       } else {
         source += R"(
         O[idx[0] + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}} + idx[1] * K_Hq] = ({{IO_MEMORY_NAME}})(cO_{{LOOP_INDEX}}[k] * L_reciprocal)";
-      source += " + (float)V_mean_buf[idx[0] + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}}]";
+      source += " + (float)V_mean_buf[idx[0] + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}}]{{V_MEAN_WEIGHT}}";
       source += ");\n";
       }
     } else {
       if (masked || hasCausalEmptyRows) {
         source += R"(
         if (idx[0] + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}} < {{OUTPUT_HEAD_DIMENSION}}) {
-          const float output_{{LOOP_INDEX}} = valid_output_row ? cO_{{LOOP_INDEX}}[k] * L_reciprocal + (float)V_mean_buf[idx[0] + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}}] : 0.0f;
+          const float output_{{LOOP_INDEX}} = valid_output_row ? cO_{{LOOP_INDEX}}[k] * L_reciprocal + (float)V_mean_buf[idx[0] + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}}]{{V_MEAN_WEIGHT}} : 0.0f;
           O[idx[0] + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}} + idx[1] * K_Hq] = ({{IO_MEMORY_NAME}})output_{{LOOP_INDEX}};
         }
 )";
@@ -2942,7 +3057,7 @@ void NAInt8AttentionKernel::loopForward(CodeWriter& source) const noexcept {
         source += R"(
         if (idx[0] + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}} < {{OUTPUT_HEAD_DIMENSION}}) {
           O[idx[0] + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}} + idx[1] * K_Hq] = ({{IO_MEMORY_NAME}})(cO_{{LOOP_INDEX}}[k] * L_reciprocal)";
-      source += " + (float)V_mean_buf[idx[0] + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}}]";
+      source += " + (float)V_mean_buf[idx[0] + {{LOOP_INDEX_BLOCK_DIMENSIONS_HEAD}}]{{V_MEAN_WEIGHT}}";
       source += ");\n";
       source += R"(
         }

@@ -26,6 +26,7 @@ bool NAInt8AttentionKernelDescriptor::operator==(const NAInt8AttentionKernelDesc
     hasCausalEmptyRows == rhs.hasCausalEmptyRows &&
     attentionSinks == rhs.attentionSinks &&
     qkHadamard == rhs.qkHadamard &&
+    qkMeanCorrection == rhs.qkMeanCorrection &&
     outputTileSize == rhs.outputTileSize &&
     mortonTraversal == rhs.mortonTraversal &&
     scale == rhs.scale;
@@ -57,6 +58,7 @@ std::size_t std::hash<NAInt8AttentionKernelDescriptor>::operator()(const NAInt8A
   seed = combine_32(seed, hash.isVarlen ? 1 : 0);
   seed = combine_32(seed, hash.attentionSinks ? 1 : 0);
   seed = combine_32(seed, hash.qkHadamard ? 1 : 0);
+  seed = combine_32(seed, hash.qkMeanCorrection ? 1 : 0);
   seed = combine_32(seed, hash.outputTileSize);
   seed = combine_32(seed, hash.mortonTraversal ? 1 : 0);
   seed = combine_32(seed, uint32_t(std::hash<float>{}(hash.scale)));
@@ -128,7 +130,8 @@ NAInt8AttentionKernelDescriptor::NAInt8AttentionKernelDescriptor(
     loadR(descriptor.loadR),
     loadC(descriptor.loadC),
     attentionSinks(descriptor.attentionSinks),
-    qkHadamard(descriptor.qkHadamard)
+    qkHadamard(descriptor.qkHadamard),
+    qkMeanCorrection(descriptor.qkMeanCorrection)
 {
   (void)dprops;
   const uint32_t D = descriptor.matrixDimensions[2];

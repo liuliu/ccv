@@ -10,6 +10,7 @@ TARGETS += attention_r1_bench attention_r1_thermal
 TARGETS += moe_routing_bench scaled_dot_product_arg_partition_candidates_bench
 TARGETS += na_int8_convrot_bench na_int8_sol_attention_bench na_int8_matmul_forward_bench na_int8_wide_offsets_bench na_int8_attention_forward_bench
 TARGETS += na_int8_attention_hadamard_bench
+TARGETS += na_int8_attention_kcenter_replay
 ANE_LDFLAGS := $(LDFLAGS) -framework IOSurface -ldl
 ANE_ROWWISE_LDFLAGS := $(LDFLAGS) -framework Foundation -framework CoreML -framework CoreVideo -framework IOSurface -framework MetalPerformanceShaders
 
@@ -179,6 +180,8 @@ na_int8_rowwise_x_bench: na_int8_rowwise_x_bench.o libccv.a
 	$(CC) -o $@ na_int8_rowwise_x_bench.o ../../lib/libccv.a $(LDFLAGS)
 libccv.a:
 	${MAKE} -C ../../lib
+na_int8_attention_kcenter_replay: na_int8_attention_kcenter_replay.cpp libccv.a
+	$(CC) $(CFLAGS) -O2 $< ../../lib/libccv.a -o $@ $(MPSGRAPH_LDFLAGS)
 ane_fp16_matmul_harness: ane_fp16_matmul_harness.o
 	$(CC) -o $@ $^ $(ANE_LDFLAGS)
 ane_int8_matmul_probe: ane_int8_matmul_probe.o

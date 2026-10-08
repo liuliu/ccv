@@ -1,5 +1,6 @@
 // Paired timings using production descriptors/pipelines. Hadamard is opt-in and
 // forward-only. Includes CPU quantizer and sampled original-basis SDPA checks.
+#include <CommonCrypto/CommonDigest.h>
 #include <algorithm>
 #include <array>
 #include <cerrno>
@@ -33,12 +34,12 @@ int na_int8_tuning_run(int argc, char** argv)
 int main(int argc, char** argv)
 #endif
 {
-  if (argc < 9 || argc > 12) {
-    fprintf(stderr, "Usage: %s R C B Hq Hk precision causal dynamic_flags [distribution=0] [varlen=0] [D=128]\n"
-        "precision: 0=FP16 1=BF16 2=FP32; distribution: 0=normal 1=channel-outliers 2=uniform 3=zeros\n", argv[0]);
+  if (argc < 9 || argc > 15) {
+    fprintf(stderr, "Usage: %s R C B Hq Hk precision causal dynamic_flags [distribution=0] [varlen=0] [D=128] [quant_only=0] [samples=20] [center_pair=0]\n"
+        "precision: 0=FP16 1=BF16 2=FP32; distribution: 0=normal 1=channel-outliers 2=uniform 3=zeros 4=dispatcher-bench\n", argv[0]);
     return 2;
   }
-  std::array<uint32_t, 11> arguments{};
+  std::array<uint32_t, 14> arguments{};
   for (int i = 1; i < argc; ++i) {
     char* end = nullptr;
     errno = 0;
@@ -52,12 +53,13 @@ int main(int argc, char** argv)
   const uint32_t distribution = arguments[8];
   const bool varlen = arguments[9];
   const uint32_t D = argc > 11 ? arguments[10] : 128;
-  const char* quant_only_arg = getenv("CCV_NA_QUANT_ONLY");
-  if (quant_only_arg && strcmp(quant_only_arg, "0") && strcmp(quant_only_arg, "1")) return 2;
-  const bool quant_only = quant_only_arg && !strcmp(quant_only_arg, "1");
+  const bool quant_only = arguments[11];
+  const int samples = argc > 13 ? arguments[12] : 20;
+  const bool center_pair = arguments[13];
   if (!R || !C || !B || !Hq || !Hk || Hq % Hk || precision > 2 || causal > 1 ||
-      (dynamic & ~3u) || distribution > 3 || arguments[9] > 1 || B > 65535 ||
-      Hq > 65535 || R > 1048576 || C > 1048576 || D < 8 || D > 256 || D % 8) return 2;
+      (dynamic & ~3u) || distribution > 4 || arguments[9] > 1 || B > 65535 ||
+      Hq > 65535 || R > 1048576 || C > 1048576 || D < 8 || D > 256 || D % 8 ||
+      arguments[11] > 1 || arguments[13] > 1 || samples < 1 || samples > 10000) return 2;
   const uint32_t hadamard_block = std::min<uint32_t>(D & -D, 256);
   const size_t q_count = size_t(B) * R * Hq * D, kv_count = size_t(B) * C * Hk * D;
   // Precision conversion helpers take int counts; shader indices are uint.
@@ -87,6 +89,13 @@ int main(int argc, char** argv)
     data[operand].resize(counts[operand]);
     for (size_t i = 0; i < counts[operand]; ++i) {
       float x = distribution == 3 ? 0 : (distribution == 2 ? uniform(random) : normal(random));
+      if (distribution == 4) {
+        uint32_t value = uint32_t(i) * 747796405u + uint32_t(operand + 1) * 2891336453u;
+        value = ((value >> ((value >> 28) + 4)) ^ value) * 277803737u;
+        value = (value >> 22) ^ value;
+        x = float(int(value % 2047) - 1023) / 1024;
+        if (operand == 2) x = x * 0.3f + float((i / D) % Hk) * 0.01f;
+      }
       if (distribution == 1 && operand < 2 && i % D == 7) x *= 10;
       data[operand][i] = x;
     }
@@ -123,16 +132,16 @@ int main(int argc, char** argv)
   descriptor.batchStrides[AttentionOperand::V] = B > 1 ? C * Hk * D : 0;
   descriptor.batchStrides[AttentionOperand::O] = B > 1 ? R * Hq * D : 0;
   std::array<PipelineValue<NAInt8AttentionKernel>*, 2> pipelines;
-  std::array<std::array<NS::SharedPtr<MTL::Buffer>, 8>, 2> scratch;
+  std::array<std::array<NS::SharedPtr<MTL::Buffer>, 10>, 2> scratch;
   const size_t bytes[] = {q_count, kv_count, kv_count, size_t(B) * Hq * q_tiles * 4,
       size_t(B) * Hk * k_tiles * 4, size_t(B) * Hk * k_tiles * 4,
-      size_t(B) * Hk * D * 4, q_count * element_size};
+      size_t(B) * Hk * D * 4, q_count * element_size, size_t(B) * Hk * D * 4};
   std::array<NS::SharedPtr<MTL::Buffer>, 2> l;
   for (int variant = 0; variant < 2; ++variant) {
     descriptor.qkHadamard = variant;
     pipelines[variant] = context->kernel_cache.findKernel<NAInt8AttentionKernel, NAInt8AttentionDescriptor,
         NAInt8AttentionKernelDescriptor>(descriptor, device.get(), context->device_properties);
-    for (int i = 0; i < 8; ++i) {
+    for (int i = 0; i < 9; ++i) {
       scratch[variant][i] = NS::TransferPtr(device->newBuffer(bytes[i], MTL::ResourceStorageModeShared));
       if (!scratch[variant][i]) return 2;
       memset(scratch[variant][i]->contents(), 0, bytes[i]);
@@ -142,6 +151,43 @@ int main(int argc, char** argv)
     printf("resources variant=%d q_tg_bytes=%lu k_tg_bytes=%lu q_threads=%lu k_threads=%lu\n", variant,
         pipelines[variant]->second->staticThreadgroupMemoryLength(), pipelines[variant]->third->staticThreadgroupMemoryLength(),
         pipelines[variant]->second->maxTotalThreadsPerThreadgroup(), pipelines[variant]->third->maxTotalThreadsPerThreadgroup());
+  }
+  // Per-chunk mean sums for long sequences. Timed pairs share scratch, so both
+  // variants get the larger (two-operand Hadamard) requirement.
+  const size_t partial_bytes = std::max<size_t>({16, pipelines[0]->kernel->vMeanPartialBytes(B, C),
+      pipelines[1]->kernel->vMeanPartialBytes(B, C)});
+  for (int variant = 0; variant < 2; ++variant) {
+    scratch[variant][9] = NS::TransferPtr(device->newBuffer(partial_bytes, MTL::ResourceStorageModeShared));
+    if (!scratch[variant][9]) return 2;
+  }
+  PipelineValue<NAInt8AttentionKernel> uncentered;
+  if (center_pair) {
+    // Rebuild only the old K specialization; Q, V, mean-V, and attention are unchanged.
+    std::string source = pipelines[1]->kernel->source;
+    const std::string centered = ", true, false>";
+    const size_t position = source.find(centered, source.find("kernel void quantize_k("));
+    if (position == std::string::npos) return 4;
+    source.replace(position, centered.size(), ", false, false>");
+    auto options = NS::TransferPtr(MTL::CompileOptions::alloc()->init());
+    options->setLanguageVersion(MTL::LanguageVersion(0x40000));
+    NS::Error* error = nullptr;
+    auto library = NS::TransferPtr(device->newLibrary(NS::String::string(source.c_str(), NS::UTF8StringEncoding), options.get(), &error));
+    if (!library) { fprintf(stderr, "%s\n", error->localizedDescription()->utf8String()); return 3; }
+    auto constants = NS::TransferPtr(MTL::FunctionConstantValues::alloc()->init());
+    const uint32_t values[] = {R, C, Hq, Hk, 16, 64, q_tiles, k_tiles,
+        B > 1 ? R * Hq * D : 0, B > 1 ? C * Hk * D : 0, B > 1 ? C * Hk * D : 0,
+        B > 1 ? Hq * q_tiles : 0, B > 1 ? Hk * k_tiles : 0};
+    for (int i = 0; i < 13; ++i) {
+      if ((i == 0 && (dynamic & 1)) || (i == 1 && (dynamic & 2)) || (i >= 6 && dynamic)) continue;
+      constants->setConstantValue(values + i, MTL::DataTypeUInt, NS::UInteger(900 + i));
+    }
+    auto function = NS::TransferPtr(library->newFunction(NS::String::string("quantize_k", NS::UTF8StringEncoding), constants.get(), &error));
+    if (!function) { fprintf(stderr, "%s\n", error->localizedDescription()->utf8String()); return 3; }
+    uncentered = *pipelines[0];
+    uncentered.second = pipelines[1]->second;
+    uncentered.third = NS::TransferPtr(device->newComputePipelineState(function.get(), &error));
+    if (!uncentered.third) { fprintf(stderr, "%s\n", error->localizedDescription()->utf8String()); return 3; }
+    pipelines[0] = &uncentered;
   }
   const auto& baseline_source = pipelines[0]->kernel->source;
   const auto& hadamard_source = pipelines[1]->kernel->source;
@@ -159,9 +205,10 @@ int main(int argc, char** argv)
     auto iteration_pool = NS::TransferPtr(NS::AutoreleasePool::alloc()->init());
     auto cb = queue->commandBuffer();
     auto p = pipelines[variant]; auto& buffers = scratch[variant];
+    // Production CommandBatch keeps all dispatches in one serial compute encoder.
+    auto encoder = cb->computeCommandEncoder();
     auto dispatch = [&](MTL::ComputePipelineState* pipeline, MTL::Size grid, MTL::Size threads,
                         const std::vector<std::pair<int, MTL::Buffer*>>& bindings, size_t tg_bytes = 0) {
-      auto encoder = cb->computeCommandEncoder();
       encoder->setComputePipelineState(pipeline);
       if (dynamic) encoder->setBytes(dimensions, sizeof(dimensions), 21);
       if (varlen) {
@@ -171,16 +218,23 @@ int main(int argc, char** argv)
       for (const auto& binding : bindings) encoder->setBuffer(binding.second, 0, binding.first);
       if (tg_bytes) encoder->setThreadgroupMemoryLength(tg_bytes, 0);
       encoder->dispatchThreadgroups(grid, threads);
-      encoder->endEncoding();
+    };
+    // The production helper chooses the mean grid and adds its finalize pass.
+    auto encode_mean = [&](const std::vector<std::pair<int, MTL::Buffer*>>& bindings) {
+      if (dynamic) encoder->setBytes(dimensions, sizeof(dimensions), 21);
+      for (const auto& binding : bindings) encoder->setBuffer(binding.second, 0, binding.first);
+      p->kernel->encodeVMean(encoder, p->fifth.get(), p->seventh.get(), buffers[9].get(), 0, B, C);
     };
     for (int repeat = 0; repeat < repeats; ++repeat) {
       dispatch(p->second.get(), MTL::Size(q_tiles, Hq, B), MTL::Size(128, 1, 1),
-          {{0, inputs[0].get()}, {1, buffers[0].get()}, {2, buffers[3].get()}});
+          {{0, inputs[0].get()}, {1, buffers[0].get()}, {2, buffers[3].get()}, {3, buffers[8].get()}});
+      if (variant)
+        encode_mean({{0, inputs[2].get()}, {1, buffers[6].get()}, {2, inputs[1].get()}, {3, buffers[8].get()}, {17, seq_buffers[1].get()}});
       dispatch(p->third.get(), MTL::Size(k_tiles, Hk, B), MTL::Size(256, 1, 1),
-          {{0, inputs[1].get()}, {1, buffers[1].get()}, {2, buffers[4].get()}, {17, seq_buffers[1].get()}});
+          {{0, inputs[1].get()}, {1, buffers[1].get()}, {2, buffers[4].get()}, {3, buffers[8].get()}, {17, seq_buffers[1].get()}});
       if (full) {
-        dispatch(pipelines[0]->fifth.get(), p->kernel->vMeanThreadgroupsPerGrid(B),
-            MTL::Size(p->kernel->vMeanThreadgroupSize(), 1, 1), {{0, inputs[2].get()}, {1, buffers[6].get()}, {17, seq_buffers[1].get()}});
+        if (!variant)
+          encode_mean({{0, inputs[2].get()}, {1, buffers[6].get()}, {17, seq_buffers[1].get()}});
         dispatch(pipelines[0]->fourth.get(), MTL::Size(k_tiles, Hk, B), MTL::Size(256, 1, 1),
             {{0, inputs[2].get()}, {1, buffers[2].get()}, {2, buffers[5].get()}, {3, buffers[6].get()}, {17, seq_buffers[1].get()}});
         dispatch(pipelines[0]->pipeline.get(), p->kernel->threadgroupsPerGrid(B, R),
@@ -190,6 +244,7 @@ int main(int argc, char** argv)
              {12, buffers[5].get()}, {14, buffers[6].get()}}, p->kernel->threadgroupMemoryAllocation());
       }
     }
+    encoder->endEncoding();
     cb->commit(); cb->waitUntilCompleted();
     if (cb->status() != MTL::CommandBufferStatusCompleted) {
       fprintf(stderr, "GPU failed: %s\n", cb->error() ? cb->error()->localizedDescription()->utf8String() : "unknown");
@@ -213,8 +268,11 @@ int main(int argc, char** argv)
         std::vector<float> transformed(size_t(extent) * D); float maximum = 0;
         for (uint32_t row = 0; row < extent; ++row) {
           memcpy(transformed.data() + row * D, data[operand].data() + input_offset + ((start + row) * heads + head) * D, D * sizeof(float));
+          if (variant && operand)
+            for (uint32_t dim = 0; dim < D; ++dim)
+              transformed[row * D + dim] -= static_cast<const float*>(scratch[variant][8]->contents())[(batch * Hk + head) * D + dim];
         }
-        if (variant && extent) {
+        if ((variant || center_pair) && extent) {
 #ifdef CCV_NA_HADAMARD_EMBEDDED
           for (size_t block = 0; block < transformed.size(); block += hadamard_block)
             _ccv_nnc_walsh_hadamard_transform_row(transformed.data() + block, hadamard_block);
@@ -225,7 +283,7 @@ int main(int argc, char** argv)
 #endif
         }
         for (float x : transformed) maximum = std::max(maximum, std::abs(x));
-        const float normalization = variant ? 1.0f / std::sqrt(float(hadamard_block)) : 1;
+        const float normalization = variant || center_pair ? 1.0f / std::sqrt(float(hadamard_block)) : 1;
         const float scale = maximum > 0 ? maximum / 127 * normalization : 1.0f / 127;
         const float gpu_scale = scales[(batch * heads + head) * tiles + tile];
         max_scale_diff = std::max(max_scale_diff, double(std::abs(gpu_scale - scale) / scale));
@@ -246,6 +304,21 @@ int main(int argc, char** argv)
       const uint32_t bits = uint32_t(static_cast<uint16_t*>(output)[index]) << 16;
       float value; memcpy(&value, &bits, 4); return value;
     };
+    if (center_pair && distribution == 4) {
+      CC_SHA256_CTX hash;
+      CC_SHA256_Init(&hash);
+      std::vector<float> block(1 << 18);
+      for (size_t offset = 0; offset < q_count; offset += block.size()) {
+        const size_t count = std::min(block.size(), q_count - offset);
+        for (size_t i = 0; i < count; ++i) block[i] = read_output(offset + i);
+        CC_SHA256_Update(&hash, block.data(), CC_LONG(count * sizeof(float)));
+      }
+      unsigned char digest[CC_SHA256_DIGEST_LENGTH];
+      CC_SHA256_Final(digest, &hash);
+      printf("output_sha256 variant=%d value=", variant);
+      for (auto byte : digest) printf("%02x", byte);
+      printf("\n");
+    }
     for (uint32_t batch = 0; batch < B; ++batch) for (uint32_t head : {0u, Hq - 1}) {
       const uint32_t rows = varlen ? seq[0][batch + 1] - seq[0][batch] : R;
       const uint32_t cols = varlen ? seq[1][batch + 1] - seq[1][batch] : C;
@@ -276,18 +349,11 @@ int main(int argc, char** argv)
     printf("attention_check variant=%d sampled_rel_l2=%.9g max_abs=%.9g\n", variant,
         std::sqrt(squared_error / std::max(norm, 1e-30)), maximum_error);
   }
-  int samples = 20;
-  if (const char* value = getenv("CCV_NA_SAMPLES")) {
-    char* end = nullptr;
-    errno = 0;
-    const long parsed = std::strtol(value, &end, 10);
-    if (end == value || *end || errno || parsed < 1 || parsed > 10000) return 2;
-    samples = int(parsed);
-  }
   printf("case device=%s R=%u C=%u D=%u B=%u Hq=%u Hk=%u precision=%u causal=%u dynamic=%u distribution=%u varlen=%d quant_only=%d hadamard_block=%u\n",
       device->name()->utf8String(), R, C, D, B, Hq, Hk, precision, causal, dynamic, distribution, varlen, quant_only, hadamard_block);
-  // Both variants now use identical addresses and the same V/attention pipelines.
-  // Only Q/K quantization changes in timed pairs; correctness above kept outputs separate.
+  printf("center_pair=%d\n", center_pair);
+  // Timed pairs reuse addresses; correctness above kept outputs separate.
+  // Hadamard also centers K in the combined K/V mean reduction.
   scratch[1] = scratch[0];
   l[1] = l[0];
   for (int full = 0; full < (quant_only ? 1 : 2); ++full) {

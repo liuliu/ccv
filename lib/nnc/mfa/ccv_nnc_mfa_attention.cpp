@@ -218,6 +218,7 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
       attentionDesc.isVarlen = hash.is_varlen;
       attentionDesc.attentionSinks = hash.attention_sinks;
       attentionDesc.qkHadamard = hash.use_hadamard;
+      attentionDesc.qkMeanCorrection = hash.use_hadamard && (hash.attention_sinks || tensors[5]);
       if (hash.masked && batch_sizes[1] > 1) {
         attentionDesc.maskBatchStride = hash.R * hash.C;
       }
@@ -240,6 +241,7 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
       auto quantizeKPipeline = pipelineValue->third;
       auto quantizeVPipeline = pipelineValue->fourth;
       auto computeVMeanPipeline = pipelineValue->fifth;
+      auto finalizeVMeanPipeline = pipelineValue->seventh;
       auto blockMaskPipeline = pipelineValue->sixth;
       auto align_up =
       [&](size_t value) -> size_t {
@@ -283,6 +285,11 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
       const size_t kScaleOffset = reserve(&scratchSize, kScaleBytes);
       const size_t vScaleOffset = reserve(&scratchSize, vScaleBytes);
       const size_t vMeanOffset = reserve(&scratchSize, vMeanBytes);
+      const size_t kMeanOffset = hash.use_hadamard ? reserve(&scratchSize, vMeanBytes) : 0;
+      const size_t vMeanPartialBytes = kernel->vMeanPartialBytes(batchDimension, hash.C);
+      const size_t vMeanPartialOffset = vMeanPartialBytes ? reserve(&scratchSize, vMeanPartialBytes) : 0;
+      const size_t qkCorrectionOffset = attentionDesc.qkMeanCorrection ?
+          reserve(&scratchSize, (size_t)batchDimension * hash.Hq * hash.R * sizeof(float)) : 0;
       const size_t blockMaskOffset = hash.masked ? reserve(&scratchSize, blockMaskBytes) : 0;
       const bool needsScratchL = !tensors[5];
       const size_t lOffset = needsScratchL ? reserve(&scratchSize, lBytes) : 0;
@@ -315,6 +322,11 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
         encoder->setBuffer(source, sourceOffset, 0);
         encoder->setBuffer(scratch, int8Offset, 1);
         encoder->setBuffer(scratch, scaleOffset, 2);
+        if (hash.use_hadamard) {
+          encoder->setBuffer(scratch, kMeanOffset, 3);
+          if (attentionDesc.qkMeanCorrection && quantizePipeline.get() == quantizeQPipeline.get())
+            encoder->setBuffer(scratch, qkCorrectionOffset, 4);
+        }
         if (hash.is_varlen) {
           encoder->setBuffer(seqOffsets, seqOffsetsOffset, 17);
         }
@@ -322,11 +334,8 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
         command_batch->finishCommand(encoder);
       };
 
-      encodeQuantize(quantizeQPipeline, NAInt8AttentionKernel::qQuantizeThreads, tensors[0], tensor_offsets[0], qInt8Offset, qScaleOffset, qTiles, hash.Hq, tensors[6], tensor_offsets[6]);
-      encodeQuantize(quantizeKPipeline, NAInt8AttentionKernel::kvQuantizeThreads, tensors[1], tensor_offsets[1], kInt8Offset, kScaleOffset, kTiles, hash.Hk, tensors[7], tensor_offsets[7]);
-      {
+      const auto encodeMean = [&]() {
         auto encoder = command_batch->startCommand();
-        encoder->setComputePipelineState(computeVMeanPipeline.get());
         if (attentionDesc.loadR || attentionDesc.loadC)
           encoder->setBytes(dimensions, sizeof(dimensions), 21);
         encoder->useResource(tensors[2], MTL::ResourceUsageRead);
@@ -336,14 +345,27 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
         }
         encoder->setBuffer(tensors[2], tensor_offsets[2], 0);
         encoder->setBuffer(scratch, vMeanOffset, 1);
+        if (hash.use_hadamard) {
+          encoder->useResource(tensors[1], MTL::ResourceUsageRead);
+          encoder->setBuffer(tensors[1], tensor_offsets[1], 2);
+          encoder->setBuffer(scratch, kMeanOffset, 3);
+        }
         if (hash.is_varlen) {
           encoder->setBuffer(tensors[7], tensor_offsets[7], 17);
         }
-        encoder->dispatchThreadgroups(
-            kernel->vMeanThreadgroupsPerGrid(batchDimension),
-            MTL::Size(kernel->vMeanThreadgroupSize(), 1, 1));
+        kernel->encodeVMean(encoder, computeVMeanPipeline.get(), finalizeVMeanPipeline.get(),
+            scratch, vMeanPartialOffset, batchDimension, hash.C);
         command_batch->finishCommand(encoder);
-      }
+      };
+      // Q needs K's mean only for sinks or saved LSE; otherwise keep its read first.
+      if (attentionDesc.qkMeanCorrection)
+        encodeMean();
+      encodeQuantize(quantizeQPipeline, NAInt8AttentionKernel::qQuantizeThreads, tensors[0], tensor_offsets[0], qInt8Offset, qScaleOffset, qTiles, hash.Hq, tensors[6], tensor_offsets[6]);
+      if (hash.use_hadamard && !attentionDesc.qkMeanCorrection)
+        encodeMean();
+      encodeQuantize(quantizeKPipeline, NAInt8AttentionKernel::kvQuantizeThreads, tensors[1], tensor_offsets[1], kInt8Offset, kScaleOffset, kTiles, hash.Hk, tensors[7], tensor_offsets[7]);
+      if (!hash.use_hadamard)
+        encodeMean();
       {
         auto encoder = command_batch->startCommand();
         encoder->setComputePipelineState(quantizeVPipeline.get());
@@ -395,6 +417,8 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
       encoder->setBuffer(scratch, kScaleOffset, 11);
       encoder->setBuffer(scratch, vScaleOffset, 12);
       encoder->setBuffer(scratch, vMeanOffset, 14);
+      if (attentionDesc.qkMeanCorrection)
+        encoder->setBuffer(scratch, qkCorrectionOffset, 22);
       if (hash.masked) {
         encoder->useResource(tensors[4], MTL::ResourceUsageRead);
         encoder->setBuffer(tensors[4], tensor_offsets[4], 15);
@@ -885,6 +909,7 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
         auto quantizeKPipeline = forwardPipelineValue->third;
         auto quantizeVPipeline = forwardPipelineValue->fourth;
         auto computeVMeanPipeline = forwardPipelineValue->fifth;
+        auto finalizeVMeanPipeline = forwardPipelineValue->seventh;
         auto backwardQueryKernel = backwardQueryPipelineValue->kernel;
         auto backwardQueryPipeline = backwardQueryPipelineValue->pipeline;
         auto computeDPipeline = backwardQueryPipelineValue->second;
@@ -933,6 +958,8 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
         const size_t vScaleOffset = reserve(&scratchSize, vScaleBytes);
         const size_t dOScaleOffset = reserve(&scratchSize, dOScaleBytes);
         const size_t vMeanOffset = reserve(&scratchSize, vMeanBytes);
+        const size_t vMeanPartialBytes = forwardKernel->vMeanPartialBytes(batchDimension, hash.C);
+        const size_t vMeanPartialOffset = vMeanPartialBytes ? reserve(&scratchSize, vMeanPartialBytes) : 0;
         const size_t dOffset = reserve(&scratchSize, dBytes);
         auto scratch = context->request_scratch(scratchSize);
 
@@ -953,14 +980,12 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
         encodeQuantize(quantizeKPipeline, NAInt8AttentionKernel::kvQuantizeThreads, tensors[1], tensor_offsets[1], kInt8Offset, kScaleOffset, kTiles, hash.Hk);
         {
           auto encoder = command_batch->startCommand();
-          encoder->setComputePipelineState(computeVMeanPipeline.get());
           encoder->useResource(tensors[2], MTL::ResourceUsageRead);
           encoder->useResource(scratch, MTL::ResourceUsageRead | MTL::ResourceUsageWrite);
           encoder->setBuffer(tensors[2], tensor_offsets[2], 0);
           encoder->setBuffer(scratch, vMeanOffset, 1);
-          encoder->dispatchThreadgroups(
-              forwardKernel->vMeanThreadgroupsPerGrid(batchDimension),
-              MTL::Size(forwardKernel->vMeanThreadgroupSize(), 1, 1));
+          forwardKernel->encodeVMean(encoder, computeVMeanPipeline.get(), finalizeVMeanPipeline.get(),
+              scratch, vMeanPartialOffset, batchDimension, hash.C);
           command_batch->finishCommand(encoder);
         }
         {

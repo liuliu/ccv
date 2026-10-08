@@ -1,13 +1,17 @@
 // Compare the production V-mean pipeline with the previous single-pass reduction.
+// Both means are checked against an FP64 CPU mean; summation orders differ, so
+// the outputs are not expected to be byte-identical.
 // Usage: na_int8_v_mean_bench [T=32768] [H=56] [N=1] [rounds=20] [D=128] [precision=16F] [full=0] [R=T]
 // Precision: 16F, 16BF, or 32F. BF16 and FP32 use FP32 intermediates.
 // Build from repo root (after building libccv.a):
-// clang++ -std=c++17 -O3 -fblocks -Ilib bin/mfa/na_int8_v_mean_bench.cpp lib/libccv.a -framework Accelerate -framework Metal -framework Foundation -framework QuartzCore -framework MetalPerformanceShaders -framework MetalPerformanceShadersGraph -framework CoreML -framework CoreVideo -framework IOSurface -o /tmp/na_int8_v_mean_bench
+// clang++ -std=c++17 -O3 -fblocks -Ilib bin/mfa/na_int8_v_mean_bench.cpp lib/libccv.a -framework Accelerate -framework Metal -framework Foundation -framework QuartzCore -framework MetalPerformanceShaders -framework MetalPerformanceShadersGraph -framework CoreML -framework CoreVideo -framework IOSurface -framework IOKit -o /tmp/na_int8_v_mean_bench
 #include "nnc/mfa/ccv_nnc_mfa.hpp"
 #include "nnc/mfa/kernels/NAInt8AttentionDescriptor.hpp"
 #include "nnc/mfa/kernels/NAInt8AttentionKernel.hpp"
 #include <algorithm>
 #include <array>
+#include <chrono>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -208,7 +212,8 @@ int main(int argc, char** argv)
   auto input = NS::TransferPtr(device->newBuffer(count * (precision == "32F" ? sizeof(float) : sizeof(uint16_t)), MTL::ResourceStorageModeShared));
   std::array<NS::SharedPtr<MTL::Buffer>, 2> outputs;
   for (auto& output : outputs) output = NS::TransferPtr(device->newBuffer(meanBytes, MTL::ResourceStorageModeShared));
-  if (!input || !outputs[0] || !outputs[1]) return 2;
+  auto partials = NS::TransferPtr(device->newBuffer(std::max<size_t>(16, kernel->vMeanPartialBytes(N, T)), MTL::ResourceStorageModePrivate));
+  if (!input || !outputs[0] || !outputs[1] || !partials) return 2;
   std::mt19937 rng(42);
   std::uniform_real_distribution<float> random(-3, 3);
   for (size_t i = 0; i < count; ++i) {
@@ -254,7 +259,11 @@ int main(int argc, char** argv)
   printf("device=%s shape=[%u,%u,%u,%u] precision=%s full=%d R=%u rounds=%d production_threads=%u production_tg_bytes=%zu device_tg_cap=%zu\n", device->name()->utf8String(), N, T, H, D, precision.c_str(), full, R, rounds, kernel->vMeanThreadgroupSize(), size_t(value->fifth->staticThreadgroupMemoryLength()), size_t(device->maxThreadgroupMemoryLength()));
   std::array<std::vector<double>, 2> times;
   std::vector<double> ratios;
-  for (int round = -4; round < rounds; ++round) {
+  // A fixed number of short warmup rounds can leave the GPU at low clocks.
+  // Warm up for at least four rounds and half a second of wall time.
+  const auto warmupStart = std::chrono::steady_clock::now();
+  int warmups = 0;
+  for (int round = -1; round < rounds;) {
     double elapsed[2];
     for (int step = 0; step < 2; ++step) {
       const int variant = (round % 2 == 0) ? step : 1 - step;
@@ -273,10 +282,14 @@ int main(int argc, char** argv)
         }
       }
       auto encoder = batch->startCommand();
-      encoder->setComputePipelineState(variant ? value->fifth.get() : baseline.get());
       encoder->setBuffer(input.get(), 0, 0);
       encoder->setBuffer(outputs[variant].get(), 0, 1);
-      encoder->dispatchThreadgroups(variant ? kernel->vMeanThreadgroupsPerGrid(N) : MTL::Size(vectorsPadded * headsPadded, 1, N), MTL::Size(variant ? kernel->vMeanThreadgroupSize() : kernel->vMeanThreads, 1, 1));
+      if (variant) {
+        kernel->encodeVMean(encoder, value->fifth.get(), value->seventh.get(), partials.get(), 0, N, T);
+      } else {
+        encoder->setComputePipelineState(baseline.get());
+        encoder->dispatchThreadgroups(MTL::Size(vectorsPadded * headsPadded, 1, N), MTL::Size(kernel->vMeanThreads, 1, 1));
+      }
       batch->finishCommand(encoder);
       if (full) {
         encoder = batch->startCommand();
@@ -307,11 +320,56 @@ int main(int argc, char** argv)
       if (round >= 0) times[variant].push_back(elapsed[variant]);
     }
     if (round >= 0) ratios.push_back(elapsed[0] / elapsed[1]);
-    printf("%s=%d old_ms=%.5f production_ms=%.5f speedup=%.5f\n", round < 0 ? "warmup" : "round", round < 0 ? round + 4 : round, elapsed[0], elapsed[1], elapsed[0] / elapsed[1]);
+    printf("%s=%d old_ms=%.5f production_ms=%.5f speedup=%.5f\n", round < 0 ? "warmup" : "round", round < 0 ? warmups : round, elapsed[0], elapsed[1], elapsed[0] / elapsed[1]);
+    if (round >= 0)
+      ++round;
+    else if (++warmups >= 4 && std::chrono::steady_clock::now() - warmupStart >= std::chrono::milliseconds(500))
+      round = 0;
   }
-  const bool equal = memcmp(outputs[0]->contents(), outputs[1]->contents(), meanBytes) == 0 &&
-      (!full || memcmp(attentionOutputs[0]->contents(), attentionOutputs[1]->contents(), qCount * elementBytes) == 0);
-  printf("RESULT old_ms=%.5f production_ms=%.5f paired_speedup=%.5f byte_equal=%d\n", median(times[0]), median(times[1]), median(ratios), equal);
+  // FP64 reference over the same rounded inputs; neither GPU order is exact.
+  auto element = [&](size_t i) -> double {
+    if (precision == "32F") return static_cast<const float*>(input->contents())[i];
+    if (precision == "16F") return double(static_cast<const _Float16*>(input->contents())[i]);
+    const uint32_t bits = uint32_t(static_cast<const uint16_t*>(input->contents())[i]) << 16;
+    float f; memcpy(&f, &bits, sizeof(f)); return f;
+  };
+  std::vector<double> expected(size_t(N) * H * D, 0.0);
+  for (uint32_t n = 0; n < N; ++n)
+    for (uint32_t t = 0; t < T; ++t)
+      for (uint32_t c = 0; c < H * D; ++c)
+        expected[size_t(n) * H * D + c] += element((size_t(n) * T + t) * H * D + c);
+  // std::max drops NaN, so every compared value is also checked for finiteness.
+  bool finite = true;
+  std::array<double, 2> max_error = {0, 0};
+  for (int variant = 0; variant < 2; ++variant)
+    for (size_t i = 0; i < expected.size(); ++i) {
+      const double mean = static_cast<const float*>(outputs[variant]->contents())[i];
+      finite = finite && std::isfinite(mean);
+      max_error[variant] = std::max(max_error[variant], std::abs(mean - expected[i] / T));
+    }
+  // The production mean must be at least as accurate as the old order, within float rounding.
+  const bool accurate = finite && max_error[1] <= std::max(2 * max_error[0], 1e-6);
+  // Only the mean's summation order differs between full-mode variants. It can
+  // move V's int8 rounding by one step, a few output ulps (measured <= 2.5e-4 in FP16).
+  const double output_tolerance = 2e-3;
+  double output_diff = 0;
+  bool outputs_match = true;
+  if (full)
+    for (size_t i = 0; i < qCount; ++i) {
+      auto value_at = [&](int variant) -> double {
+        const void* data = attentionOutputs[variant]->contents();
+        if (precision == "32F") return static_cast<const float*>(data)[i];
+        if (precision == "16F") return double(static_cast<const _Float16*>(data)[i]);
+        const uint32_t bits = uint32_t(static_cast<const uint16_t*>(data)[i]) << 16;
+        float f; memcpy(&f, &bits, sizeof(f)); return f;
+      };
+      const double old_value = value_at(0), production_value = value_at(1);
+      const double diff = std::abs(old_value - production_value);
+      outputs_match = outputs_match && std::isfinite(old_value) && std::isfinite(production_value) && diff <= output_tolerance;
+      output_diff = std::max(output_diff, diff);
+    }
+  printf("RESULT old_ms=%.5f production_ms=%.5f paired_speedup=%.5f old_mean_error=%.3g production_mean_error=%.3g max_output_diff=%.3g finite=%d accurate=%d outputs_match=%d\n",
+      median(times[0]), median(times[1]), median(ratios), max_error[0], max_error[1], output_diff, finite, accurate, outputs_match);
   ccv_nnc_deinit_mfa_context(context);
-  return equal ? 0 : 1;
+  return accurate && outputs_match ? 0 : 1;
 }

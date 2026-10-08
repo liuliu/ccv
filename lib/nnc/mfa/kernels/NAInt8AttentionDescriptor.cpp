@@ -32,6 +32,7 @@ bool NAInt8AttentionDescriptor::operator==(const NAInt8AttentionDescriptor& rhs)
     isVarlen == rhs.isVarlen &&
     attentionSinks == rhs.attentionSinks &&
     qkHadamard == rhs.qkHadamard &&
+    qkMeanCorrection == rhs.qkMeanCorrection &&
     ((loadR || loadC) || maskBatchStride == rhs.maskBatchStride) &&
     ((loadR || loadC) || batchStrides == rhs.batchStrides) &&
     simd_all(lhsDimensions == rhsDimensions);
@@ -53,6 +54,7 @@ std::size_t std::hash<NAInt8AttentionDescriptor>::operator()(const NAInt8Attenti
   seed = combine_32(seed, hash.isVarlen ? 1 : 0);
   seed = combine_32(seed, hash.attentionSinks ? 1 : 0);
   seed = combine_32(seed, hash.qkHadamard ? 1 : 0);
+  seed = combine_32(seed, hash.qkMeanCorrection ? 1 : 0);
   seed = combine_32(seed, (hash.loadR || hash.loadC) ? 0 : hash.maskBatchStride);
   seed = combine_32(seed, hash.loadR ? 0 : hash.matrixDimensions[0]);
   seed = combine_32(seed, hash.loadC ? 0 : hash.matrixDimensions[1]);
@@ -189,6 +191,7 @@ std::pair<NAInt8AttentionKernelDescriptor, PipelineValue<NAInt8AttentionKernel> 
   NS::SharedPtr<MTL::ComputePipelineState> fourth;
   NS::SharedPtr<MTL::ComputePipelineState> fifth;
   NS::SharedPtr<MTL::ComputePipelineState> sixth;
+  NS::SharedPtr<MTL::ComputePipelineState> seventh;
   switch (type.value) {
   case AttentionKernelType::forward:
     pipeline = NS::TransferPtr(createPipeline(kernel, attentionConstants.get(), "int8_attention"));
@@ -198,6 +201,8 @@ std::pair<NAInt8AttentionKernelDescriptor, PipelineValue<NAInt8AttentionKernel> 
     fifth = NS::TransferPtr(createPipeline(kernel, quantizeConstants.get(), "compute_v_mean"));
     CCV_NNC_MFA_PRECONDITION(fifth->staticThreadgroupMemoryLength() <= device->maxThreadgroupMemoryLength());
     CCV_NNC_MFA_PRECONDITION(kernel->vMeanThreadgroupSize() <= fifth->maxTotalThreadsPerThreadgroup());
+    seventh = NS::TransferPtr(createPipeline(kernel, quantizeConstants.get(), "finalize_v_mean"));
+    CCV_NNC_MFA_PRECONDITION(NAInt8AttentionKernel::vMeanFinalizeThreads <= seventh->maxTotalThreadsPerThreadgroup());
     if (masked) {
       sixth = NS::TransferPtr(createPipeline(kernel, attentionConstants.get(), "generate_int8_attention_block_mask"));
     }
@@ -218,5 +223,6 @@ std::pair<NAInt8AttentionKernelDescriptor, PipelineValue<NAInt8AttentionKernel> 
   output->fourth = fourth;
   output->fifth = fifth;
   output->sixth = sixth;
+  output->seventh = seventh;
   return std::make_pair(kernelDesc, output);
 }

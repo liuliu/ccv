@@ -28,7 +28,10 @@ struct NAInt8AttentionDescriptor {
   bool loadR = false;
   bool loadC = false;
   bool attentionSinks = false;
+  // Forward Q/K rotation, with K centered per sequence and KV head before rotation.
   bool qkHadamard = false;
+  // Restore the removed row offset only for sinks or externally saved logsumexp.
+  bool qkMeanCorrection = false;
   uint32_t maskBatchStride = 0;
 
   bool operator==(const NAInt8AttentionDescriptor& rhs) const;

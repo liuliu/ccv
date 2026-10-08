@@ -46,6 +46,7 @@ struct QuantizePipelines {
   NS::SharedPtr<MTL::ComputePipelineState> k_pipeline;
   NS::SharedPtr<MTL::ComputePipelineState> v_pipeline;
   NS::SharedPtr<MTL::ComputePipelineState> v_mean_pipeline;
+  NS::SharedPtr<MTL::ComputePipelineState> v_mean_finalize_pipeline;
   uint16_t q_threads = NAInt8AttentionKernel::qQuantizeThreads;
   uint16_t kv_threads = NAInt8AttentionKernel::kvQuantizeThreads;
   uint16_t v_mean_threads = NAInt8AttentionKernel::smallSequenceVMeanThreads;
@@ -76,6 +77,7 @@ struct ScratchLayout {
   size_t v_scale = 0;
   size_t dO_scale = 0;
   size_t v_mean = 0;
+  size_t v_mean_partials = 0;
   size_t d = 0;
   size_t total = 0;
 };
@@ -352,6 +354,7 @@ QuantizePipelines create_quantize_pipelines(MTL::Device* device, const Attention
   bundle.k_pipeline = create_pipeline(device, bundle.kernel->library.get(), "quantize_k", quantize_constants.get());
   bundle.v_pipeline = create_pipeline(device, bundle.kernel->library.get(), "quantize_v", quantize_constants.get());
   bundle.v_mean_pipeline = create_pipeline(device, bundle.kernel->library.get(), "compute_v_mean", quantize_constants.get());
+  bundle.v_mean_finalize_pipeline = create_pipeline(device, bundle.kernel->library.get(), "finalize_v_mean", quantize_constants.get());
   return bundle;
 }
 
@@ -447,6 +450,10 @@ ScratchLayout create_scratch_layout(const AttentionCase& attention)
   layout.v_scale = reserve(&layout.total, (size_t)attention.batch * kv_scale_batch_stride * sizeof(float));
   layout.dO_scale = reserve(&layout.total, (size_t)attention.batch * q_scale_batch_stride * sizeof(float));
   layout.v_mean = reserve(&layout.total, (size_t)attention.batch * attention.Hk * attention.D * sizeof(float));
+  // Per-chunk V-mean sums, as in NAInt8AttentionKernel::vMeanPartialBytes.
+  const size_t v_mean_chunks = (attention.C + NAInt8AttentionKernel::vMeanChunkRows - 1) / NAInt8AttentionKernel::vMeanChunkRows;
+  layout.v_mean_partials = reserve(&layout.total, v_mean_chunks > 1 ?
+      (size_t)attention.batch * attention.Hk * v_mean_chunks * attention.D * sizeof(float) : 16);
   layout.d = reserve(&layout.total, (size_t)attention.batch * attention.Hq * attention.R * create_d_precision().size());
   return layout;
 }
@@ -477,14 +484,13 @@ void encode_compute_v_mean(
     MTL::Buffer* v_buffer,
     size_t v_offset,
     MTL::Buffer* scratch,
-    size_t v_mean_offset)
+    size_t v_mean_offset,
+    size_t v_mean_partials_offset)
 {
-  encoder->setComputePipelineState(pipelines.v_mean_pipeline.get());
   encoder->setBuffer(v_buffer, v_offset, 0);
   encoder->setBuffer(scratch, v_mean_offset, 1);
-  encoder->dispatchThreadgroups(
-      pipelines.kernel->vMeanThreadgroupsPerGrid(attention.batch),
-      MTL::Size(pipelines.kernel->vMeanThreadgroupSize(), 1, 1));
+  pipelines.kernel->encodeVMean(encoder, pipelines.v_mean_pipeline.get(), pipelines.v_mean_finalize_pipeline.get(),
+      scratch, v_mean_partials_offset, attention.batch, attention.C);
 }
 
 void encode_quantize_v(
@@ -538,7 +544,7 @@ double run_forward_total_once(
   }
   {
     auto encoder = NS::RetainPtr(command_buffer->computeCommandEncoder());
-    encode_compute_v_mean(encoder.get(), attention, quantize_pipelines, v_buffer, 0, scratch, layout.v_mean);
+    encode_compute_v_mean(encoder.get(), attention, quantize_pipelines, v_buffer, 0, scratch, layout.v_mean, layout.v_mean_partials);
     encoder->endEncoding();
   }
   {
@@ -601,7 +607,7 @@ double run_prepare_backward_once(
   }
   {
     auto encoder = NS::RetainPtr(command_buffer->computeCommandEncoder());
-    encode_compute_v_mean(encoder.get(), attention, quantize_pipelines, v_buffer, 0, scratch, layout.v_mean);
+    encode_compute_v_mean(encoder.get(), attention, quantize_pipelines, v_buffer, 0, scratch, layout.v_mean, layout.v_mean_partials);
     encoder->endEncoding();
   }
   {
@@ -738,7 +744,7 @@ double run_backward_total_once(
   }
   {
     auto encoder = NS::RetainPtr(command_buffer->computeCommandEncoder());
-    encode_compute_v_mean(encoder.get(), attention, quantize_pipelines, v_buffer, 0, scratch, layout.v_mean);
+    encode_compute_v_mean(encoder.get(), attention, quantize_pipelines, v_buffer, 0, scratch, layout.v_mean, layout.v_mean_partials);
     encoder->endEncoding();
   }
   {
