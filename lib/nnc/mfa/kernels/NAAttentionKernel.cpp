@@ -1416,7 +1416,7 @@ void NAAttentionKernel::loopForwardSingleCausal(CodeWriter &source) const noexce
     source += "  auto cP = matmul_pv_op.get_left_input_cooperative_tensor<{{MEMORY_NAME_O}}, {{MEMORY_NAME_V}}, float>();\n";
     for (unsigned short i = 0; i < kBlocks; i++) {
       source.SetValue("LOOP_INDEX", std::to_string(i));
-      source += "  auto cO_{{LOOP_INDEX}} = matmul_pv_op.get_destination_cooperative_tensor<decltype(cP), decltype(mV), float>();\n";
+      source += "  auto cO_{{LOOP_INDEX}} = matmul_pv_op.get_destination_cooperative_tensor<metal::remove_addrspace_t<decltype(cP)>, decltype(mV), float>();\n";
     }
   } else {
     for (unsigned short i = 0; i < kBlocks; i++) {
@@ -2214,7 +2214,7 @@ void NAAttentionKernel::loopForward(CodeWriter &source) const noexcept {
     // Allocate O
     for (unsigned short i = 0; i < kBlocks; i++) {
       source.SetValue("LOOP_INDEX", std::to_string(i));
-      source += "  auto cO_{{LOOP_INDEX}} = matmul_pv_op.get_destination_cooperative_tensor<decltype(cP), decltype(mV), float>();\n";
+      source += "  auto cO_{{LOOP_INDEX}} = matmul_pv_op.get_destination_cooperative_tensor<metal::remove_addrspace_t<decltype(cP)>, decltype(mV), float>();\n";
     }
   } else {
     // Allocate O
@@ -2792,7 +2792,7 @@ void NAAttentionKernel::loopBackwardQuery(CodeWriter &source) const noexcept {
 )";
     for (unsigned short i = 0; i < kBlocks; ++i) {
       source.SetValue("LOOP_INDEX", std::to_string(i));
-      source += "  auto cDQ_{{LOOP_INDEX}} = matmul_dsk_op.get_destination_cooperative_tensor<decltype(cDS), decltype(mK), float>();\n";
+      source += "  auto cDQ_{{LOOP_INDEX}} = matmul_dsk_op.get_destination_cooperative_tensor<metal::remove_addrspace_t<decltype(cDS)>, decltype(mK), float>();\n";
     }
     source += R"(
   #pragma clang loop unroll(full)
@@ -2916,7 +2916,7 @@ void NAAttentionKernel::loopBackwardQuery(CodeWriter &source) const noexcept {
 )";
     for (unsigned short i = 0; i < kBlocks; ++i) {
       source.SetValue("LOOP_INDEX", std::to_string(i));
-      source += "  auto cDQ_{{LOOP_INDEX}} = matmul_dsk_op.get_destination_cooperative_tensor<decltype(cDS), decltype(mK), float>();\n";
+      source += "  auto cDQ_{{LOOP_INDEX}} = matmul_dsk_op.get_destination_cooperative_tensor<metal::remove_addrspace_t<decltype(cDS)>, decltype(mK), float>();\n";
     }
     source += R"(
   #pragma clang loop unroll(full)
@@ -3139,8 +3139,8 @@ void NAAttentionKernel::loopBackwardKeyValue(CodeWriter &source) const noexcept 
 )";
     for (unsigned short i = 0; i < kBlocks; ++i) {
       source.SetValue("LOOP_INDEX", std::to_string(i));
-      source += "  auto cDV_{{LOOP_INDEX}} = matmul_pdo_op.get_destination_cooperative_tensor<decltype(cP), decltype(mdO), float>();\n";
-      source += "  auto cDK_{{LOOP_INDEX}} = matmul_pdo_op.get_destination_cooperative_tensor<decltype(cDS), decltype(mQ), float>();\n";
+      source += "  auto cDV_{{LOOP_INDEX}} = matmul_pdo_op.get_destination_cooperative_tensor<metal::remove_addrspace_t<decltype(cP)>, decltype(mdO), float>();\n";
+      source += "  auto cDK_{{LOOP_INDEX}} = matmul_pdo_op.get_destination_cooperative_tensor<metal::remove_addrspace_t<decltype(cDS)>, decltype(mQ), float>();\n";
     }
     source += R"(
   #pragma clang loop unroll(full)
@@ -3276,8 +3276,8 @@ void NAAttentionKernel::loopBackwardKeyValue(CodeWriter &source) const noexcept 
 )";
     for (unsigned short i = 0; i < kBlocks; ++i) {
       source.SetValue("LOOP_INDEX", std::to_string(i));
-      source += "  auto cDV_{{LOOP_INDEX}} = matmul_pdo_op.get_destination_cooperative_tensor<decltype(cP), decltype(mdO), float>();\n";
-      source += "  auto cDK_{{LOOP_INDEX}} = matmul_pdo_op.get_destination_cooperative_tensor<decltype(cDS), decltype(mQ), float>();\n";
+      source += "  auto cDV_{{LOOP_INDEX}} = matmul_pdo_op.get_destination_cooperative_tensor<metal::remove_addrspace_t<decltype(cP)>, decltype(mdO), float>();\n";
+      source += "  auto cDK_{{LOOP_INDEX}} = matmul_pdo_op.get_destination_cooperative_tensor<metal::remove_addrspace_t<decltype(cDS)>, decltype(mQ), float>();\n";
     }
     source += R"(
   #pragma clang loop unroll(full)

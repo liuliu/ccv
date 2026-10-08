@@ -1891,7 +1891,7 @@ void NAInt8AttentionKernel::loopBackwardKeyValue(CodeWriter& source) const noexc
       }
       source += R"(
   auto cDV_{{LOOP_INDEX}} = matmul_pdo_op.get_destination_cooperative_tensor<pdo_float_left_tensor_t, decltype(mdO_0), {{ACCUM_MEMORY_NAME}}>();
-  auto cDK_{{LOOP_INDEX}} = matmul_pdo_op.get_destination_cooperative_tensor<decltype(cDS), decltype(mQ_0), float>();
+  auto cDK_{{LOOP_INDEX}} = matmul_pdo_op.get_destination_cooperative_tensor<metal::remove_addrspace_t<decltype(cDS)>, decltype(mQ_0), float>();
   auto cDV_q_{{LOOP_INDEX}} = matmul_pdo_int8_op.get_destination_cooperative_tensor<pdo_int8_left_tensor_t, decltype(mdO_0), int32_t>();
 	)";
     }
@@ -2111,7 +2111,7 @@ void NAInt8AttentionKernel::loopBackwardKeyValue(CodeWriter& source) const noexc
   using pdo_int8_left_tensor_t = decltype(matmul_pdo_int8_op.get_left_input_cooperative_tensor<int8_t, int8_t, int32_t>());
   thread pdo_int8_left_tensor_t& cP_q = reinterpret_cast<thread pdo_int8_left_tensor_t&>(cST);
   auto cDV = matmul_pdo_op.get_destination_cooperative_tensor<pdo_float_left_tensor_t, decltype(mdO), {{ACCUM_MEMORY_NAME}}>();
-  auto cDK = matmul_pdo_op.get_destination_cooperative_tensor<decltype(cDS), decltype(mQ), float>();
+  auto cDK = matmul_pdo_op.get_destination_cooperative_tensor<metal::remove_addrspace_t<decltype(cDS)>, decltype(mQ), float>();
   auto cDV_q = matmul_pdo_int8_op.get_destination_cooperative_tensor<pdo_int8_left_tensor_t, decltype(mdO), int32_t>();
   #pragma clang loop unroll(full)
   for (unsigned short k = 0; k < cDV.get_capacity(); ++k) {
@@ -2280,8 +2280,9 @@ void NAInt8AttentionKernel::loopForward(CodeWriter& source) const noexcept {
       !(isCausal && !masked && loadR && loadC && !hasRRemainder);
   const unsigned short kBlocks =
       (outputTileSize + blockDimensions[2] - 1) / blockDimensions[2];
-  const std::string logsumexp = "cM[k] + fast::log2(cL[k])" +
-      std::string(qkMeanCorrection ? " + QK_correction_buf[idx[0]]" : "");
+  // bfloat has no implicit conversion from float; cast like the D stores.
+  const std::string logsumexp = "(" + source.GetValue("L_MEMORY_NAME") + ")(cM[k] + fast::log2(cL[k])" +
+      std::string(qkMeanCorrection ? " + QK_correction_buf[idx[0]]" : "") + ")";
   source.SetValue("L_STORE", tileOutput ?
       "if (output_tile == 0) { L[idx[0]] = " + logsumexp + "; }" :
       "L[idx[0]] = " + logsumexp + ";");

@@ -456,10 +456,10 @@ kernel void sol_attention(device half* O_buf [[buffer(3)]],
   auto L = qk.get_row_reduction_destination_cooperative_tensor<query_tile_t, key_value_tile_t, float>();
   auto correction = qk.get_row_reduction_destination_cooperative_tensor<query_tile_t, key_value_tile_t, float>();
   auto P = pv.get_left_input_cooperative_tensor<half, half, float>();
-  auto O0 = pv.get_destination_cooperative_tensor<decltype(P), key_value_tile_t, float>();
-  auto O1 = pv.get_destination_cooperative_tensor<decltype(P), key_value_tile_t, float>();
-  auto O2 = pv.get_destination_cooperative_tensor<decltype(P), key_value_tile_t, float>();
-  auto O3 = pv.get_destination_cooperative_tensor<decltype(P), key_value_tile_t, float>();
+  auto O0 = pv.get_destination_cooperative_tensor<metal::remove_addrspace_t<decltype(P)>, key_value_tile_t, float>();
+  auto O1 = pv.get_destination_cooperative_tensor<metal::remove_addrspace_t<decltype(P)>, key_value_tile_t, float>();
+  auto O2 = pv.get_destination_cooperative_tensor<metal::remove_addrspace_t<decltype(P)>, key_value_tile_t, float>();
+  auto O3 = pv.get_destination_cooperative_tensor<metal::remove_addrspace_t<decltype(P)>, key_value_tile_t, float>();
   auto mq8 = QI.slice<qkD, 16>(h * 128, row);
   auto mk8 = KI.slice<qkD, {{BLOCK_SIZE}}>(h * 128, 0);
   auto mv8 = VI.slice<32, {{BLOCK_SIZE}}>(h * 128, 0);
@@ -467,7 +467,7 @@ kernel void sol_attention(device half* O_buf [[buffer(3)]],
   constexpr auto pv8_desc = matmul2d_descriptor(16, 32, {{BLOCK_SIZE}}, false, false, true, matmul2d_descriptor::mode::multiply);
   matmul2d<pv8_desc, execution_simdgroups<1>> pv8;
   auto P8 = pv8.get_left_input_cooperative_tensor<int8_t, int8_t, int>();
-  auto O8 = pv8.get_destination_cooperative_tensor<decltype(P8), decltype(mv8), int>();
+  auto O8 = pv8.get_destination_cooperative_tensor<metal::remove_addrspace_t<decltype(P8)>, decltype(mv8), int>();
   auto CQ0 = qk.get_left_input_cooperative_tensor<int8_t, int8_t, int>();
   auto CQ1 = qk.get_left_input_cooperative_tensor<int8_t, int8_t, int>();
   auto CQ2 = qk.get_left_input_cooperative_tensor<int8_t, int8_t, int>();
@@ -620,7 +620,7 @@ void NAInt8SolAttentionKernel::accumulateAttention(CodeWriter& source, bool summ
       auto v2 = VCH.slice<32, {{BLOCK_SIZE}}>(64, c); auto v3 = VCH.slice<32, {{BLOCK_SIZE}}>(96, c);
       constexpr auto summary_pv_desc = matmul2d_descriptor(16, 32, {{BLOCK_SIZE}}, false, false, true, matmul2d_descriptor::mode::multiply);
       matmul2d<summary_pv_desc, execution_simdgroups<1>> summary_pv;
-      auto temporary = summary_pv.get_destination_cooperative_tensor<decltype(P), decltype(v0), float>();
+      auto temporary = summary_pv.get_destination_cooperative_tensor<metal::remove_addrspace_t<decltype(P)>, decltype(v0), float>();
 )";
   } else {
     source += R"(
