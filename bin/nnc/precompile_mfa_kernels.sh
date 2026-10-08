@@ -109,6 +109,7 @@ build_generators() {
     -framework CoreML
     -framework IOSurface
     -framework Metal
+    -framework IOKit
     -lc++
   )
   "$cxx" "${common_flags[@]}" "$ROOT/bin/nnc/attention_kernel_gen.cpp" "${link_flags[@]}" -o "$BUILD_DIR/attention_kernel_gen"
