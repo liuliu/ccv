@@ -508,3 +508,6 @@ attention_r1_bench: attention_r1_bench.cpp ../../lib/libccv.a
 
 attention_r1_thermal: attention_r1_thermal.m
 	$(CC) -O2 -framework Foundation $< -o $@
+
+na_int8_attention_float_pv_bench: na_int8_attention_float_pv_bench.cpp libccv.a
+	$(CC) $(CFLAGS) -O3 -o $@ $< ../../lib/libccv.a $(MPSGRAPH_LDFLAGS)

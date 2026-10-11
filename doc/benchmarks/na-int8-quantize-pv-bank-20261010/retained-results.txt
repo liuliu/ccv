@@ -1,0 +1,300 @@
+COVERAGE: mac 128/128 measured, ipad 127/128 measured; unavailable cases are reported explicitly.
+All 128 eligible forward attention workloads in the recovered bank, FP16 I/O
+quantizePV=true is the default; quantizePV=false is forward INT8 QK with floating PV. Shared correctness fixes are documented in validation-summary.txt.
+Per workload: speed(false) / speed(true) = true_ms / false_ms; preparation included.
+75% throughput retention is a diagnostic reference, not a hard pass/fail gate. Compare NAInt8Attention false against true; NAAttention speedup is reported separately.
+Mac results use isolated GPU measurements; contended measurements are excluded.
+Ordinary bank: 15 rotating samples; Mac decode: 31 samples; H3: 3 samples. Raw timings and thermal states are retained locally, outside the repository. Source paths below are relative to that raw-results directory.
+Nine rows use measurements with the R/C crossover selector; six Mac decode rows have separate repeated measurements. The remaining rows retain verified source-equivalent measurements.
+
+MAC {"flagged_below_75_percent": 10, "measured": 118}
+case | true ms | false ms | NA ms | retention | NA speedup | samples | status | source
+flux2-512-attention | 0.882250 | 1.036625 | 1.418958 | 85.108% | 1.369x | 15 | measured | mac-final-bank/flux2-512-attention.json
+flux2-768-attention | 2.577875 | 3.254875 | 4.305625 | 79.200% | 1.323x | 15 | measured | mac-final-bank/flux2-768-attention.json
+flux2-1024-attention | 6.717292 | 8.783792 | 11.999917 | 76.474% | 1.366x | 15 | measured | mac-final-bank/flux2-1024-attention.json
+flux2-1536-attention | 36.415750 | 46.795500 | 90.866167 | 77.819% | 1.942x | 15 | measured | mac-final-bank/flux2-1536-attention.json
+flux2-2048-attention | 135.024125 | 186.118375 | 495.365667 | 72.547% | 2.662x | 15 | flagged_below_75_percent | mac-final-bank/flux2-2048-attention.json
+flux2-last-image-only | 8.414375 | 11.577625 | 17.567125 | 72.678% | 1.517x | 15 | flagged_below_75_percent | mac-final-bank/flux2-last-image-only.json
+flux2-reference | 14.916250 | 20.855125 | 42.937458 | 71.523% | 2.059x | 15 | flagged_below_75_percent | mac-final-bank/flux2-reference.json
+krea2-512-attention | 0.708583 | 0.866792 | 1.275000 | 81.748% | 1.471x | 15 | measured | mac-final-bank/krea2-512-attention.json
+krea2-768-attention | 2.589250 | 3.271875 | 5.351500 | 79.137% | 1.636x | 15 | measured | mac-final-bank/krea2-768-attention.json
+krea2-1024-attention | 7.096875 | 9.606750 | 15.420292 | 73.874% | 1.605x | 15 | flagged_below_75_percent | mac-final-bank/krea2-1024-attention.json
+krea2-1536-attention | 35.018792 | 47.360125 | 88.929125 | 73.942% | 1.878x | 15 | flagged_below_75_percent | mac-final-bank/krea2-1536-attention.json
+krea2-2048-attention | 155.819750 | 148.589417 | 349.317042 | 104.866% | 2.351x | 15 | measured | mac-final-bank/krea2-2048-attention.json
+krea2-last-image-only | 9.677250 | 12.707333 | 19.977167 | 76.155% | 1.572x | 15 | measured | mac-final-bank/krea2-last-image-only.json
+krea2-reference | 15.117042 | 19.635208 | 32.283875 | 76.989% | 1.644x | 15 | measured | mac-final-bank/krea2-reference.json
+ideogram4-512-attention | 0.720917 | 0.778375 | 1.773500 | 92.618% | 2.278x | 15 | measured | mac-final-bank/ideogram4-512-attention.json
+ideogram4-768-attention | 2.884958 | 3.376917 | 7.803208 | 85.432% | 2.311x | 15 | measured | mac-final-bank/ideogram4-768-attention.json
+ideogram4-1024-attention | 8.884000 | 10.113583 | 32.130125 | 87.842% | 3.177x | 15 | measured | mac-final-bank/ideogram4-1024-attention.json
+ideogram4-1536-attention | 63.233250 | 76.893292 | 233.838000 | 82.235% | 3.041x | 15 | measured | mac-final-bank/ideogram4-1536-attention.json
+ideogram4-2048-attention | 289.992833 | 320.178500 | 937.952708 | 90.572% | 2.929x | 15 | measured | mac-final-bank/ideogram4-2048-attention.json
+ideogram4-last-image-only | 15.344125 | 18.072500 | 35.934750 | 84.903% | 1.988x | 15 | measured | mac-final-bank/ideogram4-last-image-only.json
+ideogram4-reference | 30.768583 | 35.999375 | 91.490625 | 85.470% | 2.541x | 15 | measured | mac-final-bank/ideogram4-reference.json
+qwen21-512-attention | 0.490292 | 0.541292 | 0.696542 | 90.578% | 1.287x | 15 | measured | mac-final-bank/qwen21-512-attention.json
+qwen21-768-attention | 1.943583 | 2.287958 | 3.264542 | 84.948% | 1.427x | 15 | measured | mac-final-bank/qwen21-768-attention.json
+qwen21-1024-attention | 5.976333 | 7.165500 | 9.032375 | 83.404% | 1.261x | 15 | measured | mac-final-bank/qwen21-1024-attention.json
+qwen21-1536-attention | 27.685375 | 35.340458 | 117.578958 | 78.339% | 3.327x | 15 | measured | mac-final-bank/qwen21-1536-attention.json
+qwen21-2048-attention | 92.355125 | 133.879833 | 572.942208 | 68.984% | 4.280x | 15 | flagged_below_75_percent | mac-final-bank/qwen21-2048-attention.json
+qwen21-reference | 13.303625 | 14.962292 | 26.197083 | 88.914% | 1.751x | 15 | measured | mac-final-bank/qwen21-reference.json
+h3-480p-ui-10s | 699.318375 | 791.343167 | 4873.228250 | 88.371% | 6.158x | 3 | measured | mac-final-long/h3-480p-ui-10s.json
+h3-720p-ui-10s | 3664.357000 | 4444.957330 | 32035.883200 | 82.439% | 7.207x | 3 | measured | mac-final-long/h3-720p-ui-10s.json
+local-gqa-r1-c2048 | 0.146125 | 0.133958 | 0.085250 | 109.082% | 0.636x | 31 | measured | mac-decode-final/local-gqa-r1-c2048.json
+local-gqa-r1-c8192 | 0.580458 | 0.562000 | 0.317500 | 103.284% | 0.565x | 31 | measured | mac-decode-final/local-gqa-r1-c8192.json
+local-gqa-r8-c2048 | 0.149542 | 0.138375 | 0.365167 | 108.070% | 2.639x | 31 | measured | mac-decode-final/local-gqa-r8-c2048.json
+local-gqa-r8-c8192 | 0.582500 | 0.565875 | 0.320208 | 102.938% | 0.566x | 31 | measured | mac-decode-final/local-gqa-r8-c8192.json
+local-gqa-r128-c2048 | 0.168167 | 0.166000 | 0.404500 | 101.305% | 2.437x | 15 | measured | mac-rc-cutoff/local-gqa-r128-c2048.json
+local-gqa-r128-c8192 | 0.685000 | 0.697833 | 1.759833 | 98.161% | 2.522x | 15 | measured | mac-rc-cutoff/local-gqa-r128-c8192.json
+local-gqa-r512-c2048 | 0.422833 | 0.543375 | 0.598708 | 77.816% | 1.102x | 15 | measured | mac-rc-cutoff/local-gqa-r512-c2048.json
+local-gqa-r512-c8192 | 1.903125 | 1.870875 | 2.604750 | 101.724% | 1.392x | 15 | measured | mac-single-cutoff/local-gqa-r512-c8192.json
+local-gqa-r2048-c2048 | 1.003625 | 1.313875 | 1.619667 | 76.387% | 1.233x | 15 | measured | mac-rc-cutoff/local-gqa-r2048-c2048.json
+local-gqa-r2048-c8192 | 6.720167 | 7.563417 | 12.156375 | 88.851% | 1.607x | 15 | measured | mac-single-cutoff/local-gqa-r2048-c8192.json
+local-27b-gqa-r1-c2048 | 0.145250 | 0.134458 | 0.084958 | 108.026% | 0.632x | 31 | measured | mac-decode-final/local-27b-gqa-r1-c2048.json
+local-27b-gqa-r1-c8192 | 0.575583 | 0.558833 | 0.317625 | 102.997% | 0.568x | 31 | measured | mac-decode-final/local-27b-gqa-r1-c8192.json
+local-27b-gqa-r128-c2048 | 0.220500 | 0.285833 | 0.400292 | 77.143% | 1.400x | 15 | measured | mac-rc-cutoff/local-27b-gqa-r128-c2048.json
+local-27b-gqa-r128-c8192 | 0.921625 | 1.214625 | 1.778625 | 75.877% | 1.464x | 15 | measured | mac-rc-cutoff/local-27b-gqa-r128-c8192.json
+local-27b-gqa-r2048-c2048 | 1.325375 | 1.785583 | 2.598958 | 74.226% | 1.456x | 15 | flagged_below_75_percent | mac-rc-cutoff/local-27b-gqa-r2048-c2048.json
+local-27b-gqa-r2048-c8192 | 8.532833 | 9.508042 | 20.366750 | 89.743% | 2.142x | 15 | measured | mac-single-cutoff/local-27b-gqa-r2048-c8192.json
+attn-d64-r16-c65 | 0.017708 | 0.013000 | 0.013375 | 136.219% | 1.029x | 15 | measured | mac-final-bank/attn-d64-r16-c65.json
+attn-d64-r64-c64 | 0.016000 | 0.010875 | 0.005708 | 147.125% | 0.525x | 15 | measured | mac-final-bank/attn-d64-r64-c64.json
+attn-d64-r65-c128 | 0.019125 | 0.012500 | 0.010875 | 153.000% | 0.870x | 15 | measured | mac-final-bank/attn-d64-r65-c128.json
+attn-d64-r255-c257 | 0.103708 | 0.082375 | 0.120375 | 125.898% | 1.461x | 15 | measured | mac-final-bank/attn-d64-r255-c257.json
+attn-d64-r256-c257 | 0.023083 | 0.018250 | 0.023000 | 126.484% | 1.260x | 15 | measured | mac-final-bank/attn-d64-r256-c257.json
+attn-d64-r257-c257 | 0.023750 | 0.018750 | 0.023542 | 126.666% | 1.256x | 15 | measured | mac-final-bank/attn-d64-r257-c257.json
+attn-d64-r1023-c1025 | 0.059375 | 0.054000 | 0.072125 | 109.953% | 1.336x | 15 | measured | mac-final-bank/attn-d64-r1023-c1025.json
+attn-d64-r2048-c4095 | 0.274167 | 0.333250 | 0.446375 | 82.271% | 1.339x | 15 | measured | mac-final-bank/attn-d64-r2048-c4095.json
+attn-d64-r4095-c4096 | 0.514333 | 0.550917 | 0.753375 | 93.360% | 1.367x | 15 | measured | mac-final-bank/attn-d64-r4095-c4096.json
+attn-d64-r4096-c4096 | 0.477125 | 0.527917 | 0.739625 | 90.379% | 1.401x | 15 | measured | mac-final-bank/attn-d64-r4096-c4096.json
+attn-d64-r4097-c4097 | 0.553292 | 0.596375 | 1.128125 | 92.776% | 1.892x | 15 | measured | mac-final-bank/attn-d64-r4097-c4097.json
+attn-d64-r4096-c8191 | 0.939042 | 1.126000 | 1.778167 | 83.396% | 1.579x | 15 | measured | mac-final-bank/attn-d64-r4096-c8191.json
+attn-d64-r4096-c8192 | 0.909167 | 1.076958 | 1.520250 | 84.420% | 1.412x | 15 | measured | mac-final-bank/attn-d64-r4096-c8192.json
+attn-d64-r4096-c8193 | 0.943333 | 1.099750 | 2.393958 | 85.777% | 2.177x | 15 | measured | mac-final-bank/attn-d64-r4096-c8193.json
+attn-d64-r8193-c4097 | 1.003250 | 1.070875 | 1.875125 | 93.685% | 1.751x | 15 | measured | mac-final-bank/attn-d64-r8193-c4097.json
+attn-groups-d64-b2-h8-8 | 0.165917 | 0.166583 | 0.404500 | 99.600% | 2.428x | 15 | measured | mac-final-bank/attn-groups-d64-b2-h8-8.json
+attn-groups-d64-b1-h12-3 | 0.136583 | 0.143375 | 0.431042 | 95.263% | 3.006x | 15 | measured | mac-final-bank/attn-groups-d64-b1-h12-3.json
+attn-groups-d64-b1-h18-6 | 0.173000 | 0.183000 | 0.576292 | 94.535% | 3.149x | 15 | measured | mac-final-bank/attn-groups-d64-b1-h18-6.json
+attn-groups-d64-b1-h56-7 | 0.502708 | 0.524458 | 1.254833 | 95.853% | 2.393x | 15 | measured | mac-final-bank/attn-groups-d64-b1-h56-7.json
+attn-dynamic-d64 | 1.055000 | 1.158083 | 2.636750 | 91.099% | 2.277x | 15 | measured | mac-final-bank/attn-dynamic-d64.json
+attn-causal-d64 | 0.089958 | 0.064750 | 0.117375 | 138.932% | 1.813x | 15 | measured | mac-final-bank/attn-causal-d64.json
+attn-d128-r16-c65 | 0.026792 | 0.019208 | 0.017208 | 139.480% | 0.896x | 15 | measured | mac-final-bank/attn-d128-r16-c65.json
+attn-d128-r64-c64 | 0.023375 | 0.015125 | 0.008042 | 154.545% | 0.532x | 15 | measured | mac-final-bank/attn-d128-r64-c64.json
+attn-d128-r65-c128 | 0.027750 | 0.019292 | 0.018625 | 143.845% | 0.965x | 15 | measured | mac-final-bank/attn-d128-r65-c128.json
+attn-d128-r255-c257 | 0.037083 | 0.030458 | 0.060625 | 121.751% | 1.990x | 15 | measured | mac-final-bank/attn-d128-r255-c257.json
+attn-d128-r256-c257 | 0.034542 | 0.027625 | 0.054750 | 125.037% | 1.982x | 15 | measured | mac-final-bank/attn-d128-r256-c257.json
+attn-d128-r257-c257 | 0.036125 | 0.028875 | 0.053208 | 125.108% | 1.843x | 15 | measured | mac-final-bank/attn-d128-r257-c257.json
+attn-d128-r1023-c1025 | 0.103000 | 0.100375 | 0.193250 | 102.615% | 1.925x | 15 | measured | mac-final-bank/attn-d128-r1023-c1025.json
+attn-d128-r2048-c4095 | 0.514208 | 0.612125 | 0.940708 | 84.004% | 1.537x | 15 | measured | mac-final-bank/attn-d128-r2048-c4095.json
+attn-d128-r4095-c4096 | 0.983667 | 1.135875 | 2.538500 | 86.600% | 2.235x | 15 | measured | mac-final-bank/attn-d128-r4095-c4096.json
+attn-d128-r4096-c4096 | 0.920625 | 1.145500 | 1.584458 | 80.369% | 1.383x | 15 | measured | mac-final-bank/attn-d128-r4096-c4096.json
+attn-d128-r4097-c4097 | 1.073500 | 1.208625 | 3.545750 | 88.820% | 2.934x | 15 | measured | mac-final-bank/attn-d128-r4097-c4097.json
+attn-d128-r4096-c8191 | 1.876250 | 2.282125 | 3.878333 | 82.215% | 1.699x | 15 | measured | mac-final-bank/attn-d128-r4096-c8191.json
+attn-d128-r4096-c8192 | 1.823375 | 2.311625 | 3.259875 | 78.878% | 1.410x | 15 | measured | mac-final-bank/attn-d128-r4096-c8192.json
+attn-d128-r4096-c8193 | 2.045000 | 2.675417 | 14.360292 | 76.437% | 5.367x | 15 | measured | mac-final-bank/attn-d128-r4096-c8193.json
+attn-d128-r8193-c4097 | 2.555875 | 3.067667 | 7.565292 | 83.317% | 2.466x | 15 | measured | mac-final-bank/attn-d128-r8193-c4097.json
+attn-groups-d128-b2-h8-8 | 0.326500 | 0.335500 | 0.990083 | 97.317% | 2.951x | 15 | measured | mac-final-bank/attn-groups-d128-b2-h8-8.json
+attn-groups-d128-b1-h12-3 | 0.255625 | 0.280250 | 0.999042 | 91.213% | 3.565x | 15 | measured | mac-final-bank/attn-groups-d128-b1-h12-3.json
+attn-groups-d128-b1-h18-6 | 0.340500 | 0.363750 | 1.452583 | 93.608% | 3.993x | 15 | measured | mac-final-bank/attn-groups-d128-b1-h18-6.json
+attn-groups-d128-b1-h56-7 | 0.985375 | 1.123583 | 3.153750 | 87.699% | 2.807x | 15 | measured | mac-final-bank/attn-groups-d128-b1-h56-7.json
+attn-dynamic-d128 | 2.230500 | 2.337375 | 5.926208 | 95.428% | 2.535x | 15 | measured | mac-final-bank/attn-dynamic-d128.json
+attn-causal-d128 | 0.151125 | 0.110417 | 0.204458 | 136.868% | 1.852x | 15 | measured | mac-final-bank/attn-causal-d128.json
+attn-d256-r16-c65 | 0.034458 | 0.025375 | 0.026208 | 135.796% | 1.033x | 15 | measured | mac-final-bank/attn-d256-r16-c65.json
+attn-d256-r64-c64 | 0.028292 | 0.018542 | 0.014125 | 152.585% | 0.762x | 15 | measured | mac-final-bank/attn-d256-r64-c64.json
+attn-d256-r65-c128 | 0.034833 | 0.024750 | 0.028667 | 140.741% | 1.158x | 15 | measured | mac-final-bank/attn-d256-r65-c128.json
+attn-d256-r255-c257 | 0.050125 | 0.039792 | 0.130625 | 125.968% | 3.283x | 15 | measured | mac-final-bank/attn-d256-r255-c257.json
+attn-d256-r256-c257 | 0.048375 | 0.040917 | 0.131125 | 118.228% | 3.205x | 15 | measured | mac-final-bank/attn-d256-r256-c257.json
+attn-d256-r257-c257 | 0.053625 | 0.047708 | 0.118333 | 112.402% | 2.480x | 15 | measured | mac-final-bank/attn-d256-r257-c257.json
+attn-d256-r1023-c1025 | 0.238125 | 0.252833 | 0.498417 | 94.183% | 1.971x | 15 | measured | mac-final-bank/attn-d256-r1023-c1025.json
+attn-d256-r2048-c4095 | 1.553250 | 1.804458 | 3.370792 | 86.078% | 1.868x | 15 | measured | mac-final-bank/attn-d256-r2048-c4095.json
+attn-d256-r4095-c4096 | 2.773708 | 2.994542 | 9.369667 | 92.625% | 3.129x | 15 | measured | mac-final-bank/attn-d256-r4095-c4096.json
+attn-d256-r4096-c4096 | 2.800958 | 3.178250 | 7.739125 | 88.129% | 2.435x | 15 | measured | mac-final-bank/attn-d256-r4096-c4096.json
+attn-d256-r4097-c4097 | 2.816750 | 3.209500 | 8.365208 | 87.763% | 2.606x | 15 | measured | mac-final-bank/attn-d256-r4097-c4097.json
+attn-d256-r4096-c8191 | 5.362667 | 6.658375 | 21.429125 | 80.540% | 3.218x | 15 | measured | mac-final-bank/attn-d256-r4096-c8191.json
+attn-d256-r4096-c8192 | 5.341000 | 6.813625 | 20.075083 | 78.387% | 2.946x | 15 | measured | mac-final-bank/attn-d256-r4096-c8192.json
+attn-d256-r4096-c8193 | 5.575875 | 6.543875 | 56.515042 | 85.208% | 8.636x | 15 | measured | mac-final-bank/attn-d256-r4096-c8193.json
+attn-d256-r8193-c4097 | 5.639625 | 6.427875 | 16.244625 | 87.737% | 2.527x | 15 | measured | mac-final-bank/attn-d256-r8193-c4097.json
+attn-groups-d256-b2-h8-8 | 0.945000 | 0.992875 | 2.652500 | 95.178% | 2.672x | 15 | measured | mac-final-bank/attn-groups-d256-b2-h8-8.json
+attn-groups-d256-b1-h12-3 | 0.655792 | 0.712792 | 2.855625 | 92.003% | 4.006x | 15 | measured | mac-final-bank/attn-groups-d256-b1-h12-3.json
+attn-groups-d256-b1-h18-6 | 0.903167 | 1.036750 | 3.716708 | 87.115% | 3.585x | 15 | measured | mac-final-bank/attn-groups-d256-b1-h18-6.json
+attn-groups-d256-b1-h56-7 | 2.607833 | 2.908125 | 9.130792 | 89.674% | 3.140x | 15 | measured | mac-final-bank/attn-groups-d256-b1-h56-7.json
+attn-dynamic-d256 | 5.363708 | 6.175083 | 19.288875 | 86.861% | 3.124x | 15 | measured | mac-final-bank/attn-dynamic-d256.json
+attn-causal-d256 | 0.269125 | 0.243875 | 0.408083 | 110.354% | 1.673x | 15 | measured | mac-rc-cutoff/attn-causal-d256.json
+attn-partition-r4095-c24576-h48 | 46.664917 | 56.020375 | 343.941750 | 83.300% | 6.140x | 15 | measured | mac-final-bank/attn-partition-r4095-c24576-h48.json
+attn-partition-r4096-c24575-h48 | 46.600875 | 64.020000 | 309.336500 | 72.791% | 4.832x | 15 | flagged_below_75_percent | mac-final-bank/attn-partition-r4096-c24575-h48.json
+attn-partition-r4096-c24576-h48 | 46.734875 | 59.200417 | 255.520583 | 78.943% | 4.316x | 15 | measured | mac-final-bank/attn-partition-r4096-c24576-h48.json
+attn-partition-r4097-c24577-h48 | 50.657750 | 57.369125 | 430.804000 | 88.301% | 7.509x | 15 | measured | mac-final-bank/attn-partition-r4097-c24577-h48.json
+attn-partition-r4096-c32767-h32 | 41.701250 | 56.345625 | 335.197875 | 74.010% | 5.949x | 15 | flagged_below_75_percent | mac-final-bank/attn-partition-r4096-c32767-h32.json
+attn-partition-r4096-c32768-h32 | 36.843625 | 46.859583 | 67.088250 | 78.626% | 1.432x | 15 | measured | mac-final-bank/attn-partition-r4096-c32768-h32.json
+attn-partition-r4096-c32769-h32 | 37.917417 | 48.933000 | 551.118375 | 77.488% | 11.263x | 15 | measured | mac-final-bank/attn-partition-r4096-c32769-h32.json
+attn-partition-r8193-c24576-h56 | 131.899000 | 185.033125 | 1036.138120 | 71.284% | 5.600x | 15 | flagged_below_75_percent | mac-final-bank/attn-partition-r8193-c24576-h56.json
+causal-register-r64-c257-b1-h8-2 | 0.065542 | 0.035875 | 0.066500 | 182.695% | 1.854x | 15 | measured | mac-single-cutoff/causal-register-r64-c257-b1-h8-2.json
+causal-register-r65-c257-b1-h8-2 | 0.062917 | 0.037250 | 0.075125 | 168.904% | 2.017x | 15 | measured | mac-single-cutoff/causal-register-r65-c257-b1-h8-2.json
+causal-register-r127-c257-b1-h8-2 | 0.127750 | 0.076417 | 0.158125 | 167.176% | 2.069x | 15 | measured | mac-single-cutoff/causal-register-r127-c257-b1-h8-2.json
+causal-register-r128-c257-b1-h8-2 | 0.069333 | 0.040958 | 0.071000 | 169.278% | 1.733x | 15 | measured | mac-single-cutoff/causal-register-r128-c257-b1-h8-2.json
+causal-register-r255-c257-b1-h8-2 | 0.067250 | 0.040250 | 0.080958 | 167.081% | 2.011x | 15 | measured | mac-single-cutoff/causal-register-r255-c257-b1-h8-2.json
+causal-register-r256-c257-b1-h8-2 | 0.068250 | 0.040917 | 0.068125 | 166.802% | 1.665x | 15 | measured | mac-single-cutoff/causal-register-r256-c257-b1-h8-2.json
+causal-register-r257-c257-b1-h8-2 | 0.062625 | 0.041042 | 0.070333 | 152.589% | 1.714x | 15 | measured | mac-single-cutoff/causal-register-r257-c257-b1-h8-2.json
+causal-register-r65-c65-b1-h8-2 | 0.048667 | 0.026625 | 0.039125 | 182.786% | 1.469x | 15 | measured | mac-single-cutoff/causal-register-r65-c65-b1-h8-2.json
+causal-register-r257-c513-b1-h8-2 | 0.104667 | 0.082167 | 0.147875 | 127.383% | 1.800x | 15 | measured | mac-single-cutoff/causal-register-r257-c513-b1-h8-2.json
+causal-register-r513-c1025-b2-h6-2 | 0.267125 | 0.188000 | 0.535542 | 142.088% | 2.849x | 15 | measured | mac-rc-cutoff/causal-register-r513-c1025-b2-h6-2.json
+causal-register-r4096-c8192-b1-h24-4 | 28.913042 | 34.229375 | 50.571875 | 84.469% | 1.477x | 15 | measured | mac-single-cutoff/causal-register-r4096-c8192-b1-h24-4.json
+causal-register-r4097-c8193-b1-h8-2 | 10.177125 | 8.325750 | 25.129208 | 122.237% | 3.018x | 15 | measured | mac-single-cutoff/causal-register-r4097-c8193-b1-h8-2.json
+
+IPAD {"failed_or_unmeasured": 1, "flagged_below_75_percent": 13, "measured": 114}
+case | true ms | false ms | NA ms | retention | NA speedup | samples | status | source
+flux2-512-attention | 3.571500 | 4.183375 | 5.231083 | 85.374% | 1.250x | 15 | measured | ipad-final-bank/flux2-512-attention.json
+flux2-768-attention | 10.743000 | 13.305292 | 17.720083 | 80.742% | 1.332x | 15 | measured | ipad-final-bank/flux2-768-attention.json
+flux2-1024-attention | 27.369250 | 34.843583 | 49.289208 | 78.549% | 1.415x | 15 | measured | ipad-final-bank/flux2-1024-attention.json
+flux2-1536-attention | 120.803792 | 161.379125 | 591.233750 | 74.857% | 3.664x | 15 | flagged_below_75_percent | ipad-final-bank/flux2-1536-attention.json
+flux2-2048-attention | 672.845125 | 937.197625 | 3180.937210 | 71.793% | 3.394x | 15 | flagged_below_75_percent | ipad-final-bank/flux2-2048-attention.json
+flux2-last-image-only | 24.556042 | 31.176625 | 59.382375 | 78.764% | 1.905x | 15 | measured | ipad-final-bank/flux2-last-image-only.json
+flux2-reference | 46.044167 | 57.903000 | 81.117000 | 79.519% | 1.401x | 15 | measured | ipad-final-bank/flux2-reference.json
+krea2-512-attention | 2.299417 | 2.817375 | 4.231667 | 81.616% | 1.502x | 15 | measured | ipad-final-bank/krea2-512-attention.json
+krea2-768-attention | 8.362708 | 10.674000 | 24.374000 | 78.347% | 2.283x | 15 | measured | ipad-final-bank/krea2-768-attention.json
+krea2-1024-attention | 23.225083 | 30.026250 | 85.398625 | 77.349% | 2.844x | 15 | measured | ipad-final-bank/krea2-1024-attention.json
+krea2-1536-attention | 106.691500 | 140.589042 | 596.509875 | 75.889% | 4.243x | 15 | measured | ipad-final-bank/krea2-1536-attention.json
+krea2-2048-attention | 521.735625 | 724.234542 | 1840.465830 | 72.040% | 2.541x | 15 | flagged_below_75_percent | ipad-final-bank/krea2-2048-attention.json
+krea2-last-image-only | 21.907792 | 28.402125 | 74.044917 | 77.134% | 2.607x | 15 | measured | ipad-final-bank/krea2-last-image-only.json
+krea2-reference | 57.263750 | 75.154875 | 242.529333 | 76.194% | 3.227x | 15 | measured | ipad-final-bank/krea2-reference.json
+ideogram4-512-attention | 2.746333 | 2.996833 | 10.294125 | 91.641% | 3.435x | 15 | measured | ipad-final-bank/ideogram4-512-attention.json
+ideogram4-768-attention | 9.950000 | 11.325500 | 57.062375 | 87.855% | 5.038x | 15 | measured | ipad-final-bank/ideogram4-768-attention.json
+ideogram4-1024-attention | 36.923833 | 44.627875 | 199.982083 | 82.737% | 4.481x | 15 | measured | ipad-final-bank/ideogram4-1024-attention.json
+ideogram4-1536-attention | 199.912500 | 273.698375 | 1066.026120 | 73.041% | 3.895x | 15 | flagged_below_75_percent | ipad-final-bank/ideogram4-1536-attention.json
+ideogram4-2048-attention | 864.305250 | 877.760000 | 3437.495250 | 98.467% | 3.916x | 15 | measured | ipad-final-bank/ideogram4-2048-attention.json
+ideogram4-last-image-only | 26.204625 | 30.881458 | 169.917875 | 84.856% | 5.502x | 15 | measured | ipad-final-bank/ideogram4-last-image-only.json
+ideogram4-reference | 71.543417 | 91.248208 | 411.551708 | 78.405% | 4.510x | 15 | measured | ipad-final-bank/ideogram4-reference.json
+qwen21-512-attention | 1.530375 | 1.619875 | 1.908458 | 94.475% | 1.178x | 15 | measured | ipad-final-bank/qwen21-512-attention.json
+qwen21-768-attention | 5.658042 | 6.634292 | 8.955917 | 85.285% | 1.350x | 15 | measured | ipad-final-bank/qwen21-768-attention.json
+qwen21-1024-attention | 16.287875 | 19.544750 | 26.453583 | 83.336% | 1.353x | 15 | measured | ipad-final-bank/qwen21-1024-attention.json
+qwen21-1536-attention | 107.159958 | 144.969083 | 563.372250 | 73.919% | 3.886x | 15 | flagged_below_75_percent | ipad-final-bank/qwen21-1536-attention.json
+qwen21-2048-attention | 364.992125 | 480.867625 | 692.992375 | 75.903% | 1.441x | 15 | measured | ipad-final-bank/qwen21-2048-attention.json
+qwen21-reference | 30.346250 | 37.205250 | 50.645125 | 81.564% | 1.361x | 15 | measured | ipad-final-bank/qwen21-reference.json
+h3-480p-ui-10s | 2352.055920 | 3136.656330 | unavailable | 74.986% | unavailable | 3 | flagged_below_75_percent | ipad-final-pairs/h3-480p-ui-10s.json
+h3-720p-ui-10s | unavailable | failed_or_unmeasured | ipad-final-pairs/h3-720p-ui-10s.json
+local-gqa-r1-c2048 | 0.465958 | 0.299125 | 0.329500 | 155.774% | 1.102x | 15 | measured | ipad-single-cutoff/local-gqa-r1-c2048.json
+local-gqa-r1-c8192 | 1.487000 | 0.822667 | 0.861625 | 180.754% | 1.047x | 15 | measured | ipad-single-cutoff/local-gqa-r1-c8192.json
+local-gqa-r8-c2048 | 0.527125 | 0.324625 | 0.418625 | 162.380% | 1.290x | 15 | measured | ipad-single-cutoff/local-gqa-r8-c2048.json
+local-gqa-r8-c8192 | 1.287625 | 0.757833 | 0.762000 | 169.909% | 1.005x | 15 | measured | ipad-single-cutoff/local-gqa-r8-c8192.json
+local-gqa-r128-c2048 | 0.721750 | 0.730250 | 0.590875 | 98.836% | 0.809x | 15 | measured | ipad-rc-cutoff/local-gqa-r128-c2048.json
+local-gqa-r128-c8192 | 2.399125 | 2.360292 | 2.414083 | 101.645% | 1.023x | 15 | measured | ipad-rc-cutoff/local-gqa-r128-c8192.json
+local-gqa-r512-c2048 | 1.680500 | 2.145500 | 3.907458 | 78.327% | 1.821x | 15 | measured | ipad-rc-cutoff/local-gqa-r512-c2048.json
+local-gqa-r512-c8192 | 6.797500 | 8.850750 | 20.527375 | 76.801% | 2.319x | 15 | measured | ipad-single-cutoff/local-gqa-r512-c8192.json
+local-gqa-r2048-c2048 | 3.746333 | 5.041875 | 11.434750 | 74.304% | 2.268x | 15 | flagged_below_75_percent | ipad-rc-cutoff/local-gqa-r2048-c2048.json
+local-gqa-r2048-c8192 | 23.318125 | 29.248208 | 97.693000 | 79.725% | 3.340x | 15 | measured | ipad-single-cutoff/local-gqa-r2048-c8192.json
+local-27b-gqa-r1-c2048 | 0.487042 | 0.299458 | 0.404125 | 162.641% | 1.350x | 15 | measured | ipad-single-cutoff/local-27b-gqa-r1-c2048.json
+local-27b-gqa-r1-c8192 | 1.405917 | 0.776500 | 1.401750 | 181.058% | 1.805x | 15 | measured | ipad-single-cutoff/local-27b-gqa-r1-c8192.json
+local-27b-gqa-r128-c2048 | 0.827542 | 0.897625 | 1.204250 | 92.192% | 1.342x | 15 | measured | ipad-rc-cutoff/local-27b-gqa-r128-c2048.json
+local-27b-gqa-r128-c8192 | 2.963292 | 3.628250 | 6.178667 | 81.673% | 1.703x | 15 | measured | ipad-rc-cutoff/local-27b-gqa-r128-c8192.json
+local-27b-gqa-r2048-c2048 | 5.318375 | 7.294042 | 15.678250 | 72.914% | 2.149x | 15 | flagged_below_75_percent | ipad-rc-cutoff/local-27b-gqa-r2048-c2048.json
+local-27b-gqa-r2048-c8192 | 36.190708 | 43.212125 | 154.308500 | 83.751% | 3.571x | 15 | measured | ipad-single-cutoff/local-27b-gqa-r2048-c8192.json
+attn-d64-r16-c65 | 0.016625 | 0.012625 | 0.015000 | 131.683% | 1.188x | 15 | measured | ipad-final-bank/attn-d64-r16-c65.json
+attn-d64-r64-c64 | 0.016083 | 0.011750 | 0.009375 | 136.879% | 0.798x | 15 | measured | ipad-final-bank/attn-d64-r64-c64.json
+attn-d64-r65-c128 | 0.022583 | 0.017250 | 0.015875 | 130.918% | 0.920x | 15 | measured | ipad-final-bank/attn-d64-r65-c128.json
+attn-d64-r255-c257 | 0.046125 | 0.037292 | 0.037625 | 123.687% | 1.009x | 15 | measured | ipad-final-bank/attn-d64-r255-c257.json
+attn-d64-r256-c257 | 0.044875 | 0.037625 | 0.034625 | 119.269% | 0.920x | 15 | measured | ipad-final-bank/attn-d64-r256-c257.json
+attn-d64-r257-c257 | 0.045333 | 0.036500 | 0.050833 | 124.201% | 1.393x | 15 | measured | ipad-final-bank/attn-d64-r257-c257.json
+attn-d64-r1023-c1025 | 0.207958 | 0.206333 | 0.301333 | 100.788% | 1.460x | 15 | measured | ipad-final-bank/attn-d64-r1023-c1025.json
+attn-d64-r2048-c4095 | 1.137750 | 1.341125 | 1.854125 | 84.835% | 1.383x | 15 | measured | ipad-final-bank/attn-d64-r2048-c4095.json
+attn-d64-r4095-c4096 | 2.097750 | 2.408875 | 3.299875 | 87.084% | 1.370x | 15 | measured | ipad-final-bank/attn-d64-r4095-c4096.json
+attn-d64-r4096-c4096 | 1.975125 | 2.379417 | 3.405875 | 83.009% | 1.431x | 15 | measured | ipad-final-bank/attn-d64-r4096-c4096.json
+attn-d64-r4097-c4097 | 2.184417 | 2.491917 | 3.930625 | 87.660% | 1.577x | 15 | measured | ipad-final-bank/attn-d64-r4097-c4097.json
+attn-d64-r4096-c8191 | 3.948083 | 5.011875 | 7.365667 | 78.775% | 1.470x | 15 | measured | ipad-final-bank/attn-d64-r4096-c8191.json
+attn-d64-r4096-c8192 | 3.841042 | 4.790958 | 7.256625 | 80.173% | 1.515x | 15 | measured | ipad-final-bank/attn-d64-r4096-c8192.json
+attn-d64-r4096-c8193 | 4.015958 | 4.975500 | 8.432125 | 80.715% | 1.695x | 15 | measured | ipad-final-bank/attn-d64-r4096-c8193.json
+attn-d64-r8193-c4097 | 4.122667 | 4.787750 | 8.056667 | 86.109% | 1.683x | 15 | measured | ipad-final-bank/attn-d64-r8193-c4097.json
+attn-groups-d64-b2-h8-8 | 0.755083 | 0.776875 | 1.592958 | 97.195% | 2.050x | 15 | measured | ipad-final-bank/attn-groups-d64-b2-h8-8.json
+attn-groups-d64-b1-h12-3 | 0.493792 | 0.535667 | 1.032625 | 92.183% | 1.928x | 15 | measured | ipad-final-bank/attn-groups-d64-b1-h12-3.json
+attn-groups-d64-b1-h18-6 | 0.706375 | 0.789958 | 1.487000 | 89.419% | 1.882x | 15 | measured | ipad-final-bank/attn-groups-d64-b1-h18-6.json
+attn-groups-d64-b1-h56-7 | 1.958125 | 2.271833 | 4.737750 | 86.191% | 2.085x | 15 | measured | ipad-final-bank/attn-groups-d64-b1-h56-7.json
+attn-dynamic-d64 | 4.078833 | 4.738083 | 9.652625 | 86.086% | 2.037x | 15 | measured | ipad-final-bank/attn-dynamic-d64.json
+attn-causal-d64 | 0.147958 | 0.117750 | 0.154708 | 125.655% | 1.314x | 15 | measured | ipad-final-bank/attn-causal-d64.json
+attn-d128-r16-c65 | 0.025792 | 0.019417 | 0.020208 | 132.832% | 1.041x | 15 | measured | ipad-final-bank/attn-d128-r16-c65.json
+attn-d128-r64-c64 | 0.024667 | 0.018750 | 0.015458 | 131.555% | 0.824x | 15 | measured | ipad-final-bank/attn-d128-r64-c64.json
+attn-d128-r65-c128 | 0.037958 | 0.029375 | 0.028542 | 129.220% | 0.972x | 15 | measured | ipad-final-bank/attn-d128-r65-c128.json
+attn-d128-r255-c257 | 0.083875 | 0.066417 | 0.100167 | 126.286% | 1.508x | 15 | measured | ipad-final-bank/attn-d128-r255-c257.json
+attn-d128-r256-c257 | 0.080250 | 0.066208 | 0.083417 | 121.208% | 1.260x | 15 | measured | ipad-final-bank/attn-d128-r256-c257.json
+attn-d128-r257-c257 | 0.082208 | 0.065917 | 0.120750 | 124.716% | 1.832x | 15 | measured | ipad-final-bank/attn-d128-r257-c257.json
+attn-d128-r1023-c1025 | 0.360208 | 0.383708 | 0.858000 | 93.876% | 2.236x | 15 | measured | ipad-final-bank/attn-d128-r1023-c1025.json
+attn-d128-r2048-c4095 | 2.023333 | 2.463250 | 3.714125 | 82.141% | 1.508x | 15 | measured | ipad-final-bank/attn-d128-r2048-c4095.json
+attn-d128-r4095-c4096 | 3.914125 | 4.609583 | 19.645500 | 84.913% | 4.262x | 15 | measured | ipad-final-bank/attn-d128-r4095-c4096.json
+attn-d128-r4096-c4096 | 3.694750 | 4.613375 | 6.174000 | 80.088% | 1.338x | 15 | measured | ipad-final-bank/attn-d128-r4096-c4096.json
+attn-d128-r4097-c4097 | 3.984708 | 4.731000 | 17.179625 | 84.225% | 3.631x | 15 | measured | ipad-final-bank/attn-d128-r4097-c4097.json
+attn-d128-r4096-c8191 | 7.404625 | 9.304417 | 14.774875 | 79.582% | 1.588x | 15 | measured | ipad-final-bank/attn-d128-r4096-c8191.json
+attn-d128-r4096-c8192 | 7.299542 | 9.116583 | 12.075250 | 80.069% | 1.325x | 15 | measured | ipad-final-bank/attn-d128-r4096-c8192.json
+attn-d128-r4096-c8193 | 7.342667 | 9.322875 | 72.313125 | 78.760% | 7.757x | 15 | measured | ipad-final-bank/attn-d128-r4096-c8193.json
+attn-d128-r8193-c4097 | 7.594208 | 9.180708 | 29.144708 | 82.719% | 3.175x | 15 | measured | ipad-final-bank/attn-d128-r8193-c4097.json
+attn-groups-d128-b2-h8-8 | 2.277375 | 2.246833 | 5.994583 | 101.359% | 2.668x | 15 | measured | ipad-final-bank/attn-groups-d128-b2-h8-8.json
+attn-groups-d128-b1-h12-3 | 0.877000 | 0.993333 | 2.270375 | 88.289% | 2.286x | 15 | measured | ipad-final-bank/attn-groups-d128-b1-h12-3.json
+attn-groups-d128-b1-h18-6 | 1.316417 | 1.493875 | 3.831625 | 88.121% | 2.565x | 15 | measured | ipad-final-bank/attn-groups-d128-b1-h18-6.json
+attn-groups-d128-b1-h56-7 | 6.838958 | 7.683708 | 23.696375 | 89.006% | 3.084x | 15 | measured | ipad-final-bank/attn-groups-d128-b1-h56-7.json
+attn-dynamic-d128 | 8.241708 | 9.496375 | 20.364708 | 86.788% | 2.144x | 15 | measured | ipad-final-bank/attn-dynamic-d128.json
+attn-causal-d128 | 0.378375 | 0.263875 | 0.489375 | 143.392% | 1.855x | 15 | measured | ipad-final-bank/attn-causal-d128.json
+attn-d256-r16-c65 | 0.039417 | 0.032083 | 0.031542 | 122.857% | 0.983x | 15 | measured | ipad-final-bank/attn-d256-r16-c65.json
+attn-d256-r64-c64 | 0.040167 | 0.032750 | 0.028500 | 122.646% | 0.870x | 15 | measured | ipad-final-bank/attn-d256-r64-c64.json
+attn-d256-r65-c128 | 0.063000 | 0.053542 | 0.049542 | 117.666% | 0.925x | 15 | measured | ipad-final-bank/attn-d256-r65-c128.json
+attn-d256-r255-c257 | 0.173417 | 0.148625 | 0.220167 | 116.681% | 1.481x | 15 | measured | ipad-final-bank/attn-d256-r255-c257.json
+attn-d256-r256-c257 | 0.171333 | 0.152125 | 0.232292 | 112.627% | 1.527x | 15 | measured | ipad-final-bank/attn-d256-r256-c257.json
+attn-d256-r257-c257 | 0.186917 | 0.166417 | 0.314542 | 112.319% | 1.890x | 15 | measured | ipad-final-bank/attn-d256-r257-c257.json
+attn-d256-r1023-c1025 | 0.882417 | 0.939458 | 2.143500 | 93.928% | 2.282x | 15 | measured | ipad-final-bank/attn-d256-r1023-c1025.json
+attn-d256-r2048-c4095 | 5.627458 | 6.540250 | 24.916375 | 86.043% | 3.810x | 15 | measured | ipad-final-bank/attn-d256-r2048-c4095.json
+attn-d256-r4095-c4096 | 10.269875 | 12.081917 | 59.350250 | 85.002% | 4.912x | 15 | measured | ipad-final-bank/attn-d256-r4095-c4096.json
+attn-d256-r4096-c4096 | 10.594750 | 12.653750 | 52.423250 | 83.728% | 4.143x | 15 | measured | ipad-final-bank/attn-d256-r4096-c4096.json
+attn-d256-r4097-c4097 | 10.628000 | 12.462375 | 44.261125 | 85.281% | 3.552x | 15 | measured | ipad-final-bank/attn-d256-r4097-c4097.json
+attn-d256-r4096-c8191 | 31.008083 | 38.208875 | 161.941750 | 81.154% | 4.238x | 15 | measured | ipad-final-bank/attn-d256-r4096-c8191.json
+attn-d256-r4096-c8192 | 34.227125 | 40.694000 | 146.674625 | 84.109% | 3.604x | 15 | measured | ipad-final-bank/attn-d256-r4096-c8192.json
+attn-d256-r4096-c8193 | 24.522875 | 31.983000 | 303.220917 | 76.675% | 9.481x | 15 | measured | ipad-final-bank/attn-d256-r4096-c8193.json
+attn-d256-r8193-c4097 | 28.269000 | 34.973167 | 155.152458 | 80.831% | 4.436x | 15 | measured | ipad-final-bank/attn-d256-r8193-c4097.json
+attn-groups-d256-b2-h8-8 | 3.336375 | 3.658625 | 13.948750 | 91.192% | 3.813x | 15 | measured | ipad-final-bank/attn-groups-d256-b2-h8-8.json
+attn-groups-d256-b1-h12-3 | 2.419500 | 2.697958 | 9.814375 | 89.679% | 3.638x | 15 | measured | ipad-final-bank/attn-groups-d256-b1-h12-3.json
+attn-groups-d256-b1-h18-6 | 3.437042 | 3.897833 | 15.271542 | 88.178% | 3.918x | 15 | measured | ipad-final-bank/attn-groups-d256-b1-h18-6.json
+attn-groups-d256-b1-h56-7 | 9.961000 | 11.646750 | 57.819917 | 85.526% | 4.964x | 15 | measured | ipad-final-bank/attn-groups-d256-b1-h56-7.json
+attn-dynamic-d256 | 20.631042 | 25.056375 | 156.809000 | 82.338% | 6.258x | 15 | measured | ipad-final-bank/attn-dynamic-d256.json
+attn-causal-d256 | 0.823375 | 0.748167 | 1.544375 | 110.052% | 2.064x | 15 | measured | ipad-rc-cutoff/attn-causal-d256.json
+attn-partition-r4095-c24576-h48 | 190.041167 | 276.750750 | 1750.592670 | 68.669% | 6.326x | 15 | flagged_below_75_percent | ipad-final-bank/attn-partition-r4095-c24576-h48.json
+attn-partition-r4096-c24575-h48 | 192.463750 | 293.154417 | 1530.285330 | 65.653% | 5.220x | 15 | flagged_below_75_percent | ipad-final-bank/attn-partition-r4096-c24575-h48.json
+attn-partition-r4096-c24576-h48 | 208.204500 | 272.076625 | 388.792167 | 76.524% | 1.429x | 15 | measured | ipad-final-bank/attn-partition-r4096-c24576-h48.json
+attn-partition-r4097-c24577-h48 | 193.995625 | 277.103833 | 2135.483710 | 70.008% | 7.706x | 15 | flagged_below_75_percent | ipad-final-bank/attn-partition-r4097-c24577-h48.json
+attn-partition-r4096-c32767-h32 | 184.117125 | 260.837042 | 1457.524250 | 70.587% | 5.588x | 15 | flagged_below_75_percent | ipad-final-bank/attn-partition-r4096-c32767-h32.json
+attn-partition-r4096-c32768-h32 | 210.973042 | 258.369125 | 365.794667 | 81.656% | 1.416x | 15 | measured | ipad-final-bank/attn-partition-r4096-c32768-h32.json
+attn-partition-r4096-c32769-h32 | 148.452208 | 236.151625 | 2191.828120 | 62.863% | 9.281x | 15 | flagged_below_75_percent | ipad-final-bank/attn-partition-r4096-c32769-h32.json
+attn-partition-r8193-c24576-h56 | 663.979500 | 750.001417 | 3706.488080 | 88.530% | 4.942x | 15 | measured | ipad-final-bank/attn-partition-r8193-c24576-h56.json
+causal-register-r64-c257-b1-h8-2 | 0.069667 | 0.048583 | 0.069875 | 143.396% | 1.438x | 15 | measured | ipad-single-cutoff/causal-register-r64-c257-b1-h8-2.json
+causal-register-r65-c257-b1-h8-2 | 0.071125 | 0.049667 | 0.073750 | 143.205% | 1.485x | 15 | measured | ipad-single-cutoff/causal-register-r65-c257-b1-h8-2.json
+causal-register-r127-c257-b1-h8-2 | 0.088000 | 0.066250 | 0.090708 | 132.830% | 1.369x | 15 | measured | ipad-single-cutoff/causal-register-r127-c257-b1-h8-2.json
+causal-register-r128-c257-b1-h8-2 | 0.087125 | 0.067875 | 0.078833 | 128.361% | 1.161x | 15 | measured | ipad-single-cutoff/causal-register-r128-c257-b1-h8-2.json
+causal-register-r255-c257-b1-h8-2 | 0.142000 | 0.117167 | 0.190750 | 121.195% | 1.628x | 15 | measured | ipad-single-cutoff/causal-register-r255-c257-b1-h8-2.json
+causal-register-r256-c257-b1-h8-2 | 0.141583 | 0.115125 | 0.128708 | 122.982% | 1.118x | 15 | measured | ipad-single-cutoff/causal-register-r256-c257-b1-h8-2.json
+causal-register-r257-c257-b1-h8-2 | 0.130333 | 0.115500 | 0.174292 | 112.843% | 1.509x | 15 | measured | ipad-single-cutoff/causal-register-r257-c257-b1-h8-2.json
+causal-register-r65-c65-b1-h8-2 | 0.044833 | 0.028500 | 0.035000 | 157.310% | 1.228x | 15 | measured | ipad-single-cutoff/causal-register-r65-c65-b1-h8-2.json
+causal-register-r257-c513-b1-h8-2 | 0.193500 | 0.179625 | 0.321708 | 107.724% | 1.791x | 15 | measured | ipad-single-cutoff/causal-register-r257-c513-b1-h8-2.json
+causal-register-r513-c1025-b2-h6-2 | 0.881542 | 0.958417 | 3.071042 | 91.979% | 3.204x | 15 | measured | ipad-rc-cutoff/causal-register-r513-c1025-b2-h6-2.json
+causal-register-r4096-c8192-b1-h24-4 | 63.466500 | 72.567208 | 275.477250 | 87.459% | 3.796x | 15 | measured | ipad-single-cutoff/causal-register-r4096-c8192-b1-h24-4.json
+causal-register-r4097-c8193-b1-h8-2 | 41.436875 | 30.394250 | 133.956875 | 136.331% | 4.407x | 15 | measured | ipad-single-cutoff/causal-register-r4097-c8193-b1-h8-2.json
+
+MAC DECODE INDEPENDENT REPEAT
+31 rotating samples per variant, preparation included. The first run is retained in the bank above; this repeat checks timing stability.
+case | true ms | false ms | NA ms | retention | NA speedup | correct | source
+local-gqa-r1-c2048 | 0.145667 | 0.133875 | 0.084750 | 108.808% | 0.633x | True | mac-decode-repeat/local-gqa-r1-c2048.json
+local-gqa-r1-c8192 | 0.576750 | 0.561333 | 0.317417 | 102.746% | 0.565x | True | mac-decode-repeat/local-gqa-r1-c8192.json
+local-gqa-r8-c2048 | 0.149333 | 0.138375 | 0.365250 | 107.919% | 2.640x | True | mac-decode-repeat/local-gqa-r8-c2048.json
+local-gqa-r8-c8192 | 0.584208 | 0.564917 | 0.320250 | 103.415% | 0.567x | True | mac-decode-repeat/local-gqa-r8-c8192.json
+local-27b-gqa-r1-c2048 | 0.145458 | 0.134167 | 0.085500 | 108.416% | 0.637x | True | mac-decode-repeat/local-27b-gqa-r1-c2048.json
+local-27b-gqa-r1-c8192 | 0.575583 | 0.559792 | 0.317625 | 102.821% | 0.567x | True | mac-decode-repeat/local-27b-gqa-r1-c8192.json
+
+DIRECT TRUE/FALSE CROSSCHECKS
+These omit NAAttention to check order-sensitive outliers. They supplement, rather than replace, the bank results above.
+mac flux2-reference | true 18.127000 ms | false 22.909375 ms | retention 79.125% | samples 15
+mac qwen21-2048-attention | true 98.124000 ms | false 125.346625 ms | retention 78.282% | samples 15
+ipad attn-partition-r4095-c24576-h48 | true 223.761250 ms | false 267.317500 ms | retention 83.706% | samples 9
+ipad attn-partition-r4096-c24575-h48 | true 220.143167 ms | false 284.052333 ms | retention 77.501% | samples 9
+ipad attn-partition-r4096-c24576-h48 | true 214.390625 ms | false 274.904417 ms | retention 77.987% | samples 9
+ipad attn-partition-r4096-c32767-h32 | true 197.628583 ms | false 253.115583 ms | retention 78.078% | samples 9
+ipad attn-partition-r4096-c32768-h32 | true 204.304417 ms | false 252.763875 ms | retention 80.828% | samples 9
+ipad attn-partition-r4096-c32769-h32 | true 197.491042 ms | false 252.227250 ms | retention 78.299% | samples 9
+ipad attn-partition-r4097-c24577-h48 | true 236.394583 ms | false 276.796042 ms | retention 85.404% | samples 9
+
+MAC FEATURE CHECKS: 204/205 floating-PV checks passed.
+These historical feature runs include default-mode errors on strong sinks and packed batched masks. The packed-mask offset fix now applies to both modes; see validation-summary.txt for subsequent validation.
+  Unavailable or failed: mac-features-fixed/head-tail-p0-d8-varlen0.json exit=timeout
+IPAD FEATURE CHECKS: 84/84 floating-PV checks passed.
+These historical feature runs include default-mode errors on strong sinks and packed batched masks. The packed-mask offset fix now applies to both modes; see validation-summary.txt for subsequent validation.
+
+Additional D=8 diagnostic: both true and false preparation pass, but both attention commands stall. This additional head-size diagnostic is outside the original bank.

@@ -1,0 +1,282 @@
+NAInt8Attention quantizePV validation — 2026-10-11
+
+Change
+NAInt8AttentionDescriptor.quantizePV defaults to true and participates in both
+descriptor cache keys. The MFA parameter quantize_pv selects the forward mode:
+1 quantizes P/V; 0 keeps P/V in ioPrecision with FP32 PV accumulation. QK
+remains INT8 in both modes. SDPA selects true for GEMM_8I alone and false when
+GEMM_16F or GEMM_32F is also present. Without GEMM_8I, dispatch is unchanged.
+For FP16 input, GEMM_8I alone preserves FP16 intermediates and saved LSE, as
+does GEMM_8I | GEMM_16F. GEMM_8I | GEMM_32F uses FP32 intermediates and LSE.
+An explicit GEMM_16F takes precedence if both floating flags are present.
+MPS forward and backward use the same precision rule so the LSE format agrees;
+the CUDA GEMM precision selection uses that rule too. Backward retains its
+fully quantized implementation.
+Floating PV skips V quantization and binds original V. Hadamard K centering
+uses the existing mean kernels. Kernel.hpp documents the bindings.
+
+The retained performance changes are limited to:
+- Zero-padding the final floating V tile during K preparation, for fixed-length
+  unmasked attention. usesPaddedVTail() owns eligibility and scratch sizing.
+- Causal floating PV with D > 192 uses blockC=32 and four SIMD groups when
+  2 * floor(R / 128) * B * Hq >= 3 * GPU_core_count and C >= 4096, for
+  unmasked, fixed-length inputs with a known core count. The 128-row span
+  comes from the original 16-row / eight-group tile. Counting only complete
+  row groups avoids overstating work for short queries with many heads.
+  One work-per-core formula applies to both devices; the head tile is unchanged.
+
+Shared correctness fixes apply to both PV modes: quantizer bounds account for
+attention tiles being smaller than quantizer tiles, and packed masks receive
+their per-batch offsets. Scale scratch/dispatch uses quantizer tiles; block
+masks use attention tiles. Forward attention tiles must divide their scale
+tiles. The constructor derives both remainder flags and traversal order after
+tile selection; the benchmark recomputes them locally after its overrides.
+
+Padded V tail scratch
+Only floating PV with an incomplete C tile, fixed lengths and no mask uses it.
+The allocation is B * blockC * Hk * D * ioPrecision.size() bytes, independent
+of C. It contains a whole final tile, including the valid rows, not just zeros.
+For C=1057 and blockC=64, K preparation copies V rows 1024..1056 into scratch
+rows 0..32 and zeros rows 33..63. Complete tiles continue to read original V;
+the final tile reads scratch. Scores beyond C are masked before softmax.
+With B=1, Hk=4, D=256 and FP16, scratch is 128 KiB at blockC=64 or 64 KiB at
+blockC=32. It is shared across query heads and output tiles. This replaces the
+bounded PV remainder path and its threadgroup P scratch, without another GPU
+dispatch. Quantized PV, aligned C, masks and packed sequences need no V-tail
+scratch.
+
+Head-width crossover
+check_crossover.py compares two floating-PV configurations with identical
+preparation, CPU-reference checks, nine rotating samples and 300 ms warmup.
+The baseline uses the original tile policy; the candidate changes only blockC
+to 32 and SIMD groups to four. These ratios isolate scheduling, unlike the
+bank's true/false retention ratios. Head widths span 128..512, including every
+multiple of eight from 176 through 272. The main pair is R=1024/C=4096 and
+R=1025/C=4097, B=1, Hq=8, Hk=2, causal FP16.
+
+Candidate speed / original floating-PV speed:
+D      Mac aligned / odd       iPad aligned / odd
+184    1.038 / 0.920            0.887 / 0.885
+192    1.260 / 0.739            1.434 / 1.067
+200    1.273 / 1.294            2.021 / 1.986
+224    1.104 / 1.126            1.825 / 1.830
+256    1.286 / 1.112            1.770 / 1.701
+320    1.007 / 1.160            2.274 / 1.935
+512    1.380 / 1.117            2.268 / 1.568
+
+D > 192 is broadly favorable at the main large-query pair and matches the
+existing switch to 128-channel output tiles. The main sweep's D=200..512
+pairs range from 1.007..1.380 on Mac and 1.568..2.662 on iPad. Across the
+width/scope probes with D>192, R>=64 and C>=1024, the smaller tiles won 46
+and lost 11 on Mac; they won 51 and lost 6 on iPad. R=64/C=1025 lost at every
+checked width (D=200/256/320) on both devices. R=129 and R=513 also had losses.
+All 104 crossover checks passed on each device, including BF16/FP32, masks,
+sinks, packed sequences, Hadamard and combinations at odd lengths. Every iPad
+check reported thermal state 0. These checks compare both configurations to
+the CPU reference; large shapes sample output rows, as described below.
+The scope probes also explain retaining the existing mask/varlen exclusions:
+iPad FP32 masks/packed sequences at D=200/256 retain only 0.629..0.780 of the
+original floating-PV speed with the smaller tiles. These mask/varlen
+exclusions remain; no precision-specific rule is added.
+Raw results remain local.
+
+R/C crossover
+rc-crossover.txt contains the paired tile sweep, the selected boundary, weak
+cases, repeats and reproduction arguments. Both variants use floating PV, so
+these measurements isolate tile choice from the cost of V quantization.
+At B=1/Hq=8, the R transition is around 896..1024 on Mac and 128..256 on iPad;
+C transitions around 2048..4096. Alignment causes local dips, so this is not a
+sharp universal crossover. The selector uses 1.5 complete original query
+groups per GPU core and C>=4096. Output tiling supplies at least twice that
+many threadgroups. For B=1/Hq=8 the selected bounds are R>=1024 on the
+40-core Mac and R>=256 on the 10-core iPad. Head-count and batch checks cover
+the same work at smaller R; R=65 with many heads shows why partially filled
+groups cannot simply count as full work. The work-per-core formula passes
+broader head-count/width checks, including exact
+boundary probes on Mac. No per-length exceptions or new kernel branches.
+All 381 Mac and 302 iPad paired runs passed CPU-reference checks. Selected
+FP16 ratios span 0.921..1.629 on Mac and 1.004..2.499 on iPad; these ratios
+compare the two floating-PV tile configurations, not float against INT8 PV.
+Mac BF16 includes a 0.909 reading (0.934 in an independent repeat). iPad FP32
+D=224/R=1025/C=4097 repeats at 0.786, and D=200/R=1281/C=4097 at 0.846.
+These regressions occur within the selected region.
+The iPad sweep includes 72 runs at fair thermal state. All four independent
+FP32 repeats were at normal thermal state, confirming those outliers.
+A conservative common boundary gives up some aligned small-workload wins.
+The refreshed bank retains those costs as well as the avoided tail regressions.
+
+Raw results are retained locally outside the repository. Only compact reports
+and reproduction scripts are included here.
+
+Coverage and methodology
+The recovered bank contains 527 workloads: 391 matmul, 128 forward attention,
+and 8 backward attention. All 128 forward workloads are eligible for this
+forward-only option, including the model examples, decode, GQA, causal shapes,
+partition cases, and odd sequence lengths. Matmul and backward are outside
+this option's scope.
+
+Results use FP16 I/O and GPU timestamps. The main comparison includes all
+preparation. The ordinary bank uses 15 rotating samples after at least five
+warmup rounds and 300 ms aggregate GPU work. The six Mac decode rows use 31
+samples per variant, with an independent 31-sample repeat. The first run
+supplies the retained bank timings; the repeat is reported separately.
+H3 uses three samples after at least one warmup round and 300 ms aggregate
+work. Kernel-only ordinary timings are also retained. Mac measurements use
+an isolated GPU.
+
+Retention means time(true) / time(false). The 75% reference identifies low
+throughput cases; it is not a hard pass/fail threshold.
+
+                           Mac M5 Max       iPad M5
+Workloads measured         128 / 128        127 / 128
+Median retention           90.06%           86.19%
+Lowest primary reading     68.98%           62.86%
+Below 75% diagnostic        10               13
+Faster than NAAttention     117 / 128        117 / 126 available
+Median NAAttention speedup  1.93x            1.84x
+
+The R/C boundary affects nine bank rows on Mac and seven on iPad. The union of
+nine rows is measured against both quantizePV=true and NAAttention with 15
+rotating samples. The other 119 workloads have verified source and dispatch
+equivalence to their retained measurements.
+All nine passed on both devices. True/false retention spans
+74.23..142.09% on Mac (median 77.82%) and
+72.91..110.05% on iPad (median 91.98%).
+Every final iPad bank recheck was at normal thermal state. The conservative
+C bound gives up some aligned C=2048 wins: local-27b-gqa-r2048-c2048 retains
+74.23% on Mac and 72.91% on iPad. These remain diagnostic entries, not failures.
+The iPad R128/C8192/Hq24 row retains 81.67% throughput with the selected tiles.
+The retained iPad bank has 12 cases reporting thermal state 1 (fair).
+Raw samples and thermal observations remain in the local per-workload logs.
+The few cases favoring NAAttention are small shapes where preparation matters;
+no additional tiny-shape specialization was retained.
+
+Mac decode measurements
+All six decode workloads passed both 31-sample runs. The repeat medians
+agree within 0.65% for every variant. Floating PV retains 102.94..109.08%
+of quantized-PV speed, with preparation included. The first run is used in
+the bank; retained-results.txt includes all six independent repeat rows.
+local-gqa-r1-c2048 measures 0.146125 ms for true and 0.133958 ms for false;
+the corresponding 27b row measures 0.145250 and 0.134458 ms.
+local-gqa-r8-c2048 measures 0.138375 ms for false versus 0.365167 ms for
+NAAttention, repeating at 0.138375 versus 0.365250 ms. Its 2.639x NAAttention
+speedup is reproducible. The existing NAAttention selector requires C>=4096
+for split-KV when R>1: this row uses splitKV=1, while the other five decode
+rows use splitKV=8. The baseline policy therefore differs between the R=1
+and R=8 rows at C=2048. These are direct kernel comparisons.
+
+Tail and outlier rechecks
+Seven direct true/false iPad comparisons covered R=4095/4096/4097 near
+C=24576, and C=32767/32768/32769 at R=4096. Nine samples per workload retained
+77.50–85.40% speed; every correctness check passed and thermal state stayed 0.
+The lowest primary three-way result, R4096/C32769, rechecked at 78.30%.
+Direct Mac rechecks (15 samples) were 79.12% for Flux2-reference and 78.28%
+for Qwen21-2048. The original three-way results remain in the main report.
+These rechecks show order-sensitive timing variation; they do not replace the
+lower measurements or establish a guaranteed minimum speed.
+
+Additional FP32 performance diagnostics
+Four direct true/false pairs used R=513, C=2049, B=2, Hq=8, Hk=2, causal,
+15 samples and the retained original mask/varlen tiling (C64, D64, 8 groups).
+All CPU-reference checks passed; iPad thermal state stayed 0.
+D / feature          Mac retention    iPad retention
+200 / batched mask   67.81%           47.64%
+200 / packed         63.57%           36.34%
+256 / batched mask   68.98%           49.20%
+256 / packed         50.93%           36.95%
+These are low-throughput cases for floating PV, outside the FP16 bank.
+The head selector does not apply to these masked/packed inputs, whose tiling
+is unchanged. They remain reported without a second tuning rule here.
+Reproduce the first row after building the probe:
+CCV_PV_PAIR_ONLY=1 CCV_PV_MASK=2 /private/tmp/pv-repro/probe 513 2049 2 8 2 2 1 3 4 0 200 0 15
+Use D=256 for the other width; packed inputs use CCV_PV_MASK=0 and varlen=1.
+
+Feature validation
+204 Mac and 84 iPad floating-PV checks passed across FP16, BF16 and FP32.
+They cover causal empty rows, shared and batched masks, fully masked rows,
+shared/per-head/strided sinks, packed sequences, Hadamard centering, decode,
+and combined features at odd lengths. Extra head dimensions 80/192/224 passed
+on Mac. Maximum relative L2 error in these passing checks was below 0.42%.
+Small checks compare all output elements with a CPU reference. Large checks
+sample five rows across the first/last heads; they are not exhaustive output
+comparisons. Nine additional iPad quantizer-boundary configurations passed
+both Metal validation and CPU-reference checks.
+
+36 Mac and 12 iPad odd-length decode checks passed in
+both PV modes (R=1/8, C=1057, causal/noncausal, FP16/BF16/FP32). Nine Mac
+floating-PV mask checks also passed with blockC=32 while KV scale tiles stayed
+64. The three strong-sink cases retain the known true-mode quantization error.
+Three packed batched-mask checks without sinks passed in both modes with
+per-batch offsets. Six invalid scale/tile combinations were rejected by the
+new preconditions; compatible smaller tiles and matching larger scale tiles
+were accepted.
+
+Known limitations retained explicitly
+- iPad H3 R=C=31018: true/false pair passes at 74.99% retention; independent
+  NAAttention execution fails with GPU recovery, so that comparison is absent.
+- iPad H3 R=C=70186: the existing true path fails with GPU recovery even in
+  a pair-only run. No valid iPad timing is reported. Both H3 workloads pass
+  all three variants on Mac.
+- An extra D=8 causal batched-mask/sink probe stalls in both true and false
+  attention. Preparation passes. This additional head-size diagnostic is
+  outside the original bank.
+- Strong-sink checks expose existing true-mode quantization errors. Historical
+  packed-mask results also include the true-mode offset issue; the offset fix
+  now applies to both modes. All corresponding false-mode checks pass.
+- Separate NAAttention has a compilation failure on a packed batched-mask
+  combination. Feature checks therefore compare true/false directly.
+
+Build and default-path checks
+- Compared 6,144 default-mode configurations against original tip
+  4b8d56920b9a863c0e4ecb2058cb77cc587515b7: 5,552 match source and dispatch
+  exactly; 592 differ only in the explicitly checked backward quantizer bounds
+  flags. All 3,072 forward configurations match exactly. This matrix does not
+  include packed masks, whose shared offset fix intentionally changes source.
+- 2,856 floating forward configurations from 119 workloads have verified
+  source/dispatch equivalence to the measured kernels. The nine workloads
+  affected by the R/C boundary have direct measurements on both devices.
+  An additional 1,536-configuration Mac audit covers all 128 bank workloads.
+- The R/C selector builds for Mac and iPad; make debug -j4 and the default
+  source/dispatch comparison pass. git diff --check passes.
+- Production encoder validation: make debug -j4 passed on Mac;
+  ./mpsblas.tests 'scaled dot product attention' passed 40/40.
+  FP16 quantized, causal, non-multiple-of-64 and gradient tests exercise both
+  GEMM_8I and GEMM_8I | GEMM_16F. D=256 causal cases at R=1024/C=4096 and
+  R=1025/C=4097 exercise the C32 selector on the 40-core Mac, with sinks and
+  both PV modes, against full CPU-reference outputs.
+  PV flag tests verify both floating flags, their combination, and switching
+  back to INT8-only through the same cache. Hadamard K-centering tests cover
+  both PV modes, with and without saved statistics. FP16 LSE checks allow
+  max(0.04, one FP16 step at the reference magnitude); FP32 retains 0.04.
+  The focused Hadamard K-centering check passes with this tolerance.
+- ./sol_attention.tests 'int8 Sol all-exact' passed across all four cache
+  shapes. Its native reference uses GEMM_8I to match Sol's quantized P/V.
+- MPS forward/backward and CUDA use identical intermediate-precision rules
+  (with the input tensor's datatype). CUDA was source-checked only; this Mac
+  does not have the CUDA compiler or hardware.
+
+Files
+retained-results.txt contains every workload, timing and diagnostic. Its source
+paths refer to local raw results, not files committed in this directory.
+report_retained.py --input RAW_DIRECTORY regenerates it; --json is optional.
+The raw stages include mac/ipad-final-bank, final-long and pair-crosscheck;
+mac/ipad-single-cutoff contain the 29 causal D=256 rows;
+mac/ipad-rc-cutoff contain the nine rows affected by the work/C boundary.
+mac-decode-final supplies all six Mac decode rows; mac-decode-repeat contains
+their independent repeat.
+Raw logs, JSON, build logs and expanded JSON reports are excluded from the diff.
+
+Reproduce on Mac from the repository root (use a fresh output directory):
+python3 doc/benchmarks/na-int8-quantize-pv-bank-20261010/build.py --output /private/tmp/pv-repro
+python3 doc/benchmarks/na-int8-quantize-pv-bank-20261010/verify_default.py --archive /private/tmp/pv-repro/libmfa.a
+python3 doc/benchmarks/na-int8-quantize-pv-bank-20261010/check_crossover.py --probe /private/tmp/pv-repro/probe --output /private/tmp/pv-crossover-repro
+python3 doc/benchmarks/na-int8-quantize-pv-bank-20261010/check_crossover.py --probe /private/tmp/pv-repro/probe --sweep rc --samples 15 --output /private/tmp/pv-rc-repro
+python3 doc/benchmarks/na-int8-quantize-pv-bank-20261010/run.py --probe /private/tmp/pv-repro/probe --output /private/tmp/pv-bank-repro --filter '^(?!h3-)' --samples 15
+python3 doc/benchmarks/na-int8-quantize-pv-bank-20261010/run.py --probe /private/tmp/pv-repro/probe --output /private/tmp/pv-long-repro --filter '^h3-' --samples 3 --long-profile
+python3 doc/benchmarks/na-int8-quantize-pv-bank-20261010/run.py --probe /private/tmp/pv-repro/probe --output /private/tmp/pv-decode/mac-decode-final --filter '^local-(27b-)?gqa-r(1|8)-c' --samples 31
+python3 doc/benchmarks/na-int8-quantize-pv-bank-20261010/run.py --probe /private/tmp/pv-repro/probe --output /private/tmp/pv-decode/mac-decode-repeat --filter '^local-(27b-)?gqa-r(1|8)-c' --samples 31
+python3 doc/benchmarks/na-int8-quantize-pv-bank-20261010/check_features.py --probe /private/tmp/pv-repro/probe --output /private/tmp/pv-features-repro --pair-only --filter '^(?!head-tail-.*-d8-)'
+
+GPU execution requires unrestricted execution in this workspace. The iPad
+scripts record the exact launch arguments; build.py --ios --large-memory
+builds the signed benchmark app, with --team available for another team.

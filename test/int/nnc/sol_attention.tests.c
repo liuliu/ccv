@@ -118,7 +118,7 @@ TEST_CASE("int8 Sol all-exact matches native attention across cache shapes")
 			}
 		}
 		ccv_nnc_cmd_t dense = CMD_SCALED_DOT_PRODUCT_ATTENTION_FORWARD(1, 0);
-		dense.info.scaled_dot_product_attention.flags = CCV_NNC_GEMM_16F | CCV_NNC_GEMM_8I;
+		dense.info.scaled_dot_product_attention.flags = CCV_NNC_GEMM_8I;
 		ccv_nnc_cmd_exec(dense, ccv_nnc_no_hint, 0, gpu, 3, &gpu[4], 1, 0);
 		ccv_nnc_tensor_t* const expected = ccv_nnc_tensor_new(0, staging->info, 0);
 		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(gpu[4]), TENSOR_LIST(expected), 0);

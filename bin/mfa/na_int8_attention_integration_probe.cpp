@@ -72,6 +72,7 @@ int main(int argc, char** argv)
   params.type = 0;
   params.use_neural_accelerators = 1;
   params.use_quantized_attention = 1;
+  params.quantize_pv = 1;
   params.R = (uint32_t)R;
   params.C = (uint32_t)C;
   params.Hq = (uint32_t)H;

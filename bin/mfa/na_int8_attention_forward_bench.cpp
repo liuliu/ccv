@@ -83,6 +83,7 @@ int main(int argc, char** argv)
   params.output_rows = r*b; params.K_trans = 1; params.alpha = 1/std::sqrt(float(d));
   params.is_causal = causal; params.batched = b > 1; params.batch_dims_q[0] = b > 1 ? b : 0;
   params.use_neural_accelerators = 1; params.use_quantized_attention = 1;
+  params.quantize_pv = 1;
   params.use_hadamard = hadamard;
   printf("device=%s gpu_core_count=%u R=%d C=%d D=%d B=%d Hq=%d Hkv=%d causal=%d dynamic_flags=%d precision=%d upcast=%d\n",
       device->name()->utf8String(), context->device_properties.coreCount, r, c, d, b, hq, hk, causal, flags, precision, upcast);

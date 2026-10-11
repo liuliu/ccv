@@ -17,6 +17,8 @@ struct NAInt8AttentionDescriptor {
   unsigned short Hq = 1;
   unsigned short Hk = 1;
   GEMMOperandPrecision ioPrecision = GEMMOperandPrecision::FP16;
+  // Quantize P and V by default. Forward-only false uses ioPrecision for P/V and FP32 accumulation.
+  bool quantizePV = true;
   bool lowPrecisionIntermediates = false;
   simd::uint3 matrixDimensions;
   AttentionOperands<unsigned int> batchStrides;

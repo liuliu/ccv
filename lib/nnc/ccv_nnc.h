@@ -345,7 +345,10 @@ typedef struct {
 			int is_varlen; /**< [scaled_dot_product_attention.is_varlen] Whether Q, K and V are packed variable-length sequences with sequence offsets supplied as inputs. */
 			int max_seqlen_q; /**< [scaled_dot_product_attention.max_seqlen_q] The maximum query sequence length for packed variable-length attention. */
 			int max_seqlen_kv; /**< [scaled_dot_product_attention.max_seqlen_kv] The maximum key / value sequence length for packed variable-length attention. */
-			int flags; /**< [scaled_dot_product_attention.flags] Which precision is preferred for accumulator, FP16 or FP32, and whether to opt into quantized attention on supported backends. */
+			int flags; /**< [scaled_dot_product_attention.flags] CCV_NNC_GEMM_16F / CCV_NNC_GEMM_32F select the preferred intermediate precision.
+			               On supported NA INT8 forward paths, CCV_NNC_GEMM_8I alone quantizes Q/K and P/V; adding either floating flag keeps P/V in the input precision with FP32 PV accumulation.
+			               For FP16 input, CCV_NNC_GEMM_8I alone uses FP16 intermediates and saved logsumexp. CCV_NNC_GEMM_32F requests FP32; an explicit CCV_NNC_GEMM_16F takes precedence if both are present.
+			               Quantized backward retains quantized P/V regardless of the floating flags. */
 			int deterministic; /**< [scaled_dot_product_attention.deterministic] Whether we want the attention computation to be deterministic (CUDA only). */
 			int attention_sinks; /**< [scaled_dot_product_attention.attention_sinks] Whether a scalar or per-query-head attention sink tensor is supplied as an input. */
 			int sliding_window; /**< [scaled_dot_product_attention.sliding_window] Causal sliding-window size, including the current token. 0 disables sliding-window attention. */

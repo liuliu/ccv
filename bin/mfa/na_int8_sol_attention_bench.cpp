@@ -70,6 +70,7 @@ int main(int argc, char** argv)
   native.R = T; native.C = T; native.Hq = H; native.Hk = H; native.D = 128;
   native.output_rows = T; native.K_trans = 1; native.alpha = scale;
   native.use_neural_accelerators = 1; native.use_quantized_attention = 1;
+  native.quantize_pv = 1;
   ccv_nnc_mfa_prepare_attention(context, native);
   const uint32_t J = (T + 63) / 64, JP = (J + 63) / 64 * 64;
   const size_t route_offset = size_t(H) * J * 128 * 4 + size_t(H) * JP * 128 * 6 + size_t(H) * 128 * 8;

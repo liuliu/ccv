@@ -1,0 +1,197 @@
+Causal floating-PV R/C crossover — 2026-10-11
+
+Comparison: both variants use quantizePV=false, the same inputs and full
+preparation. Original tiles: R16/C64/D64, 8 SIMD groups, output tile 128.
+Candidate: R16/C32/D64, 4 SIMD groups, output tile 128.
+Ratio = original time / candidate time: values below 1 mean a regression.
+Bank retention is a separate comparison against quantizePV=true.
+15 rotating samples, 300 ms GPU warmup; independent repeats use 31.
+FP16, causal, dynamic R/C, B=1/Hq=8/Hk=2 unless stated otherwise.
+All runs compare both outputs with the CPU reference (sampled on large inputs).
+
+Selection
+Use C32 / 4 groups for D>192, causal, unmasked, fixed-length floating PV when:
+  2 * floor(R / 128) * B * Hq >= 3 * GPU_core_count, and C >= 4096.
+The 128 is the original query threadgroup span: 16 rows * 8 SIMD groups.
+Count complete groups before output-channel tiling. Partial groups do not
+provide equivalent work: R=65/Hq=128 regresses substantially on the Mac,
+despite a large count of 16-row query tiles.
+The measured threshold is 1.5 complete query groups per GPU core. D>192 has
+at least two output tiles, yielding at least three full threadgroups/core.
+Use the same formula on both devices; retain original tiles if core count is
+unknown. There is no precision-specific rule.
+At B=1/Hq=8 the work bound means R>=1024 on the 40-core Mac and R>=256 on
+the 10-core iPad. At Hq=16 these become R>=512 and R>=128 respectively.
+More heads/batches can meet the bound at smaller R without a shape exception.
+
+This is a conservative boundary around a broad crossover, not a guarantee
+of a win at every larger shape. At B=1/Hq=8, the Mac odd-length R sweep
+crosses around 896..1024; iPad crosses around 128..256. C transitions around
+2048..4096. Scheduling and alignment produce local dips. Regressions remain
+above the boundary (including FP32 outliers)
+and are retained below, rather than excluded with length-specific rules.
+Width/scope probes with D>192, R>=64 and C>=1024 had 46 wins / 11 losses on
+Mac and 51 / 6 on iPad, including systematic small-R losses. These tile-choice
+measurements support a query-work bound in addition to the head-width bound.
+
+Run coverage (includes independent repetitions of some shapes)
+mac: 381/381 paired runs passed; 327 distinct inputs/configurations.
+  Selected FP16: 138 runs, range 0.921..1.629, median 1.081; 43 below 1, 12 below 0.95.
+  Selected BF16: 9 runs, range 0.909..1.270, median 1.069; 4 below 1, 3 below 0.95.
+  Selected FP32: 8 runs, range 1.170..1.490, median 1.296; 0 below 1, 0 below 0.95.
+ipad: 302/302 paired runs passed; 282 distinct inputs/configurations.
+iPad thermal states observed: 0, 1; 72 runs included fair thermal state. Raw readings are retained.
+  Selected FP16: 130 runs, range 1.004..2.499, median 1.579; 0 below 1, 0 below 0.95.
+  Selected BF16: 8 runs, range 1.352..1.844, median 1.661; 0 below 1, 0 below 0.95.
+  Selected FP32: 12 runs, range 0.786..1.462, median 0.977; 6 below 1, 6 below 0.95.
+
+Main D=256 grid: each cell is aligned / (R+1,C+1). A dash is outside R<=C.
+R       C=1024       C=2048       C=4096       C=8192
+mac
+64      0.926/0.763   0.889/0.728   0.845/0.713   0.814/0.690
+128     1.001/0.742   0.985/0.733   0.969/0.723   0.924/0.681
+256     0.946/1.129   0.924/1.281   0.933/1.400   0.900/1.409
+512     1.166/0.970   1.215/0.953   1.247/0.971   1.264/0.993
+768     1.392/0.822   1.240/0.821   1.194/0.855   1.188/0.912
+1024    1.077/0.858   1.177/0.981   1.267/1.121   1.331/1.186
+1536    -             1.112/1.042   1.152/1.166   1.183/1.210
+2048    -             1.189/0.957   1.235/1.047   1.263/1.044
+ipad
+64      0.959/0.824   0.921/0.768   0.915/0.767   0.902/0.759
+128     1.078/0.926   1.136/0.916   1.167/0.925   1.172/0.971
+256     1.093/1.103   1.095/1.126   1.130/1.199   1.134/1.902
+512     1.047/1.060   1.061/1.007   1.085/1.285   2.241/2.235
+768     0.989/0.912   1.018/1.025   1.253/1.728   1.683/1.878
+1024    1.024/0.963   1.093/1.005   1.703/1.489   2.498/1.998
+1536    -             1.166/0.987   1.468/1.385   2.030/1.802
+2048    -             1.137/1.011   1.603/1.779   2.311/2.452
+
+Width / boundary crosscheck (odd lengths)
+D    R       Mac C=2049/3073/4097       iPad C=2049/3073/4097
+200  897     1.206 / 1.291 / 1.360       1.045 / 1.264 / 1.667
+200  1025    1.143 / 1.249 / 1.342       1.022 / 1.267 / 1.783
+200  1153    1.082 / 1.070 / 1.102       1.063 / 1.214 / 2.050
+200  1281    1.038 / 1.084 / 1.113       1.000 / 1.291 / 1.850
+200  1537    1.186 / 1.240 / 1.297       1.067 / 1.251 / 1.793
+200  2049    1.098 / 1.154 / 1.143       0.985 / 1.232 / 1.743
+256  897     1.123 / 1.195 / 1.230       1.057 / 1.210 / 1.351
+256  1025    1.003 / 1.080 / 1.123       1.087 / 1.179 / 1.402
+256  1153    0.961 / 0.980 / 0.994       1.036 / 1.173 / 1.817
+256  1281    0.936 / 0.953 / 0.994       0.986 / 1.146 / 1.723
+256  1537    1.057 / 1.137 / 1.163       0.991 / 1.096 / 1.582
+256  2049    0.976 / 1.021 / 1.048       0.985 / 1.094 / 1.520
+320  897     1.026 / 1.039 / 1.046       1.054 / 1.528 / 1.587
+320  1025    1.071 / 1.145 / 1.178       1.023 / 1.399 / 1.499
+320  1153    1.044 / 1.062 / 1.069       1.001 / 1.496 / 1.524
+320  1281    0.994 / 1.063 / 1.075       1.012 / 1.481 / 1.456
+320  1537    1.197 / 1.187 / 1.184       1.039 / 1.402 / 1.579
+320  2049    1.044 / 1.089 / 1.126       0.991 / 1.352 / 1.613
+
+Dense Mac R check at D=256/C=4097 (same B/Hq/Hk):
+R      speed
+769    0.856
+801    0.880
+833    0.837
+865    0.888
+897    1.171
+929    1.187
+961    1.045
+993    1.123
+1025   1.101
+1057   1.137
+1089   0.987
+1121   1.027
+1153   0.965
+1185   0.983
+1217   0.962
+1249   1.028
+1281   0.982
+
+Query-work checks at D=256/C=4097; KV heads fixed at 2.
+R     B   Hq   complete groups    Mac      iPad
+513   1   4    16                 0.714    1.021
+513   1   8    32                 0.958    1.230
+513   1   16   64                 1.036    1.919
+257   1   32   64                 1.175    1.594
+129   1   64   64                 1.350    1.669
+65    1   128  0                  0.640    1.194
+513   2   8    64                 1.025    1.989
+257   4   8    64                 1.190    1.513
+129   8   8    64                 1.258    1.356
+
+Core-normalized boundary checks (C=4097, B=1, Hk=4)
+Device    D    R     Hq    complete groups/core    speed
+mac       200  513   12    1.20                    0.961
+mac       256  513   12    1.20                    0.876
+mac       320  513   12    1.20                    0.929
+mac       200  641   12    1.50                    1.215
+mac       256  641   12    1.50                    1.085
+mac       320  641   12    1.50                    1.044
+mac       200  385   20    1.50                    1.138
+mac       256  385   20    1.50                    1.049
+mac       320  385   20    1.50                    1.075
+ipad      200  129   8     0.80                    0.959
+ipad      256  129   8     0.80                    0.942
+ipad      320  129   8     0.80                    1.034
+ipad      200  257   8     1.60                    1.309
+ipad      256  257   8     1.60                    1.299
+ipad      320  257   8     1.60                    1.170
+ipad      200  129   16    1.60                    1.247
+ipad      256  129   16    1.60                    1.219
+ipad      320  129   16    1.60                    1.163
+
+On iPad, the aligned R128/C8192/Hq24/Hk4/D256 case has 24 complete
+query groups and benefits from smaller tiles by 1.265x. Work per core
+admits that case together with the broader measured Hq=8/16/24,
+R=129/257, D=200/256/320 family.
+
+Weak selected cases and independent repeats
+Device / precision / D / R / C         first       repeat
+mac / 0 / 320 / 1024 / 4096    0.934       0.921
+mac / 0 / 256 / 1281 / 4096    0.950       0.935
+mac / 1 / 224 / 1281 / 4097    0.909       0.934
+ipad / 2 / 224 / 1025 / 4097    0.800       0.786
+ipad / 2 / 224 / 1281 / 4097    0.908       0.907
+Precision codes: 0=FP16, 1=BF16, 2=FP32. A dash means not repeated.
+The C bound mitigates broad short-cache losses; increasing C does not
+eliminate every local scheduling or precision-dependent regression.
+
+Reproduction
+Build with build.py, then run check_crossover.py --sweep rc --samples 15
+--probe /private/tmp/pv-repro/probe --output /private/tmp/pv-rc/PHASE
+plus the flags below. Use a fresh directory per phase / precision /
+specialization mode. For iPad add --device "$IPAD_DEVICE" --bundle BUNDLE.
+Default RC sweep: D=256, B=1, Hq=8, Hk=2, FP16, dynamic=3, tails=0,1.
+Each tail offset is added to both R and C; explicit coordinates with
+--tails 0 allow independent row and column tails. R>C pairs are skipped.
+
+grid: default --sweep rc arguments
+boundary: --rows 896,1024,1152,1280,1536,2048 --columns 2048,3072,4096 --widths 200,256,320 --tails 1
+heads: --rows 256,512,1024 --columns 2048,4096 --heads 4,8,16,32 --kv-heads 2 --tails 1
+short-wide: --rows 64,128 --columns 2048,4096 --heads 64,128 --kv-heads 2
+batches: --rows 128,256,512 --columns 2048,4096 --batches 2,4,8 --tails 1
+fine (Mac): --rows 768,800,832,864,896,928,960,992,1024,1056,1088,1120,1152,1184,1216,1248,1280 --columns 3072,4096 --tails 1
+c-fine (Mac): --rows 1025,1217,1281 --columns 2561,3073,3585,4095,4096,4097,5121,8193 --tails 0
+c-fine (iPad): --rows 1025,1281 --columns 2561,3585 --tails 0
+mixed-tails (Mac): --rows 1023,1024,1025,1279,1280,1281 --columns 4095,4096,4097 --widths 200,256,320 --tails 0
+mixed-tails (iPad): --rows 1024,1280,1281 --columns 4095,4096,4097 --widths 256,320 --tails 0
+bf16 / fp32: --rows 1024,1280 --columns 3072,4096 --widths 200,224,256,320 --tails 1 --precision 1 (or 2)
+sinks / hadamard: --rows 512,1024 --columns 4096 --widths 200,256 --batches 2 --tails 1 --sinks 3 (or --hadamard 1)
+dynamic-0/1/2: --rows 1024 --columns 4096 --widths 200,256 --tails 1 --dynamic 0 (or 1 or 2)
+h1: --rows 8192 --columns 8192 --heads 1 --kv-heads 1 --tails 1
+h2: --rows 4096 --columns 4096 --heads 2 --kv-heads 1 --tails 1
+repeat-fp16 (Mac): --rows 1024,1217,1280,1281 --columns 4096,4097 --widths 256,320 --tails 0 --samples 31
+repeat-bf16 (Mac): --rows 1281 --columns 4097 --widths 224 --tails 0 --precision 1 --samples 31
+work-per-core-h12 (Mac): --rows 512,640 --heads 12 --columns 4096 --widths 200,256,320 --kv-heads 4
+work-per-core-h20 (Mac): --rows 384 --heads 20 --columns 4096 --widths 200,256,320 --kv-heads 4
+work-per-core (iPad): --rows 128,256 --columns 4096,8192 --heads 8,16,24 --kv-heads 4 --widths 200,256,320 --tails 1
+bank-counterexample (iPad): --rows 128 --columns 8192 --heads 24 --kv-heads 4 --widths 256
+repeat-fp32 (iPad): --rows 1024,1280 --columns 4096 --widths 200,224 --tails 1 --precision 2 --samples 31
+work-per-core-h1 (iPad): --rows 2048 --columns 4096 --heads 1 --kv-heads 1
+work-per-core-h2 (iPad): --rows 1024 --columns 4096 --heads 2 --kv-heads 1
+
+Raw logs/JSON remain outside the repository under the local
+/private/tmp/ccv-pv-rc-results/{mac,ipad}/PHASE directories.
+The selector only changes tile selection. QuantizePV=true and the
+shared kernel generator are independent of the R/C selection.
+See validation-summary.txt for refreshed bank and default-path checks.

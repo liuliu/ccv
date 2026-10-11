@@ -306,7 +306,10 @@ static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, c
 		static const double zero_f64 = 0;
 		const void* zero = &zero_f64;
 		const void* one;
-		const int is_downcast = ((cmd.info.scaled_dot_product_attention.flags & CCV_NNC_GEMM_16F) && b->info.datatype == CCV_16F);
+		const int attention_flags = cmd.info.scaled_dot_product_attention.flags;
+		// 8I alone keeps the former 8I | 16F precision; 32F opts into FP32 intermediates.
+		const int is_downcast = b->info.datatype == CCV_16F &&
+			((attention_flags & CCV_NNC_GEMM_16F) || ((attention_flags & CCV_NNC_GEMM_8I) && !(attention_flags & CCV_NNC_GEMM_32F)));
 		switch (ccv_nnc_cuda_compute_datatype(b->info.datatype, is_downcast))
 		{
 			case CUBLAS_COMPUTE_16F:

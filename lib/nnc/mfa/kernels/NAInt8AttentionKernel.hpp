@@ -39,6 +39,8 @@ struct NAInt8AttentionKernel {
   // Output channels owned by each threadgroup; QK still reduces over the full head.
   unsigned short outputTileSize;
   bool mortonTraversal;
+  // Quantize P and V by default. Forward-only false uses ioPrecision for P/V and FP32 accumulation.
+  bool quantizePV = true;
   bool lowPrecisionIntermediates;
   float scale;
   bool isCausal;
@@ -70,6 +72,22 @@ struct NAInt8AttentionKernel {
   uint32_t threadgroupMemoryAllocation() const noexcept;
   uint16_t threadgroupSize(MTL::ComputePipelineState *const pipelineState) const noexcept;
   MTL::Size threadgroupsPerGrid(uint32_t batchDimension, uint32_t rowDimension) const noexcept;
+
+  // For floating PV, skip quantize_v and bind the original V at attention
+  // buffer 2. V means/scales are unused; the mean kernels are still needed
+  // for K centering when qkHadamard is enabled.
+  // Floating PV can use a zero-padded final V tile. Bind input V at 4 and
+  // this scratch at 5 for quantize_k, then bind the scratch at 5 for attention.
+  // Scratch contains [batch, blockC, Hk, D] in ioPrecision: copy C % blockC
+  // valid rows, then zero the rest. Complete tiles still read the original V.
+  // The masked main loop cannot read columns beyond C; packed sequences need
+  // a separate tail per sequence. Both retain their bounded remainder path.
+  bool usesPaddedVTail() const noexcept {
+    return !quantizePV && hasCRemainder && !masked && !isVarlen;
+  }
+  size_t paddedVTailBytes(uint32_t batchDimension) const noexcept {
+    return usesPaddedVTail() ? size_t(batchDimension) * blockDimensions[1] * Hk * headDimension * ioPrecision.size() : 0;
+  }
 
 private:
   void createVMean(CodeWriter& source) const noexcept;

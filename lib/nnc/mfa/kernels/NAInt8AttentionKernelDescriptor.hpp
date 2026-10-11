@@ -21,6 +21,8 @@ struct NAInt8AttentionKernelDescriptor {
   bool hasCRemainder;
   uint16_t threadBarrierEveryC;
   GEMMOperandPrecision ioPrecision;
+  // Quantize P and V by default. Forward-only false uses ioPrecision for P/V and FP32 accumulation.
+  bool quantizePV = true;
   bool lowPrecisionIntermediates;
   AttentionKernelType type;
   float scale;

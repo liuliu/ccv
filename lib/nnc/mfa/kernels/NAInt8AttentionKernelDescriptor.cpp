@@ -19,6 +19,7 @@ bool NAInt8AttentionKernelDescriptor::operator==(const NAInt8AttentionKernelDesc
     hasCRemainder == rhs.hasCRemainder &&
     threadBarrierEveryC == rhs.threadBarrierEveryC &&
     ioPrecision == rhs.ioPrecision &&
+    quantizePV == rhs.quantizePV &&
     lowPrecisionIntermediates == rhs.lowPrecisionIntermediates &&
     isCausal == rhs.isCausal &&
     masked == rhs.masked &&
@@ -57,6 +58,7 @@ std::size_t std::hash<NAInt8AttentionKernelDescriptor>::operator()(const NAInt8A
       (uint16_t)(hash.hasCausalEmptyRows ? 1 : 0) }));
   seed = combine_32(seed, hash.isVarlen ? 1 : 0);
   seed = combine_32(seed, hash.attentionSinks ? 1 : 0);
+  seed = combine_32(seed, hash.quantizePV ? 1 : 0);
   seed = combine_32(seed, hash.qkHadamard ? 1 : 0);
   seed = combine_32(seed, hash.qkMeanCorrection ? 1 : 0);
   seed = combine_32(seed, hash.outputTileSize);
@@ -119,6 +121,7 @@ NAInt8AttentionKernelDescriptor::NAInt8AttentionKernelDescriptor(
     kvScaleTileSize(64),
     threadBarrierEveryC(descriptor.isCausal ? 0 : 2),
     ioPrecision(descriptor.ioPrecision),
+    quantizePV(descriptor.quantizePV),
     lowPrecisionIntermediates(descriptor.lowPrecisionIntermediates),
     type(descriptor.type),
     scale(descriptor.scale),
@@ -133,7 +136,6 @@ NAInt8AttentionKernelDescriptor::NAInt8AttentionKernelDescriptor(
     qkHadamard(descriptor.qkHadamard),
     qkMeanCorrection(descriptor.qkMeanCorrection)
 {
-  (void)dprops;
   const uint32_t D = descriptor.matrixDimensions[2];
   const bool lowPrecisionBackward =
       type != AttentionKernelType::forward && ioPrecision != GEMMOperandPrecision::FP32;
@@ -164,6 +166,24 @@ NAInt8AttentionKernelDescriptor::NAInt8AttentionKernelDescriptor(
       descriptor.matrixDimensions[1] <= 20480 ?
       NAInt8AttentionKernel::smallSequenceVMeanThreads :
       NAInt8AttentionKernel::largeSequenceVMeanThreads;
+  // Smaller traversal tiles and fewer SIMD groups help wide-head floating PV
+  // once there is enough query work and a long KV traversal. Count complete
+  // row groups under the original tiling: nearly empty groups from short
+  // queries do not provide the same work. The measured threshold is 1.5 full
+  // query groups per core; output tiling produces at least twice that many
+  // threadgroups. Keep the head tile unchanged.
+  if (!quantizePV && type == AttentionKernelType::forward && D > 192 &&
+      isCausal && !masked && !isVarlen && dprops.coreCount > 0) {
+    const uint64_t fullQueryThreadgroups =
+        uint64_t(descriptor.matrixDimensions[0] / (blockDimensions[0] * executionSIMDGroups)) *
+        Hq * descriptor.batchDimension;
+    if (fullQueryThreadgroups * 2 >= uint64_t(dprops.coreCount) * 3 &&
+        descriptor.matrixDimensions[1] >= 4096) {
+      blockDimensions[1] = 32;
+      executionSIMDGroups = 4;
+    }
+  }
+  // Derive remainder flags and traversal only after the tile selection above.
   hasCRemainder = type == AttentionKernelType::forward &&
       (isVarlen || (descriptor.matrixDimensions[1] % blockDimensions[1]) != 0);
   hasRRemainder = !loadR || isVarlen || descriptor.matrixDimensions[0] % blockDimensions[0] != 0;

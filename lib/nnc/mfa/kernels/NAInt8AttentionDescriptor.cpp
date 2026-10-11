@@ -25,6 +25,7 @@ bool NAInt8AttentionDescriptor::operator==(const NAInt8AttentionDescriptor& rhs)
     Hk == rhs.Hk &&
     type == rhs.type &&
     ioPrecision == rhs.ioPrecision &&
+    quantizePV == rhs.quantizePV &&
     lowPrecisionIntermediates == rhs.lowPrecisionIntermediates &&
     scale == rhs.scale &&
     isCausal == rhs.isCausal &&
@@ -53,6 +54,7 @@ std::size_t std::hash<NAInt8AttentionDescriptor>::operator()(const NAInt8Attenti
       (uint16_t)(hash.masked ? 1 : 0) }));
   seed = combine_32(seed, hash.isVarlen ? 1 : 0);
   seed = combine_32(seed, hash.attentionSinks ? 1 : 0);
+  seed = combine_32(seed, hash.quantizePV ? 1 : 0);
   seed = combine_32(seed, hash.qkHadamard ? 1 : 0);
   seed = combine_32(seed, hash.qkMeanCorrection ? 1 : 0);
   seed = combine_32(seed, (hash.loadR || hash.loadC) ? 0 : hash.maskBatchStride);
@@ -111,6 +113,8 @@ std::pair<NAInt8AttentionKernelDescriptor, PipelineValue<NAInt8AttentionKernel> 
   auto kernel = createKernel(kernelDesc);
   const uint32_t q_tiles = (matrixDimensions[0] + kernelDesc.qScaleTileSize - 1) / kernelDesc.qScaleTileSize;
   const uint32_t k_tiles = (matrixDimensions[1] + kernelDesc.kvScaleTileSize - 1) / kernelDesc.kvScaleTileSize;
+  const uint32_t q_mask_tiles = (matrixDimensions[0] + kernelDesc.blockDimensions[0] - 1) / kernelDesc.blockDimensions[0];
+  const uint32_t k_mask_tiles = (matrixDimensions[1] + kernelDesc.blockDimensions[1] - 1) / kernelDesc.blockDimensions[1];
 
   auto attentionConstants = NS::TransferPtr(MTL::FunctionConstantValues::alloc()->init());
   const uint32_t rowDimension = matrixDimensions[0];
@@ -129,7 +133,7 @@ std::pair<NAInt8AttentionKernelDescriptor, PipelineValue<NAInt8AttentionKernel> 
   const uint32_t dOScaleBatchStride = batchDimension > 1 ? Hq * q_tiles : 0;
   const uint32_t vMeanBatchStride = batchDimension > 1 ? Hk * matrixDimensions[2] : 0;
   const uint32_t maskBatchStride = masked ? this->maskBatchStride : 0;
-  const uint32_t blockMaskBatchStride = masked && maskBatchStride > 0 ? q_tiles * k_tiles : 0;
+  const uint32_t blockMaskBatchStride = masked && maskBatchStride > 0 ? q_mask_tiles * k_mask_tiles : 0;
   if (!loadR)
     attentionConstants->setConstantValue(&rowDimension, MTL::DataTypeUInt, NS::UInteger(0));
   if (!loadC)

@@ -359,7 +359,10 @@ static int _ccv_nnc_scaled_dot_product_attention_forw_mps(const ccv_nnc_cmd_t cm
 			return CCV_NNC_EXEC_SUCCESS;
 		}
 
-		const int is_downcast = (cmd.info.scaled_dot_product_attention.flags & CCV_NNC_GEMM_16F) && (q->info.datatype == CCV_16F);
+		const int attention_flags = cmd.info.scaled_dot_product_attention.flags;
+		// 8I alone keeps the former 8I | 16F precision; 32F opts into FP32 intermediates.
+		const int is_downcast = q->info.datatype == CCV_16F &&
+			((attention_flags & CCV_NNC_GEMM_16F) || ((attention_flags & CCV_NNC_GEMM_8I) && !(attention_flags & CCV_NNC_GEMM_32F)));
 		// NAAttention lowers the head tile to the matmul2d N dimension, which MPP
 		// requires to be a multiple of 8 or 16.
 		const int use_neural_accelerators =
@@ -369,7 +372,7 @@ static int _ccv_nnc_scaled_dot_product_attention_forw_mps(const ccv_nnc_cmd_t cm
 			(D > 128 || (D % 8) == 0);
 		const int use_quantized_attention =
 			use_neural_accelerators &&
-			(cmd.info.scaled_dot_product_attention.flags & CCV_NNC_GEMM_8I) &&
+			(attention_flags & CCV_NNC_GEMM_8I) &&
 			!weights &&
 			!bias;
 		if (sliding_window > 0 && use_quantized_attention)
@@ -396,6 +399,7 @@ static int _ccv_nnc_scaled_dot_product_attention_forw_mps(const ccv_nnc_cmd_t cm
 			.upcast = !is_downcast,
 			.use_neural_accelerators = use_neural_accelerators,
 			.use_quantized_attention = use_quantized_attention,
+			.quantize_pv = !(attention_flags & (CCV_NNC_GEMM_16F | CCV_NNC_GEMM_32F)),
 			.use_hadamard = cmd.info.scaled_dot_product_attention.use_hadamard != 0,
 			.attention_sinks = attention_sinks,
 			.sliding_window = (uint32_t)sliding_window,
@@ -793,7 +797,10 @@ static int _ccv_nnc_scaled_dot_product_attention_back(const ccv_nnc_cmd_t cmd, c
 			ccv_nnc_tensor_view_get_dim(o, odim);
 			if (o_nd == 3)
 				odim[0] = odim[1], odim[1] = odim[2], odim[2] = 1;
-			const int is_downcast = ((cmd.info.scaled_dot_product_attention.flags & CCV_NNC_GEMM_16F) && q->info.datatype == CCV_16F);
+			const int attention_flags = cmd.info.scaled_dot_product_attention.flags;
+			// 8I alone keeps the former 8I | 16F precision; 32F opts into FP32 intermediates.
+			const int is_downcast = q->info.datatype == CCV_16F &&
+				((attention_flags & CCV_NNC_GEMM_16F) || ((attention_flags & CCV_NNC_GEMM_8I) && !(attention_flags & CCV_NNC_GEMM_32F)));
 			int attention_is_batched = (batch_size > 1);
 			ccv_nnc_mfa_attention_params_t params = {
 				.type = 1, // 1 is backward query / key value.
@@ -812,7 +819,8 @@ static int _ccv_nnc_scaled_dot_product_attention_back(const ccv_nnc_cmd_t cmd, c
 				.masked = 0,
 				.upcast = !is_downcast,
 				.use_neural_accelerators = !(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS) && ccv_nnc_mfa_has_neural_accelerators(context) && (mtl_data_type != 121 || ccv_nnc_mfa_neural_accelerators_support_bfloat(context)),
-				.use_quantized_attention = (cmd.info.scaled_dot_product_attention.flags & CCV_NNC_GEMM_8I) != 0,
+				.use_quantized_attention = (attention_flags & CCV_NNC_GEMM_8I) != 0,
+				.quantize_pv = 1, // Floating PV is a forward-only option.
 				.use_hadamard = cmd.info.scaled_dot_product_attention.use_hadamard != 0,
 
 				.batch_dims_q = { 0 },

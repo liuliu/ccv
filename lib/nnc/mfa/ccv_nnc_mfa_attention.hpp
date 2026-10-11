@@ -14,6 +14,8 @@ typedef struct {
   uint8_t type;
   uint8_t use_neural_accelerators;
   uint8_t use_quantized_attention;
+  // NA INT8 forward: quantize P/V too, or keep P/V in the input precision.
+  uint8_t quantize_pv;
   uint8_t use_hadamard;
   uint8_t attention_sinks;
   uint32_t sliding_window;
