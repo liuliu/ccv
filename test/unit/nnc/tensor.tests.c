@@ -770,4 +770,47 @@ TEST_CASE("allocate palettize tensor with quantization to 5-bit")
 	ccv_nnc_tensor_free(tensor);
 }
 
+
+TEST_CASE("tensor arena reinit refreshes saved alias pointers across prefix lengths")
+{
+	ccv_nnc_symbolic_graph_t* const symbolic_graph = ccv_nnc_symbolic_graph_new();
+	const ccv_nnc_tensor_symbol_t input = ccv_nnc_tensor_symbol_new(symbolic_graph, CPU_TENSOR_NHWC(32F, 1, 6, 2, 128), "input");
+	const ccv_nnc_tensor_symbol_t buffer = ccv_nnc_tensor_symbol_new(symbolic_graph, CPU_TENSOR_NHWC(32F, 1, 73, 2, 128), "buffer");
+	const ccv_nnc_tensor_symbol_t suffix = ccv_nnc_tensor_symbol_alias_new(symbolic_graph, buffer,
+		DIM_ALLOC(0, 67, 0, 0), DIM_ALLOC(73 * 256, 256, 128, 1), CPU_TENSOR_NHWC(32F, 1, 6, 2, 128), "suffix");
+	ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_DATA_TRANSFER_FORWARD(), TENSOR_SYMBOL_LIST(input), TENSOR_SYMBOL_LIST(suffix), "copy");
+	ccv_nnc_graph_exec_symbol_autogen(symbolic_graph, 0, 0, CCV_NNC_AUTOGEN_ALL_EXECS | CCV_NNC_AUTOGEN_SOURCES_AND_DESTINATIONS);
+	ccv_nnc_graph_t* graph = 0;
+	ccv_nnc_tensor_arena_t* tensor_arena = 0;
+	ccv_nnc_graph_exec_arena_t* graph_exec_arena = 0;
+	ccv_nnc_symbolic_graph_compile(symbolic_graph, ccv_nnc_default_compile_params, 0, 0, 0, 0,
+		SYMBOLIC_GRAPH_SOURCES(symbolic_graph), SYMBOLIC_GRAPH_DESTINATIONS(symbolic_graph), &graph, &tensor_arena, &graph_exec_arena);
+	ccv_nnc_tensor_t* const x = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, 6, 2, 128), 0);
+	for (int i = 0; i < 6 * 256; i++)
+		x->data.f32[i] = (float)i / 256;
+	ccv_nnc_tensor_bind_symbol(tensor_arena, input, x);
+	ccv_nnc_graph_run(graph, 0, TRAVERSE_FULL, 0, 0);
+	const int lengths[] = {3, 67, 3, 67};
+	for (int trial = 0; trial < 4; trial++)
+	{
+		const int length = lengths[trial];
+		ccv_nnc_tensor_symbol_set(symbolic_graph, buffer, CPU_TENSOR_NHWC(32F, 1, length + 6, 2, 128));
+		ccv_nnc_tensor_symbol_alias_set(symbolic_graph, suffix, DIM_ALLOC(0, length, 0, 0), DIM_ALLOC((length + 6) * 256, 256, 128, 1));
+		REQUIRE_EQ(ccv_nnc_tensor_arena_reinit(tensor_arena, symbolic_graph), 0, "shrinking / restoring the prefix should reuse the arena");
+		ccv_nnc_tensor_arena_clear_bindings(tensor_arena);
+		ccv_nnc_tensor_t* const output = ccv_nnc_tensor_from_symbol(tensor_arena, buffer);
+		ccv_nnc_cmd_exec(CMD_SET_FORWARD(-1), ccv_nnc_no_hint, 0, 0, 0, TENSOR_LIST(output), 0);
+		ccv_nnc_tensor_bind_symbol(tensor_arena, input, x);
+		ccv_nnc_graph_run(graph, 0, TRAVERSE_FULL, 0, 0);
+		REQUIRE_ARRAY_EQ(float, output->data.f32 + length * 256, x->data.f32, 6 * 256, "writes should follow the current prefix offset after clearing bindings");
+		for (int i = 0; i < length * 256; i++)
+			REQUIRE_EQ(output->data.f32[i], -1, "the prefix should remain untouched");
+	}
+	ccv_nnc_tensor_free(x);
+	ccv_nnc_graph_exec_arena_free(graph_exec_arena);
+	ccv_nnc_tensor_arena_free(tensor_arena);
+	ccv_nnc_graph_free(graph);
+	ccv_nnc_symbolic_graph_free(symbolic_graph);
+}
+
 #include "case_main.h"

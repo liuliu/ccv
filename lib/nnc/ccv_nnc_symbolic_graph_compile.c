@@ -4277,6 +4277,9 @@ int ccv_nnc_tensor_arena_reinit(ccv_nnc_tensor_arena_t* const tensor_arena, cons
 		}
 	if (flag)
 		return -1;
+	// Recompute alias pointers from the unbound arena, then retain the new offsets
+	// as the baseline for subsequent clear_bindings calls.
+	ccv_nnc_tensor_arena_clear_bindings(tensor_arena);
 	for (i = 0; i < tensor_arena->vt_tensor_size; i++)
 		if (tensor_arena->vt_tensors[i])
 		{
@@ -4306,6 +4309,10 @@ int ccv_nnc_tensor_arena_reinit(ccv_nnc_tensor_arena_t* const tensor_arena, cons
 				}
 			}
 		}
+	if (tensor_arena->pb_vt_tensors)
+		for (i = 0; i < tensor_arena->vt_tensor_size; i++)
+			if (tensor_arena->vt_tensors[i])
+				tensor_arena->pb_vt_tensors[i] = tensor_arena->vt_tensors[i]->data;
 	// Should handle sub_tensor_arena, don't do that at the moment.
 	assert(!graph->sub_graphs);
 	return 0;
