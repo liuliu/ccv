@@ -24,6 +24,8 @@ struct Int8MatMulKernel {
 
 	bool useBias;
 
+	bool activationHadamard256;
+
 	/// The dense kernel's per-simdgroup tile.
 	uint16_t registerM;
 

@@ -2140,6 +2140,60 @@ TEST_CASE("mps H256 rowwise-x GEMM dense fallback preserves logical weights")
 			ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(input, hq, input_bias), TENSOR_LIST(a, q, bias), 0);
 			const ccv_nnc_cmd_t cmd = CMD_GEMM_FORWARD(TRANSPOSE(transpose_a ? 1 : 0, transpose_a ? 2 : 0), TRANSPOSE(transpose_w ? 1 : 0, transpose_w ? 2 : 0));
 			REQUIRE_EQ(ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(ha, hw, shape == 0 ? 0 : hbias), TENSOR_LIST(href), 0), CCV_NNC_EXEC_SUCCESS, "CPU logical weight GEMM succeeds");
+			// Without neural accelerators, Int8MatMul takes the ordinary GEMM in FP16 or
+			// FP32 instead: it keeps the rotated weights, and rotates and quantizes the
+			// activations per row with 127 / max (FP16 rounds the scale at IO precision).
+#ifdef HAVE_MPS
+			extern uint8_t ccv_nnc_mfa_supports_int8_matmul(ccv_nnc_mfa_context_t* context, uint32_t m, uint32_t n);
+			const int int8_matmul = shape == 1 && datatype != CCV_16BF && (k % 8) == 0 && ccv_nnc_mfa_supports_int8_matmul(ccv_nnc_default_mfa_context(), m, n);
+#else
+			const int int8_matmul = 0;
+#endif
+			float* const quantized_ref = int8_matmul ? (float*)ccmalloc(sizeof(float) * m * n) : 0;
+			if (int8_matmul)
+			{
+				ccv_nnc_dequantize_8i_rowwise_x(hq->data.u8, datatype, CCV_TENSOR_CPU_MEMORY, size, row_length, format & ~CCV_NNC_QX_8I_ROWWISE_HADAMARD_256, weights->data.u8, n * k);
+				ccv_nnc_tensor_t* const hrotated = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, n, k), 0);
+				ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(weights), TENSOR_LIST(hrotated), 0);
+				float a_ref[k];
+				int j, l, shift;
+				for (i = 0; i < m; i++)
+				{
+					float maximum = 0;
+					for (j = 0; j < k; j++)
+					{
+						double sum = 0;
+						for (l = 0; l < 256; l++)
+						{
+							int sign = 1;
+							for (shift = 0; shift < 8; shift += 2)
+								if (((j >> shift) & 3) + ((l >> shift) & 3) == 3)
+									sign = -sign;
+							sum += sign * ha->data.f32[i * k + (j / 256) * 256 + l];
+						}
+						a_ref[j] = sum / 16;
+						maximum = ccv_max(maximum, fabsf(a_ref[j]));
+					}
+					const float inv_scale = maximum > 0 ? 127.0f / maximum : 127.0f;
+					float scale = maximum > 0 ? maximum / 127.0f : 1.0f / 127.0f;
+					if (datatype == CCV_16F)
+					{
+						uint16_t stored_scale;
+						ccv_float_to_half_precision(&scale, &stored_scale, 1);
+						ccv_half_precision_to_float(&stored_scale, &scale, 1);
+					}
+					for (j = 0; j < k; j++)
+						a_ref[j] = ccv_max(-127, ccv_min(127, (int)lrintf(a_ref[j] * inv_scale))) * scale;
+					for (j = 0; j < n; j++)
+					{
+						double expected = hbias->data.f32[j];
+						for (l = 0; l < k; l++)
+							expected += (double)a_ref[l] * hrotated->data.f32[j * k + l];
+						quantized_ref[i * n + j] = expected;
+					}
+				}
+				ccv_nnc_tensor_free(hrotated);
+			}
 			for (path = 0; path < 2; path++)
 			{
 				const uint64_t old_flags = ccv_nnc_flags();
@@ -2150,9 +2204,23 @@ TEST_CASE("mps H256 rowwise-x GEMM dense fallback preserves logical weights")
 				REQUIRE_EQ(status, CCV_NNC_EXEC_SUCCESS, "dense fallback succeeds: dtype=%d shape=%d path=%d", datatype, shape, path);
 				ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(b), TENSOR_LIST(result), 0);
 				ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(result), TENSOR_LIST(actual), 0);
+				if (path == 0 && int8_matmul)
+				{
+					double error = 0, norm = 0;
+					for (i = 0; i < m * n; i++)
+					{
+						error += (actual->data.f32[i] - quantized_ref[i]) * (actual->data.f32[i] - quantized_ref[i]);
+						norm += quantized_ref[i] * quantized_ref[i];
+					}
+					// The dense fallback is about 7e-3 away from this quantized reference.
+					REQUIRE(sqrt(error / norm) < 2e-3, "Int8MatMul H256 GEMM: dtype=%d relative L2=%g", datatype, sqrt(error / norm));
+					continue;
+				}
 				for (i = 0; i < batches * m * n; i++)
 					REQUIRE(fabsf(actual->data.f32[i] - href->data.f32[i]) < (datatype == CCV_16BF ? (shape == 5 ? 8e-3 : 4e-3) : datatype == CCV_16F ? 1e-3 : 1e-5), "logical weight GEMM: dtype=%d shape=%d path=%d i=%d actual=%g expected=%g", datatype, shape, path, i, actual->data.f32[i], href->data.f32[i]);
 			}
+			if (quantized_ref)
+				ccfree(quantized_ref);
 			ccv_nnc_tensor_free(ha); ccv_nnc_tensor_free(hw); ccv_nnc_tensor_free(hbias);
 			ccv_nnc_tensor_free(href); ccv_nnc_tensor_free(actual); ccv_nnc_tensor_free(input);
 			ccv_nnc_tensor_free(weights); ccv_nnc_tensor_free(input_bias); ccv_nnc_tensor_free(hq);
@@ -3124,6 +3192,152 @@ TEST_CASE("mps Int8MatMul matches quantized reference across tiles, edges, preci
 	if (!(old_flags & CCV_NNC_DISABLE_MFA_ANE))
 		ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA_ANE);
 	ccv_nnc_enable_flag(old_flags & (CCV_NNC_DISABLE_MFA | CCV_NNC_DISABLE_MFA_GEMM));
+}
+
+TEST_CASE("mps rowwise int8 gemm splits rows between ANE and GPU")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_MPS));
+#ifdef HAVE_MPS
+	extern uint8_t ccv_nnc_mfa_supports_int8_ane(ccv_nnc_mfa_context_t* context);
+	GUARD_ELSE_RETURN(ccv_nnc_mfa_supports_int8_ane(ccv_nnc_default_mfa_context()));
+	// Shapes where splitting rows pays off: one ANE program, and more ANE rows
+	// than one program takes without neural accelerators. Whether the rows split,
+	// or run on one side alone, every output row matches the quantized reference.
+	const int shapes[][3] = {
+		{2048, 4096, 4096}, {16384, 2048, 2048},
+	};
+	const int datatypes[] = {CCV_16F, CCV_32F};
+	const int samples = 32;
+	const uint64_t old_flags = ccv_nnc_flags();
+	ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA | CCV_NNC_DISABLE_MFA_GEMM | CCV_NNC_DISABLE_MFA_ANE | CCV_NNC_DISABLE_MFA_ANE_AND_GPU);
+	for (int precision = 0; precision < 2; ++precision)
+		for (int trial = 0; trial < sizeof(shapes) / sizeof(shapes[0]); ++trial)
+			for (int hadamard = 0; hadamard < 2; ++hadamard)
+			{
+				const int datatype = datatypes[precision];
+				const int m = shapes[trial][0], n = shapes[trial][1], k = shapes[trial][2];
+				dsfmt_t dsfmt;
+				dsfmt_init_gen_rand(&dsfmt, 1031 + trial * 2 + hadamard);
+				ccv_nnc_tensor_t* const ha32 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, m, k), 0);
+				ccv_nnc_tensor_t* const hw32 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, n, k), 0);
+				for (int i = 0; i < m * k; ++i)
+					ha32->data.f32[i] = (dsfmt_genrand_open_close(&dsfmt) - 0.5) * 0.25;
+				for (int i = 0; i < n * k; ++i)
+					hw32->data.f32[i] = (dsfmt_genrand_open_close(&dsfmt) - 0.5) * 0.25;
+				// An outlier, which the rotation spreads over its 256 group.
+				ha32->data.f32[(size_t)(m - 1) * k + 17] = 8;
+				ccv_nnc_tensor_param_t a_params = CPU_TENSOR_NHWC(32F, m, k);
+				ccv_nnc_tensor_param_t w_params = CPU_TENSOR_NHWC(32F, n, k);
+				ccv_nnc_tensor_param_t b_params = CPU_TENSOR_NHWC(32F, m, n);
+				a_params.datatype = w_params.datatype = b_params.datatype = datatype;
+				ccv_nnc_tensor_t* const ha = ccv_nnc_tensor_new(0, a_params, 0);
+				ccv_nnc_tensor_t* const hw = ccv_nnc_tensor_new(0, w_params, 0);
+				ccv_nnc_tensor_t* const hb = ccv_nnc_tensor_new(0, b_params, 0);
+				ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha32, hw32), TENSOR_LIST(ha, hw), 0);
+				// Read back the values the GPU sees.
+				ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha), TENSOR_LIST(ha32), 0);
+				// Row-wise weights, or H256 row-wise-x weights stored rotated.
+				const int format = CCV_NNC_QX_8I_ROWWISE_Q6_K | CCV_NNC_QX_8I_ROWWISE_HADAMARD_256;
+				ccv_nnc_tensor_t* const hwq = ccv_nnc_tensor_new(0, hadamard ? ccv_nnc_tensor_8i_rowwise_x(w_params, format) : ccv_nnc_tensor_8i_rowwise(w_params), 0);
+				const size_t qsize = ccv_nnc_tensor_data_size_without_padding(hwq->info);
+				float* const w_ref = (float*)ccmalloc(sizeof(float) * n * k);
+				if (hadamard)
+				{
+					REQUIRE_EQ(ccv_nnc_quantize_8i_rowwise_x(hw->data.u8, datatype, CCV_TENSOR_CPU_MEMORY, (size_t)n * k, k, format, 0, 0, hwq->data.u8, qsize), qsize, "row-wise-x weights should encode completely");
+					ccv_nnc_dequantize_8i_rowwise_x(hwq->data.u8, datatype, CCV_TENSOR_CPU_MEMORY, qsize, k, CCV_NNC_QX_8I_ROWWISE_Q6_K, hw->data.u8, (size_t)n * k);
+					ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(hw), TENSOR_LIST(hw32), 0);
+					memcpy(w_ref, hw32->data.f32, sizeof(float) * n * k);
+				} else {
+					REQUIRE_EQ(ccv_nnc_quantize_8i_rowwise(hw->data.u8, datatype, CCV_TENSOR_CPU_MEMORY, (size_t)n * k, k, 0, 0, hwq->data.u8, qsize), qsize, "row-wise weights should encode completely");
+					const uint8_t* const scales = hwq->data.u8 + (((size_t)n * k + 127) & ~(size_t)127);
+					for (int row = 0; row < n; ++row)
+					{
+						float scale;
+						if (datatype == CCV_16F)
+							ccv_half_precision_to_float((const uint16_t*)scales + row, &scale, 1);
+						else
+							scale = ((const float*)scales)[row];
+						for (int d = 0; d < k; ++d)
+							w_ref[(size_t)row * k + d] = ((const int8_t*)hwq->data.u8)[(size_t)row * k + d] * scale;
+					}
+				}
+				ccv_nnc_tensor_param_t gwq_params = hwq->info;
+				gwq_params.type = CCV_TENSOR_GPU_MEMORY | 000;
+				ccv_nnc_tensor_param_t ga_params = a_params, gb_params = b_params;
+				ga_params.type = gb_params.type = CCV_TENSOR_GPU_MEMORY | 000;
+				ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, ga_params, 0);
+				ccv_nnc_tensor_t* const w = ccv_nnc_tensor_new(0, gwq_params, 0);
+				ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, gb_params, 0);
+				ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha, hwq), TENSOR_LIST(a, w), 0);
+				REQUIRE_EQ(ccv_nnc_cmd_exec(CMD_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(0, 1)), ccv_nnc_no_hint, 0, TENSOR_LIST(a, w), TENSOR_LIST(b), 0), CCV_NNC_EXEC_SUCCESS, "GEMM should execute");
+				ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(b), TENSOR_LIST(hb), 0);
+				ccv_nnc_tensor_t* const hb32 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, m, n), 0);
+				ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(hb), TENSOR_LIST(hb32), 0);
+				// Activations rotate by the normalized Hadamard matrix (H4 with an
+				// anti-diagonal of -1, to the fourth Kronecker power), then quantize per
+				// row with 127 / max, and FP16 stores the scale rounded at IO precision.
+				double error = 0, norm = 0;
+				float a_ref[k];
+				for (int s = 0; s < samples; ++s)
+				{
+					const int row = s * (m - 1) / (samples - 1);
+					memcpy(a_ref, ha32->data.f32 + (size_t)row * k, sizeof(float) * k);
+					if (hadamard)
+						for (int group = 0; group < k; group += 256)
+						{
+							for (int shift = 0; shift < 8; shift += 2)
+								for (int j = 0; j < 256; ++j)
+									if (((j >> shift) & 3) == 0)
+									{
+										float x[4];
+										for (int d = 0; d < 4; ++d)
+											x[d] = a_ref[group + j + (d << shift)];
+										for (int e = 0; e < 4; ++e)
+											a_ref[group + j + (e << shift)] = (x[0] + x[1] + x[2] + x[3]) - 2 * x[3 - e];
+									}
+							for (int d = 0; d < 256; ++d)
+								a_ref[group + d] *= 1.0f / 16;
+						}
+					float maximum = 0;
+					for (int d = 0; d < k; ++d)
+						maximum = ccv_max(maximum, fabsf(a_ref[d]));
+					const float inv_scale = maximum > 0 ? 127.0f / maximum : 127.0f;
+					float scale = maximum > 0 ? maximum / 127.0f : 1.0f / 127.0f;
+					if (datatype == CCV_16F)
+					{
+						uint16_t stored_scale;
+						ccv_float_to_half_precision(&scale, &stored_scale, 1);
+						ccv_half_precision_to_float(&stored_scale, &scale, 1);
+					}
+					for (int d = 0; d < k; ++d)
+						a_ref[d] = ccv_max(-127, ccv_min(127, (int)lrintf(a_ref[d] * inv_scale))) * scale;
+					for (int column = 0; column < n; ++column)
+					{
+						double expected = 0;
+						for (int d = 0; d < k; ++d)
+							expected += (double)a_ref[d] * w_ref[(size_t)column * k + d];
+						const double actual = hb32->data.f32[(size_t)row * n + column];
+						REQUIRE(isfinite(actual), "output should be finite");
+						error += (actual - expected) * (actual - expected);
+						norm += expected * expected;
+					}
+				}
+				// The ANE accumulates in FP16.
+				REQUIRE(sqrt(error / norm) < 5e-3, "%s M=%d N=%d K=%d hadamard=%d relative L2=%g", datatype == CCV_16F ? "FP16" : "FP32", m, n, k, hadamard, sqrt(error / norm));
+				ccfree(w_ref);
+				ccv_nnc_tensor_free(hb32);
+				ccv_nnc_tensor_free(b);
+				ccv_nnc_tensor_free(w);
+				ccv_nnc_tensor_free(a);
+				ccv_nnc_tensor_free(hwq);
+				ccv_nnc_tensor_free(hb);
+				ccv_nnc_tensor_free(hw);
+				ccv_nnc_tensor_free(ha);
+				ccv_nnc_tensor_free(hw32);
+				ccv_nnc_tensor_free(ha32);
+			}
+	ccv_nnc_enable_flag(old_flags & (CCV_NNC_DISABLE_MFA | CCV_NNC_DISABLE_MFA_GEMM | CCV_NNC_DISABLE_MFA_ANE | CCV_NNC_DISABLE_MFA_ANE_AND_GPU));
+#endif
 }
 
 TEST_CASE("mps forward gemm with row-wise 8i weight fallback dequantize")

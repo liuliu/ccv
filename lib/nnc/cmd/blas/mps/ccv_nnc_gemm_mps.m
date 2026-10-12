@@ -417,7 +417,7 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 		const int use_int8_matmul = (w_rows % 8) == 0 && ccv_nnc_mfa_supports_int8_matmul(context, b_rows, b_cols);
 		const int use_scaled_gemm_without_neural_accelerators =
 			!use_neural_accelerators &&
-			w_qx_subtype == CCV_NNC_QX_8I_ROWWISE &&
+			w_qx_8i_rowwise &&
 			(a_datatype == CCV_32F || (a_datatype == CCV_16F && use_int8_matmul)) &&
 			(!bias || (use_int8_matmul && bias_batch_size == 1)) &&
 			a_rows > 3 &&
@@ -515,7 +515,73 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 			return CCV_NNC_EXEC_SUCCESS;
 		}
 
-		if (use_ane_rowwise_gemm)
+		// Rowwise int8 GEMM prefers splitting rows between the ANE and the GPU, then
+		// the ANE alone, then the GPU alone (neural accelerators or Int8MatMul). The
+		// split compares predicted times, and may choose the GPU or the ANE alone.
+		const ccv_nnc_mfa_ane_na_rowwise_gemm_params_t ane_and_gpu_params = {
+			.data_type = mtl_data_type,
+			.M = (uint32_t)b_rows,
+			.N = (uint32_t)b_cols,
+			.K = (uint32_t)w_rows,
+			.fused_bias = (bias ? 1 : 0),
+			.activation_hadamard_256 = activation_hadamard_256,
+			.use_neural_accelerators = use_neural_accelerators,
+			.batch_dimension = b_batch_size,
+			.batch_stride_a = a_batch_size > 1 ? ccv_max(a_batch_stride, b_rows * w_rows) : 0,
+			.batch_stride_b = w_batch_size > 1 ? b_cols * w_rows : 0,
+			.batch_stride_c = b_batch_size > 1 ? ccv_max(b_batch_stride, b_rows * b_cols) : 0,
+			.batch_stride_d = bias_batch_size > 1 ? b_cols : 0,
+		};
+		// Without neural accelerators the GPU rows run Int8MatMul, whose limits the
+		// split checks itself; the GPU alone may still dequantize for GEMM instead.
+		uint32_t ane_and_gpu_ane_rows = 0;
+		const int use_ane_and_gpu_rowwise_gemm =
+			use_ane_rowwise_gemm &&
+			(use_neural_accelerators ? use_scaled_gemm : (!is_batched && !(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_GEMM))) &&
+			!(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_ANE_AND_GPU) &&
+			ccv_nnc_mfa_choose_ane_na_rowwise_split_rows_per_batch(context, ane_and_gpu_params, &ane_and_gpu_ane_rows);
+		if (use_ane_and_gpu_rowwise_gemm && ane_and_gpu_ane_rows > 0 && ane_and_gpu_ane_rows < ane_and_gpu_params.M)
+		{
+			const size_t scratch_offset = ccv_nnc_mfa_ane_na_rowwise_split_gemm_reserved_scratch_size(context, ane_and_gpu_params);
+			mtl_buffer_t* w_data = mpgetbuffer((ccv_nnc_tensor_t*)w);
+			size_t w_dataof = w->dataof;
+			if (w_8i_rowwise_x_format)
+			{
+				mtl_buffer_t* const scratch = ccv_nnc_mfa_request_scratch(context, scratch_offset + w_8i_rowwise_data_size);
+				ccv_nnc_mfa_dequantize_8i_rowwise_x_params_t w_decode_params = _ccv_nnc_8i_rowwise_x_decode_params(mtl_data_type, w_8i_rowwise_x_format, w_8i_rowwise_rows, w_8i_rowwise_cols);
+				ccv_nnc_mfa_prepare_dequantize_8i_rowwise_x(context, w_decode_params);
+				mtl_command_batch_t* command_batch = ccv_nnc_stream_context_start_command_batch(stream_context);
+				_ccv_nnc_mfa_encode_8i_rowwise_x_decode(context, w_decode_params, command_batch, mpgetbuffer((ccv_nnc_tensor_t*)w), w->dataof, scratch, scratch_offset);
+				ccv_nnc_stream_context_finish_command_batch(stream_context, command_batch);
+				w_data = scratch;
+				w_dataof = scratch_offset;
+			}
+			mtl_buffer_t* tensors[4] = {
+				mpgetbuffer((ccv_nnc_tensor_t*)a),
+				w_data,
+				mpgetbuffer((ccv_nnc_tensor_t*)b),
+				bias ? mpgetbuffer((ccv_nnc_tensor_t*)bias) : nil,
+			};
+			size_t tensor_offsets[4] = {
+				a->dataof,
+				w_dataof,
+				b->dataof,
+				bias ? bias->dataof : 0,
+			};
+			const int status = ccv_nnc_mfa_run_ane_na_rowwise_split_gemm(context, ane_and_gpu_params, ane_and_gpu_ane_rows, tensors, tensor_offsets, stream_context);
+			if (status > 0)
+			{
+				if (METAL_LOG_LEVEL(context) >= 1)
+					ccv_nnc_mfa_log_message("Using hybrid ANE + GPU rowwise GEMM.");
+				return CCV_NNC_EXEC_SUCCESS;
+			}
+			if (status < 0)
+				return CCV_NNC_EXEC_INVALID;
+		}
+
+		const int use_ane_alone_rowwise_gemm =
+			use_ane_rowwise_gemm && !(use_ane_and_gpu_rowwise_gemm && ane_and_gpu_ane_rows == 0);
+		if (use_ane_alone_rowwise_gemm)
 		{
 			ccv_nnc_mfa_ane_rowwise_gemm_params_t params = {
 				.M = (uint32_t)b_rows,

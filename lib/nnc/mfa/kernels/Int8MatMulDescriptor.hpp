@@ -30,6 +30,9 @@ struct Int8MatMulDescriptor {
 	GEMMOperandPrecision ioPrecision = GEMMOperandPrecision::FP32;
 	/// Dense: add a bias to every output row.
 	bool useBias = false;
+	/// Quantize: rotate every 256 activations by the normalized Hadamard
+	/// matrix the weights were rotated by (K is a multiple of 256, at most 65536).
+	bool activationHadamard256 = false;
 
 	bool operator==(const Int8MatMulDescriptor& rhs) const;
 

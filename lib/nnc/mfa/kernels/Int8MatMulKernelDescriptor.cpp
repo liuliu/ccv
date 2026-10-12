@@ -9,7 +9,8 @@ bool Int8MatMulKernelDescriptor::operator==(const Int8MatMulKernelDescriptor& rh
 		simd_all(blockDimensions == rhs.blockDimensions) &&
 		simd_all(splits == rhs.splits) &&
 		kInterleave == rhs.kInterleave &&
-		useBias == rhs.useBias;
+		useBias == rhs.useBias &&
+		activationHadamard256 == rhs.activationHadamard256;
 }
 
 std::size_t std::hash<Int8MatMulKernelDescriptor>::operator()(const Int8MatMulKernelDescriptor& hash) const noexcept
@@ -19,11 +20,11 @@ std::size_t std::hash<Int8MatMulKernelDescriptor>::operator()(const Int8MatMulKe
 	seed = combine_64(seed, pack_64(simd_make_ushort4(hash.blockDimensions, hash.kInterleave)));
 	seed = combine_32(seed, pack_32(hash.splits));
 	seed = combine_32(seed, pack_32(simd::ushort2 { (uint16_t)hash.operation, (uint16_t)hash.ioPrecision.value }));
-	seed = combine_32(seed, hash.useBias ? 1 : 0);
+	seed = combine_32(seed, pack_32(simd::ushort2 { (uint16_t)hash.useBias, (uint16_t)hash.activationHadamard256 }));
 	return seed;
 }
 
-Int8MatMulKernelDescriptor::Int8MatMulKernelDescriptor(Int8MatMulOperation operation, GEMMOperandPrecision ioPrecision, simd::ushort3 blockDimensions, simd::ushort2 splits, uint16_t kInterleave, bool useBias) noexcept
+Int8MatMulKernelDescriptor::Int8MatMulKernelDescriptor(Int8MatMulOperation operation, GEMMOperandPrecision ioPrecision, simd::ushort3 blockDimensions, simd::ushort2 splits, uint16_t kInterleave, bool useBias, bool activationHadamard256) noexcept
 {
 	this->operation = operation;
 	this->ioPrecision = ioPrecision;
@@ -31,6 +32,7 @@ Int8MatMulKernelDescriptor::Int8MatMulKernelDescriptor(Int8MatMulOperation opera
 	this->splits = splits;
 	this->kInterleave = kInterleave;
 	this->useBias = useBias;
+	this->activationHadamard256 = activationHadamard256;
 }
 
 Int8MatMulKernelDescriptor::Int8MatMulKernelDescriptor(const Int8MatMulDescriptor& descriptor, const DeviceProperties& dprops) noexcept
@@ -46,6 +48,7 @@ Int8MatMulKernelDescriptor::Int8MatMulKernelDescriptor(const Int8MatMulDescripto
 	splits = simd::ushort2 { 1, 1 };
 	kInterleave = 1;
 	useBias = operation == Int8MatMulDense && descriptor.useBias;
+	activationHadamard256 = operation == Int8MatMulQuantizeActivation && descriptor.activationHadamard256;
 	if (operation == Int8MatMulSegmented) {
 		// Larger routed groups reuse each loaded weight tile across more rows.
 		const bool largeGroups = descriptor.binCount > 0 && descriptor.M / descriptor.binCount >= 64;

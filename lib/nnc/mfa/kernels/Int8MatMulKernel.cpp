@@ -13,6 +13,7 @@ Int8MatMulKernel::Int8MatMulKernel(Int8MatMulKernelDescriptor descriptor, MTL::D
 	splits = descriptor.splits;
 	kInterleave = descriptor.kInterleave;
 	useBias = descriptor.useBias;
+	activationHadamard256 = descriptor.activationHadamard256;
 	registerM = 0;
 	registerN = 0;
 	switch (operation) {
@@ -32,6 +33,7 @@ Int8MatMulKernel::Int8MatMulKernel(Int8MatMulKernelDescriptor descriptor, MTL::D
 			break;
 		case Int8MatMulQuantizeActivation:
 			CCV_NNC_MFA_PRECONDITION(ioPrecision == GEMMOperandPrecision::FP32 || ioPrecision == GEMMOperandPrecision::FP16);
+			// The rotation assigns one 256-wide group to each of 8 simdgroups at a time.
 			threadgroupSize = MTL::Size(256, 1, 1);
 			break;
 		case Int8MatMulCastWeights:
@@ -189,6 +191,73 @@ kernel void int8_matmul_quantize_activation(
   threadgroup float scratch[8];
   const ulong base = (ulong)row * K;
   float local_max = 0.0f;
+)";
+	if (activationHadamard256) {
+		// Matches NAInt8MatMul's activation rotation, so rows quantize the same
+		// way with or without neural accelerators.
+		*source += R"(
+  // One simdgroup rotates 256 consecutive features, with eight floats per
+  // lane, and keeps the rotated row in registers through the scale reduction.
+  // H4 has +1 everywhere except its anti-diagonal (-1). Its fourth Kronecker
+  // power, normalized by 1/16, is the Hadamard matrix the weights were
+  // rotated by.
+  const uint groups_per_simd = (K / 256 + 7) / 8;
+  // Metal cannot size a thread array with a function constant. Specialization
+  // eliminates unused slots; the descriptor bounds K to 65536 at 256 threads.
+  float4 rotated[64];
+  #pragma clang loop unroll(full)
+  for (uint g = 0; g < groups_per_simd; ++g) {
+    const uint group = g * 8 + sgid;
+    float4 x[2];
+    #pragma clang loop unroll(full)
+    for (uint j = 0; j < 2; ++j) {
+      float4 v = float4(0);
+      if (group < K / 256) {
+        const ulong offset = base + group * 256 + j * 128 + lane_id * 4;
+        v = float4(source[offset], source[offset + 1], source[offset + 2], source[offset + 3]);
+      }
+      v = (v.x + v.y + v.z + v.w) - 2.0f * v.wzyx;
+      #pragma clang loop unroll(full)
+      for (ushort stride = 1; stride <= 4; stride *= 4) {
+        const float4 a = simd_shuffle_xor(v, stride);
+        const float4 b = simd_shuffle_xor(v, ushort(stride * 2));
+        const float4 c = simd_shuffle_xor(v, ushort(stride * 3));
+        v = ((v + a) + b) - c;
+      }
+      x[j] = v;
+    }
+    const float4 a = simd_shuffle_xor(x[0], 16);
+    const float4 b = simd_shuffle_xor(x[1], 16);
+    rotated[g * 2] = (((x[0] + a) + x[1]) - b) * (1.0f / 16.0f);
+    rotated[g * 2 + 1] = (((x[1] + b) + x[0]) - a) * (1.0f / 16.0f);
+    #pragma clang loop unroll(full)
+    for (uint j = 0; j < 2; ++j) {
+      const float4 v = abs(rotated[g * 2 + j]);
+      local_max = max(local_max, max(max(v.x, v.y), max(v.z, v.w)));
+    }
+  }
+  const float max_abs = int8_matmul_reduce_max(local_max, scratch, sgid, lane_id);
+  const float inv_scale = max_abs > 0.0f ? 127.0f / max_abs : 127.0f;
+{{CREATE_SCALE}}
+  if (tid == 0)
+    scales[row] = scale;
+  device half4* destination4 = reinterpret_cast<device half4*>(destination + base);
+  #pragma clang loop unroll(full)
+  for (uint g = 0; g < groups_per_simd; ++g) {
+    const uint group = g * 8 + sgid;
+    if (group < K / 256) {
+      #pragma clang loop unroll(full)
+      for (uint j = 0; j < 2; ++j) {
+        const int4 rounded = int4(rint(rotated[g * 2 + j] * inv_scale));
+        destination4[group * 64 + j * 32 + lane_id] = half4(clamp(rounded, int4(-127), int4(127))) * half(0.0078125f);
+      }
+    }
+  }
+}
+)";
+		return;
+	}
+	*source += R"(
   for (uint col = tid; col < K; col += 256)
     local_max = max(local_max, fabs(float(source[base + col])));
   const float max_abs = int8_matmul_reduce_max(local_max, scratch, sgid, lane_id);

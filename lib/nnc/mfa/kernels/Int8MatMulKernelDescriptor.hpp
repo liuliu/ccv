@@ -32,13 +32,16 @@ struct Int8MatMulKernelDescriptor {
 	/// Dense: add a bias to every output row.
 	bool useBias;
 
+	/// Quantize: rotate every 256 activations by the normalized Hadamard matrix.
+	bool activationHadamard256;
+
 	Int8MatMulKernelDescriptor() = delete;
 
 	/// Choose the configuration for a dispatch on the device.
 	Int8MatMulKernelDescriptor(const Int8MatMulDescriptor& descriptor, const DeviceProperties& dprops) noexcept;
 
 	/// Specify the configuration directly, for kernel probes.
-	Int8MatMulKernelDescriptor(Int8MatMulOperation operation, GEMMOperandPrecision ioPrecision, simd::ushort3 blockDimensions, simd::ushort2 splits, uint16_t kInterleave, bool useBias) noexcept;
+	Int8MatMulKernelDescriptor(Int8MatMulOperation operation, GEMMOperandPrecision ioPrecision, simd::ushort3 blockDimensions, simd::ushort2 splits, uint16_t kInterleave, bool useBias, bool activationHadamard256 = false) noexcept;
 
 	bool operator==(const Int8MatMulKernelDescriptor& rhs) const;
 };

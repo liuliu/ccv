@@ -151,7 +151,6 @@ void ccv_nnc_mfa_prepare_scaled_gemm(mfa::context* context, ccv_nnc_mfa_scaled_g
 
 size_t ccv_nnc_mfa_scaled_gemm_reserved_scratch_size(mfa::context* context, ccv_nnc_mfa_scaled_gemm_params_t params)
 {
-  CCV_NNC_MFA_PRECONDITION(params.use_neural_accelerators || !params.activation_hadamard_256);
   if (!params.use_neural_accelerators) {
     const bool dense = int8_matmul_use_dense(context, params);
     CCV_NNC_MFA_PRECONDITION(params.data_type == MTL::DataTypeFloat || (params.data_type == MTL::DataTypeHalf && dense));
@@ -173,7 +172,6 @@ void ccv_nnc_mfa_encode_scaled_gemm(mfa::context* context, ccv_nnc_mfa_scaled_ge
   while (tensors[num_tensors] != nullptr)
     ++num_tensors;
   CCV_NNC_MFA_PRECONDITION((num_tensors == 3) || (num_tensors == 4));
-  CCV_NNC_MFA_PRECONDITION(params.use_neural_accelerators || !params.activation_hadamard_256);
   if (!params.use_neural_accelerators) {
     const bool dense = int8_matmul_use_dense(context, params);
     CCV_NNC_MFA_PRECONDITION(params.data_type == MTL::DataTypeFloat || (params.data_type == MTL::DataTypeHalf && dense));
@@ -191,6 +189,7 @@ void ccv_nnc_mfa_encode_scaled_gemm(mfa::context* context, ccv_nnc_mfa_scaled_ge
       .binCount = 0,
       .operation = Int8MatMulQuantizeActivation,
       .ioPrecision = io_precision(params.data_type),
+      .activationHadamard256 = params.activation_hadamard_256 != 0,
     };
     auto int8_matmul_pipeline = [&](const Int8MatMulDescriptor& operation_descriptor, const Int8MatMulKernelDescriptor& kernel_descriptor) {
       auto pool = NS::AutoreleasePool::alloc()->init();
@@ -201,6 +200,7 @@ void ccv_nnc_mfa_encode_scaled_gemm(mfa::context* context, ccv_nnc_mfa_scaled_ge
     auto descriptor_for = [&](const Int8MatMulOperation operation) {
       Int8MatMulDescriptor operation_descriptor = descriptor;
       operation_descriptor.operation = operation;
+      operation_descriptor.activationHadamard256 = false;
       return operation_descriptor;
     };
     auto quantize_pipeline = int8_matmul_pipeline(descriptor, Int8MatMulKernelDescriptor(descriptor, context->device_properties));

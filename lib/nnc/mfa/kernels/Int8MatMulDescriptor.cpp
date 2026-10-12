@@ -8,7 +8,8 @@ bool Int8MatMulDescriptor::operator==(const Int8MatMulDescriptor& rhs) const
 {
 	return M == rhs.M && N == rhs.N && K == rhs.K &&
 		expertCount == rhs.expertCount && binCount == rhs.binCount &&
-		operation == rhs.operation && ioPrecision == rhs.ioPrecision && useBias == rhs.useBias;
+		operation == rhs.operation && ioPrecision == rhs.ioPrecision && useBias == rhs.useBias &&
+		activationHadamard256 == rhs.activationHadamard256;
 }
 
 std::size_t std::hash<Int8MatMulDescriptor>::operator()(const Int8MatMulDescriptor& hash) const noexcept
@@ -19,6 +20,7 @@ std::size_t std::hash<Int8MatMulDescriptor>::operator()(const Int8MatMulDescript
 	seed = combine_64(seed, pack_64(simd::uint2 { hash.K, hash.expertCount }));
 	seed = combine_64(seed, pack_64(simd::uint2 { hash.binCount, (uint32_t)hash.operation }));
 	seed = combine_32(seed, pack_32(simd::ushort2 { (uint16_t)hash.ioPrecision.value, (uint16_t)hash.useBias }));
+	seed = combine_32(seed, hash.activationHadamard256 ? 1 : 0);
 	return seed;
 }
 
@@ -34,6 +36,7 @@ std::pair<Int8MatMulKernelDescriptor, PipelineValue<Int8MatMulKernel>*> Int8MatM
 	(void)binaryArchiveToWrite;
 	(void)pathToWrite;
 	CCV_NNC_MFA_PRECONDITION(kernelDescriptor.operation == operation);
+	CCV_NNC_MFA_PRECONDITION(!kernelDescriptor.activationHadamard256 || (K > 0 && K <= 65536 && K % 256 == 0));
 	auto iterator = libraryCache->find(kernelDescriptor);
 	Int8MatMulKernel* kernel;
 	if (iterator != libraryCache->end())
