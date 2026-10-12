@@ -105,6 +105,15 @@ uint8_t ccv_nnc_mfa_supports_int8_ane(ccv_nnc_mfa_context_t* context) {
   return (device->supportsFamily(MTL::GPUFamily(1009)));
 }
 
+uint8_t ccv_nnc_mfa_supports_int8_matmul(ccv_nnc_mfa_context_t* context, uint32_t m, uint32_t n) {
+  auto device = context->device;
+  // Int8MatMul loads directly from device memory, as GEMM does on Apple9 or
+  // newer. Quantizing the activations is faster than dequantizing the weights
+  // for GEMM unless there are more than twice as many activation rows as
+  // weight rows (measured with FP16 on M3 Ultra and M4 Pro).
+  return (device->supportsFamily(MTL::GPUFamily(1009))) && (uint64_t)m <= 2 * (uint64_t)n;
+}
+
 uint8_t ccv_nnc_mfa_has_neural_accelerators(ccv_nnc_mfa_context_t* context) {
   auto device = context->device;
   // Only apple10 has Neural Accelerators.

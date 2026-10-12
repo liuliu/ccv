@@ -412,11 +412,14 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 			!(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS) &&
 			ccv_nnc_mfa_has_neural_accelerators(context) &&
 			(mtl_data_type != 121 || ccv_nnc_mfa_neural_accelerators_support_bfloat(context));
+		// Without neural accelerators, FP16 activations and fused bias need
+		// Int8MatMul, which reduces K in multiples of 8.
+		const int use_int8_matmul = (w_rows % 8) == 0 && ccv_nnc_mfa_supports_int8_matmul(context, b_rows, b_cols);
 		const int use_scaled_gemm_without_neural_accelerators =
 			!use_neural_accelerators &&
 			w_qx_subtype == CCV_NNC_QX_8I_ROWWISE &&
-			a_datatype == CCV_32F &&
-			!bias &&
+			(a_datatype == CCV_32F || (a_datatype == CCV_16F && use_int8_matmul)) &&
+			(!bias || (use_int8_matmul && bias_batch_size == 1)) &&
 			a_rows > 3 &&
 			!is_batched &&
 			ccv_nnc_tensor_count(a->info) <= UINT32_MAX &&
@@ -583,7 +586,7 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 				.loadM = load_m,
 			};
 			ccv_nnc_mfa_prepare_scaled_gemm(context, params);
-			const size_t scratch_offset = ccv_nnc_mfa_scaled_gemm_reserved_scratch_size(params);
+			const size_t scratch_offset = ccv_nnc_mfa_scaled_gemm_reserved_scratch_size(context, params);
 			mtl_buffer_t* w_data = mpgetbuffer((ccv_nnc_tensor_t*)w);
 			size_t w_dataof = w->dataof;
 			ccv_nnc_mfa_dequantize_8i_rowwise_x_params_t w_decode_params;

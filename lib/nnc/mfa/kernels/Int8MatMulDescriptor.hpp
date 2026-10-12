@@ -5,6 +5,7 @@
 #include <utility>
 #include "PipelineValue.hpp"
 #include "DeviceProperties.hpp"
+#include "GEMMOperandPrecision.hpp"
 
 enum Int8MatMulOperation : uint8_t {
 	Int8MatMulQuantizeActivation = 0,
@@ -12,19 +13,10 @@ enum Int8MatMulOperation : uint8_t {
 	Int8MatMulDequantizeOutput = 2,
 	Int8MatMulDequantizeSegmentedOutput = 3,
 	Int8MatMulSegmented = 4,
+	Int8MatMulDense = 5,
 };
 
-struct Int8MatMulKernelDescriptor {
-	uint32_t blockM = 16;
-	constexpr bool operator==(const Int8MatMulKernelDescriptor& rhs) const { return blockM == rhs.blockM; }
-};
-
-template<>
-struct std::hash<Int8MatMulKernelDescriptor>
-{
-	std::size_t operator()(const Int8MatMulKernelDescriptor& hash) const noexcept { return hash.blockM; }
-};
-
+struct Int8MatMulKernelDescriptor;
 struct Int8MatMulKernel;
 
 struct Int8MatMulDescriptor {
@@ -34,12 +26,17 @@ struct Int8MatMulDescriptor {
 	uint32_t expertCount;
 	uint32_t binCount;
 	Int8MatMulOperation operation;
+	/// The precision of activations, outputs, weight scales and bias.
+	GEMMOperandPrecision ioPrecision = GEMMOperandPrecision::FP32;
+	/// Dense: add a bias to every output row.
+	bool useBias = false;
 
 	bool operator==(const Int8MatMulDescriptor& rhs) const;
 
+	// Specialize an explicit kernel configuration (also used by kernel probes).
 	std::pair<Int8MatMulKernelDescriptor, PipelineValue<Int8MatMulKernel>*> findKernel(
 		MTL::Device* device,
-		const DeviceProperties& dprops,
+		const Int8MatMulKernelDescriptor& kernelDescriptor,
 		NS::Array* binaryArchivesToRead,
 		MTL::BinaryArchive* binaryArchiveToWrite,
 		const std::string& pathToWrite,
