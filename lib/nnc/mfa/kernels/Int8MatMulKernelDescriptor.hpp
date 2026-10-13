@@ -10,7 +10,10 @@
 /// The dense kernel follows GEMMKernel on Apple9 and later: every simdgroup
 /// accumulates its register tile in FP32 with direct device loads, without
 /// threadgroup memory or async copies. Int8 weights are converted to FP16 as
-/// they are loaded, and the row-wise scales are applied while storing.
+/// they are loaded, and the row-wise scales are applied while storing. FP16
+/// activations are multiplied as they are; activations at any other precision
+/// are quantized to FP16 codes with row-wise scales first, so the
+/// multiplication stays in FP16.
 struct Int8MatMulKernelDescriptor {
 	Int8MatMulOperation operation;
 

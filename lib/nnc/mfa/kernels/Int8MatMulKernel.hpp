@@ -43,7 +43,9 @@ struct Int8MatMulKernel {
 
 private:
 	std::string createSource() const noexcept;
+	void createRotate256(CodeWriter* source) const noexcept;
 	void createQuantizeActivation(CodeWriter* source) const noexcept;
+	void createRotateActivation(CodeWriter* source) const noexcept;
 	void createCastWeights(CodeWriter* source) const noexcept;
 	void createDequantizeOutput(CodeWriter* source) const noexcept;
 	void createDequantizeSegmentedOutput(CodeWriter* source) const noexcept;

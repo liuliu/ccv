@@ -2141,11 +2141,12 @@ TEST_CASE("mps H256 rowwise-x GEMM dense fallback preserves logical weights")
 			const ccv_nnc_cmd_t cmd = CMD_GEMM_FORWARD(TRANSPOSE(transpose_a ? 1 : 0, transpose_a ? 2 : 0), TRANSPOSE(transpose_w ? 1 : 0, transpose_w ? 2 : 0));
 			REQUIRE_EQ(ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(ha, hw, shape == 0 ? 0 : hbias), TENSOR_LIST(href), 0), CCV_NNC_EXEC_SUCCESS, "CPU logical weight GEMM succeeds");
 			// Without neural accelerators, Int8MatMul takes the ordinary GEMM in FP16 or
-			// FP32 instead: it keeps the rotated weights, and rotates and quantizes the
-			// activations per row with 127 / max (FP16 rounds the scale at IO precision).
+			// FP32 instead: it keeps the rotated weights and rotates the activations.
+			// FP16 multiplies them as they are, which matches the logical weights; FP32
+			// quantizes them per row with 127 / max.
 #ifdef HAVE_MPS
 			extern uint8_t ccv_nnc_mfa_supports_int8_matmul(ccv_nnc_mfa_context_t* context, uint32_t m, uint32_t n);
-			const int int8_matmul = shape == 1 && datatype != CCV_16BF && (k % 8) == 0 && ccv_nnc_mfa_supports_int8_matmul(ccv_nnc_default_mfa_context(), m, n);
+			const int int8_matmul = shape == 1 && datatype == CCV_32F && (k % 8) == 0 && ccv_nnc_mfa_supports_int8_matmul(ccv_nnc_default_mfa_context(), m, n);
 #else
 			const int int8_matmul = 0;
 #endif
@@ -2175,13 +2176,7 @@ TEST_CASE("mps H256 rowwise-x GEMM dense fallback preserves logical weights")
 						maximum = ccv_max(maximum, fabsf(a_ref[j]));
 					}
 					const float inv_scale = maximum > 0 ? 127.0f / maximum : 127.0f;
-					float scale = maximum > 0 ? maximum / 127.0f : 1.0f / 127.0f;
-					if (datatype == CCV_16F)
-					{
-						uint16_t stored_scale;
-						ccv_float_to_half_precision(&scale, &stored_scale, 1);
-						ccv_half_precision_to_float(&stored_scale, &scale, 1);
-					}
+					const float scale = maximum > 0 ? maximum / 127.0f : 1.0f / 127.0f;
 					for (j = 0; j < k; j++)
 						a_ref[j] = ccv_max(-127, ccv_min(127, (int)lrintf(a_ref[j] * inv_scale))) * scale;
 					for (j = 0; j < n; j++)
@@ -2213,7 +2208,7 @@ TEST_CASE("mps H256 rowwise-x GEMM dense fallback preserves logical weights")
 						norm += quantized_ref[i] * quantized_ref[i];
 					}
 					// The dense fallback is about 7e-3 away from this quantized reference.
-					REQUIRE(sqrt(error / norm) < 2e-3, "Int8MatMul H256 GEMM: dtype=%d relative L2=%g", datatype, sqrt(error / norm));
+					REQUIRE(sqrt(error / norm) < 2e-3, "Int8MatMul H256 GEMM: relative L2=%g", sqrt(error / norm));
 					continue;
 				}
 				for (i = 0; i < batches * m * n; i++)
@@ -3133,8 +3128,8 @@ TEST_CASE("mps Int8MatMul matches quantized reference across tiles, edges, preci
 				ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(hb), TENSOR_LIST(hb32), 0);
 			else
 				ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(hb), TENSOR_LIST(hb32), 0);
-			// Activations quantize per row with 127 / max, and FP16 stores the
-			// scale rounded to nearest at IO precision.
+			// FP16 activations are multiplied as they are; FP32 activations quantize
+			// per row with 127 / max.
 			double error = 0, norm = 0;
 			float a_ref[k];
 			for (int s = 0; s < samples; ++s)
@@ -3145,21 +3140,9 @@ TEST_CASE("mps Int8MatMul matches quantized reference across tiles, edges, preci
 				for (int d = 0; d < k; ++d)
 					maximum = ccv_max(maximum, fabsf(values[d]));
 				const float inv_scale = maximum > 0 ? 127.0f / maximum : 127.0f;
-				float scale = maximum > 0 ? maximum / 127.0f : 1.0f / 127.0f;
-				if (datatype == CCV_16F)
-				{
-					uint16_t stored_scale;
-					ccv_float_to_half_precision(&scale, &stored_scale, 1);
-					float lower, upper;
-					const uint16_t next_scale = stored_scale + 1;
-					ccv_half_precision_to_float(&stored_scale, &lower, 1);
-					ccv_half_precision_to_float(&next_scale, &upper, 1);
-					if (scale - lower > upper - scale || (scale - lower == upper - scale && (stored_scale & 1)))
-						stored_scale = next_scale;
-					ccv_half_precision_to_float(&stored_scale, &scale, 1);
-				}
+				const float scale = maximum > 0 ? maximum / 127.0f : 1.0f / 127.0f;
 				for (int d = 0; d < k; ++d)
-					a_ref[d] = ccv_max(-127, ccv_min(127, (int)lrintf(values[d] * inv_scale))) * scale;
+					a_ref[d] = datatype == CCV_16F ? values[d] : ccv_max(-127, ccv_min(127, (int)lrintf(values[d] * inv_scale))) * scale;
 				for (int column = 0; column < n; ++column)
 				{
 					double expected = use_bias ? hbias32->data.f32[column] : 0;
@@ -3202,7 +3185,7 @@ TEST_CASE("mps rowwise int8 gemm splits rows between ANE and GPU")
 	GUARD_ELSE_RETURN(ccv_nnc_mfa_supports_int8_ane(ccv_nnc_default_mfa_context()));
 	// Shapes where splitting rows pays off: one ANE program, and more ANE rows
 	// than one program takes without neural accelerators. Whether the rows split,
-	// or run on one side alone, every output row matches the quantized reference.
+	// or run on one side alone, every output row matches its side's reference.
 	const int shapes[][3] = {
 		{2048, 4096, 4096}, {16384, 2048, 2048},
 	};
@@ -3274,10 +3257,12 @@ TEST_CASE("mps rowwise int8 gemm splits rows between ANE and GPU")
 				ccv_nnc_tensor_t* const hb32 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, m, n), 0);
 				ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(hb), TENSOR_LIST(hb32), 0);
 				// Activations rotate by the normalized Hadamard matrix (H4 with an
-				// anti-diagonal of -1, to the fourth Kronecker power), then quantize per
-				// row with 127 / max, and FP16 stores the scale rounded at IO precision.
+				// anti-diagonal of -1, to the fourth Kronecker power). The ANE quantizes
+				// them per row with 127 / max, and FP16 stores the scale rounded at IO
+				// precision. Int8MatMul quantizes FP32 rows the same way, but multiplies
+				// FP16 rows as they are, so an FP16 row matches one of the two.
 				double error = 0, norm = 0;
-				float a_ref[k];
+				float a_ref[k], a_quantized[k];
 				for (int s = 0; s < samples; ++s)
 				{
 					const int row = s * (m - 1) / (samples - 1);
@@ -3310,17 +3295,23 @@ TEST_CASE("mps rowwise int8 gemm splits rows between ANE and GPU")
 						ccv_half_precision_to_float(&stored_scale, &scale, 1);
 					}
 					for (int d = 0; d < k; ++d)
-						a_ref[d] = ccv_max(-127, ccv_min(127, (int)lrintf(a_ref[d] * inv_scale))) * scale;
+						a_quantized[d] = ccv_max(-127, ccv_min(127, (int)lrintf(a_ref[d] * inv_scale))) * scale;
+					double row_error[2] = {0, 0};
 					for (int column = 0; column < n; ++column)
 					{
-						double expected = 0;
+						double expected[2] = {0, 0};
 						for (int d = 0; d < k; ++d)
-							expected += (double)a_ref[d] * w_ref[(size_t)column * k + d];
+						{
+							expected[0] += (double)a_quantized[d] * w_ref[(size_t)column * k + d];
+							expected[1] += (double)a_ref[d] * w_ref[(size_t)column * k + d];
+						}
 						const double actual = hb32->data.f32[(size_t)row * n + column];
 						REQUIRE(isfinite(actual), "output should be finite");
-						error += (actual - expected) * (actual - expected);
-						norm += expected * expected;
+						for (int i = 0; i < 2; ++i)
+							row_error[i] += (actual - expected[i]) * (actual - expected[i]);
+						norm += expected[0] * expected[0];
 					}
+					error += datatype == CCV_16F ? ccv_min(row_error[0], row_error[1]) : row_error[0];
 				}
 				// The ANE accumulates in FP16.
 				REQUIRE(sqrt(error / norm) < 5e-3, "%s M=%d N=%d K=%d hadamard=%d relative L2=%g", datatype == CCV_16F ? "FP16" : "FP32", m, n, k, hadamard, sqrt(error / norm));
@@ -13708,6 +13699,12 @@ TEST_CASE("MFA durable scratch retirement follows its owning command batch")
 TEST_CASE("mps large rowwise int8 gemm preserves dynamic rows and fused bias")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_MPS));
+#ifdef HAVE_MPS
+	extern uint8_t ccv_nnc_mfa_has_neural_accelerators(ccv_nnc_mfa_context_t* context);
+	const int quantize_activations = ccv_nnc_mfa_has_neural_accelerators(ccv_nnc_default_mfa_context());
+#else
+	const int quantize_activations = 1;
+#endif
 	const int n = 5376, k = 14336, samples = 16;
 	const int row_counts[] = {16384, 16401, 16383, 16401};
 	dsfmt_t dsfmt;
@@ -13767,12 +13764,16 @@ TEST_CASE("mps large rowwise int8 gemm preserves dynamic rows and fused bias")
 			rows[s] = s < 5 ? ccv_min(boundaries[s], m - 1) : (s - 5) * (m - 1) / (samples - 6);
 			memcpy(sample_a->data.f16 + s * k, ha->data.f16 + (size_t)rows[s] * k, sizeof(uint16_t) * k);
 		}
-		// Runtime activations use abs-max scaling; the offline weight quantizer
-		// also refits its scale, so it is not an activation reference.
+		// Neural accelerators quantize activations with abs-max scaling; the
+		// offline weight quantizer also refits its scale, so it is not an
+		// activation reference. Without them, FP16 activations are multiplied
+		// as they are.
 		for (int s = 0; s < samples; ++s)
 		{
 			float* const values = ref_a->data.f32 + s * k;
 			ccv_half_precision_to_float((uint16_t*)sample_a->data.f16 + s * k, values, k);
+			if (!quantize_activations)
+				continue;
 			float maximum = 0;
 			for (int d = 0; d < k; ++d)
 				maximum = ccv_max(maximum, fabsf(values[d]));
@@ -13843,6 +13844,12 @@ TEST_CASE("mps large rowwise int8 gemm preserves dynamic rows and fused bias")
 TEST_CASE("mps rowwise int8 gemm preserves tuning boundaries and partial tiles")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_MPS));
+#ifdef HAVE_MPS
+	extern uint8_t ccv_nnc_mfa_has_neural_accelerators(ccv_nnc_mfa_context_t* context);
+	const int quantize_activations = ccv_nnc_mfa_has_neural_accelerators(ccv_nnc_default_mfa_context());
+#else
+	const int quantize_activations = 1;
+#endif
 	const uint64_t old_flags = ccv_nnc_flags();
 	ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA_ANE);
 	ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA | CCV_NNC_DISABLE_MFA_GEMM | CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS);
@@ -13927,12 +13934,16 @@ TEST_CASE("mps rowwise int8 gemm preserves tuning boundaries and partial tiles")
 			rows[s] = s < 5 ? ccv_min(boundaries[s], m - 1) : (s - 5) * (m - 1) / (samples - 6);
 			memcpy(sample_a->data.f16 + s * k, ha->data.f16 + (size_t)rows[s] * k, sizeof(uint16_t) * k);
 		}
-		// Runtime activations use abs-max scaling; the offline weight quantizer
-		// also refits its scale, so it is not an activation reference.
+		// Neural accelerators quantize activations with abs-max scaling; the
+		// offline weight quantizer also refits its scale, so it is not an
+		// activation reference. Without them, FP16 activations are multiplied
+		// as they are.
 		for (int s = 0; s < samples; ++s)
 		{
 			float* const values = ref_a->data.f32 + s * k;
 			ccv_half_precision_to_float((uint16_t*)sample_a->data.f16 + s * k, values, k);
+			if (!quantize_activations)
+				continue;
 			float maximum = 0;
 			for (int d = 0; d < k; ++d)
 				maximum = ccv_max(maximum, fabsf(values[d]));

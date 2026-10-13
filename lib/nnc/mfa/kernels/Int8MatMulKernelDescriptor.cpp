@@ -42,6 +42,7 @@ Int8MatMulKernelDescriptor::Int8MatMulKernelDescriptor(const Int8MatMulDescripto
 	// only, or precision independent) share one library.
 	const bool usesIOPrecision =
 		operation == Int8MatMulQuantizeActivation ||
+		operation == Int8MatMulRotateActivation ||
 		operation == Int8MatMulDense;
 	ioPrecision = usesIOPrecision ? descriptor.ioPrecision : GEMMOperandPrecision::FP32;
 	blockDimensions = simd::ushort3 { 0, 0, 0 };

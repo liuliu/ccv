@@ -169,8 +169,10 @@ double timeGPU(Bench& bench, Encode encode)
 	return times[times.size() / 2];
 }
 
-// Activation codes are q / 128 in FP16 and their scales 128 * s, as
-// int8_matmul_quantize_activation writes them.
+// FP32 activation codes are q / 128 in FP16 and their scales 128 * s, as
+// int8_matmul_quantize_activation writes them. FP16 activations have no
+// scales: A holds 8 * q exactly, so products exceed the FP16 range unless
+// they accumulate in FP32.
 struct Buffers {
 	NS::SharedPtr<MTL::Buffer> a, b, aScales, bScales, c, bHalf, accumulator;
 	std::vector<int8_t> qa, qb;
@@ -192,13 +194,13 @@ Buffers makeBuffers(Bench& bench, const Shape& shape, bool ioHalf)
 	buffers.sa.resize(shape.M);
 	buffers.sb.resize(shape.N);
 	for (auto& v : buffers.sa)
-		v = u(rng) / 127.0f;
+		v = ioHalf ? 8.0f : u(rng) / 127.0f;
 	for (auto& v : buffers.sb)
 		v = (float)(half_t)(u(rng) / (127.0f * std::sqrt((float)shape.K)));
 	const auto shared = MTL::ResourceStorageModeShared;
 	std::vector<half_t> a(buffers.qa.size());
 	for (size_t i = 0; i < a.size(); ++i)
-		a[i] = (half_t)((float)buffers.qa[i] / 128.0f);
+		a[i] = (half_t)(ioHalf ? 8.0f * buffers.qa[i] : (float)buffers.qa[i] / 128.0f);
 	buffers.a = NS::TransferPtr(bench.device->newBuffer(a.data(), a.size() * sizeof(half_t), shared));
 	buffers.b = NS::TransferPtr(bench.device->newBuffer(buffers.qb.data(), buffers.qb.size(), shared));
 	std::vector<float> aScales(shape.M);

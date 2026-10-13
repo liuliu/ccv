@@ -754,17 +754,15 @@ static bool probe_int8_matmul_seconds(
   auto command_queue = NS::TransferPtr(context->device->newCommandQueue());
   const size_t b_scale_offset = rowwise_8i_scale_offset(N, K);
   auto a = NS::TransferPtr(context->device->newBuffer((size_t)M * K * sizeof(uint16_t), MTL::ResourceStorageModeShared));
-  auto a_scales = NS::TransferPtr(context->device->newBuffer((size_t)M * sizeof(float), MTL::ResourceStorageModeShared));
   auto b = NS::TransferPtr(context->device->newBuffer(b_scale_offset + (size_t)N * sizeof(uint16_t), MTL::ResourceStorageModeShared));
   auto c = NS::TransferPtr(context->device->newBuffer((size_t)M * N * sizeof(uint16_t), MTL::ResourceStorageModePrivate));
-  if (!pipeline || !command_queue || !a || !a_scales || !b || !c) {
+  if (!pipeline || !command_queue || !a || !b || !c) {
     if (error_out)
       *error_out = "failed to prepare Int8MatMul for hybrid split probe";
     return false;
   }
-  // Nonzero activation codes, as a GEMM sees them.
+  // Nonzero activations, as a GEMM sees them.
   std::memset(a->contents(), 0x20, a->length());
-  std::memset(a_scales->contents(), 0, a_scales->length());
   std::memset(b->contents(), 1, b->length());
   const auto run_once = [&]() {
     auto* const command_batch = ccv_nnc_start_command_batch(command_queue.get());
@@ -773,7 +771,6 @@ static bool probe_int8_matmul_seconds(
     encoder->setBuffer(a.get(), 0, 0);
     encoder->setBuffer(b.get(), 0, 1);
     encoder->setBuffer(c.get(), 0, 2);
-    encoder->setBuffer(a_scales.get(), 0, 3);
     encoder->setBuffer(b.get(), b_scale_offset, 4);
     encoder->dispatchThreadgroups(pipeline->kernel->threadgroupsPerGrid(descriptor), pipeline->kernel->threadgroupSize);
     command_batch->finishCommand(encoder);
@@ -1015,10 +1012,13 @@ static bool choose_hybrid_ane_rows_per_batch(
   const double K = params.K;
   const double work = N * K;
   const double io = io_precision(params.data_type).size();
-  // The GPU quantizes its own rows. Each ANE program waits for the GPU to
-  // prepare its rows and a copy of the weights, and for the GPU to dequantize
-  // its output afterwards; these passes do not overlap the kernels.
-  const double gpu_per_row = work * model.gpu_slope + K * (io + 2) / model.bandwidth;
+  // The GPU quantizes its own rows, except that Int8MatMul multiplies FP16
+  // rows as they are, or only rotates them for H256 weights. Each ANE program
+  // waits for the GPU to prepare its rows and a copy of the weights, and for
+  // the GPU to dequantize its output afterwards; these passes do not overlap
+  // the kernels.
+  const bool gpu_prepares_rows = neural_accelerators || params.data_type != MTL::DataTypeHalf || params.activation_hadamard_256;
+  const double gpu_per_row = work * model.gpu_slope + (gpu_prepares_rows ? K * (io + 2) / model.bandwidth : 0);
   const auto gpu_seconds = [&](const double rows) {
     return rows > 0 ? model.gpu_fixed + rows * gpu_per_row : 0.0;
   };
@@ -1184,8 +1184,9 @@ size_t ccv_nnc_mfa_ane_na_rowwise_split_gemm_reserved_scratch_size(
     ccv_nnc_mfa_context_t* const context,
     ccv_nnc_mfa_ane_na_rowwise_gemm_params_t params)
 {
-  // Without neural accelerators, Int8MatMul quantizes the GPU rows into MFA
-  // scratch, ahead of any weights the caller decodes there.
+  // Without neural accelerators, Int8MatMul prepares the GPU rows in MFA
+  // scratch (unless they are FP16 without H256), ahead of any weights the
+  // caller decodes there.
   if (!params.use_neural_accelerators)
     return int8_matmul_split_supported(context, params) ?
         ccv_nnc_mfa_scaled_gemm_reserved_scratch_size(context, int8_matmul_split_gpu_params(params, params.M)) : 0;

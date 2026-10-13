@@ -14,6 +14,9 @@ enum Int8MatMulOperation : uint8_t {
 	Int8MatMulDequantizeSegmentedOutput = 3,
 	Int8MatMulSegmented = 4,
 	Int8MatMulDense = 5,
+	/// Rotates FP16 activations as Quantize does with activationHadamard256,
+	/// without quantizing them (K is a multiple of 256).
+	Int8MatMulRotateActivation = 6,
 };
 
 struct Int8MatMulKernelDescriptor;

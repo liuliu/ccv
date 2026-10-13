@@ -37,6 +37,7 @@ std::pair<Int8MatMulKernelDescriptor, PipelineValue<Int8MatMulKernel>*> Int8MatM
 	(void)pathToWrite;
 	CCV_NNC_MFA_PRECONDITION(kernelDescriptor.operation == operation);
 	CCV_NNC_MFA_PRECONDITION(!kernelDescriptor.activationHadamard256 || (K > 0 && K <= 65536 && K % 256 == 0));
+	CCV_NNC_MFA_PRECONDITION(operation != Int8MatMulRotateActivation || (K > 0 && K % 256 == 0));
 	auto iterator = libraryCache->find(kernelDescriptor);
 	Int8MatMulKernel* kernel;
 	if (iterator != libraryCache->end())

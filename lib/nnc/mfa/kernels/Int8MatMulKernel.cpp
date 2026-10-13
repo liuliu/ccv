@@ -36,6 +36,11 @@ Int8MatMulKernel::Int8MatMulKernel(Int8MatMulKernelDescriptor descriptor, MTL::D
 			// The rotation assigns one 256-wide group to each of 8 simdgroups at a time.
 			threadgroupSize = MTL::Size(256, 1, 1);
 			break;
+		case Int8MatMulRotateActivation:
+			CCV_NNC_MFA_PRECONDITION(ioPrecision == GEMMOperandPrecision::FP16);
+			// Each of 8 simdgroups rotates 4 of the threadgroup's 32 groups.
+			threadgroupSize = MTL::Size(256, 1, 1);
+			break;
 		case Int8MatMulCastWeights:
 		case Int8MatMulDequantizeOutput:
 		case Int8MatMulDequantizeSegmentedOutput:
@@ -54,6 +59,8 @@ const char* Int8MatMulKernel::functionName() const noexcept
 	switch (operation) {
 		case Int8MatMulQuantizeActivation:
 			return "int8_matmul_quantize_activation";
+		case Int8MatMulRotateActivation:
+			return "int8_matmul_rotate_activation";
 		case Int8MatMulCastWeights:
 			return "int8_matmul_cast_weights";
 		case Int8MatMulDequantizeOutput:
@@ -76,6 +83,8 @@ MTL::Size Int8MatMulKernel::threadgroupsPerGrid(const Int8MatMulDescriptor& desc
 	switch (operation) {
 		case Int8MatMulQuantizeActivation:
 			return MTL::Size(descriptor.M, 1, 1);
+		case Int8MatMulRotateActivation:
+			return MTL::Size(ceilDivide((uint64_t)descriptor.M * descriptor.K, 256 * 32), 1, 1);
 		case Int8MatMulCastWeights:
 			return MTL::Size(ceilDivide((uint64_t)descriptor.expertCount * descriptor.N * descriptor.K, 256), 1, 1);
 		case Int8MatMulDequantizeOutput:
@@ -111,6 +120,9 @@ constant uint weight_count [[function_constant(5)]];
 		case Int8MatMulQuantizeActivation:
 			createQuantizeActivation(&source);
 			break;
+		case Int8MatMulRotateActivation:
+			createRotateActivation(&source);
+			break;
 		case Int8MatMulCastWeights:
 			createCastWeights(&source);
 			break;
@@ -130,6 +142,44 @@ constant uint weight_count [[function_constant(5)]];
 	return source.ToString();
 }
 
+// Matches NAInt8MatMul's activation rotation, so rows rotate the same way with
+// or without neural accelerators.
+void Int8MatMulKernel::createRotate256(CodeWriter* source) const noexcept
+{
+	source->SetValue("MEMORY_NAME_IO", ioPrecision.name());
+	*source += R"(
+// One simdgroup rotates 256 consecutive features; lane i holds features
+// 4i to 4i + 3 of each half, in rotated[0] and rotated[1].
+// H4 has +1 everywhere except its anti-diagonal (-1). Its fourth Kronecker
+// power, normalized by 1/16, is the Hadamard matrix the weights were
+// rotated by.
+inline void int8_matmul_rotate_256(device const {{MEMORY_NAME_IO}}* source,
+                                   ushort lane_id,
+                                   thread float4* rotated)
+{
+  float4 x[2];
+  #pragma clang loop unroll(full)
+  for (uint j = 0; j < 2; ++j) {
+    device const {{MEMORY_NAME_IO}}* features = source + j * 128 + lane_id * 4;
+    float4 v = float4(features[0], features[1], features[2], features[3]);
+    v = (v.x + v.y + v.z + v.w) - 2.0f * v.wzyx;
+    #pragma clang loop unroll(full)
+    for (ushort stride = 1; stride <= 4; stride *= 4) {
+      const float4 a = simd_shuffle_xor(v, stride);
+      const float4 b = simd_shuffle_xor(v, ushort(stride * 2));
+      const float4 c = simd_shuffle_xor(v, ushort(stride * 3));
+      v = ((v + a) + b) - c;
+    }
+    x[j] = v;
+  }
+  const float4 a = simd_shuffle_xor(x[0], 16);
+  const float4 b = simd_shuffle_xor(x[1], 16);
+  rotated[0] = (((x[0] + a) + x[1]) - b) * (1.0f / 16.0f);
+  rotated[1] = (((x[1] + b) + x[0]) - a) * (1.0f / 16.0f);
+}
+)";
+}
+
 // Activations are quantized per row to int8 codes q in [-127, 127] and stored
 // in FP16 as q / 128; the row's scale absorbs the factor of 128. Weight codes
 // are used as is (the dense kernel), or as q / 128 (cast weights), in which
@@ -137,6 +187,8 @@ constant uint weight_count [[function_constant(5)]];
 void Int8MatMulKernel::createQuantizeActivation(CodeWriter* source) const noexcept
 {
 	source->SetValue("MEMORY_NAME_IO", ioPrecision.name());
+	if (activationHadamard256)
+		createRotate256(source);
 	if (ioPrecision == GEMMOperandPrecision::FP16) {
 		// Store the scale at IO precision, as NAInt8MatMul does, so FP16 rows
 		// quantize the same way with or without neural accelerators.
@@ -193,14 +245,9 @@ kernel void int8_matmul_quantize_activation(
   float local_max = 0.0f;
 )";
 	if (activationHadamard256) {
-		// Matches NAInt8MatMul's activation rotation, so rows quantize the same
-		// way with or without neural accelerators.
 		*source += R"(
-  // One simdgroup rotates 256 consecutive features, with eight floats per
-  // lane, and keeps the rotated row in registers through the scale reduction.
-  // H4 has +1 everywhere except its anti-diagonal (-1). Its fourth Kronecker
-  // power, normalized by 1/16, is the Hadamard matrix the weights were
-  // rotated by.
+  // Each simdgroup rotates every eighth 256-wide group, and keeps the rotated
+  // row in registers through the scale reduction.
   const uint groups_per_simd = (K / 256 + 7) / 8;
   // Metal cannot size a thread array with a function constant. Specialization
   // eliminates unused slots; the descriptor bounds K to 65536 at 256 threads.
@@ -208,32 +255,13 @@ kernel void int8_matmul_quantize_activation(
   #pragma clang loop unroll(full)
   for (uint g = 0; g < groups_per_simd; ++g) {
     const uint group = g * 8 + sgid;
-    float4 x[2];
-    #pragma clang loop unroll(full)
-    for (uint j = 0; j < 2; ++j) {
-      float4 v = float4(0);
-      if (group < K / 256) {
-        const ulong offset = base + group * 256 + j * 128 + lane_id * 4;
-        v = float4(source[offset], source[offset + 1], source[offset + 2], source[offset + 3]);
-      }
-      v = (v.x + v.y + v.z + v.w) - 2.0f * v.wzyx;
+    if (group < K / 256) {
+      int8_matmul_rotate_256(source + base + group * 256, lane_id, rotated + g * 2);
       #pragma clang loop unroll(full)
-      for (ushort stride = 1; stride <= 4; stride *= 4) {
-        const float4 a = simd_shuffle_xor(v, stride);
-        const float4 b = simd_shuffle_xor(v, ushort(stride * 2));
-        const float4 c = simd_shuffle_xor(v, ushort(stride * 3));
-        v = ((v + a) + b) - c;
+      for (uint j = 0; j < 2; ++j) {
+        const float4 v = abs(rotated[g * 2 + j]);
+        local_max = max(local_max, max(max(v.x, v.y), max(v.z, v.w)));
       }
-      x[j] = v;
-    }
-    const float4 a = simd_shuffle_xor(x[0], 16);
-    const float4 b = simd_shuffle_xor(x[1], 16);
-    rotated[g * 2] = (((x[0] + a) + x[1]) - b) * (1.0f / 16.0f);
-    rotated[g * 2 + 1] = (((x[1] + b) + x[0]) - a) * (1.0f / 16.0f);
-    #pragma clang loop unroll(full)
-    for (uint j = 0; j < 2; ++j) {
-      const float4 v = abs(rotated[g * 2 + j]);
-      local_max = max(local_max, max(max(v.x, v.y), max(v.z, v.w)));
     }
   }
   const float max_abs = int8_matmul_reduce_max(local_max, scratch, sgid, lane_id);
@@ -268,6 +296,38 @@ kernel void int8_matmul_quantize_activation(
   for (uint col = tid; col < K; col += 256) {
     const int rounded = (int)rint(float(source[base + col]) * inv_scale);
     destination[base + col] = (half)clamp(rounded, -127, 127) * half(0.0078125f);
+  }
+}
+)";
+}
+
+// FP16 activations need no quantization; H256 weights only need them rotated.
+// A rotated value is at most 1/16 of its group's absolute sum, so it fits in
+// FP16 unless the group's activations average over 4094 in magnitude.
+void Int8MatMulKernel::createRotateActivation(CodeWriter* source) const noexcept
+{
+	createRotate256(source);
+	*source += R"(
+kernel void int8_matmul_rotate_activation(
+    device const half* source [[buffer(0)]],
+    device half* destination [[buffer(1)]],
+    ushort sgid [[simdgroup_index_in_threadgroup]],
+    ushort lane_id [[thread_index_in_simdgroup]],
+    uint3 tgid [[threadgroup_position_in_grid]])
+{
+  // Every row holds whole groups, so group g starts at element g * 256. Four
+  // groups per simdgroup keep more loads in flight than one: up to a third faster
+  // on M3 Ultra, and the same on M4 Pro, where the pass is bandwidth bound.
+  #pragma clang loop unroll(full)
+  for (uint i = 0; i < 4; ++i) {
+    const uint group = (tgid.x * 4 + i) * 8 + sgid;
+    if (group < M * (K / 256)) {
+      float4 rotated[2];
+      int8_matmul_rotate_256(source + (ulong)group * 256, lane_id, rotated);
+      device half4* destination4 = reinterpret_cast<device half4*>(destination + (ulong)group * 256);
+      destination4[lane_id] = half4(rotated[0]);
+      destination4[32 + lane_id] = half4(rotated[1]);
+    }
   }
 }
 )";
@@ -441,6 +501,14 @@ kernel void int8_matmul_segmented(
 
 #pragma mark - Dense
 
+// Only FP16 activations are multiplied as they are. Any other precision (FP32,
+// or BF16 if supported) is quantized to FP16 codes with row-wise scales, so the
+// multiplication stays in FP16.
+static bool denseUsesActivationScales(const GEMMOperandPrecision ioPrecision) noexcept
+{
+	return ioPrecision != GEMMOperandPrecision::FP16;
+}
+
 void Int8MatMulKernel::createDense(CodeWriter* source) const noexcept
 {
 	source->SetValue("MEMORY_NAME_IO", ioPrecision.name());
@@ -454,10 +522,13 @@ void Int8MatMulKernel::createDense(CodeWriter* source) const noexcept
 	source->SetValue("SPLITS_N", std::to_string(splits[1]));
 	source->SetValue("K_INTERLEAVE", std::to_string(kInterleave));
 	source->SetValue("BIAS_ARGUMENT", useBias ? "                              device const " + ioPrecision.name() + " *bias [[buffer(5)]]," : "");
+	source->SetValue("A_SCALES_ARGUMENT", denseUsesActivationScales(ioPrecision) ? "                              device const float *A_scales [[buffer(3)]]," : "");
 	*source += R"(
 // Row-wise int8 matrix multiplication, C = (A * B^T) * A_scales * B_scales + bias.
 //
-// A: M x K activation codes in FP16, from int8_matmul_quantize_activation.
+// A: M x K FP16 activations. FP16 IO reads them as they are (or rotated by
+// int8_matmul_rotate_activation), without A_scales; other IO precisions read
+// their FP16 codes and A_scales from int8_matmul_quantize_activation.
 // B: N x K int8 weight codes; the right-hand side is B^T.
 // C: M x N output. A_scales are per row of C; B_scales and bias per column.
 //
@@ -468,7 +539,7 @@ void Int8MatMulKernel::createDense(CodeWriter* source) const noexcept
 kernel void int8_matmul_dense(device const half *A [[buffer(0)]],
                               device const char *B [[buffer(1)]],
                               device {{MEMORY_NAME_IO}} *C [[buffer(2)]],
-                              device const float *A_scales [[buffer(3)]],
+{{A_SCALES_ARGUMENT}}
                               device const {{MEMORY_NAME_IO}} *B_scales [[buffer(4)]],
 {{BIAS_ARGUMENT}}
                               uint3 gid [[threadgroup_position_in_grid]],
@@ -595,17 +666,19 @@ void Int8MatMulKernel::createDenseStoreC(CodeWriter* source) const noexcept
 {
 	source->SetValue("BIAS_0", useBias ? " + float(bias[column])" : "");
 	source->SetValue("BIAS_1", useBias ? " + float(bias[column + 1])" : "");
+	const bool activationScales = denseUsesActivationScales(ioPrecision);
+	source->SetValue("LOAD_A_SCALE", activationScales ? "    const float A_scale = A_scales[row];\n" : "");
+	source->SetValue("A_SCALE", activationScales ? " * A_scale" : "");
 	*source += R"(
 #pragma clang loop unroll(full)
   for (ushort m = 0; m < {{REGISTER_M_8}}; ++m) {
     const uint row = M_offset + m * 8 + morton_offset.y;
     if (row >= M)
       continue;
-    const float A_scale = A_scales[row];
-#pragma clang loop unroll(full)
+{{LOAD_A_SCALE}}#pragma clang loop unroll(full)
     for (ushort n = 0; n < {{REGISTER_N_8}}; ++n) {
       const uint column = N_offset + n * 8 + morton_offset.x;
-      const float2 C_values = *C_sram[m][n].thread_elements() * A_scale;
+      const float2 C_values = *C_sram[m][n].thread_elements(){{A_SCALE}};
       if (column < N)
         C[row * N + column] = {{MEMORY_NAME_IO}}(C_values[0] * float(B_scales[column]){{BIAS_0}});
       if (column + 1 < N)

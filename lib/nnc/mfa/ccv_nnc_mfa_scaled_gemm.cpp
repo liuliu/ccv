@@ -97,14 +97,23 @@ static bool int8_matmul_use_dense(mfa::context* context, ccv_nnc_mfa_scaled_gemm
   return context->device->supportsFamily(MTL::GPUFamily(1009)) && (params.K % 8) == 0;
 }
 
-// Dense: [activation codes][activation scales].
+// FP16 activations need no quantization: the dense kernel reads them as they
+// are, or rotated into scratch for H256 weights. Any other precision (FP32, or
+// BF16 if supported) is quantized to FP16 codes with row-wise scales, so the
+// multiplication stays in FP16.
+static bool int8_matmul_direct_activations(ccv_nnc_mfa_scaled_gemm_params_t params) noexcept
+{
+  return params.data_type == MTL::DataTypeHalf && !params.activation_hadamard_256;
+}
+
+// Dense: [activation codes][activation scales], FP16 [rotated activations] or nothing.
 // Otherwise: [GEMM scratch][activation codes][activation scales][weight codes].
 static ccv_nnc_mfa_int8_matmul_layout_t int8_matmul_layout(ccv_nnc_mfa_scaled_gemm_params_t params, const bool dense) noexcept
 {
   const size_t activation_offset = dense ? 0 : align_up(ccv_nnc_mfa_gemm_reserved_scratch_size(int8_matmul_gemm_params(params)), 128);
-  const size_t activation_bytes = (size_t)params.M * params.K * sizeof(uint16_t);
+  const size_t activation_bytes = int8_matmul_direct_activations(params) ? 0 : (size_t)params.M * params.K * sizeof(uint16_t);
   const size_t scale_offset = align_up(activation_offset + activation_bytes, 128);
-  const size_t scale_bytes = (size_t)params.M * sizeof(float);
+  const size_t scale_bytes = params.data_type == MTL::DataTypeHalf ? 0 : (size_t)params.M * sizeof(float);
   const size_t weight_offset = align_up(scale_offset + scale_bytes, 128);
   const size_t weight_bytes = dense ? 0 : (size_t)params.N * params.K * sizeof(uint16_t);
   return (ccv_nnc_mfa_int8_matmul_layout_t){
@@ -181,15 +190,17 @@ void ccv_nnc_mfa_encode_scaled_gemm(mfa::context* context, ccv_nnc_mfa_scaled_ge
     CCV_NNC_MFA_PRECONDITION((uint64_t)params.M * params.K <= UINT32_MAX);
     CCV_NNC_MFA_PRECONDITION((uint64_t)params.N * params.K <= UINT32_MAX);
     CCV_NNC_MFA_PRECONDITION((uint64_t)params.M * params.N <= UINT32_MAX);
+    const bool fp16 = params.data_type == MTL::DataTypeHalf;
+    const bool direct_activations = int8_matmul_direct_activations(params);
     const Int8MatMulDescriptor descriptor = {
       .M = params.M,
       .N = params.N,
       .K = params.K,
       .expertCount = 1,
       .binCount = 0,
-      .operation = Int8MatMulQuantizeActivation,
+      .operation = fp16 ? Int8MatMulRotateActivation : Int8MatMulQuantizeActivation,
       .ioPrecision = io_precision(params.data_type),
-      .activationHadamard256 = params.activation_hadamard_256 != 0,
+      .activationHadamard256 = !fp16 && params.activation_hadamard_256,
     };
     auto int8_matmul_pipeline = [&](const Int8MatMulDescriptor& operation_descriptor, const Int8MatMulKernelDescriptor& kernel_descriptor) {
       auto pool = NS::AutoreleasePool::alloc()->init();
@@ -203,40 +214,45 @@ void ccv_nnc_mfa_encode_scaled_gemm(mfa::context* context, ccv_nnc_mfa_scaled_ge
       operation_descriptor.activationHadamard256 = false;
       return operation_descriptor;
     };
-    auto quantize_pipeline = int8_matmul_pipeline(descriptor, Int8MatMulKernelDescriptor(descriptor, context->device_properties));
     const ccv_nnc_mfa_int8_matmul_layout_t layout = int8_matmul_layout(params, dense);
-    auto scratch = context->request_scratch(layout.scratch_bytes);
+    auto scratch = layout.scratch_bytes ? context->request_scratch(layout.scratch_bytes) : nullptr;
     const size_t weight_scale_offset = rowwise_8i_scale_offset(params.N, params.K);
-    {
+    if (!direct_activations) {
+      auto prepare_pipeline = int8_matmul_pipeline(descriptor, Int8MatMulKernelDescriptor(descriptor, context->device_properties));
       auto encoder = command_batch->startCommand();
-      encoder->setComputePipelineState(quantize_pipeline->pipeline.get());
+      encoder->setComputePipelineState(prepare_pipeline->pipeline.get());
       encoder->useResource(tensors[0], MTL::ResourceUsageRead);
       encoder->useResource(scratch, MTL::ResourceUsageWrite);
       encoder->setBuffer(tensors[0], tensor_offsets[0], 0);
       encoder->setBuffer(scratch, layout.activation_offset, 1);
-      encoder->setBuffer(scratch, layout.scale_offset, 2);
-      encoder->dispatchThreadgroups(quantize_pipeline->kernel->threadgroupsPerGrid(descriptor), quantize_pipeline->kernel->threadgroupSize);
+      if (!fp16)
+        encoder->setBuffer(scratch, layout.scale_offset, 2);
+      encoder->dispatchThreadgroups(prepare_pipeline->kernel->threadgroupsPerGrid(descriptor), prepare_pipeline->kernel->threadgroupSize);
       command_batch->finishCommand(encoder);
     }
     if (dense) {
       Int8MatMulDescriptor dense_descriptor = descriptor_for(Int8MatMulDense);
       dense_descriptor.useBias = params.fused_bias;
       Int8MatMulKernelDescriptor kernel_descriptor(dense_descriptor, context->device_properties);
-      // Interleaved weight loads read 4-byte aligned rows (K is a multiple of 8).
-      if (tensor_offsets[1] % 4 != 0)
+      // Interleaved loads read 4-byte aligned weight rows (K is a multiple of
+      // 8), and 8-byte aligned activation rows; single loads read 4 bytes, as
+      // GEMM's do.
+      if (tensor_offsets[1] % 4 != 0 || (direct_activations && tensor_offsets[0] % 8 != 0))
         kernel_descriptor.kInterleave = 1;
       auto dense_pipeline = int8_matmul_pipeline(dense_descriptor, kernel_descriptor);
+      MTL::Buffer* const activations = direct_activations ? tensors[0] : scratch;
       auto encoder = command_batch->startCommand();
       encoder->setComputePipelineState(dense_pipeline->pipeline.get());
-      encoder->useResource(scratch, MTL::ResourceUsageRead);
+      encoder->useResource(activations, MTL::ResourceUsageRead);
       encoder->useResource(tensors[1], MTL::ResourceUsageRead);
       encoder->useResource(tensors[2], MTL::ResourceUsageWrite);
       if (params.fused_bias)
         encoder->useResource(tensors[3], MTL::ResourceUsageRead);
-      encoder->setBuffer(scratch, layout.activation_offset, 0);
+      encoder->setBuffer(activations, direct_activations ? tensor_offsets[0] : layout.activation_offset, 0);
       encoder->setBuffer(tensors[1], tensor_offsets[1], 1);
       encoder->setBuffer(tensors[2], tensor_offsets[2], 2);
-      encoder->setBuffer(scratch, layout.scale_offset, 3);
+      if (!fp16)
+        encoder->setBuffer(scratch, layout.scale_offset, 3);
       encoder->setBuffer(tensors[1], tensor_offsets[1] + weight_scale_offset, 4);
       if (params.fused_bias)
         encoder->setBuffer(tensors[3], tensor_offsets[3], 5);
