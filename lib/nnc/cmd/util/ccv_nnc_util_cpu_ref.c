@@ -32,7 +32,7 @@ void _ccv_nnc_tensor_transfer_cpu_ref_u8(const ccv_nnc_tensor_view_t* const a, c
 	int i[CCV_NNC_MAX_DIM + 2];
 	unsigned char* const ap = a->data.u8;
 	unsigned char* const bp = b->data.u8;
-	if (astride[2] == dim[3] && bstride[3] == dim[3])
+	if (astride[2] == dim[3] && bstride[2] == dim[3])
 	{
 		// Special casing if the ainc[3] is the same as dim[3] (do memcpy for the last two dim)
 		for (i[0] = 0; i[0] < dim[0]; i[0]++)
@@ -108,7 +108,7 @@ void _ccv_nnc_tensor_transfer_cpu_ref_f16(const ccv_nnc_tensor_view_t* const a, 
 	int i[CCV_NNC_MAX_DIM + 2];
 	ccv_float16_t* const ap = a->data.f16;
 	ccv_float16_t* const bp = b->data.f16;
-	if (astride[2] == dim[3] && bstride[3] == dim[3])
+	if (astride[2] == dim[3] && bstride[2] == dim[3])
 	{
 		// Special casing if the ainc[3] is the same as dim[3] (do memcpy for the last two dim)
 		for (i[0] = 0; i[0] < dim[0]; i[0]++)
