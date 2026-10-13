@@ -442,4 +442,21 @@ TEST_CASE("half precision and float-point conversion")
 	ccfree(c);
 }
 
+TEST_CASE("bfloat16 to double conversion")
+{
+	const uint16_t h[] = { 0x0000, 0x3f80, 0xc000, 0x3f00, 0x4380 };
+	const double expected[] = { 0, 1, -2, 0.5, 256 };
+	double f[5];
+	ccv_bfloat_to_double(h, f, 5);
+	REQUIRE_ARRAY_EQ(double, f, expected, 5, "each bfloat16 value should convert to the corresponding double");
+}
+
+TEST_CASE("single bfloat16 to double conversion")
+{
+	const uint16_t h[] = { 0x3f80 };
+	double f;
+	ccv_bfloat_to_double(h, &f, 1);
+	REQUIRE_EQ(f, 1, "a single bfloat16 value should convert without reading beyond the input");
+}
+
 #include "case_main.h"
