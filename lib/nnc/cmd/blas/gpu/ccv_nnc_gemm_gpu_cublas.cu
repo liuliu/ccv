@@ -307,6 +307,23 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 		w_datatype = (w_params.datatype & 0xff) << 12;
 		w_data_size = ccv_nnc_compat_qx_dense_data_size(w_params);
 	}
+	// H256 weights store Wq = W R along K, with R symmetric and its own inverse, so
+	// A W^T = (A R) Wq^T. Undoing R while decoding is free for the Q*_K codecs but costs
+	// extra for the IQ codecs (grid lookups), so for those rotate A instead when it is
+	// much smaller than W. IQ codecs are IQ2_S .. IQ2_XXS in the codec enum.
+	const int w_codec = w->info.reserved & CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK;
+	const int rotate_a =
+		CCV_GET_DATA_TYPE(w->info.datatype) == CCV_QX &&
+		(w->info.datatype & 0xf00) == CCV_NNC_QX_8I_ROWWISE_X &&
+		(w->info.reserved & CCV_NNC_QX_8I_ROWWISE_HADAMARD_256) &&
+		w_codec >= CCV_NNC_QX_8I_ROWWISE_IQ2_S && w_codec <= CCV_NNC_QX_8I_ROWWISE_IQ2_XXS &&
+		transpose_w && !transpose_a &&
+		CCV_IS_TENSOR_CONTIGUOUS(a) &&
+		a->info.datatype == ((w->info.datatype & 0xff) << 12) &&
+		(a->info.datatype == CCV_16F || a->info.datatype == CCV_16BF || a->info.datatype == CCV_32F) &&
+		(size_t)a_batch_size * a_rows * 8 <= (size_t)w_batch_size * w_cols;
+	if (rotate_a)
+		a_data_size = ccv_nnc_tensor_data_size(a->info);
 	const size_t cublas_size = ccv_nnc_cublas_workspace_size_in_bytes(inputs, input_size, outputs, output_size);
 	void* workspace = 0;
 	if (a_data_size + w_data_size > 0)
@@ -319,8 +336,12 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 		ccv_nnc_compat_decode_qx(a->data.u8, a_params, a_data, stream_context);
 	}
 	unsigned char* w_data = w->data.u8;
-	if (CCV_GET_DATA_TYPE(w->info.datatype) == CCV_QX)
+	if (rotate_a)
 	{
+		a_data = (unsigned char*)workspace + cublas_size;
+		w_data = (unsigned char*)workspace + cublas_size + a_data_size;
+		ccv_nnc_compat_dequantize_8i_rowwise_x_fp_hadamard_256(w->data.u8, w_datatype, ccv_nnc_tensor_data_size_without_padding(w->info), w->info.dim[ccv_nnc_tensor_nd(w->info.dim) - 1], w->info.reserved, w_data, ccv_nnc_tensor_count(w->info), a->data.u8, ccv_nnc_tensor_count(a->info), a_data, stream_context);
+	} else if (CCV_GET_DATA_TYPE(w->info.datatype) == CCV_QX) {
 		ccv_nnc_tensor_param_t w_params = w->info;
 		w_data = (unsigned char*)workspace + cublas_size + a_data_size;
 		ccv_nnc_compat_decode_qx(w->data.u8, w_params, w_data, stream_context);

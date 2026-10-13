@@ -376,6 +376,371 @@ TEST_CASE("gemm no transpose with packed row-wise int8-x weights in all formats"
 	ccv_nnc_tensor_free(a);
 }
 
+static void _ccv_nnc_h256_fill(const int datatype, void* const data, const size_t count, dsfmt_t* const dsfmt)
+{
+	size_t i;
+	float* const f32 = (float*)ccmalloc(sizeof(float) * count);
+	for (i = 0; i < count; i++)
+		f32[i] = (float)(dsfmt_genrand_open_close(dsfmt) * 2 - 1);
+	if (datatype == CCV_32F)
+		memcpy(data, f32, sizeof(float) * count);
+	else if (datatype == CCV_16F)
+		ccv_float_to_half_precision(f32, (uint16_t*)data, count);
+	else if (datatype == CCV_16BF)
+		ccv_float_to_bfloat(f32, (uint16_t*)data, count);
+	else {
+		for (i = 0; i < count; i++)
+			((double*)data)[i] = f32[i];
+	}
+	ccfree(f32);
+}
+
+static double _ccv_nnc_h256_value(const int datatype, const void* const data, const size_t i)
+{
+	if (datatype == CCV_32F)
+		return ((const float*)data)[i];
+	if (datatype == CCV_64F)
+		return ((const double*)data)[i];
+	float f;
+	if (datatype == CCV_16F)
+		ccv_half_precision_to_float((uint16_t*)data + i, &f, 1);
+	else
+		ccv_bfloat_to_float((uint16_t*)data + i, &f, 1);
+	return f;
+}
+
+TEST_CASE("H256 row-wise int8-x dequantization matches CPU across codecs and precisions")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_GPU_CUBLAS));
+	const int datatypes[] = {CCV_32F, CCV_16F, CCV_16BF, CCV_64F};
+	const double tolerances[] = {1e-6, 1e-3, 1e-2, 1e-12};
+	// Two block-aligned shapes and one wide row to cover a partial last CTA.
+	const int rows[] = {13, 29, 1};
+	const int cols[] = {256, 768, 65792};
+	dsfmt_t dsfmt;
+	dsfmt_init_gen_rand(&dsfmt, 256);
+	int d, codec, shape;
+	for (d = 0; d < 4; d++)
+		for (codec = CCV_NNC_QX_8I_ROWWISE_Q4_K; codec <= CCV_NNC_QX_8I_ROWWISE_Q6_K; codec++)
+			for (shape = 0; shape < 3; shape++)
+			{
+				if (shape == 2 && (d != 0 || codec != CCV_NNC_QX_8I_ROWWISE_Q6_K))
+					continue;
+				const int format = codec | CCV_NNC_QX_8I_ROWWISE_HADAMARD_256;
+				const size_t count = (size_t)rows[shape] * cols[shape];
+				ccv_nnc_tensor_param_t host_params = CPU_TENSOR_NHWC(32F, rows[shape], cols[shape]);
+				host_params.datatype = datatypes[d];
+				ccv_nnc_tensor_param_t gpu_params = host_params;
+				gpu_params.type = CCV_TENSOR_GPU_MEMORY | 000;
+				ccv_nnc_tensor_t* const source = ccv_nnc_tensor_new(0, host_params, 0);
+				ccv_nnc_tensor_t* const q = ccv_nnc_tensor_new(0, ccv_nnc_tensor_8i_rowwise_x(host_params, format), 0);
+				ccv_nnc_tensor_t* const gq = ccv_nnc_tensor_new(0, ccv_nnc_tensor_8i_rowwise_x(gpu_params, format), 0);
+				ccv_nnc_tensor_t* const expected = ccv_nnc_tensor_new(0, host_params, 0);
+				ccv_nnc_tensor_t* const gout = ccv_nnc_tensor_new(0, gpu_params, 0);
+				ccv_nnc_tensor_t* const actual = ccv_nnc_tensor_new(0, host_params, 0);
+				_ccv_nnc_h256_fill(datatypes[d], source->data.u8, count, &dsfmt);
+				const size_t qsize = ccv_nnc_quantize_8i_rowwise_x(source->data.u8, datatypes[d], CCV_TENSOR_CPU_MEMORY, count, cols[shape], format, 0, 0, q->data.u8, ccv_nnc_tensor_data_size_without_padding(q->info));
+				REQUIRE_EQ(qsize, ccv_nnc_tensor_data_size_without_padding(q->info), "H256 quantization size should match");
+				ccv_nnc_dequantize_8i_rowwise_x(q->data.u8, datatypes[d], CCV_TENSOR_CPU_MEMORY, qsize, cols[shape], format, expected->data.u8, count);
+				ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(q), TENSOR_LIST(gq), 0);
+				ccv_nnc_dequantize_8i_rowwise_x(gq->data.u8, datatypes[d], CCV_TENSOR_GPU_MEMORY, qsize, cols[shape], format, gout->data.u8, count);
+				ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(gout), TENSOR_LIST(actual), 0);
+				double max_abs = 0;
+				size_t i;
+				for (i = 0; i < count; i++)
+					max_abs = ccv_max(max_abs, fabs(_ccv_nnc_h256_value(datatypes[d], expected->data.u8, i) - _ccv_nnc_h256_value(datatypes[d], actual->data.u8, i)));
+				REQUIRE(max_abs <= tolerances[d], "H256 logical dequantization should match CPU: codec=%d datatype=%d shape=%d max_abs=%g", codec, datatypes[d], shape, max_abs);
+				ccv_nnc_tensor_free(actual);
+				ccv_nnc_tensor_free(gout);
+				ccv_nnc_tensor_free(expected);
+				ccv_nnc_tensor_free(gq);
+				ccv_nnc_tensor_free(q);
+				ccv_nnc_tensor_free(source);
+			}
+}
+
+TEST_CASE("gemm with H256 row-wise int8-x weights matches CPU on logical weights")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_GPU_CUBLAS));
+	const int k = 768;
+	// For IQ codecs, 8M <= N rotates the activations; otherwise the decoded weights are rotated.
+	const int ms[] = {8, 160};
+	const int ns[] = {96, 64};
+	const int datatypes[] = {CCV_32F, CCV_16F};
+	const int codecs[] = {
+		CCV_NNC_QX_8I_ROWWISE_Q6_K,
+		CCV_NNC_QX_8I_ROWWISE_Q4_K,
+		CCV_NNC_QX_8I_ROWWISE_Q2_K,
+		CCV_NNC_QX_8I_ROWWISE_IQ2_XXS,
+		CCV_NNC_QX_8I_ROWWISE_IQ3_XXS,
+	};
+	dsfmt_t dsfmt;
+	dsfmt_init_gen_rand(&dsfmt, 257);
+	int d, shape, f;
+	for (d = 0; d < 2; d++)
+		for (shape = 0; shape < 2; shape++)
+			for (f = 0; f < sizeof(codecs) / sizeof(codecs[0]); f++)
+			{
+				const int datatype = datatypes[d];
+				const int m = ms[shape];
+				const int n = ns[shape];
+				const int format = codecs[f] | CCV_NNC_QX_8I_ROWWISE_HADAMARD_256;
+				ccv_nnc_tensor_param_t a_params = CPU_TENSOR_NHWC(32F, m, k);
+				ccv_nnc_tensor_param_t w_params = CPU_TENSOR_NHWC(32F, n, k);
+				ccv_nnc_tensor_param_t bias_params = CPU_TENSOR_NHWC(32F, n);
+				ccv_nnc_tensor_param_t b_params = CPU_TENSOR_NHWC(32F, m, n);
+				a_params.datatype = w_params.datatype = bias_params.datatype = b_params.datatype = datatype;
+				ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, a_params, 0);
+				ccv_nnc_tensor_t* const w = ccv_nnc_tensor_new(0, w_params, 0);
+				ccv_nnc_tensor_t* const bias = ccv_nnc_tensor_new(0, bias_params, 0);
+				ccv_nnc_tensor_t* const qw = ccv_nnc_tensor_new(0, ccv_nnc_tensor_8i_rowwise_x(w_params, format), 0);
+				_ccv_nnc_h256_fill(datatype, a->data.u8, m * k, &dsfmt);
+				_ccv_nnc_h256_fill(datatype, w->data.u8, n * k, &dsfmt);
+				_ccv_nnc_h256_fill(datatype, bias->data.u8, n, &dsfmt);
+				const size_t qsize = ccv_nnc_quantize_8i_rowwise_x(w->data.u8, datatype, CCV_TENSOR_CPU_MEMORY, (size_t)n * k, k, format, 0, 0, qw->data.u8, ccv_nnc_tensor_data_size_without_padding(qw->info));
+				REQUIRE_EQ(qsize, ccv_nnc_tensor_data_size_without_padding(qw->info), "H256 quantization size should match");
+				// Reference on the logical (de-rotated) weights in 32F.
+				ccv_nnc_dequantize_8i_rowwise_x(qw->data.u8, datatype, CCV_TENSOR_CPU_MEMORY, qsize, k, format, w->data.u8, (size_t)n * k);
+				ccv_nnc_tensor_t* const fa = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, m, k), 0);
+				ccv_nnc_tensor_t* const fw = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, n, k), 0);
+				ccv_nnc_tensor_t* const fbias = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, n), 0);
+				ccv_nnc_tensor_t* const expected = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, m, n), 0);
+				int i;
+				for (i = 0; i < m * k; i++)
+					fa->data.f32[i] = _ccv_nnc_h256_value(datatype, a->data.u8, i);
+				for (i = 0; i < n * k; i++)
+					fw->data.f32[i] = _ccv_nnc_h256_value(datatype, w->data.u8, i);
+				for (i = 0; i < n; i++)
+					fbias->data.f32[i] = _ccv_nnc_h256_value(datatype, bias->data.u8, i);
+				ccv_nnc_cmd_t cmd = CMD_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(0, 1));
+				cmd.backend = CCV_NNC_BACKEND_CPU_REF;
+				ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(fa, fw, fbias), TENSOR_LIST(expected), 0);
+				ccv_nnc_tensor_param_t ga_params = a_params, gbias_params = bias_params, gb_params = b_params;
+				ga_params.type = gbias_params.type = gb_params.type = CCV_TENSOR_GPU_MEMORY | 000;
+				ccv_nnc_tensor_param_t gqw_params = qw->info;
+				gqw_params.type = CCV_TENSOR_GPU_MEMORY | 000;
+				ccv_nnc_tensor_t* const ga = ccv_nnc_tensor_new(0, ga_params, 0);
+				ccv_nnc_tensor_t* const gbias = ccv_nnc_tensor_new(0, gbias_params, 0);
+				ccv_nnc_tensor_t* const gqw = ccv_nnc_tensor_new(0, gqw_params, 0);
+				ccv_nnc_tensor_t* const gb = ccv_nnc_tensor_new(0, gb_params, 0);
+				ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, b_params, 0);
+				ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(a, bias, qw), TENSOR_LIST(ga, gbias, gqw), 0);
+				ccv_nnc_cmd_exec(CMD_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(0, 1)), ccv_nnc_no_hint, 0, TENSOR_LIST(ga, gqw, gbias), TENSOR_LIST(gb), 0);
+				ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(gb), TENSOR_LIST(b), 0);
+				double max_rel = 0;
+				for (i = 0; i < m * n; i++)
+				{
+					const double x = expected->data.f32[i];
+					const double y = _ccv_nnc_h256_value(datatype, b->data.u8, i);
+					max_rel = ccv_max(max_rel, fabs(x - y) / ccv_max(ccv_max(fabs(x), fabs(y)), 1));
+				}
+				// FP16 tolerance covers the cuBLAS half GEMM itself (both routes land around 1e-2).
+				REQUIRE(max_rel <= (datatype == CCV_32F ? 1e-4 : 2e-2), "result should match CPU on logical weights: datatype=%d m=%d n=%d codec=%d max_rel=%g", datatype, m, n, codecs[f], max_rel);
+				ccv_nnc_tensor_free(b);
+				ccv_nnc_tensor_free(gb);
+				ccv_nnc_tensor_free(gqw);
+				ccv_nnc_tensor_free(gbias);
+				ccv_nnc_tensor_free(ga);
+				ccv_nnc_tensor_free(expected);
+				ccv_nnc_tensor_free(fbias);
+				ccv_nnc_tensor_free(fw);
+				ccv_nnc_tensor_free(fa);
+				ccv_nnc_tensor_free(qw);
+				ccv_nnc_tensor_free(bias);
+				ccv_nnc_tensor_free(w);
+				ccv_nnc_tensor_free(a);
+			}
+}
+
+TEST_CASE("gemm with very tall H256 row-wise int8-x weights rotates activations in separate launches")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_GPU_CUBLAS));
+	// 65536 weight rows exceed the fused launch's grid, so decode and activation
+	// rotation run as two launches. With K = 256, an IQ2_XXS row is 64 payload bytes,
+	// so tile one quantized 256 x 256 block instead of quantizing every row.
+	const int k = 256;
+	const int n = 65536;
+	const int block_rows = 256;
+	const int format = CCV_NNC_QX_8I_ROWWISE_IQ2_XXS | CCV_NNC_QX_8I_ROWWISE_HADAMARD_256;
+	dsfmt_t dsfmt;
+	dsfmt_init_gen_rand(&dsfmt, 258);
+	ccv_nnc_tensor_t* const w = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, block_rows, k), 0);
+	_ccv_nnc_h256_fill(CCV_32F, w->data.u8, block_rows * k, &dsfmt);
+	ccv_nnc_tensor_t* const qs = ccv_nnc_tensor_new(0, ccv_nnc_tensor_8i_rowwise_x(CPU_TENSOR_NHWC(32F, block_rows, k), format), 0);
+	const size_t qs_size = ccv_nnc_quantize_8i_rowwise_x(w->data.u8, CCV_32F, CCV_TENSOR_CPU_MEMORY, block_rows * k, k, format, 0, 0, qs->data.u8, ccv_nnc_tensor_data_size_without_padding(qs->info));
+	REQUIRE_EQ(qs_size, ccv_nnc_tensor_data_size_without_padding(qs->info), "H256 quantization size should match");
+	const ccv_nnc_tensor_param_t q_params = ccv_nnc_tensor_8i_rowwise_x(CPU_TENSOR_NHWC(32F, n, k), format);
+	ccv_nnc_tensor_t* const qw = ccv_nnc_tensor_new(0, q_params, 0);
+	const size_t row_bytes = 64;
+	const size_t qs_scale_offset = ((size_t)block_rows * row_bytes + 127) & ~(size_t)127;
+	const size_t qw_scale_offset = ((size_t)n * row_bytes + 127) & ~(size_t)127;
+	REQUIRE_EQ(qw_scale_offset + sizeof(float) * n, ccv_nnc_tensor_data_size_without_padding(q_params), "IQ2_XXS rows should be 64 bytes");
+	int i;
+	for (i = 0; i < n; i++)
+	{
+		memcpy(qw->data.u8 + i * row_bytes, qs->data.u8 + (i % block_rows) * row_bytes, row_bytes);
+		((float*)(qw->data.u8 + qw_scale_offset))[i] = ((float*)(qs->data.u8 + qs_scale_offset))[i % block_rows];
+	}
+	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, k), 0);
+	_ccv_nnc_h256_fill(CCV_32F, a->data.u8, k, &dsfmt);
+	ccv_nnc_tensor_t* const dq_w = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, n, k), 0);
+	ccv_nnc_dequantize_8i_rowwise_x(qw->data.u8, CCV_32F, CCV_TENSOR_CPU_MEMORY, ccv_nnc_tensor_data_size_without_padding(q_params), k, format, dq_w->data.u8, (size_t)n * k);
+	ccv_nnc_tensor_t* const expected = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, n), 0);
+	ccv_nnc_cmd_t cmd = CMD_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(0, 1));
+	cmd.backend = CCV_NNC_BACKEND_CPU_REF;
+	ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(a, dq_w), TENSOR_LIST(expected), 0);
+	ccv_nnc_tensor_param_t gq_params = q_params;
+	gq_params.type = CCV_TENSOR_GPU_MEMORY | 000;
+	ccv_nnc_tensor_t* const ga = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 1, k), 0);
+	ccv_nnc_tensor_t* const gqw = ccv_nnc_tensor_new(0, gq_params, 0);
+	ccv_nnc_tensor_t* const gb = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 1, n), 0);
+	ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, n), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(a, qw), TENSOR_LIST(ga, gqw), 0);
+	ccv_nnc_cmd_exec(CMD_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(0, 1)), ccv_nnc_no_hint, 0, TENSOR_LIST(ga, gqw), TENSOR_LIST(gb), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(gb), TENSOR_LIST(b), 0);
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, expected->data.f32, b->data.f32, n, 1e-3, "result should match CPU on logical weights");
+	ccv_nnc_tensor_free(b);
+	ccv_nnc_tensor_free(gb);
+	ccv_nnc_tensor_free(gqw);
+	ccv_nnc_tensor_free(ga);
+	ccv_nnc_tensor_free(expected);
+	ccv_nnc_tensor_free(dq_w);
+	ccv_nnc_tensor_free(a);
+	ccv_nnc_tensor_free(qw);
+	ccv_nnc_tensor_free(qs);
+	ccv_nnc_tensor_free(w);
+}
+
+TEST_CASE("gemm with H256 row-wise int8-x weights handles an unaligned activation view")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_GPU_CUBLAS));
+	// A contiguous 2 x 256 view starting one element into its buffer still rotates the
+	// activations for IQ2_XXS (8M <= N), through the element-wise load path.
+	const int m = 2;
+	const int k = 256;
+	const int n = 16;
+	const int datatypes[] = {CCV_32F, CCV_16F};
+	const int format = CCV_NNC_QX_8I_ROWWISE_IQ2_XXS | CCV_NNC_QX_8I_ROWWISE_HADAMARD_256;
+	dsfmt_t dsfmt;
+	dsfmt_init_gen_rand(&dsfmt, 259);
+	int d;
+	for (d = 0; d < 2; d++)
+	{
+		const int datatype = datatypes[d];
+		ccv_nnc_tensor_param_t a_params = CPU_TENSOR_NHWC(32F, m, k);
+		ccv_nnc_tensor_param_t w_params = CPU_TENSOR_NHWC(32F, n, k);
+		ccv_nnc_tensor_param_t b_params = CPU_TENSOR_NHWC(32F, m, n);
+		a_params.datatype = w_params.datatype = b_params.datatype = datatype;
+		ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, a_params, 0);
+		ccv_nnc_tensor_t* const w = ccv_nnc_tensor_new(0, w_params, 0);
+		_ccv_nnc_h256_fill(datatype, a->data.u8, m * k, &dsfmt);
+		_ccv_nnc_h256_fill(datatype, w->data.u8, n * k, &dsfmt);
+		const ccv_nnc_tensor_param_t q_params = ccv_nnc_tensor_8i_rowwise_x(w_params, format);
+		ccv_nnc_tensor_t* const qw = ccv_nnc_tensor_new(0, q_params, 0);
+		const size_t qsize = ccv_nnc_quantize_8i_rowwise_x(w->data.u8, datatype, CCV_TENSOR_CPU_MEMORY, n * k, k, format, 0, 0, qw->data.u8, ccv_nnc_tensor_data_size_without_padding(q_params));
+		REQUIRE_EQ(qsize, ccv_nnc_tensor_data_size_without_padding(q_params), "H256 quantization size should match");
+		ccv_nnc_dequantize_8i_rowwise_x(qw->data.u8, datatype, CCV_TENSOR_CPU_MEMORY, qsize, k, format, w->data.u8, n * k);
+		// Reference on the logical (de-rotated) weights in 32F.
+		ccv_nnc_tensor_t* const fa = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, m, k), 0);
+		ccv_nnc_tensor_t* const fw = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, n, k), 0);
+		ccv_nnc_tensor_t* const expected = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, m, n), 0);
+		int i;
+		for (i = 0; i < m * k; i++)
+			fa->data.f32[i] = _ccv_nnc_h256_value(datatype, a->data.u8, i);
+		for (i = 0; i < n * k; i++)
+			fw->data.f32[i] = _ccv_nnc_h256_value(datatype, w->data.u8, i);
+		ccv_nnc_cmd_t cmd = CMD_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(0, 1));
+		cmd.backend = CCV_NNC_BACKEND_CPU_REF;
+		ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(fa, fw), TENSOR_LIST(expected), 0);
+		ccv_nnc_tensor_param_t ga_buffer_params = CPU_TENSOR_NHWC(32F, m * k + 8);
+		ccv_nnc_tensor_param_t ga_params = a_params, gb_params = b_params, gq_params = q_params;
+		ga_buffer_params.datatype = datatype;
+		ga_buffer_params.type = ga_params.type = gb_params.type = gq_params.type = CCV_TENSOR_GPU_MEMORY | 000;
+		ccv_nnc_tensor_t* const ga_buffer = ccv_nnc_tensor_new(0, ga_buffer_params, 0);
+		ccv_nnc_tensor_t* const ga = ccv_nnc_tensor_new(ga_buffer->data.u8 + CCV_GET_DATA_TYPE_SIZE(datatype), ga_params, 0);
+		ccv_nnc_tensor_t* const gqw = ccv_nnc_tensor_new(0, gq_params, 0);
+		ccv_nnc_tensor_t* const gb = ccv_nnc_tensor_new(0, gb_params, 0);
+		ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, b_params, 0);
+		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(a, qw), TENSOR_LIST(ga, gqw), 0);
+		ccv_nnc_cmd_exec(CMD_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(0, 1)), ccv_nnc_no_hint, 0, TENSOR_LIST(ga, gqw), TENSOR_LIST(gb), 0);
+		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(gb), TENSOR_LIST(b), 0);
+		double max_rel = 0;
+		for (i = 0; i < m * n; i++)
+		{
+			const double x = expected->data.f32[i];
+			const double y = _ccv_nnc_h256_value(datatype, b->data.u8, i);
+			max_rel = ccv_max(max_rel, fabs(x - y) / ccv_max(ccv_max(fabs(x), fabs(y)), 1));
+		}
+		REQUIRE(max_rel <= (datatype == CCV_32F ? 1e-4 : 2e-2), "result should match CPU on logical weights: datatype=%d max_rel=%g", datatype, max_rel);
+		ccv_nnc_tensor_free(b);
+		ccv_nnc_tensor_free(gb);
+		ccv_nnc_tensor_free(gqw);
+		ccv_nnc_tensor_free(ga);
+		ccv_nnc_tensor_free(ga_buffer);
+		ccv_nnc_tensor_free(expected);
+		ccv_nnc_tensor_free(fw);
+		ccv_nnc_tensor_free(fa);
+		ccv_nnc_tensor_free(qw);
+		ccv_nnc_tensor_free(w);
+		ccv_nnc_tensor_free(a);
+	}
+}
+
+TEST_CASE("gemm with H256 row-wise IQ int8-x weights matches CPU on every GPU")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_GPU_CUBLAS));
+	// With 8M > N the IQ weights are decoded with R undone by the persistent kernel,
+	// whose grid is sized from the current device's SM count. Run on each GPU in turn
+	// from the same thread.
+	const int m = 64;
+	const int n = 64;
+	const int k = 512;
+	const int format = CCV_NNC_QX_8I_ROWWISE_IQ2_XXS | CCV_NNC_QX_8I_ROWWISE_HADAMARD_256;
+	dsfmt_t dsfmt;
+	dsfmt_init_gen_rand(&dsfmt, 260);
+	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, m, k), 0);
+	ccv_nnc_tensor_t* const w = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, n, k), 0);
+	_ccv_nnc_h256_fill(CCV_32F, a->data.u8, m * k, &dsfmt);
+	_ccv_nnc_h256_fill(CCV_32F, w->data.u8, n * k, &dsfmt);
+	const ccv_nnc_tensor_param_t q_params = ccv_nnc_tensor_8i_rowwise_x(CPU_TENSOR_NHWC(32F, n, k), format);
+	ccv_nnc_tensor_t* const qw = ccv_nnc_tensor_new(0, q_params, 0);
+	const size_t qsize = ccv_nnc_quantize_8i_rowwise_x(w->data.u8, CCV_32F, CCV_TENSOR_CPU_MEMORY, n * k, k, format, 0, 0, qw->data.u8, ccv_nnc_tensor_data_size_without_padding(q_params));
+	REQUIRE_EQ(qsize, ccv_nnc_tensor_data_size_without_padding(q_params), "H256 quantization size should match");
+	ccv_nnc_dequantize_8i_rowwise_x(qw->data.u8, CCV_32F, CCV_TENSOR_CPU_MEMORY, qsize, k, format, w->data.u8, n * k);
+	ccv_nnc_tensor_t* const expected = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, m, n), 0);
+	ccv_nnc_cmd_t cmd = CMD_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(0, 1));
+	cmd.backend = CCV_NNC_BACKEND_CPU_REF;
+	ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(a, w), TENSOR_LIST(expected), 0);
+	ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, m, n), 0);
+	const int device_count = ccv_nnc_device_count(CCV_STREAM_CONTEXT_GPU);
+	int device;
+	for (device = 0; device < device_count; device++)
+	{
+		ccv_nnc_tensor_param_t ga_params = CPU_TENSOR_NHWC(32F, m, k);
+		ccv_nnc_tensor_param_t gb_params = CPU_TENSOR_NHWC(32F, m, n);
+		ccv_nnc_tensor_param_t gq_params = q_params;
+		ga_params.type = gb_params.type = gq_params.type = CCV_TENSOR_GPU_MEMORY;
+		CCV_TENSOR_SET_DEVICE_ID(ga_params.type, device);
+		CCV_TENSOR_SET_DEVICE_ID(gb_params.type, device);
+		CCV_TENSOR_SET_DEVICE_ID(gq_params.type, device);
+		ccv_nnc_tensor_t* const ga = ccv_nnc_tensor_new(0, ga_params, 0);
+		ccv_nnc_tensor_t* const gqw = ccv_nnc_tensor_new(0, gq_params, 0);
+		ccv_nnc_tensor_t* const gb = ccv_nnc_tensor_new(0, gb_params, 0);
+		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(a, qw), TENSOR_LIST(ga, gqw), 0);
+		ccv_nnc_cmd_exec(CMD_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(0, 1)), ccv_nnc_no_hint, 0, TENSOR_LIST(ga, gqw), TENSOR_LIST(gb), 0);
+		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(gb), TENSOR_LIST(b), 0);
+		REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, expected->data.f32, b->data.f32, m * n, 1e-3, "result should match CPU on logical weights on device %d", device);
+		ccv_nnc_tensor_free(gb);
+		ccv_nnc_tensor_free(gqw);
+		ccv_nnc_tensor_free(ga);
+	}
+	ccv_nnc_tensor_free(b);
+	ccv_nnc_tensor_free(expected);
+	ccv_nnc_tensor_free(qw);
+	ccv_nnc_tensor_free(w);
+	ccv_nnc_tensor_free(a);
+}
+
 TEST_CASE("backward gemm with no transpose")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_GPU_CUBLAS) &&

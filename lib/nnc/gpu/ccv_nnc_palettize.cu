@@ -6,6 +6,7 @@ extern "C" {
 #include <nnc/ccv_nnc_internal.h>
 }
 #include <nnc/gpu/ccv_nnc_compat.h>
+#include <type_traits>
 
 template<typename NUM>
 __global__ void _ccv_nnc_q4_slow(const size_t count, const size_t length, const int number_in_blocks, const int number_in_blocks_2, const uint8_t* const a, NUM* const b)
@@ -478,13 +479,24 @@ static __device__ __forceinline__ int _ccv_nnc_8i_rowwise_x_decode_q_k(const BIT
 	return (int)bits.read(lane * 2, 2) * ((params & 0xff) + 1) - (params >> 8) * 8;
 }
 
-template<int FORMAT, typename BITS>
-static __device__ __forceinline__ void _ccv_nnc_8i_rowwise_x_decode_iq_oct(const BITS& bits, const int lane, int* const values)
+// IQ grid lookups, from global memory by default. The H256 decode reads a
+// shared-memory copy instead, where scattered lookups cost fewer wavefronts.
+typedef struct {
+	__device__ __forceinline__ uint64_t iq2s(const int i) const { return ccv_nnc_8i_rowwise_packed_iq2s_grid[i]; }
+	__device__ __forceinline__ uint64_t iq2xs(const int i) const { return ccv_nnc_8i_rowwise_packed_iq2xs_grid[i]; }
+	__device__ __forceinline__ uint16_t iq2xxs(const int i) const { return ccv_nnc_8i_rowwise_packed_iq2xxs_grid[i]; }
+	__device__ __forceinline__ uint8_t iq2xxs_ksigns(const int i) const { return ccv_nnc_8i_rowwise_packed_iq2xxs_ksigns[i]; }
+	__device__ __forceinline__ uint32_t iq3s(const int i) const { return ccv_nnc_8i_rowwise_packed_iq3s_grid[i]; }
+	__device__ __forceinline__ uint32_t iq3xxs(const int i) const { return ccv_nnc_8i_rowwise_packed_iq3xxs_grid[i]; }
+} _ccv_nnc_8i_rowwise_x_global_grids_t;
+
+template<int FORMAT, typename BITS, typename GRIDS = _ccv_nnc_8i_rowwise_x_global_grids_t>
+static __device__ __forceinline__ void _ccv_nnc_8i_rowwise_x_decode_iq_oct(const BITS& bits, const int lane, int* const values, const GRIDS& grids = GRIDS())
 {
 	if (FORMAT == CCV_NNC_QX_8I_ROWWISE_IQ2_S)
 	{
 		const int grid_index = (int)bits.read(lane >= 8 ? 10 : 0, 10);
-		const uint64_t grid = ccv_nnc_8i_rowwise_packed_iq2s_grid[grid_index];
+		const uint64_t grid = grids.iq2s(grid_index);
 		const int scale = (int)bits.read(36, 6) + 1;
 		const int signs = (int)bits.read(20 + lane, 8);
 #pragma unroll
@@ -499,7 +511,7 @@ static __device__ __forceinline__ void _ccv_nnc_8i_rowwise_x_decode_iq_oct(const
 	if (FORMAT == CCV_NNC_QX_8I_ROWWISE_IQ2_XS)
 	{
 		const int grid_index = (int)bits.read(0, 9);
-		const uint64_t grid = ccv_nnc_8i_rowwise_packed_iq2xs_grid[grid_index];
+		const uint64_t grid = grids.iq2xs(grid_index);
 		const int scale_code = (int)bits.read(17, 4);
 		const int scale = scale_code < 8 ? scale_code + 1 : (scale_code < 12 ? (scale_code - 3) * 2 : (scale_code - 7) * 4);
 		const int signs = (int)bits.read(9, 8);
@@ -516,11 +528,11 @@ static __device__ __forceinline__ void _ccv_nnc_8i_rowwise_x_decode_iq_oct(const
 	{
 		const int subgroup = lane >> 3;
 		const int grid_index = (int)bits.read(subgroup * 8, 8);
-		const uint16_t grid = ccv_nnc_8i_rowwise_packed_iq2xxs_grid[grid_index];
+		const uint16_t grid = grids.iq2xxs(grid_index);
 		const int scale_code = (int)bits.read(60, 4);
 		const int scale = scale_code < 8 ? scale_code + 1 : (scale_code < 12 ? (scale_code - 3) * 2 : (scale_code - 7) * 4);
 		const int sign_code = (int)bits.read(32 + subgroup * 7, 7);
-		const int signs = ccv_nnc_8i_rowwise_packed_iq2xxs_ksigns[sign_code];
+		const int signs = grids.iq2xxs_ksigns(sign_code);
 #pragma unroll
 		for (int i = 0; i < 8; i++)
 		{
@@ -533,8 +545,8 @@ static __device__ __forceinline__ void _ccv_nnc_8i_rowwise_x_decode_iq_oct(const
 	if (FORMAT == CCV_NNC_QX_8I_ROWWISE_IQ3_S)
 	{
 		const int subgroup = lane >> 2;
-		const uint32_t grid0 = ccv_nnc_8i_rowwise_packed_iq3s_grid[(int)bits.read(subgroup * 9, 9)];
-		const uint32_t grid1 = ccv_nnc_8i_rowwise_packed_iq3s_grid[(int)bits.read((subgroup + 1) * 9, 9)];
+		const uint32_t grid0 = grids.iq3s((int)bits.read(subgroup * 9, 9));
+		const uint32_t grid1 = grids.iq3s((int)bits.read((subgroup + 1) * 9, 9));
 		const int scale = (int)bits.read(52, 4) + 1;
 		const int signs = (int)bits.read(36 + lane, 8);
 #pragma unroll
@@ -547,8 +559,8 @@ static __device__ __forceinline__ void _ccv_nnc_8i_rowwise_x_decode_iq_oct(const
 		}
 		return;
 	}
-	const uint32_t grid0 = ccv_nnc_8i_rowwise_packed_iq3xxs_grid[(int)bits.read(0, 8)];
-	const uint32_t grid1 = ccv_nnc_8i_rowwise_packed_iq3xxs_grid[(int)bits.read(8, 8)];
+	const uint32_t grid0 = grids.iq3xxs((int)bits.read(0, 8));
+	const uint32_t grid1 = grids.iq3xxs((int)bits.read(8, 8));
 	const int scale = (int)bits.read(24, 4) + 1;
 	const int signs = (int)bits.read(16, 8);
 #pragma unroll
@@ -558,6 +570,22 @@ static __device__ __forceinline__ void _ccv_nnc_8i_rowwise_x_decode_iq_oct(const
 		const int mag0 = (int)((grid >> ((i & 3) * 8)) & 0xff) >> 2;
 		const int mag = ccv_min(mag0 * scale, 127);
 		values[i] = signs & (1 << i) ? -mag : mag;
+	}
+}
+
+template<int FORMAT, typename BITS, typename GRIDS = _ccv_nnc_8i_rowwise_x_global_grids_t>
+static __device__ __forceinline__ void _ccv_nnc_8i_rowwise_x_decode_oct(const BITS& bits, const int lane, int* const values, const GRIDS& grids = GRIDS())
+{
+	if (FORMAT == CCV_NNC_QX_8I_ROWWISE_IQ2_S ||
+		FORMAT == CCV_NNC_QX_8I_ROWWISE_IQ2_XS ||
+		FORMAT == CCV_NNC_QX_8I_ROWWISE_IQ2_XXS ||
+		FORMAT == CCV_NNC_QX_8I_ROWWISE_IQ3_S ||
+		FORMAT == CCV_NNC_QX_8I_ROWWISE_IQ3_XXS)
+		_ccv_nnc_8i_rowwise_x_decode_iq_oct<FORMAT>(bits, lane, values, grids);
+	else {
+#pragma unroll
+		for (int i = 0; i < 8; i++)
+			values[i] = _ccv_nnc_8i_rowwise_x_decode<FORMAT>(bits, lane + i);
 	}
 }
 
@@ -699,7 +727,7 @@ static __global__ void _ccv_nnc_dequantize_8i_rowwise_x_fp(const size_t count, c
 }
 
 template<int FORMAT, typename NUM>
-static __global__ void _ccv_nnc_dequantize_8i_rowwise_x_fp_2d_oct(const size_t row_length, const size_t groups_per_row, const uint8_t* const input, const NUM* const scales, NUM* const output)
+static __device__ __forceinline__ void _ccv_nnc_8i_rowwise_x_dequantize_oct(const size_t row, const size_t col, const size_t row_length, const size_t groups_per_row, const uint8_t* const input, const NUM* const scales, NUM* const output)
 {
 	const int group_size =
 		FORMAT == CCV_NNC_QX_8I_ROWWISE_IQ2_XXS ? 32 :
@@ -714,35 +742,29 @@ static __global__ void _ccv_nnc_dequantize_8i_rowwise_x_fp_2d_oct(const size_t r
 		FORMAT == CCV_NNC_QX_8I_ROWWISE_IQ2_XS ? 21 :
 		FORMAT == CCV_NNC_QX_8I_ROWWISE_IQ2_XXS ? 64 :
 		FORMAT == CCV_NNC_QX_8I_ROWWISE_IQ3_S ? 56 : 28;
+	const size_t group = row * groups_per_row + col / group_size;
+	const _ccv_nnc_8i_rowwise_x_global_bits_t bits = {
+		input,
+		group * group_bits,
+	};
+	const int group_lane = col % group_size;
+	const NUM scale = scales[row];
+	int decoded[8];
+	_ccv_nnc_8i_rowwise_x_decode_oct<FORMAT>(bits, group_lane, decoded);
+	NUM values[8];
+#pragma unroll
+	for (int i = 0; i < 8; i++)
+		values[i] = _ccv_nnc_8i_rowwise_x_mul(scale, decoded[i]);
+	_ccv_nnc_8i_rowwise_x_store8(output + row * row_length + col, values);
+}
+
+template<int FORMAT, typename NUM>
+static __global__ void _ccv_nnc_dequantize_8i_rowwise_x_fp_2d_oct(const size_t row_length, const size_t groups_per_row, const uint8_t* const input, const NUM* const scales, NUM* const output)
+{
 	const size_t row = blockIdx.y;
 	const size_t col = (blockIdx.x * blockDim.x + threadIdx.x) * 8;
 	if (col < row_length)
-	{
-		const size_t group = row * groups_per_row + col / group_size;
-		const _ccv_nnc_8i_rowwise_x_global_bits_t bits = {
-			input,
-			group * group_bits,
-		};
-		const int group_lane = col % group_size;
-		const NUM scale = scales[row];
-		int decoded[8];
-		if (FORMAT == CCV_NNC_QX_8I_ROWWISE_IQ2_S ||
-			FORMAT == CCV_NNC_QX_8I_ROWWISE_IQ2_XS ||
-			FORMAT == CCV_NNC_QX_8I_ROWWISE_IQ2_XXS ||
-			FORMAT == CCV_NNC_QX_8I_ROWWISE_IQ3_S ||
-			FORMAT == CCV_NNC_QX_8I_ROWWISE_IQ3_XXS)
-			_ccv_nnc_8i_rowwise_x_decode_iq_oct<FORMAT>(bits, group_lane, decoded);
-		else {
-#pragma unroll
-			for (int i = 0; i < 8; i++)
-				decoded[i] = _ccv_nnc_8i_rowwise_x_decode<FORMAT>(bits, group_lane + i);
-		}
-		NUM values[8];
-#pragma unroll
-		for (int i = 0; i < 8; i++)
-			values[i] = _ccv_nnc_8i_rowwise_x_mul(scale, decoded[i]);
-		_ccv_nnc_8i_rowwise_x_store8(output + row * row_length + col, values);
-	}
+		_ccv_nnc_8i_rowwise_x_dequantize_oct<FORMAT>(row, col, row_length, groups_per_row, input, scales, output);
 }
 
 template<int FORMAT, typename NUM>
@@ -855,12 +877,409 @@ static __global__ void _ccv_nnc_dequantize_8i_rowwise_x_fp_2d(const size_t row_l
 	}
 }
 
+// CCV_NNC_QX_8I_ROWWISE_HADAMARD_256 stores W R with R256 = H4^tensor4 / 16, which is
+// its own inverse: the logical-weight decode rotates each block of 256 decoded integers
+// once more (exactly, in integers, with the 1/16 folded into the row scale), and GEMM
+// can rotate the activations instead. Each H4 stage is y[i] = sum(v) - 2 * v[3 - i].
+template<typename T>
+static __device__ __forceinline__ void _ccv_nnc_8i_rowwise_x_h4(T* const v, const int stride)
+{
+	const T a = v[0], b = v[stride], c = v[stride * 2], d = v[stride * 3];
+	const T s = a + b + c + d;
+	v[0] = s - 2 * d;
+	v[stride] = s - 2 * c;
+	v[stride * 2] = s - 2 * b;
+	v[stride * 3] = s - 2 * a;
+}
+
+// The 1/16 of R256 is exact in the row scale, so (scale / 16) * q rounds once like the CPU reference.
+static __device__ __forceinline__ float _ccv_nnc_8i_rowwise_x_h256_scale(const __half scale)
+{
+	return __half2float(scale) * 0.0625f;
+}
+
+static __device__ __forceinline__ float _ccv_nnc_8i_rowwise_x_h256_scale(const __nv_bfloat16 scale)
+{
+	return __bfloat162float(scale) * 0.0625f;
+}
+
+static __device__ __forceinline__ float _ccv_nnc_8i_rowwise_x_h256_scale(const float scale)
+{
+	return scale * 0.0625f;
+}
+
+static __device__ __forceinline__ double _ccv_nnc_8i_rowwise_x_h256_scale(const double scale)
+{
+	return scale * 0.0625;
+}
+
+static __device__ __forceinline__ void _ccv_nnc_8i_rowwise_x_h256_store2(__half* const output, const float scale, const int a, const int b)
+{
+	*(__half2*)output = __floats2half2_rn(scale * a, scale * b);
+}
+
+static __device__ __forceinline__ void _ccv_nnc_8i_rowwise_x_h256_store2(__nv_bfloat16* const output, const float scale, const int a, const int b)
+{
+	*(__nv_bfloat162*)output = __floats2bfloat162_rn(scale * a, scale * b);
+}
+
+static __device__ __forceinline__ void _ccv_nnc_8i_rowwise_x_h256_store2(float* const output, const float scale, const int a, const int b)
+{
+	*(float2*)output = make_float2(scale * a, scale * b);
+}
+
+static __device__ __forceinline__ void _ccv_nnc_8i_rowwise_x_h256_store2(double* const output, const double scale, const int a, const int b)
+{
+	*(double2*)output = make_double2(scale * a, scale * b);
+}
+
+template<int WORDS>
+struct _ccv_nnc_8i_rowwise_x_register_bits_t {
+	uint32_t w[WORDS];
+	int base;
+
+	__device__ __forceinline__ uint32_t read(const int offset, const int bits) const
+	{
+		const int o = base + offset;
+		return __funnelshift_r(w[o >> 5], w[(o >> 5) + 1], o & 31) & ((1u << bits) - 1);
+	}
+};
+
+#define CCV_NNC_8I_ROWWISE_X_H256_TEAMS (32)
+// One 128-word tile per team, padded so the four teams of a warp land on
+// distinct banks in the column pass.
+#define CCV_NNC_8I_ROWWISE_X_H256_TILE (128 + 8)
+
+// Shared-memory copy of an IQ codec's grid (IQ2_XXS keeps its ksigns after the grid).
+template<int FORMAT>
+static __host__ __device__ constexpr int _ccv_nnc_8i_rowwise_x_grid_size()
+{
+	return FORMAT == CCV_NNC_QX_8I_ROWWISE_IQ2_S ? 1024 * 8 :
+		FORMAT == CCV_NNC_QX_8I_ROWWISE_IQ2_XS ? 512 * 8 :
+		FORMAT == CCV_NNC_QX_8I_ROWWISE_IQ2_XXS ? 256 * 2 + 128 :
+		FORMAT == CCV_NNC_QX_8I_ROWWISE_IQ3_S ? 512 * 4 :
+		FORMAT == CCV_NNC_QX_8I_ROWWISE_IQ3_XXS ? 256 * 4 : 0;
+}
+
+typedef struct {
+	const uint8_t* table;
+	__device__ __forceinline__ uint64_t iq2s(const int i) const { return ((const uint64_t*)table)[i]; }
+	__device__ __forceinline__ uint64_t iq2xs(const int i) const { return ((const uint64_t*)table)[i]; }
+	__device__ __forceinline__ uint16_t iq2xxs(const int i) const { return ((const uint16_t*)table)[i]; }
+	__device__ __forceinline__ uint8_t iq2xxs_ksigns(const int i) const { return table[256 * 2 + i]; }
+	__device__ __forceinline__ uint32_t iq3s(const int i) const { return ((const uint32_t*)table)[i]; }
+	__device__ __forceinline__ uint32_t iq3xxs(const int i) const { return ((const uint32_t*)table)[i]; }
+} _ccv_nnc_8i_rowwise_x_shared_grids_t;
+
+static __device__ __forceinline__ void _ccv_nnc_8i_rowwise_x_set_grid_table(_ccv_nnc_8i_rowwise_x_global_grids_t& grids, const uint8_t* const table)
+{
+}
+
+static __device__ __forceinline__ void _ccv_nnc_8i_rowwise_x_set_grid_table(_ccv_nnc_8i_rowwise_x_shared_grids_t& grids, const uint8_t* const table)
+{
+	grids.table = table;
+}
+
+template<int FORMAT>
+static __device__ __forceinline__ void _ccv_nnc_8i_rowwise_x_load_grid(uint8_t* const table)
+{
+	const void* const grid =
+		FORMAT == CCV_NNC_QX_8I_ROWWISE_IQ2_S ? (const void*)ccv_nnc_8i_rowwise_packed_iq2s_grid :
+		FORMAT == CCV_NNC_QX_8I_ROWWISE_IQ2_XS ? (const void*)ccv_nnc_8i_rowwise_packed_iq2xs_grid :
+		FORMAT == CCV_NNC_QX_8I_ROWWISE_IQ2_XXS ? (const void*)ccv_nnc_8i_rowwise_packed_iq2xxs_grid :
+		FORMAT == CCV_NNC_QX_8I_ROWWISE_IQ3_S ? (const void*)ccv_nnc_8i_rowwise_packed_iq3s_grid : (const void*)ccv_nnc_8i_rowwise_packed_iq3xxs_grid;
+	const int grid_words = (FORMAT == CCV_NNC_QX_8I_ROWWISE_IQ2_XXS ? 256 * 2 : _ccv_nnc_8i_rowwise_x_grid_size<FORMAT>()) / 4;
+	for (int i = threadIdx.x; i < grid_words; i += blockDim.x)
+		((uint32_t*)table)[i] = ((const uint32_t*)grid)[i];
+	if (FORMAT == CCV_NNC_QX_8I_ROWWISE_IQ2_XXS)
+		for (int i = threadIdx.x; i < 128; i += blockDim.x)
+			table[256 * 2 + i] = ccv_nnc_8i_rowwise_packed_iq2xxs_ksigns[i];
+}
+
+// Decode 16 contiguous values starting at col (a multiple of 16) and apply the
+// two H4 stages over index bits 0-3.
+template<int FORMAT, typename GRIDS>
+static __device__ __forceinline__ void _ccv_nnc_8i_rowwise_x_decode_h256_16(const uint8_t* const input, const size_t row, const size_t col, const size_t groups_per_row, const GRIDS& grids, int* const v)
+{
+	const int group_size =
+		FORMAT == CCV_NNC_QX_8I_ROWWISE_IQ2_XXS ? 32 :
+		(FORMAT == CCV_NNC_QX_8I_ROWWISE_Q6_K || FORMAT == CCV_NNC_QX_8I_ROWWISE_IQ2_XS || FORMAT == CCV_NNC_QX_8I_ROWWISE_IQ3_XXS) ? 8 : 16;
+	const int group_bits =
+		FORMAT == CCV_NNC_QX_8I_ROWWISE_Q5_K ? 88 :
+		FORMAT == CCV_NNC_QX_8I_ROWWISE_Q6_K ? 52 :
+		FORMAT == CCV_NNC_QX_8I_ROWWISE_Q4_K ? 72 :
+		FORMAT == CCV_NNC_QX_8I_ROWWISE_Q3_K ? 56 :
+		FORMAT == CCV_NNC_QX_8I_ROWWISE_Q2_K ? 42 :
+		FORMAT == CCV_NNC_QX_8I_ROWWISE_IQ2_S ? 42 :
+		FORMAT == CCV_NNC_QX_8I_ROWWISE_IQ2_XS ? 21 :
+		FORMAT == CCV_NNC_QX_8I_ROWWISE_IQ2_XXS ? 64 :
+		FORMAT == CCV_NNC_QX_8I_ROWWISE_IQ3_S ? 56 : 28;
+	// Load the packed bits once (two groups for 8-value groups, the whole group
+	// for 32-value groups) as aligned words, then shift them to start at bit 0.
+	// Words past the needed bits are never read, so this stays within the payload.
+	const int span = group_size == 8 ? group_bits * 2 : group_bits;
+	const int word_count = (span + 31) / 32;
+	const size_t bit_offset = (row * groups_per_row + col / group_size) * group_bits;
+	const int shift = bit_offset & 31;
+	const uint32_t* const words = (const uint32_t*)(input + ((bit_offset >> 5) << 2));
+	uint32_t raw[word_count + 1];
+#pragma unroll
+	for (int i = 0; i < word_count + 1; i++)
+		raw[i] = i * 32 < shift + span ? words[i] : 0;
+	_ccv_nnc_8i_rowwise_x_register_bits_t<word_count + 1> bits;
+#pragma unroll
+	for (int i = 0; i < word_count; i++)
+		bits.w[i] = __funnelshift_r(raw[i], raw[i + 1], shift);
+	bits.w[word_count] = 0;
+#pragma unroll
+	for (int i = 0; i < 16; i += 8)
+	{
+		bits.base = group_size == 8 ? (i / 8) * group_bits : 0;
+		_ccv_nnc_8i_rowwise_x_decode_oct<FORMAT>(bits, group_size == 8 ? 0 : group_size == 16 ? i : (int)(col % group_size) + i, v + i, grids);
+	}
+#pragma unroll
+	for (int i = 0; i < 16; i += 4)
+		_ccv_nnc_8i_rowwise_x_h4(v + i, 1);
+#pragma unroll
+	for (int i = 0; i < 4; i++)
+		_ccv_nnc_8i_rowwise_x_h4(v + i, 4);
+}
+
+// A team of 8 threads handles one 256-value block. In the row pass, thread r
+// decodes values 32r .. 32r + 31 and applies the H4 stages over index bits
+// 0-3. Every codec decodes to |q| <= 192 (Q2_K), so after those stages
+// |v| <= 16 * 192 and neighbors (2p, 2p + 1) pack into
+// one int16x2 word for the shared-memory transpose. In the column pass, thread
+// t holds pairs 8k + t (k = 0..15), i.e. index bits 4-7 for the remaining
+// stages, and stores each pair directly; a team covers 32 contiguous bytes
+// for every k. IQ codecs run persistent CTAs that copy their grid into shared
+// memory once.
+template<int FORMAT, typename NUM>
+static __global__ void __launch_bounds__(CCV_NNC_8I_ROWWISE_X_H256_TEAMS * 8, 3) _ccv_nnc_dequantize_8i_rowwise_x_fp_h256(const uint32_t block_count, const uint32_t blocks_per_row, const size_t groups_per_row, const uint8_t* const input, const NUM* const scales, NUM* const output)
+{
+	__shared__ __align__(16) uint32_t shared[CCV_NNC_8I_ROWWISE_X_H256_TEAMS * CCV_NNC_8I_ROWWISE_X_H256_TILE];
+	__shared__ __align__(16) uint8_t grid_table[_ccv_nnc_8i_rowwise_x_grid_size<FORMAT>() > 0 ? _ccv_nnc_8i_rowwise_x_grid_size<FORMAT>() : 16];
+	typedef typename std::conditional<(_ccv_nnc_8i_rowwise_x_grid_size<FORMAT>() > 0), _ccv_nnc_8i_rowwise_x_shared_grids_t, _ccv_nnc_8i_rowwise_x_global_grids_t>::type grids_t;
+	grids_t grids;
+	_ccv_nnc_8i_rowwise_x_set_grid_table(grids, grid_table);
+	if (_ccv_nnc_8i_rowwise_x_grid_size<FORMAT>() > 0)
+	{
+		_ccv_nnc_8i_rowwise_x_load_grid<FORMAT>(grid_table);
+		__syncthreads();
+	}
+	const int team = threadIdx.x >> 3;
+	const int t = threadIdx.x & 7;
+	uint32_t* const tile = shared + team * CCV_NNC_8I_ROWWISE_X_H256_TILE;
+	for (uint32_t block_start = blockIdx.x * CCV_NNC_8I_ROWWISE_X_H256_TEAMS; block_start < block_count; block_start += gridDim.x * CCV_NNC_8I_ROWWISE_X_H256_TEAMS)
+	{
+		const uint32_t block = block_start + team;
+		const int active = block < block_count;
+		const uint32_t row = active ? block / blocks_per_row : 0;
+		const uint32_t col = (block - row * blocks_per_row) * 256;
+		if (active)
+		{
+			int v[32];
+			_ccv_nnc_8i_rowwise_x_decode_h256_16<FORMAT>(input, row, col + t * 32, groups_per_row, grids, v);
+			_ccv_nnc_8i_rowwise_x_decode_h256_16<FORMAT>(input, row, col + t * 32 + 16, groups_per_row, grids, v + 16);
+			// Pair q = 4c + j of thread t sits at word 16t + 4(c ^ (t >> 1)) + j.
+#pragma unroll
+			for (int c = 0; c < 4; c++)
+				*(uint4*)(tile + t * 16 + ((c ^ (t >> 1)) << 2)) = make_uint4(
+					__byte_perm(v[c * 8], v[c * 8 + 1], 0x5410),
+					__byte_perm(v[c * 8 + 2], v[c * 8 + 3], 0x5410),
+					__byte_perm(v[c * 8 + 4], v[c * 8 + 5], 0x5410),
+					__byte_perm(v[c * 8 + 6], v[c * 8 + 7], 0x5410));
+		}
+		__syncwarp();
+		if (active)
+		{
+			int even[16], odd[16];
+#pragma unroll
+			for (int k = 0; k < 16; k++)
+			{
+				const uint32_t w = tile[(k >> 1) * 16 + ((((k & 1) * 2 + (t >> 2)) ^ (k >> 2)) << 2) + (t & 3)];
+				even[k] = (int)(w << 16) >> 16;
+				odd[k] = (int)w >> 16;
+			}
+#pragma unroll
+			for (int i = 0; i < 16; i += 4)
+			{
+				_ccv_nnc_8i_rowwise_x_h4(even + i, 1);
+				_ccv_nnc_8i_rowwise_x_h4(odd + i, 1);
+			}
+#pragma unroll
+			for (int i = 0; i < 4; i++)
+			{
+				_ccv_nnc_8i_rowwise_x_h4(even + i, 4);
+				_ccv_nnc_8i_rowwise_x_h4(odd + i, 4);
+			}
+			const auto scale = _ccv_nnc_8i_rowwise_x_h256_scale(scales[row]);
+			NUM* const out = output + (size_t)block * 256 + t * 2;
+#pragma unroll
+			for (int k = 0; k < 16; k++)
+				_ccv_nnc_8i_rowwise_x_h256_store2(out + k * 16, scale, even[k], odd[k]);
+		}
+		// The next block reuses the tile.
+		__syncwarp();
+	}
+}
+
+static __device__ __forceinline__ void _ccv_nnc_hadamard_256_load8(const __half* const input, float* const values)
+{
+	const uint4 u = *(const uint4*)input;
+	const __half2* const h = (const __half2*)&u;
+#pragma unroll
+	for (int i = 0; i < 4; i++)
+	{
+		const float2 f = __half22float2(h[i]);
+		values[i * 2] = f.x;
+		values[i * 2 + 1] = f.y;
+	}
+}
+
+static __device__ __forceinline__ void _ccv_nnc_hadamard_256_load8(const __nv_bfloat16* const input, float* const values)
+{
+	const uint4 u = *(const uint4*)input;
+	const __nv_bfloat162* const h = (const __nv_bfloat162*)&u;
+#pragma unroll
+	for (int i = 0; i < 4; i++)
+	{
+		const float2 f = __bfloat1622float2(h[i]);
+		values[i * 2] = f.x;
+		values[i * 2 + 1] = f.y;
+	}
+}
+
+static __device__ __forceinline__ void _ccv_nnc_hadamard_256_load8(const float* const input, float* const values)
+{
+	const float4 a = *(const float4*)input;
+	const float4 b = *(const float4*)(input + 4);
+	values[0] = a.x, values[1] = a.y, values[2] = a.z, values[3] = a.w;
+	values[4] = b.x, values[5] = b.y, values[6] = b.z, values[7] = b.w;
+}
+
+// The activations may start at any element offset, so this path reads one element at a time.
+static __device__ __forceinline__ void _ccv_nnc_hadamard_256_load8_unaligned(const __half* const input, float* const values)
+{
+#pragma unroll
+	for (int i = 0; i < 8; i++)
+		values[i] = __half2float(input[i]);
+}
+
+static __device__ __forceinline__ void _ccv_nnc_hadamard_256_load8_unaligned(const __nv_bfloat16* const input, float* const values)
+{
+#pragma unroll
+	for (int i = 0; i < 8; i++)
+		values[i] = __bfloat162float(input[i]);
+}
+
+static __device__ __forceinline__ void _ccv_nnc_hadamard_256_load8_unaligned(const float* const input, float* const values)
+{
+#pragma unroll
+	for (int i = 0; i < 8; i++)
+		values[i] = input[i];
+}
+
+template<typename NUM>
+static __device__ __forceinline__ NUM _ccv_nnc_hadamard_256_from_float(const float value);
+
+template<>
+__device__ __forceinline__ __half _ccv_nnc_hadamard_256_from_float<__half>(const float value)
+{
+	return __float2half_rn(value);
+}
+
+template<>
+__device__ __forceinline__ __nv_bfloat16 _ccv_nnc_hadamard_256_from_float<__nv_bfloat16>(const float value)
+{
+	return __float2bfloat16_rn(value);
+}
+
+template<>
+__device__ __forceinline__ float _ccv_nnc_hadamard_256_from_float<float>(const float value)
+{
+	return value;
+}
+
+// Apply R256 to one block of 256 floating-point values with one warp, e.g. GEMM
+// activations against H256 weights. Index bits 0-2 are in registers and bits
+// 3-7 are lane bits 0-4; reversing an H4 digit flips both of its bits. Blocks are
+// 256 elements apart, so every lane shares the input's alignment, given by aligned.
+template<typename NUM>
+static __device__ __forceinline__ void _ccv_nnc_hadamard_256_warp(const NUM* const input, NUM* const output, const int aligned)
+{
+	const int lane = threadIdx.x & 31;
+	float v[8];
+	if (aligned)
+		_ccv_nnc_hadamard_256_load8(input + lane * 8, v);
+	else
+		_ccv_nnc_hadamard_256_load8_unaligned(input + lane * 8, v);
+	_ccv_nnc_8i_rowwise_x_h4(v, 1);
+	_ccv_nnc_8i_rowwise_x_h4(v + 4, 1);
+	// Bits 2 / 3: register bit 2 and lane bit 0.
+#pragma unroll
+	for (int j = 0; j < 4; j++)
+	{
+		const float p = v[j] + v[j + 4];
+		const float s = p + __shfl_xor_sync(0xffffffff, p, 1);
+		const float a = __shfl_xor_sync(0xffffffff, v[j + 4], 1);
+		const float b = __shfl_xor_sync(0xffffffff, v[j], 1);
+		v[j] = s - 2 * a;
+		v[j + 4] = s - 2 * b;
+	}
+	// Bits 4 / 5 and 6 / 7: lane bits 1 / 2 and 3 / 4.
+#pragma unroll
+	for (int mask = 2; mask <= 8; mask *= 4)
+	{
+#pragma unroll
+		for (int i = 0; i < 8; i++)
+		{
+			const float s1 = v[i] + __shfl_xor_sync(0xffffffff, v[i], mask);
+			const float s = s1 + __shfl_xor_sync(0xffffffff, s1, mask * 2);
+			v[i] = s - 2 * __shfl_xor_sync(0xffffffff, v[i], mask * 3);
+		}
+	}
+	NUM values[8];
+#pragma unroll
+	for (int i = 0; i < 8; i++)
+		values[i] = _ccv_nnc_hadamard_256_from_float<NUM>(v[i] * 0.0625f);
+	_ccv_nnc_8i_rowwise_x_store8(output + lane * 8, values);
+}
+
+template<typename NUM>
+static __global__ void _ccv_nnc_hadamard_256(const size_t block_count, const NUM* const input, NUM* const output, const int aligned)
+{
+	const size_t block = (size_t)blockIdx.x * (blockDim.x / 32) + (threadIdx.x >> 5);
+	if (block < block_count)
+		_ccv_nnc_hadamard_256_warp(input + block * 256, output + block * 256, aligned);
+}
+
+// Decode the stored (rotated) weights and rotate the activations in one launch.
+// The first activation_rows grid rows hold the activation warps, so they are
+// scheduled first and overlap with the weight decode instead of trailing it.
+template<int FORMAT, typename NUM>
+static __global__ void _ccv_nnc_dequantize_8i_rowwise_x_fp_2d_oct_hadamard_256(const size_t row_length, const size_t groups_per_row, const uint8_t* const input, const NUM* const scales, NUM* const output, const uint32_t activation_rows, const size_t activation_block_count, const NUM* const activation, NUM* const activation_output, const int activation_aligned)
+{
+	if (blockIdx.y < activation_rows)
+	{
+		const size_t block = ((size_t)blockIdx.y * gridDim.x + blockIdx.x) * (blockDim.x / 32) + (threadIdx.x >> 5);
+		if (block < activation_block_count)
+			_ccv_nnc_hadamard_256_warp(activation + block * 256, activation_output + block * 256, activation_aligned);
+		return;
+	}
+	const size_t col = (blockIdx.x * blockDim.x + threadIdx.x) * 8;
+	if (col < row_length)
+		_ccv_nnc_8i_rowwise_x_dequantize_oct<FORMAT>(blockIdx.y - activation_rows, col, row_length, groups_per_row, input, scales, output);
+}
+
 template<typename NUM>
 static void _ccv_nnc_dequantize_8i_rowwise_x_fp_launch(const int format, const size_t output_length, const size_t row_length, const size_t groups_per_row, const uint8_t* const input, const NUM* const scales, NUM* const output, cudaStream_t stream)
 {
 #define DISPATCH_FORMAT(case_format) \
 	case case_format: \
-		if (output_length / row_length <= 65535 && row_length % 8 == 0 && \
+		if (format & CCV_NNC_QX_8I_ROWWISE_HADAMARD_256) \
+			_ccv_nnc_dequantize_8i_rowwise_x_fp_h256<case_format><<<_ccv_nnc_8i_rowwise_x_grid_size<case_format>() > 0 ? ccv_min(h256_ctas, (size_t)ccv_nnc_gpu_device_props().multi_processor_count * 4) : h256_ctas, CCV_NNC_8I_ROWWISE_X_H256_TEAMS * 8, 0, stream>>>(output_length / 256, row_length / 256, groups_per_row, input, scales, output); \
+		else if (output_length / row_length <= 65535 && row_length % 8 == 0 && \
 			(sizeof(NUM) < 8 || case_format == CCV_NNC_QX_8I_ROWWISE_IQ2_S || case_format == CCV_NNC_QX_8I_ROWWISE_IQ2_XS || case_format == CCV_NNC_QX_8I_ROWWISE_IQ2_XXS || case_format == CCV_NNC_QX_8I_ROWWISE_IQ3_S || case_format == CCV_NNC_QX_8I_ROWWISE_IQ3_XXS)) \
 			_ccv_nnc_dequantize_8i_rowwise_x_fp_2d_oct<case_format><<<dim3((row_length / 8 + 255) / 256, output_length / row_length), 256, 0, stream>>>(row_length, groups_per_row, input, scales, output); \
 		else if (output_length / row_length <= 65535 && row_length % 4 == 0) \
@@ -872,7 +1291,8 @@ static void _ccv_nnc_dequantize_8i_rowwise_x_fp_launch(const int format, const s
 		else \
 			_ccv_nnc_dequantize_8i_rowwise_x_fp<case_format><<<ccv_min((output_length + 255) / 256, 4096), 256, 0, stream>>>(output_length, row_length, groups_per_row, input, scales, output); \
 		break
-	switch (format)
+	const size_t h256_ctas = (output_length / 256 + CCV_NNC_8I_ROWWISE_X_H256_TEAMS - 1) / CCV_NNC_8I_ROWWISE_X_H256_TEAMS;
+	switch (format & CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK)
 	{
 		DISPATCH_FORMAT(CCV_NNC_QX_8I_ROWWISE_Q5_K);
 		DISPATCH_FORMAT(CCV_NNC_QX_8I_ROWWISE_Q6_K);
@@ -1151,6 +1571,12 @@ void ccv_nnc_compat_dequantize_8i_rowwise_x_fp(const void* input, const int data
 	assert(datatype == CCV_16F || datatype == CCV_16BF || datatype == CCV_32F || datatype == CCV_64F);
 	assert(row_length > 0);
 	assert(output_length % row_length == 0);
+	if (format & CCV_NNC_QX_8I_ROWWISE_HADAMARD_256)
+	{
+		// The H256 decode loads the packed bits as aligned 32-bit words.
+		assert(row_length % 256 == 0 && output_length / 256 <= UINT32_MAX - CCV_NNC_8I_ROWWISE_X_H256_TEAMS);
+		assert(((uintptr_t)input & 3) == 0);
+	}
 	const size_t row_count = output_length / row_length;
 	const size_t group_size = ccv_nnc_8i_rowwise_x_group_size(format);
 	const size_t groups_per_row = (row_length + group_size - 1) / group_size;
@@ -1169,6 +1595,70 @@ void ccv_nnc_compat_dequantize_8i_rowwise_x_fp(const void* input, const int data
 		_ccv_nnc_dequantize_8i_rowwise_x_fp_launch(format, output_length, row_length, groups_per_row, u8, (const float*)(u8 + scale_offset), (float*)output, stream);
 	else
 		_ccv_nnc_dequantize_8i_rowwise_x_fp_launch(format, output_length, row_length, groups_per_row, u8, (const double*)(u8 + scale_offset), (double*)output, stream);
+}
+
+template<typename NUM>
+static void _ccv_nnc_dequantize_8i_rowwise_x_fp_hadamard_256_launch(const int format, const size_t output_length, const size_t row_length, const size_t groups_per_row, const uint8_t* const input, const NUM* const scales, NUM* const output, const size_t activation_length, const NUM* const activation, NUM* const activation_output, cudaStream_t stream)
+{
+	const size_t rows = output_length / row_length;
+	const size_t activation_block_count = activation_length / 256;
+	const size_t grid_x = (row_length / 8 + 255) / 256;
+	const size_t activation_rows = (activation_block_count + grid_x * 8 - 1) / (grid_x * 8);
+	const int activation_aligned = ((uintptr_t)activation & 15) == 0;
+	if (rows + activation_rows > 65535)
+	{
+		// Decode the stored values without undoing R, as the fused kernel does.
+		_ccv_nnc_dequantize_8i_rowwise_x_fp_launch(format & ~CCV_NNC_QX_8I_ROWWISE_HADAMARD_256, output_length, row_length, groups_per_row, input, scales, output, stream);
+		if (activation_block_count)
+			_ccv_nnc_hadamard_256<<<(activation_block_count + 7) / 8, 256, 0, stream>>>(activation_block_count, activation, activation_output, activation_aligned);
+		return;
+	}
+	const dim3 grid(grid_x, rows + activation_rows);
+#define DISPATCH_FORMAT(case_format) \
+	case case_format: \
+		_ccv_nnc_dequantize_8i_rowwise_x_fp_2d_oct_hadamard_256<case_format><<<grid, 256, 0, stream>>>(row_length, groups_per_row, input, scales, output, (uint32_t)activation_rows, activation_block_count, activation, activation_output, activation_aligned); \
+		break
+	switch (format & CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK)
+	{
+		DISPATCH_FORMAT(CCV_NNC_QX_8I_ROWWISE_Q5_K);
+		DISPATCH_FORMAT(CCV_NNC_QX_8I_ROWWISE_Q6_K);
+		DISPATCH_FORMAT(CCV_NNC_QX_8I_ROWWISE_Q4_K);
+		DISPATCH_FORMAT(CCV_NNC_QX_8I_ROWWISE_Q3_K);
+		DISPATCH_FORMAT(CCV_NNC_QX_8I_ROWWISE_Q2_K);
+		DISPATCH_FORMAT(CCV_NNC_QX_8I_ROWWISE_IQ2_S);
+		DISPATCH_FORMAT(CCV_NNC_QX_8I_ROWWISE_IQ2_XS);
+		DISPATCH_FORMAT(CCV_NNC_QX_8I_ROWWISE_IQ2_XXS);
+		DISPATCH_FORMAT(CCV_NNC_QX_8I_ROWWISE_IQ3_S);
+		DISPATCH_FORMAT(CCV_NNC_QX_8I_ROWWISE_IQ3_XXS);
+		default:
+			assert(0);
+	}
+#undef DISPATCH_FORMAT
+}
+
+void ccv_nnc_compat_dequantize_8i_rowwise_x_fp_hadamard_256(const void* input, const int datatype, const size_t input_length, const size_t row_length, const int format, void* output, const size_t output_length, const void* activation, const size_t activation_length, void* activation_output, ccv_nnc_stream_context_t* const stream_context)
+{
+	assert(datatype == CCV_16F || datatype == CCV_16BF || datatype == CCV_32F);
+	assert(row_length > 0 && row_length % 256 == 0);
+	assert(output_length % row_length == 0);
+	assert(activation_length % 256 == 0);
+	// The rotated activations are stored 8 values at a time with 16-byte vector stores.
+	assert(((uintptr_t)activation_output & 15) == 0);
+	const size_t row_count = output_length / row_length;
+	const size_t group_size = ccv_nnc_8i_rowwise_x_group_size(format);
+	const size_t groups_per_row = (row_length + group_size - 1) / group_size;
+	const size_t group_bits = ccv_nnc_8i_rowwise_x_group_bits(format);
+	const size_t payload_size = (row_count * groups_per_row * group_bits + 7) / 8;
+	const size_t scale_offset = (payload_size + 127) & ~(size_t)127;
+	assert(input_length >= scale_offset + row_count * CCV_GET_DATA_TYPE_SIZE(datatype));
+	cudaStream_t stream = ccv_nnc_stream_context_get_stream(stream_context);
+	const uint8_t* const u8 = (const uint8_t*)input;
+	if (datatype == CCV_16F)
+		_ccv_nnc_dequantize_8i_rowwise_x_fp_hadamard_256_launch(format, output_length, row_length, groups_per_row, u8, (const __half*)(u8 + scale_offset), (__half*)output, activation_length, (const __half*)activation, (__half*)activation_output, stream);
+	else if (datatype == CCV_16BF)
+		_ccv_nnc_dequantize_8i_rowwise_x_fp_hadamard_256_launch(format, output_length, row_length, groups_per_row, u8, (const __nv_bfloat16*)(u8 + scale_offset), (__nv_bfloat16*)output, activation_length, (const __nv_bfloat16*)activation, (__nv_bfloat16*)activation_output, stream);
+	else
+		_ccv_nnc_dequantize_8i_rowwise_x_fp_hadamard_256_launch(format, output_length, row_length, groups_per_row, u8, (const float*)(u8 + scale_offset), (float*)output, activation_length, (const float*)activation, (float*)activation_output, stream);
 }
 
 void ccv_nnc_compat_decode_qx(const void* input, const ccv_nnc_tensor_param_t params, void* output, ccv_nnc_stream_context_t* const stream_context)

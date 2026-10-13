@@ -515,9 +515,11 @@ ccv_nnc_cuda_device_prop_t ccv_nnc_gpu_device_props(void)
 	static __thread ccv_nnc_cuda_device_prop_t* device_props = 0;
 	int device_id;
 	CUDA_ENFORCE(cudaGetDevice(&device_id));
-	if (device_props)
+	if (!device_props)
+		device_props = (ccv_nnc_cuda_device_prop_t*)cccalloc(ccv_nnc_gpu_device_count(), sizeof(ccv_nnc_cuda_device_prop_t));
+	// Every CUDA device has at least one SM, so a zero count marks a device not queried yet.
+	if (device_props[device_id].multi_processor_count > 0)
 		return device_props[device_id];
-	device_props = (ccv_nnc_cuda_device_prop_t*)ccmalloc(sizeof(ccv_nnc_cuda_device_prop_t) * ccv_nnc_gpu_device_count());
 	cudaDeviceProp prop;
 	CUDA_ENFORCE(cudaGetDeviceProperties(&prop, device_id));
 	ccv_nnc_cuda_device_prop_t device_prop;

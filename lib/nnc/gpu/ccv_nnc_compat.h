@@ -65,6 +65,9 @@ CCV_WARN_UNUSED(size_t) ccv_nnc_compat_qx_dense_data_size(const ccv_nnc_tensor_p
 void ccv_nnc_compat_depalettize(const void* input, const int datatype, const size_t input_length, const int qbits, const int number_in_blocks, void* output, const size_t output_length, ccv_nnc_stream_context_t* const stream_context);
 void ccv_nnc_compat_dequantize_8i_rowwise(const void* input, const int datatype, const size_t input_length, const size_t row_length, void* output, const size_t output_length, ccv_nnc_stream_context_t* const stream_context);
 void ccv_nnc_compat_dequantize_8i_rowwise_x_fp(const void* input, const int datatype, const size_t input_length, const size_t row_length, const int format, void* output, const size_t output_length, ccv_nnc_stream_context_t* const stream_context);
+// Decode H256 weights as stored (W R, without undoing R) and apply R to the activations in the
+// same launch, since A W^T = (A R) (W R)^T.
+void ccv_nnc_compat_dequantize_8i_rowwise_x_fp_hadamard_256(const void* input, const int datatype, const size_t input_length, const size_t row_length, const int format, void* output, const size_t output_length, const void* activation, const size_t activation_length, void* activation_output, ccv_nnc_stream_context_t* const stream_context);
 void ccv_nnc_compat_decode_qx(const void* input, const ccv_nnc_tensor_param_t params, void* output, ccv_nnc_stream_context_t* const stream_context);
 void ccv_nnc_tensor_prefetch_async(ccv_nnc_tensor_t* const tensor, const ccv_nnc_stream_context_t* const stream_context);
 #ifdef __cplusplus
