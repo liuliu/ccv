@@ -221,8 +221,7 @@ static int _ccv_nnc_moe_routing_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint
 				ordered_weights = [graph gatherAlongAxis:0 withUpdatesTensor:flat_weights indicesTensor:order name:nil];
 				MPSGraphTensor* const flat_token_grid = [graph reshapeTensor:token_grid withShape:@[@(pair_count)] name:nil];
 				ordered_tokens = [graph gatherAlongAxis:0 withUpdatesTensor:flat_token_grid indicesTensor:order name:nil];
-				MPSGraphTensor* const activation_indices = [graph broadcastTensor:[graph reshapeTensor:ordered_tokens withShape:@[@(pair_count), @1] name:nil] toShape:@[@(pair_count), @(hidden)] name:nil];
-				ordered_activations = [graph gatherAlongAxis:0 withUpdatesTensor:mps_activation indicesTensor:activation_indices name:nil];
+				ordered_activations = [graph gatherWithUpdatesTensor:mps_activation indicesTensor:ordered_tokens axis:0 batchDimensions:0 name:nil];
 				_ccv_nnc_moe_routing_unique_segments(graph, ordered_experts, pair_count, group_count, &grouped_experts, &grouped_counts);
 			}
 			if (ordered_weights.dataType != MPSDataTypeFloat32)
