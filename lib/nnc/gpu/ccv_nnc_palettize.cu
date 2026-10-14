@@ -1310,6 +1310,42 @@ static void _ccv_nnc_dequantize_8i_rowwise_x_fp_launch(const int format, const s
 #undef DISPATCH_FORMAT
 }
 
+// Decode a row-wise-x payload into its int8 codes, 8 codes per thread, without applying the row scales (and
+// for H256, without undoing R). The encoders keep every code within [-127, 127], thus the codes are exact; the
+// clamp only keeps a malformed payload from wrapping around.
+template<int FORMAT>
+static __global__ void _ccv_nnc_dequantize_8i_rowwise_x_8i(const size_t oct_count, const size_t octs_per_row, const size_t groups_per_row, const uint8_t* const input, uint2* const output)
+{
+	const int group_size =
+		FORMAT == CCV_NNC_QX_8I_ROWWISE_IQ2_XXS ? 32 :
+		(FORMAT == CCV_NNC_QX_8I_ROWWISE_Q6_K || FORMAT == CCV_NNC_QX_8I_ROWWISE_IQ2_XS || FORMAT == CCV_NNC_QX_8I_ROWWISE_IQ3_XXS) ? 8 : 16;
+	const int group_bits =
+		FORMAT == CCV_NNC_QX_8I_ROWWISE_Q5_K ? 88 :
+		FORMAT == CCV_NNC_QX_8I_ROWWISE_Q6_K ? 52 :
+		FORMAT == CCV_NNC_QX_8I_ROWWISE_Q4_K ? 72 :
+		FORMAT == CCV_NNC_QX_8I_ROWWISE_Q3_K ? 56 :
+		FORMAT == CCV_NNC_QX_8I_ROWWISE_Q2_K ? 42 :
+		FORMAT == CCV_NNC_QX_8I_ROWWISE_IQ2_S ? 42 :
+		FORMAT == CCV_NNC_QX_8I_ROWWISE_IQ2_XS ? 21 :
+		FORMAT == CCV_NNC_QX_8I_ROWWISE_IQ2_XXS ? 64 :
+		FORMAT == CCV_NNC_QX_8I_ROWWISE_IQ3_S ? 56 : 28;
+	CUDA_1D_KERNEL_LOOP(i, oct_count) {
+		const size_t row = i / octs_per_row;
+		const size_t col = (i - row * octs_per_row) * 8;
+		const _ccv_nnc_8i_rowwise_x_global_bits_t bits = {
+			input,
+			(row * groups_per_row + col / group_size) * group_bits,
+		};
+		int decoded[8];
+		_ccv_nnc_8i_rowwise_x_decode_oct<FORMAT>(bits, col % group_size, decoded);
+		uint32_t packed[2] = {};
+#pragma unroll
+		for (int j = 0; j < 8; j++)
+			packed[j >> 2] |= (uint32_t)(uint8_t)(int8_t)ccv_clamp(decoded[j], -127, 127) << ((j & 3) * 8);
+		output[i] = make_uint2(packed[0], packed[1]);
+	}
+}
+
 static __global__ void _ccv_nnc_dequantize_8i_rowwise_f16(const size_t count, const size_t row_length, const int8_t* const input, const __half* const scales, __half* const output)
 {
 	CUDA_1D_KERNEL_LOOP(i, count) {
@@ -1659,6 +1695,66 @@ void ccv_nnc_compat_dequantize_8i_rowwise_x_fp_hadamard_256(const void* input, c
 		_ccv_nnc_dequantize_8i_rowwise_x_fp_hadamard_256_launch(format, output_length, row_length, groups_per_row, u8, (const __nv_bfloat16*)(u8 + scale_offset), (__nv_bfloat16*)output, activation_length, (const __nv_bfloat16*)activation, (__nv_bfloat16*)activation_output, stream);
 	else
 		_ccv_nnc_dequantize_8i_rowwise_x_fp_hadamard_256_launch(format, output_length, row_length, groups_per_row, u8, (const float*)(u8 + scale_offset), (float*)output, activation_length, (const float*)activation, (float*)activation_output, stream);
+}
+
+void ccv_nnc_compat_dequantize_8i_rowwise_x(const void* input, const int datatype, const size_t input_length, const size_t row_length, const int format, void* output, const size_t output_length, ccv_nnc_stream_context_t* const stream_context)
+{
+	assert(datatype == CCV_16F || datatype == CCV_16BF || datatype == CCV_32F || datatype == CCV_64F);
+	// Every group holds a multiple of 8 values, thus 8 codes never straddle a row.
+	assert(row_length > 0 && row_length % 8 == 0);
+	assert(output_length % row_length == 0);
+	assert(((uintptr_t)output & 7) == 0);
+	const size_t row_count = output_length / row_length;
+	const size_t group_size = ccv_nnc_8i_rowwise_x_group_size(format);
+	const size_t groups_per_row = (row_length + group_size - 1) / group_size;
+	const size_t group_bits = ccv_nnc_8i_rowwise_x_group_bits(format);
+	const size_t payload_size = (row_count * groups_per_row * group_bits + 7) / 8;
+	const size_t scale_offset = (payload_size + 127) & ~(size_t)127;
+	const size_t scale_size = row_count * CCV_GET_DATA_TYPE_SIZE(datatype);
+	assert(input_length >= scale_offset + scale_size);
+	cudaStream_t stream = ccv_nnc_stream_context_get_stream(stream_context);
+	const uint8_t* const u8 = (const uint8_t*)input;
+	const size_t oct_count = output_length / 8;
+#define DISPATCH_FORMAT(case_format) \
+	case case_format: \
+		_ccv_nnc_dequantize_8i_rowwise_x_8i<case_format><<<CUDA_GET_BLOCKS(oct_count), CUDA_NUM_THREADS, 0, stream>>>(oct_count, row_length / 8, groups_per_row, u8, (uint2*)output); \
+		break
+	switch (format & CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK)
+	{
+		DISPATCH_FORMAT(CCV_NNC_QX_8I_ROWWISE_Q5_K);
+		DISPATCH_FORMAT(CCV_NNC_QX_8I_ROWWISE_Q6_K);
+		DISPATCH_FORMAT(CCV_NNC_QX_8I_ROWWISE_Q4_K);
+		DISPATCH_FORMAT(CCV_NNC_QX_8I_ROWWISE_Q3_K);
+		DISPATCH_FORMAT(CCV_NNC_QX_8I_ROWWISE_Q2_K);
+		DISPATCH_FORMAT(CCV_NNC_QX_8I_ROWWISE_IQ2_S);
+		DISPATCH_FORMAT(CCV_NNC_QX_8I_ROWWISE_IQ2_XS);
+		DISPATCH_FORMAT(CCV_NNC_QX_8I_ROWWISE_IQ2_XXS);
+		DISPATCH_FORMAT(CCV_NNC_QX_8I_ROWWISE_IQ3_S);
+		DISPATCH_FORMAT(CCV_NNC_QX_8I_ROWWISE_IQ3_XXS);
+		default:
+			assert(0);
+	}
+#undef DISPATCH_FORMAT
+	CUDA_ENFORCE(cudaMemcpyAsync((uint8_t*)output + ((output_length + 127) & ~(size_t)127), u8 + scale_offset, scale_size, cudaMemcpyDeviceToDevice, stream));
+}
+
+void ccv_nnc_compat_hadamard_256(const void* input, const int datatype, const size_t length, void* output, ccv_nnc_stream_context_t* const stream_context)
+{
+	assert(datatype == CCV_16F || datatype == CCV_16BF || datatype == CCV_32F);
+	assert(length % 256 == 0);
+	// The rotated values are stored 8 at a time with 16-byte vector stores.
+	assert(((uintptr_t)output & 15) == 0);
+	const size_t block_count = length / 256;
+	if (!block_count)
+		return;
+	cudaStream_t stream = ccv_nnc_stream_context_get_stream(stream_context);
+	const int aligned = ((uintptr_t)input & 15) == 0;
+	if (datatype == CCV_16F)
+		_ccv_nnc_hadamard_256<<<(block_count + 7) / 8, 256, 0, stream>>>(block_count, (const __half*)input, (__half*)output, aligned);
+	else if (datatype == CCV_16BF)
+		_ccv_nnc_hadamard_256<<<(block_count + 7) / 8, 256, 0, stream>>>(block_count, (const __nv_bfloat16*)input, (__nv_bfloat16*)output, aligned);
+	else
+		_ccv_nnc_hadamard_256<<<(block_count + 7) / 8, 256, 0, stream>>>(block_count, (const float*)input, (float*)output, aligned);
 }
 
 void ccv_nnc_compat_decode_qx(const void* input, const ccv_nnc_tensor_param_t params, void* output, ccv_nnc_stream_context_t* const stream_context)

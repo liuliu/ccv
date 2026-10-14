@@ -68,7 +68,18 @@ void ccv_nnc_compat_dequantize_8i_rowwise_x_fp(const void* input, const int data
 // Decode H256 weights as stored (W R, without undoing R) and apply R to the activations in the
 // same launch, since A W^T = (A R) (W R)^T.
 void ccv_nnc_compat_dequantize_8i_rowwise_x_fp_hadamard_256(const void* input, const int datatype, const size_t input_length, const size_t row_length, const int format, void* output, const size_t output_length, const void* activation, const size_t activation_length, void* activation_output, ccv_nnc_stream_context_t* const stream_context);
+// Decode a row-wise-x payload into a CCV_NNC_QX_8I_ROWWISE payload with the same row scales: output_length int8 codes,
+// padded to 128 bytes, then one scale per row. H256 payloads decode as stored, i.e. the codes of W R.
+void ccv_nnc_compat_dequantize_8i_rowwise_x(const void* input, const int datatype, const size_t input_length, const size_t row_length, const int format, void* output, const size_t output_length, ccv_nnc_stream_context_t* const stream_context);
+// Multiply every 256 consecutive values by R256, as H256 weights expect of the activations (A W^T = (A R) (W R)^T).
+void ccv_nnc_compat_hadamard_256(const void* input, const int datatype, const size_t length, void* output, ccv_nnc_stream_context_t* const stream_context);
 void ccv_nnc_compat_decode_qx(const void* input, const ccv_nnc_tensor_param_t params, void* output, ccv_nnc_stream_context_t* const stream_context);
+// Row-wise int8 weight GEMM: b[m, n] = sum_k a[m, k] * w[n, k] (+ bias[n]), where w is the CCV_NNC_QX_8I_ROWWISE payload
+// of an [n, k] matrix and a / bias / b / the weight scales are all of datatype. Small m reads a as is; otherwise a is
+// quantized row-wise to int8 and multiplied on int8 tensor cores. The supported check returns 0 if the shape, the
+// alignment or the build is not supported, and the workspace size otherwise.
+CCV_WARN_UNUSED(int) ccv_nnc_compat_8i_rowwise_gemm_supported(const int datatype, const void* const a, const void* const w, const void* const bias, const void* const b, const int m, const int n, const int k, size_t* const workspace_size);
+CCV_WARN_UNUSED(int) ccv_nnc_compat_8i_rowwise_gemm(const int datatype, const void* const a, const void* const w, const void* const bias, void* const b, const int m, const int n, const int k, void* const workspace, ccv_nnc_stream_context_t* const stream_context);
 void ccv_nnc_tensor_prefetch_async(ccv_nnc_tensor_t* const tensor, const ccv_nnc_stream_context_t* const stream_context);
 #ifdef __cplusplus
 }

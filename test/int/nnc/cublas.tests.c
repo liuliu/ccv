@@ -313,6 +313,325 @@ TEST_CASE("gemm no transpose with bias and row-wise int8 weights")
 	ccv_nnc_tensor_free(gc);
 }
 
+static void _cublas_scaled_gemm_to_float(const int datatype, const void* const data, const size_t count, float* const values)
+{
+	if (datatype == CCV_16F)
+		ccv_half_precision_to_float((const uint16_t*)data, values, count);
+	else if (datatype == CCV_16BF)
+		ccv_bfloat_to_float((const uint16_t*)data, values, count);
+	else
+		memcpy(values, data, sizeof(float) * count);
+}
+
+static void _cublas_scaled_gemm_from_float(const int datatype, const float* const values, const size_t count, void* const data)
+{
+	if (datatype == CCV_16F)
+		ccv_float_to_half_precision(values, (uint16_t*)data, count);
+	else if (datatype == CCV_16BF)
+		ccv_float_to_bfloat(values, (uint16_t*)data, count);
+	else
+		memcpy(data, values, sizeof(float) * count);
+}
+
+// Rounds values to the nearest datatype value (ties to even), as the GPU conversions do. The ccv conversions
+// truncate, thus pick the closer of the truncated value and its neighbor away from zero.
+static void _cublas_scaled_gemm_round(const int datatype, float* const values, const size_t count)
+{
+	if (datatype != CCV_16F && datatype != CCV_16BF)
+		return;
+	size_t i;
+	for (i = 0; i < count; i++)
+	{
+		uint16_t h[2];
+		_cublas_scaled_gemm_from_float(datatype, values + i, 1, h);
+		h[1] = h[0] + 1;
+		float f[2];
+		_cublas_scaled_gemm_to_float(datatype, h, 2, f);
+		const float d0 = fabsf(values[i] - f[0]);
+		const float d1 = fabsf(f[1] - values[i]);
+		values[i] = (d1 < d0 || (d1 == d0 && (h[1] & 1) == 0)) ? f[1] : f[0];
+	}
+}
+
+// Multiplies every 256 consecutive values by R256 = H4^tensor4 / 16, where H4 is +1 except -1 on its anti-diagonal,
+// then rounds them to the datatype like the GPU rotation does.
+static void _cublas_scaled_gemm_hadamard_256(const int datatype, float* const values, const size_t count)
+{
+	size_t i;
+	int j, stride;
+	double v[256];
+	for (i = 0; i < count; i += 256)
+	{
+		for (j = 0; j < 256; j++)
+			v[j] = values[i + j];
+		for (stride = 1; stride < 256; stride *= 4)
+			for (j = 0; j < 256; j++)
+				if ((j / stride) % 4 == 0)
+				{
+					const double a = v[j], b = v[j + stride], c = v[j + stride * 2], d = v[j + stride * 3];
+					const double sum = a + b + c + d;
+					v[j] = sum - 2 * d;
+					v[j + stride] = sum - 2 * c;
+					v[j + stride * 2] = sum - 2 * b;
+					v[j + stride * 3] = sum - 2 * a;
+				}
+		for (j = 0; j < 256; j++)
+			values[i + j] = (float)(v[j] / 16);
+	}
+	_cublas_scaled_gemm_round(datatype, values, count);
+}
+
+// Runs a [batch, m, k] x w[n, k]^T (+ bias[n]) on the GPU with row-wise int8 weights, and returns the largest
+// difference to a double precision CPU reference, relative to max(1, |reference|, |actual|). On the row-wise int8
+// path with more than 4 rows in total, the GPU quantizes the activations row-wise to int8 (scale = max |a| / 127),
+// which the reference repeats; otherwise it multiplies the activations as they are. A non-zero format packs the
+// weights as that row-wise-x codec instead; with CCV_NNC_QX_8I_ROWWISE_HADAMARD_256 the payload holds the codes of
+// W R, which the GPU multiplies with the rotated activations A R, or rotates back. fast_path_out reports whether the row-wise int8
+// path ran, rather than the dequantizing fallback.
+static double _cublas_scaled_gemm_max_rel_diff(const int datatype, const int format, const int use_bias, const int batch, const int m, const int n, const int k, int* const fast_path_out)
+{
+	const int rows = batch * m;
+	ccv_nnc_tensor_param_t a_params = CPU_TENSOR_NHWC(32F, batch, m, k);
+	if (batch == 1)
+		a_params = (ccv_nnc_tensor_param_t)CPU_TENSOR_NHWC(32F, m, k);
+	a_params.datatype = datatype;
+	ccv_nnc_tensor_param_t w_params = CPU_TENSOR_NHWC(32F, n, k);
+	w_params.datatype = datatype;
+	ccv_nnc_tensor_param_t bias_params = CPU_TENSOR_NHWC(32F, n);
+	bias_params.datatype = datatype;
+	ccv_nnc_tensor_param_t b_params = a_params;
+	b_params.dim[ccv_nnc_tensor_nd(a_params.dim) - 1] = n;
+	ccv_nnc_tensor_t* const ha = ccv_nnc_tensor_new(0, a_params, 0);
+	ccv_nnc_tensor_t* const hw = ccv_nnc_tensor_new(0, w_params, 0);
+	const int hadamard_256 = !!(format & CCV_NNC_QX_8I_ROWWISE_HADAMARD_256);
+	ccv_nnc_tensor_t* const hwq = ccv_nnc_tensor_new(0, format ? ccv_nnc_tensor_8i_rowwise_x(w_params, format) : ccv_nnc_tensor_8i_rowwise(w_params), 0);
+	ccv_nnc_tensor_t* const hbias = use_bias ? ccv_nnc_tensor_new(0, bias_params, 0) : 0;
+	ccv_nnc_tensor_t* const hb = ccv_nnc_tensor_new(0, b_params, 0);
+	float* const a_f = (float*)ccmalloc(sizeof(float) * rows * k);
+	float* const w_f = (float*)ccmalloc(sizeof(float) * n * k);
+	float* const bias_f = (float*)ccmalloc(sizeof(float) * n);
+	float* const b_f = (float*)ccmalloc(sizeof(float) * rows * n);
+	dsfmt_t dsfmt;
+	dsfmt_init_gen_rand(&dsfmt, 1);
+	int i, j, l;
+	// Integer activations keep the rotation exact in float, thus the GPU and the reference round it the same way.
+	for (i = 0; i < rows * k; i++)
+		a_f[i] = hadamard_256 ? (float)(floor(dsfmt_genrand_open_close(&dsfmt) * 129) - 64) : (float)(dsfmt_genrand_open_close(&dsfmt) * 2 - 1);
+	// Vary the activation row magnitudes so that the row-wise scales differ.
+	for (i = 0; i < rows; i++)
+		for (j = 0; j < k; j++)
+			a_f[i * k + j] *= 0.25 + (i % 7);
+	for (i = 0; i < n * k; i++)
+		w_f[i] = (float)(dsfmt_genrand_open_close(&dsfmt) * 2 - 1) * 0.1;
+	for (i = 0; i < n; i++)
+		bias_f[i] = (float)(dsfmt_genrand_open_close(&dsfmt) * 2 - 1);
+	_cublas_scaled_gemm_from_float(datatype, a_f, rows * k, ha->data.u8);
+	_cublas_scaled_gemm_from_float(datatype, w_f, n * k, hw->data.u8);
+	if (use_bias)
+		_cublas_scaled_gemm_from_float(datatype, bias_f, n, hbias->data.u8);
+	const size_t qsize = format ?
+		ccv_nnc_quantize_8i_rowwise_x(hw->data.u8, datatype, CCV_TENSOR_CPU_MEMORY, n * k, k, format, 0, 0, hwq->data.u8, ccv_nnc_tensor_data_size_without_padding(hwq->info)) :
+		ccv_nnc_quantize_8i_rowwise(hw->data.u8, datatype, CCV_TENSOR_CPU_MEMORY, n * k, k, 0, 0, hwq->data.u8, ccv_nnc_tensor_data_size_without_padding(hwq->info));
+	// The reference reads back what the GPU sees: rounded activations and bias, and the int8 weights times
+	// their row scales in float, which only the dequantizing fallback rounds into the datatype again.
+	_cublas_scaled_gemm_to_float(datatype, ha->data.u8, rows * k, a_f);
+	if (use_bias)
+		_cublas_scaled_gemm_to_float(datatype, hbias->data.u8, n, bias_f);
+	// A short payload fails the comparison below.
+	const int qsize_ok = qsize == ccv_nnc_tensor_data_size_without_padding(hwq->info);
+	ccv_nnc_tensor_param_t ga_params = a_params;
+	ga_params.type = CCV_TENSOR_GPU_MEMORY;
+	ccv_nnc_tensor_param_t gw_params = w_params;
+	gw_params.type = CCV_TENSOR_GPU_MEMORY;
+	ccv_nnc_tensor_param_t gbias_params = bias_params;
+	gbias_params.type = CCV_TENSOR_GPU_MEMORY;
+	ccv_nnc_tensor_param_t gb_params = b_params;
+	gb_params.type = CCV_TENSOR_GPU_MEMORY;
+	ccv_nnc_tensor_t* const ga = ccv_nnc_tensor_new(0, ga_params, 0);
+	ccv_nnc_tensor_t* const gwq = ccv_nnc_tensor_new(0, format ? ccv_nnc_tensor_8i_rowwise_x(gw_params, format) : ccv_nnc_tensor_8i_rowwise(gw_params), 0);
+	ccv_nnc_tensor_t* const gbias = use_bias ? ccv_nnc_tensor_new(0, gbias_params, 0) : 0;
+	ccv_nnc_tensor_t* const gb = ccv_nnc_tensor_new(0, gb_params, 0);
+#ifdef HAVE_CUDA
+	// The reference follows the path the GPU takes. Without the row-wise int8 kernels (no SM80 support, or an older
+	// GPU), the weights are dequantized into the datatype and the activations multiplied as they are.
+	extern int ccv_nnc_compat_8i_rowwise_gemm_supported(const int datatype, const void* const a, const void* const w, const void* const bias, const void* const b, const int m, const int n, const int k, size_t* const workspace_size);
+	size_t workspace_size;
+	const int fast_path = ccv_nnc_compat_8i_rowwise_gemm_supported(datatype, ga->data.u8, gwq->data.u8, gbias ? gbias->data.u8 : 0, gb->data.u8, rows, n, k, &workspace_size);
+#else
+	const int fast_path = 0;
+#endif
+	*fast_path_out = fast_path;
+	// Both payloads end with one scale per row.
+	const size_t scale_offset = ccv_nnc_tensor_data_size_without_padding(hwq->info) - (size_t)n * CCV_GET_DATA_TYPE_SIZE(datatype);
+	float* const w_scale = (float*)ccmalloc(sizeof(float) * n);
+	_cublas_scaled_gemm_to_float(datatype, hwq->data.u8 + scale_offset, n, w_scale);
+	if (format)
+	{
+		// The packed bits do not depend on the datatype, thus decoding them with FP32 scales of 1 yields the codes.
+		// Without H256 in the format, the decode keeps the stored codes of W R.
+		unsigned char* const codes = (unsigned char*)ccmalloc(scale_offset + sizeof(float) * n);
+		memcpy(codes, hwq->data.u8, scale_offset);
+		for (i = 0; i < n; i++)
+			((float*)(codes + scale_offset))[i] = 1;
+		ccv_nnc_dequantize_8i_rowwise_x(codes, CCV_32F, CCV_TENSOR_CPU_MEMORY, scale_offset + sizeof(float) * n, k, format & CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK, w_f, (size_t)n * k);
+		ccfree(codes);
+		for (i = 0; i < n; i++)
+			for (j = 0; j < k; j++)
+				w_f[i * k + j] *= w_scale[i];
+	} else {
+		const int8_t* const w_q = (const int8_t*)hwq->data.u8;
+		for (i = 0; i < n; i++)
+			for (j = 0; j < k; j++)
+				w_f[i * k + j] = w_q[i * k + j] * w_scale[i];
+	}
+	ccfree(w_scale);
+	if (hadamard_256)
+	{
+		// A W^T = (A R) Wq^T. The row-wise int8 path rotates the activations. The dequantizing fallback does so
+		// only for the IQ codecs with few activation rows, and otherwise undoes the rotation in the weights.
+		const int codec = format & CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK;
+		const int rotate_a = fast_path || (codec >= CCV_NNC_QX_8I_ROWWISE_IQ2_S && codec <= CCV_NNC_QX_8I_ROWWISE_IQ2_XXS && (size_t)rows * 8 <= n);
+		if (rotate_a)
+			_cublas_scaled_gemm_hadamard_256(datatype, a_f, (size_t)rows * k);
+		else
+			_cublas_scaled_gemm_hadamard_256(datatype, w_f, (size_t)n * k);
+	}
+	if (!fast_path)
+		_cublas_scaled_gemm_round(datatype, w_f, n * k);
+	if (fast_path && rows > 4)
+		for (i = 0; i < rows; i++)
+		{
+			float max_abs = 0;
+			for (j = 0; j < k; j++)
+				max_abs = ccv_max(max_abs, fabsf(a_f[i * k + j]));
+			const float scale = max_abs > 0 ? max_abs / 127.f : 1.f / 127.f;
+			const float inv_scale = max_abs > 0 ? 127.f / max_abs : 127.f;
+			for (j = 0; j < k; j++)
+				a_f[i * k + j] = ccv_clamp(rintf(a_f[i * k + j] * inv_scale), -127, 127) * scale;
+		}
+	if (use_bias)
+	{
+		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha, hwq, hbias), TENSOR_LIST(ga, gwq, gbias), 0);
+		ccv_nnc_cmd_exec(CMD_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(0, 1)), ccv_nnc_no_hint, 0, TENSOR_LIST(ga, gwq, gbias), TENSOR_LIST(gb), 0);
+	} else {
+		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha, hwq), TENSOR_LIST(ga, gwq), 0);
+		ccv_nnc_cmd_exec(CMD_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(0, 1)), ccv_nnc_no_hint, 0, TENSOR_LIST(ga, gwq), TENSOR_LIST(gb), 0);
+	}
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(gb), TENSOR_LIST(hb), 0);
+	_cublas_scaled_gemm_to_float(datatype, hb->data.u8, rows * n, b_f);
+	double max_rel = qsize_ok ? 0 : HUGE_VAL;
+	for (i = 0; i < rows; i++)
+		for (j = 0; j < n; j++)
+		{
+			double expected = use_bias ? bias_f[j] : 0;
+			for (l = 0; l < k; l++)
+				expected += (double)a_f[i * k + l] * w_f[j * k + l];
+			const double actual = b_f[i * n + j];
+			const double rel = fabs(actual - expected) / ccv_max(1.0, ccv_max(fabs(actual), fabs(expected)));
+			max_rel = ccv_max(max_rel, rel);
+		}
+	ccfree(a_f);
+	ccfree(w_f);
+	ccfree(bias_f);
+	ccfree(b_f);
+	ccv_nnc_tensor_free(ha);
+	ccv_nnc_tensor_free(hw);
+	ccv_nnc_tensor_free(hwq);
+	if (hbias)
+		ccv_nnc_tensor_free(hbias);
+	ccv_nnc_tensor_free(hb);
+	ccv_nnc_tensor_free(ga);
+	ccv_nnc_tensor_free(gwq);
+	if (gbias)
+		ccv_nnc_tensor_free(gbias);
+	ccv_nnc_tensor_free(gb);
+	return max_rel;
+}
+
+TEST_CASE("cublas forward gemm with row-wise int8 weights matches CPU across precisions and shapes")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_GPU_CUBLAS));
+	const int datatypes[] = { CCV_32F, CCV_16F, CCV_16BF };
+	// The reference repeats the activation quantization exactly, thus the output precision bounds the error.
+	const double tolerances[] = { 1e-4, 1e-3, 5e-3 };
+	// The dequantizing fallback runs cuBLAS, which may reduce split-k partial sums in the output datatype.
+	const double fallback_tolerances[] = { 1e-4, 2e-2, 5e-2 };
+	// Up to 4 rows multiply the activations as they are, more rows multiply int8 activation codes.
+	const int shapes[][3] = {
+		{ 1, 384, 256 },
+		{ 3, 384, 256 },
+		{ 4, 1024, 2048 },
+		{ 5, 384, 256 },
+		{ 37, 1024, 2048 },
+		{ 257, 384, 256 },
+		{ 512, 8192, 1024 },
+		{ 1100, 512, 768 },
+	};
+	int d, s, use_bias;
+	for (d = 0; d < sizeof(datatypes) / sizeof(datatypes[0]); d++)
+		for (s = 0; s < sizeof(shapes) / sizeof(shapes[0]); s++)
+			for (use_bias = 0; use_bias < 2; use_bias++)
+			{
+				int fast_path;
+				const double max_rel = _cublas_scaled_gemm_max_rel_diff(datatypes[d], 0, use_bias, 1, shapes[s][0], shapes[s][1], shapes[s][2], &fast_path);
+				const double tolerance = fast_path ? tolerances[d] : fallback_tolerances[d];
+				if (max_rel > tolerance)
+					printf("datatype %x, bias %d, m %d, n %d, k %d, fast path %d: max relative difference %g\n", datatypes[d], use_bias, shapes[s][0], shapes[s][1], shapes[s][2], fast_path, max_rel);
+				REQUIRE(max_rel <= tolerance, "row-wise int8 GEMM should match the CPU reference");
+			}
+}
+
+TEST_CASE("cublas forward batched gemm with row-wise int8 weights matches CPU")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_GPU_CUBLAS));
+	int fast_path;
+	// The weights are shared across the batch, thus 2 x 2 rows still multiply the activations as they are.
+	double max_rel = _cublas_scaled_gemm_max_rel_diff(CCV_16F, 0, 1, 2, 2, 384, 256, &fast_path);
+	REQUIRE(max_rel <= (fast_path ? 1e-3 : 2e-2), "batched row-wise int8 GEMV should match the CPU reference");
+	max_rel = _cublas_scaled_gemm_max_rel_diff(CCV_16F, 0, 1, 3, 37, 384, 256, &fast_path);
+	REQUIRE(max_rel <= (fast_path ? 1e-3 : 2e-2), "batched row-wise int8 GEMM should match the CPU reference");
+	max_rel = _cublas_scaled_gemm_max_rel_diff(CCV_32F, 0, 0, 4, 65, 512, 512, &fast_path);
+	REQUIRE(max_rel <= 1e-4, "batched row-wise int8 GEMM should match the CPU reference");
+}
+
+TEST_CASE("cublas forward gemm with row-wise-x int8 weights matches CPU across codecs, H256 and precisions")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_GPU_CUBLAS));
+	const int formats[] = {
+		CCV_NNC_QX_8I_ROWWISE_Q5_K,
+		CCV_NNC_QX_8I_ROWWISE_Q6_K,
+		CCV_NNC_QX_8I_ROWWISE_Q4_K,
+		CCV_NNC_QX_8I_ROWWISE_Q3_K,
+		CCV_NNC_QX_8I_ROWWISE_Q2_K,
+		CCV_NNC_QX_8I_ROWWISE_IQ2_XXS,
+		CCV_NNC_QX_8I_ROWWISE_IQ2_S,
+		CCV_NNC_QX_8I_ROWWISE_IQ2_XS,
+		CCV_NNC_QX_8I_ROWWISE_IQ3_S,
+		CCV_NNC_QX_8I_ROWWISE_IQ3_XXS,
+	};
+	const int datatypes[] = { CCV_32F, CCV_16F, CCV_16BF };
+	const double tolerances[] = { 1e-4, 1e-3, 5e-3 };
+	const double fallback_tolerances[] = { 1e-4, 2e-2, 5e-2 };
+	// 3 rows multiply the activations as they are, 37 and 257 rows multiply int8 activation codes. Some CPU
+	// quantizers are slow, thus every codec runs each row count once and rotates the datatypes across them.
+	const int ms[] = { 3, 37, 257 };
+	int f, h, i;
+	for (f = 0; f < sizeof(formats) / sizeof(formats[0]); f++)
+		for (h = 0; h < 2; h++)
+			for (i = 0; i < sizeof(ms) / sizeof(ms[0]); i++)
+			{
+				const int format = formats[f] | (h ? CCV_NNC_QX_8I_ROWWISE_HADAMARD_256 : 0);
+				const int d = (f + h + i) % 3;
+				const int use_bias = (f + i) % 2;
+				int fast_path;
+				const double max_rel = _cublas_scaled_gemm_max_rel_diff(datatypes[d], format, use_bias, 1, ms[i], 256, 256, &fast_path);
+				const double tolerance = fast_path ? tolerances[d] : fallback_tolerances[d];
+				if (max_rel > tolerance)
+					printf("format %x, datatype %x, bias %d, m %d, fast path %d: max relative difference %g\n", format, datatypes[d], use_bias, ms[i], fast_path, max_rel);
+				REQUIRE(max_rel <= tolerance, "row-wise-x int8 GEMM should match the CPU reference");
+			}
+}
+
 TEST_CASE("gemm no transpose with packed row-wise int8-x weights in all formats")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_GPU_CUBLAS));
@@ -463,9 +782,10 @@ TEST_CASE("gemm with H256 row-wise int8-x weights matches CPU on logical weights
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_GPU_CUBLAS));
 	const int k = 768;
-	// For IQ codecs, 8M <= N rotates the activations; otherwise the decoded weights are rotated.
+	// For IQ codecs, 8M <= N rotates the activations; otherwise the decoded weights are rotated. N is odd, thus the
+	// row-wise int8 GEMM (which stores 16 bytes at a time) declines and these dequantizing routes run.
 	const int ms[] = {8, 160};
-	const int ns[] = {96, 64};
+	const int ns[] = {97, 65};
 	const int datatypes[] = {CCV_32F, CCV_16F};
 	const int codecs[] = {
 		CCV_NNC_QX_8I_ROWWISE_Q6_K,
@@ -524,6 +844,11 @@ TEST_CASE("gemm with H256 row-wise int8-x weights matches CPU on logical weights
 				ccv_nnc_tensor_t* const gqw = ccv_nnc_tensor_new(0, gqw_params, 0);
 				ccv_nnc_tensor_t* const gb = ccv_nnc_tensor_new(0, gb_params, 0);
 				ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, b_params, 0);
+#ifdef HAVE_CUDA
+				extern int ccv_nnc_compat_8i_rowwise_gemm_supported(const int datatype, const void* const a, const void* const w, const void* const bias, const void* const b, const int m, const int n, const int k, size_t* const workspace_size);
+				size_t workspace_size;
+				REQUIRE(!ccv_nnc_compat_8i_rowwise_gemm_supported(datatype, ga->data.u8, 0, gbias->data.u8, gb->data.u8, m, n, k, &workspace_size), "the row-wise int8 GEMM should decline this shape");
+#endif
 				ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(a, bias, qw), TENSOR_LIST(ga, gbias, gqw), 0);
 				ccv_nnc_cmd_exec(CMD_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(0, 1)), ccv_nnc_no_hint, 0, TENSOR_LIST(ga, gqw, gbias), TENSOR_LIST(gb), 0);
 				ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(gb), TENSOR_LIST(b), 0);
@@ -691,9 +1016,10 @@ TEST_CASE("gemm with H256 row-wise IQ int8-x weights matches CPU on every GPU")
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_GPU_CUBLAS));
 	// With 8M > N the IQ weights are decoded with R undone by the persistent kernel,
 	// whose grid is sized from the current device's SM count. Run on each GPU in turn
-	// from the same thread.
+	// from the same thread. N is odd, thus the row-wise int8 GEMM (which stores 16 bytes
+	// at a time) declines and this dequantizing route runs.
 	const int m = 64;
-	const int n = 64;
+	const int n = 63;
 	const int k = 512;
 	const int format = CCV_NNC_QX_8I_ROWWISE_IQ2_XXS | CCV_NNC_QX_8I_ROWWISE_HADAMARD_256;
 	dsfmt_t dsfmt;
@@ -726,6 +1052,11 @@ TEST_CASE("gemm with H256 row-wise IQ int8-x weights matches CPU on every GPU")
 		ccv_nnc_tensor_t* const ga = ccv_nnc_tensor_new(0, ga_params, 0);
 		ccv_nnc_tensor_t* const gqw = ccv_nnc_tensor_new(0, gq_params, 0);
 		ccv_nnc_tensor_t* const gb = ccv_nnc_tensor_new(0, gb_params, 0);
+#ifdef HAVE_CUDA
+		extern int ccv_nnc_compat_8i_rowwise_gemm_supported(const int datatype, const void* const a, const void* const w, const void* const bias, const void* const b, const int m, const int n, const int k, size_t* const workspace_size);
+		size_t workspace_size;
+		REQUIRE(!ccv_nnc_compat_8i_rowwise_gemm_supported(CCV_32F, ga->data.u8, 0, 0, gb->data.u8, m, n, k, &workspace_size), "the row-wise int8 GEMM should decline this shape");
+#endif
 		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(a, qw), TENSOR_LIST(ga, gqw), 0);
 		ccv_nnc_cmd_exec(CMD_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(0, 1)), ccv_nnc_no_hint, 0, TENSOR_LIST(ga, gqw), TENSOR_LIST(gb), 0);
 		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(gb), TENSOR_LIST(b), 0);

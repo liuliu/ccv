@@ -286,6 +286,53 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	ccv_nnc_tensor_prefetch_async((ccv_nnc_tensor_t*)w, stream_context);
 	if (bias)
 		ccv_nnc_tensor_prefetch_async((ccv_nnc_tensor_t*)bias, stream_context);
+	// Row-wise int8 weights stored as [n, k] (rows along the reduction) can be multiplied directly, with the
+	// scales applied to the output, rather than dequantized into the workspace first. A single weight matrix
+	// shared by contiguous activations multiplies all batches as one m = batch * rows GEMM. Row-wise-x weights
+	// decode into row-wise int8 in the workspace first. H256 weights hold the codes of W R, and R is symmetric
+	// and its own inverse, thus A W^T = (A R) (W R)^T: rotate the activations into the workspace as well.
+	const int w_qx_subtype = CCV_GET_DATA_TYPE(w->info.datatype) == CCV_QX ? (w->info.datatype & 0xf00) : 0;
+	const int w_8i_rowwise_x_format = w_qx_subtype == CCV_NNC_QX_8I_ROWWISE_X ? w->info.reserved : 0;
+	const int w_hadamard_256 = !!(w_8i_rowwise_x_format & CCV_NNC_QX_8I_ROWWISE_HADAMARD_256);
+	if ((w_qx_subtype == CCV_NNC_QX_8I_ROWWISE || w_qx_subtype == CCV_NNC_QX_8I_ROWWISE_X) &&
+		transpose_w && !transpose_a &&
+		w->info.dim[ccv_nnc_tensor_nd(w->info.dim) - 1] == w_rows &&
+		ccv_nnc_tensor_count(w->info) == (size_t)w_rows * w_cols &&
+		(!w_hadamard_256 || (w_rows % 256) == 0) &&
+		a->info.datatype == ((w->info.datatype & 0xff) << 12) && b->info.datatype == a->info.datatype &&
+		CCV_IS_TENSOR_CONTIGUOUS(a) && CCV_IS_TENSOR_CONTIGUOUS(b) &&
+		ccv_nnc_tensor_count(a->info) / a_cols <= INT_MAX &&
+		ccv_nnc_tensor_count(b->info) == ccv_nnc_tensor_count(a->info) / a_cols * b_cols &&
+		(!bias || (bias->info.datatype == a->info.datatype && CCV_IS_TENSOR_CONTIGUOUS(bias) && ccv_nnc_tensor_count(bias->info) == (size_t)b_cols)))
+	{
+		const int m = (int)(ccv_nnc_tensor_count(a->info) / a_cols);
+		const size_t w_count = (size_t)b_cols * a_cols;
+		const size_t element_size = CCV_GET_DATA_TYPE_SIZE(a->info.datatype);
+		const size_t w_8i_rowwise_size = w_8i_rowwise_x_format ? ((((w_count + 127) & ~(size_t)127) + element_size * b_cols + 127) & ~(size_t)127) : 0;
+		const size_t a_rotated_size = w_hadamard_256 ? (((size_t)m * a_cols * element_size + 127) & ~(size_t)127) : 0;
+		size_t gemm_workspace_size = 0;
+		// The decoded weights and the rotated activations live in the workspace, which is aligned, so check those as null.
+		if (ccv_nnc_compat_8i_rowwise_gemm_supported(a->info.datatype, w_hadamard_256 ? 0 : a->data.u8, w_8i_rowwise_x_format ? 0 : w->data.u8, bias ? bias->data.u8 : 0, b->data.u8, m, b_cols, a_cols, &gemm_workspace_size))
+		{
+			gemm_workspace_size = (gemm_workspace_size + 127) & ~(size_t)127;
+			const size_t workspace_size = gemm_workspace_size + w_8i_rowwise_size + a_rotated_size;
+			unsigned char* const workspace = workspace_size > 0 ? (unsigned char*)ccv_nnc_stream_context_get_workspace(stream_context, workspace_size, CCV_TENSOR_GPU_MEMORY) : 0;
+			const unsigned char* w_8i_rowwise = w->data.u8;
+			if (w_8i_rowwise_x_format)
+			{
+				w_8i_rowwise = workspace + gemm_workspace_size;
+				ccv_nnc_compat_dequantize_8i_rowwise_x(w->data.u8, a->info.datatype, ccv_nnc_tensor_data_size_without_padding(w->info), a_cols, w_8i_rowwise_x_format, (void*)w_8i_rowwise, w_count, stream_context);
+			}
+			const unsigned char* a_data = a->data.u8;
+			if (w_hadamard_256)
+			{
+				a_data = workspace + gemm_workspace_size + w_8i_rowwise_size;
+				ccv_nnc_compat_hadamard_256(a->data.u8, a->info.datatype, (size_t)m * a_cols, (void*)a_data, stream_context);
+			}
+			if (ccv_nnc_compat_8i_rowwise_gemm(a->info.datatype, a_data, w_8i_rowwise, bias ? bias->data.u8 : 0, b->data.u8, m, b_cols, a_cols, gemm_workspace_size > 0 ? workspace : 0, stream_context))
+				return CCV_NNC_EXEC_SUCCESS;
+		}
+	}
 	const cublasOperation_t transa = transpose_w ? CUBLAS_OP_T : CUBLAS_OP_N;
 	const cublasOperation_t transb = transpose_a ? CUBLAS_OP_T : CUBLAS_OP_N;
 	const int lda_inc = transpose_w ? w_cols_inc : w_rows_inc;

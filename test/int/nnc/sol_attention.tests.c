@@ -37,6 +37,7 @@ TEST_CASE("MPS Sol rejects missing inputs and the removed dense override")
 TEST_CASE("int8 Sol attention matches CPU for pooling, signed scales, tails and batches")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SOL_ATTENTION_FORWARD, CCV_NNC_BACKEND_MPS));
+#ifdef HAVE_MPS
 	extern uint8_t ccv_nnc_mfa_has_neural_accelerators(ccv_nnc_mfa_context_t* context);
 	GUARD_ELSE_RETURN(ccv_nnc_mfa_has_neural_accelerators(ccv_nnc_default_mfa_context()));
 	const int shapes[][5] = { {2, 257, 64, 64, 2}, {1, 197, 32, 16, 2}, {1, 133, 16, 16, 2}, {1, 389, 64, 32, 2}, {1, 129, 64, 16, 3} };
@@ -89,11 +90,13 @@ TEST_CASE("int8 Sol attention matches CPU for pooling, signed scales, tails and 
 			ccv_nnc_tensor_free(gpu[i]);
 		}
 	}
+#endif
 }
 
 TEST_CASE("int8 Sol all-exact matches native attention across cache shapes")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SOL_ATTENTION_FORWARD, CCV_NNC_BACKEND_MPS));
+#ifdef HAVE_MPS
 	extern uint8_t ccv_nnc_mfa_has_neural_accelerators(ccv_nnc_mfa_context_t* context);
 	GUARD_ELSE_RETURN(ccv_nnc_mfa_has_neural_accelerators(ccv_nnc_default_mfa_context()));
 	dsfmt_t rng;
@@ -148,6 +151,7 @@ TEST_CASE("int8 Sol all-exact matches native attention across cache shapes")
 		ccv_nnc_tensor_free(host);
 		for (int i = 0; i < 5; i++) ccv_nnc_tensor_free(gpu[i]);
 	}
+#endif
 }
 
 TEST_CASE("Sol zero logits preserve multiplicity with large centered values")

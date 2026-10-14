@@ -402,12 +402,14 @@ cuda_library(
 	srcs = [
 		"nnc/gpu/ccv_nnc_compat.cu",
 		"nnc/gpu/ccv_nnc_palettize.cu",
+		"nnc/gpu/ccv_nnc_8i_rowwise_gemm.cu",
 	],
 	hdrs = [
 		"nnc/gpu/ccv_nnc_compat.h",
 	],
-	copts = ccv_default_copts(),
+	copts = ccv_default_copts() + ["-nvcc_options", "expt-relaxed-constexpr"],
 	deps = [
+		":cutlass_headers",
 		":nnc_headers",
 		":SFMT_hdrs",
 		"@local_config_ccv//config:cuda_deps"
