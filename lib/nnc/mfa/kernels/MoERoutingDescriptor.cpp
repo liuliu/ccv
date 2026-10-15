@@ -13,7 +13,8 @@ bool MoERoutingDescriptor::operator==(const MoERoutingDescriptor& rhs) const
 		weightScale == rhs.weightScale &&
 		preselected == rhs.preselected &&
 		singleInputToken == rhs.singleInputToken &&
-		normalizationEpsilon == rhs.normalizationEpsilon;
+		normalizationEpsilon == rhs.normalizationEpsilon &&
+		sigmoid == rhs.sigmoid;
 }
 
 std::size_t std::hash<MoERoutingDescriptor>::operator()(const MoERoutingDescriptor& hash) const noexcept
@@ -29,6 +30,7 @@ std::size_t std::hash<MoERoutingDescriptor>::operator()(const MoERoutingDescript
 	seed = combine_32(seed, hash.preselected ? 1 : 0);
 	seed = combine_32(seed, hash.singleInputToken ? 1 : 0);
 	seed = combine_64(seed, std::hash<float>()(hash.normalizationEpsilon));
+	seed = combine_32(seed, hash.sigmoid ? 1 : 0);
 	return seed;
 }
 
@@ -53,6 +55,7 @@ std::pair<MoERoutingKernelDescriptor, PipelineValue<MoERoutingKernel>*> MoERouti
 	constants->setConstantValue(&preselected, MTL::DataTypeBool, NS::UInteger(4));
 	constants->setConstantValue(&singleInputToken, MTL::DataTypeBool, NS::UInteger(5));
 	constants->setConstantValue(&normalizationEpsilon, MTL::DataTypeFloat, NS::UInteger(6));
+	constants->setConstantValue(&sigmoid, MTL::DataTypeBool, NS::UInteger(7));
 	NS::Error* error = nil;
 	auto function = NS::TransferPtr(iterator->second->library->newFunction(NS::String::string("moe_routing_t1", NS::UTF8StringEncoding), constants.get(), &error));
 	CCV_NNC_MFA_CHECK_ERROR(error);

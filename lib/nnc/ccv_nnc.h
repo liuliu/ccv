@@ -134,6 +134,7 @@ enum {
 
 enum {
 	CCV_NNC_MOE_ROUTING_SINGLE_INPUT_TOKEN = 0x1, /**< Avoid duplicating the activation when routing a single input token. */
+	CCV_NNC_MOE_ROUTING_SIGMOID = 0x2, /**< Score experts with sigmoid(logit) instead of sqrt(softplus(logit)). */
 };
 
 /**

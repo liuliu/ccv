@@ -40,6 +40,7 @@ constant float weight_scale [[function_constant(3)]];
 constant bool preselected [[function_constant(4)]];
 constant bool single_input_token [[function_constant(5)]];
 constant float normalization_epsilon [[function_constant(6)]];
+constant bool sigmoid_scoring [[function_constant(7)]];
 
 inline float stable_log1p(float x)
 {
@@ -51,6 +52,8 @@ inline float stable_log1p(float x)
 
 inline float routing_probability(float x)
 {
+	if (sigmoid_scoring)
+		return 1.0f / (1.0f + precise::exp(-x));
 	const float positive = x > 0.0f ? x : 0.0f;
 	return sqrt(positive + stable_log1p(precise::exp(-abs(x))));
 }

@@ -227,6 +227,80 @@ TEST_CASE("moe routing single input token flag preserves one activation row on C
 	ccv_nnc_tensor_free(logits);
 }
 
+TEST_CASE("moe routing sigmoid scoring selects and normalizes with sigmoid on CPU")
+{
+	const int token_count = 2;
+	const int expert_count = 16;
+	const int kth = 4;
+	const int hidden = 3;
+	ccv_nnc_tensor_t* const logits = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, token_count, expert_count), 0);
+	ccv_nnc_tensor_t* const bias = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, expert_count), 0);
+	ccv_nnc_tensor_t* const activation = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, token_count, hidden), 0);
+	ccv_nnc_tensor_t* const gathered = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, token_count * kth, hidden), 0);
+	ccv_nnc_tensor_t* const weights = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, token_count * kth), 0);
+	ccv_nnc_tensor_t* const tokens = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, token_count * kth), 0);
+	ccv_nnc_tensor_t* const experts = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, ccv_min(token_count * kth, expert_count)), 0);
+	ccv_nnc_tensor_t* const counts = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, ccv_min(token_count * kth, expert_count)), 0);
+	int i, j;
+	for (i = 0; i < token_count * expert_count; i++)
+		logits->data.f32[i] = (float)(((i * 7) % 23) - 11) * 0.37f;
+	// The bias changes which experts are selected, but not their weights.
+	for (i = 0; i < expert_count; i++)
+		bias->data.f32[i] = (i % 3 == 0) ? 0.3f : 0;
+	for (i = 0; i < token_count * hidden; i++)
+		activation->data.f32[i] = (float)i;
+	ccv_nnc_cmd_t cmd = CMD_MOE_ROUTING_FORWARD_FLAGS(kth, 2.5f, 0, CCV_NNC_MOE_ROUTING_SIGMOID);
+	cmd.info.moe_routing.normalization_epsilon = 1e-20f;
+	REQUIRE_EQ(ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0,
+		TENSOR_LIST(logits, bias, activation), TENSOR_LIST(gathered, weights, tokens, experts, counts), 0),
+		CCV_NNC_EXEC_SUCCESS, "sigmoid CPU routing should execute");
+	// Independent reference: per token, pick the top-k of sigmoid + bias, then normalize the unbiased sigmoid.
+	float expected_weight[2][16];
+	for (i = 0; i < token_count; i++)
+	{
+		float score[16];
+		int chosen[16] = {0};
+		for (j = 0; j < expert_count; j++)
+			score[j] = 1.0f / (1.0f + expf(-logits->data.f32[i * expert_count + j]));
+		float sum = 0;
+		int slot;
+		for (slot = 0; slot < kth; slot++)
+		{
+			int best = -1;
+			for (j = 0; j < expert_count; j++)
+				if (!chosen[j] && (best < 0 || score[j] + bias->data.f32[j] > score[best] + bias->data.f32[best]))
+					best = j;
+			chosen[best] = 1;
+			sum += score[best];
+		}
+		for (j = 0; j < expert_count; j++)
+			expected_weight[i][j] = chosen[j] ? score[j] / (sum + 1e-20f) * 2.5f : 0;
+	}
+	int position = 0;
+	int matched = 0;
+	for (i = 0; i < ccv_min(token_count * kth, expert_count); i++)
+	{
+		int c;
+		for (c = 0; c < counts->data.i32[i]; c++, position++)
+		{
+			const int token = tokens->data.i32[position];
+			const int expert = experts->data.i32[i];
+			REQUIRE(expected_weight[token][expert] > 0, "routed expert should be in the sigmoid top-k");
+			REQUIRE_EQ_WITH_TOLERANCE(weights->data.f32[position], expected_weight[token][expert], 1e-6, "route weight should be the normalized sigmoid score");
+			++matched;
+		}
+	}
+	REQUIRE_EQ(matched, token_count * kth, "every token should route to kth experts");
+	ccv_nnc_tensor_free(counts);
+	ccv_nnc_tensor_free(experts);
+	ccv_nnc_tensor_free(tokens);
+	ccv_nnc_tensor_free(weights);
+	ccv_nnc_tensor_free(gathered);
+	ccv_nnc_tensor_free(activation);
+	ccv_nnc_tensor_free(bias);
+	ccv_nnc_tensor_free(logits);
+}
+
 typedef struct {
 	int expert;
 	int token;
@@ -492,6 +566,42 @@ TEST_CASE("single-token moe routing MFA and MPSGraph paths match CPU")
 	REQUIRE(single_input_graph.metadata_match, "single-input-token MPSGraph metadata should match CPU");
 	REQUIRE(single_input_graph.gathered_match, "single-input-token MPSGraph activation should match CPU exactly");
 	REQUIRE(single_input_graph.max_weight_difference <= 5e-4f, "single-input-token MPSGraph weights should match CPU");
+}
+
+TEST_CASE("moe routing sigmoid scoring MFA and MPSGraph paths match CPU")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_MOE_ROUTING_FORWARD, CCV_NNC_BACKEND_MPS));
+	const int flags = CCV_NNC_MOE_ROUTING_SIGMOID;
+	const moe_routing_mps_result_t single_mfa = _moe_routing_mps_case(1, 288, 8, 4096, 0, 0, CCV_32F, CCV_16BF, flags | CCV_NNC_MOE_ROUTING_SINGLE_INPUT_TOKEN, 1e-20f, 0);
+	// Same MFA shape without the flag, so the cached sigmoid pipeline must not be reused for sqrt(softplus) scoring.
+	const moe_routing_mps_result_t softplus_mfa = _moe_routing_mps_case(1, 288, 8, 4096, 0, 0, CCV_32F, CCV_16BF, CCV_NNC_MOE_ROUTING_SINGLE_INPUT_TOKEN, 1e-20f, 0);
+	const moe_routing_mps_result_t single_graph = _moe_routing_mps_case(1, 288, 8, 4096, 0, 1, CCV_32F, CCV_16BF, flags | CCV_NNC_MOE_ROUTING_SINGLE_INPUT_TOKEN, 1e-20f, 0);
+	const moe_routing_mps_result_t multi_graph = _moe_routing_mps_case(7, 288, 8, 65, 0, 0, CCV_32F, CCV_32F, flags, 1e-20f, 0);
+	const moe_routing_mps_result_t shifted_mfa = _moe_routing_mps_case(1, 288, 8, 128, 0, 0, CCV_16F, CCV_16F, flags, 0, -4);
+	// Large logits saturate sigmoid, so FP16 scores would collapse and change the selected experts without FP32 promotion.
+	const moe_routing_mps_result_t saturated_graph = _moe_routing_mps_case(2, 288, 8, 128, 0, 0, CCV_16F, CCV_16F, flags, 0, 4);
+	REQUIRE_EQ(single_mfa.status, CCV_NNC_EXEC_SUCCESS, "sigmoid single-token MFA routing should execute");
+	REQUIRE(single_mfa.metadata_match, "sigmoid single-token MFA metadata should match CPU");
+	REQUIRE(single_mfa.gathered_match, "sigmoid single-token MFA activation should match CPU exactly");
+	REQUIRE(single_mfa.max_weight_difference <= 5e-4f, "sigmoid single-token MFA weights should match CPU");
+	REQUIRE_EQ(softplus_mfa.status, CCV_NNC_EXEC_SUCCESS, "sqrt(softplus) single-token MFA routing should execute after sigmoid");
+	REQUIRE(softplus_mfa.metadata_match, "sqrt(softplus) single-token MFA metadata should match CPU after sigmoid");
+	REQUIRE(softplus_mfa.max_weight_difference <= 5e-4f, "sqrt(softplus) single-token MFA weights should match CPU after sigmoid");
+	REQUIRE_EQ(single_graph.status, CCV_NNC_EXEC_SUCCESS, "sigmoid single-token MPSGraph routing should execute");
+	REQUIRE(single_graph.metadata_match, "sigmoid single-token MPSGraph metadata should match CPU");
+	REQUIRE(single_graph.gathered_match, "sigmoid single-token MPSGraph activation should match CPU exactly");
+	REQUIRE(single_graph.max_weight_difference <= 5e-4f, "sigmoid single-token MPSGraph weights should match CPU");
+	REQUIRE_EQ(multi_graph.status, CCV_NNC_EXEC_SUCCESS, "sigmoid multi-token MPSGraph routing should execute");
+	REQUIRE(multi_graph.metadata_match, "sigmoid multi-token metadata should match CPU");
+	REQUIRE(multi_graph.gathered_match, "sigmoid multi-token gathered activations should match CPU exactly");
+	REQUIRE(multi_graph.max_weight_difference <= 5e-4f, "sigmoid multi-token weights should match CPU");
+	REQUIRE_EQ(shifted_mfa.status, CCV_NNC_EXEC_SUCCESS, "sigmoid half-precision MFA routing should execute");
+	REQUIRE(shifted_mfa.metadata_match, "sigmoid half-precision MFA metadata should match CPU");
+	REQUIRE(shifted_mfa.max_weight_difference <= 5e-4f, "sigmoid half-precision MFA weights should match CPU");
+	REQUIRE_EQ(saturated_graph.status, CCV_NNC_EXEC_SUCCESS, "sigmoid half-precision MPSGraph routing should execute");
+	REQUIRE(saturated_graph.metadata_match, "sigmoid half-precision MPSGraph metadata should match CPU with saturated scores");
+	REQUIRE(saturated_graph.gathered_match, "sigmoid half-precision MPSGraph gathered activations should match CPU exactly");
+	REQUIRE(saturated_graph.max_weight_difference <= 5e-4f, "sigmoid half-precision MPSGraph weights should match CPU with saturated scores");
 }
 
 TEST_CASE("multi-token moe routing ignores the single input token flag and matches CPU")

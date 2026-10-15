@@ -33,8 +33,10 @@ static MPSGraphTensor* _ccv_nnc_moe_routing_stable_log1p(MPSGraph* const graph, 
 	return [graph selectWithPredicateTensor:unchanged truePredicateTensor:x falsePredicateTensor:y name:nil];
 }
 
-static MPSGraphTensor* _ccv_nnc_moe_routing_probabilities(MPSGraph* const graph, MPSGraphTensor* const logits)
+static MPSGraphTensor* _ccv_nnc_moe_routing_probabilities(MPSGraph* const graph, MPSGraphTensor* const logits, const int sigmoid)
 {
+	if (sigmoid)
+		return [graph sigmoidWithTensor:logits name:nil];
 	MPSGraphTensor* const zero = [graph constantWithScalar:0.0 dataType:logits.dataType];
 	MPSGraphTensor* const positive = [graph maximumWithPrimaryTensor:logits secondaryTensor:zero name:nil];
 	MPSGraphTensor* const negative_absolute = [graph negativeWithTensor:[graph absoluteWithTensor:logits name:nil] name:nil];
@@ -86,6 +88,7 @@ static int _ccv_nnc_moe_routing_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint
 	const int pair_count = token_count * kth;
 	const int group_count = ccv_min(pair_count, expert_count);
 	const int single_input_token = token_count == 1 && (cmd.info.moe_routing.flags & CCV_NNC_MOE_ROUTING_SINGLE_INPUT_TOKEN);
+	const int sigmoid = !!(cmd.info.moe_routing.flags & CCV_NNC_MOE_ROUTING_SIGMOID);
 	const int gathered_rows = single_input_token ? 1 : pair_count;
 	if (kth <= 0 || expert_count < kth || token_count <= 0 || hidden <= 0 || cmd.info.moe_routing.weight_scale <= 0 ||
 		!isfinite(cmd.info.moe_routing.normalization_epsilon) || cmd.info.moe_routing.normalization_epsilon < 0 ||
@@ -130,6 +133,7 @@ static int _ccv_nnc_moe_routing_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint
 					.preselected = (uint32_t)cmd.info.moe_routing.preselected,
 					.single_input_token = (uint32_t)single_input_token,
 					.normalization_epsilon = cmd.info.moe_routing.normalization_epsilon,
+					.sigmoid = (uint32_t)sigmoid,
 				};
 				ccv_nnc_mfa_prepare_moe_routing(context, params);
 				mtl_command_batch_t* const command_batch = ccv_nnc_stream_context_start_command_batch(stream_context);
@@ -167,15 +171,16 @@ static int _ccv_nnc_moe_routing_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint
 			[input_tensors addObject:input_activation];
 			[input_shapes addObject:ccv_nnc_mps_graph_tensor_input_shape(activation, activation->info.dim, activation->stride)];
 
-			if (cmd.info.moe_routing.normalization_epsilon > 0)
+			if (cmd.info.moe_routing.normalization_epsilon > 0 || sigmoid)
 			{
-				// Compute scores and normalization in FP32 so small scores and epsilon survive FP16 inputs.
+				// Compute scores and normalization in FP32 so small scores and epsilon survive FP16 inputs,
+				// and so saturated sigmoid scores do not collapse into the same FP16 value before top-k.
 				if (mps_logits.dataType != MPSDataTypeFloat32)
 					mps_logits = [graph castTensor:mps_logits toType:MPSDataTypeFloat32 name:nil];
 				if (!cmd.info.moe_routing.preselected && mps_route.dataType != MPSDataTypeFloat32)
 					mps_route = [graph castTensor:mps_route toType:MPSDataTypeFloat32 name:nil];
 			}
-			MPSGraphTensor* const probabilities = _ccv_nnc_moe_routing_probabilities(graph, mps_logits);
+			MPSGraphTensor* const probabilities = _ccv_nnc_moe_routing_probabilities(graph, mps_logits, sigmoid);
 			MPSGraphTensor* selected;
 			if (cmd.info.moe_routing.preselected)
 				selected = mps_route;

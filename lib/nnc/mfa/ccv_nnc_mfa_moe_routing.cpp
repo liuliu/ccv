@@ -15,6 +15,7 @@ void ccv_nnc_mfa_prepare_moe_routing(ccv_nnc_mfa_context_t* context, ccv_nnc_mfa
 		params.preselected != 0,
 		params.single_input_token != 0,
 		params.normalization_epsilon,
+		params.sigmoid != 0,
 	};
 	auto pool = NS::AutoreleasePool::alloc()->init();
 	context->kernel_cache.findKernel<MoERoutingKernel, MoERoutingDescriptor, MoERoutingKernelDescriptor>(descriptor, context->device.get(), DeviceProperties());
@@ -44,6 +45,7 @@ void ccv_nnc_mfa_encode_moe_routing(ccv_nnc_mfa_context_t* context, ccv_nnc_mfa_
 		params.preselected != 0,
 		params.single_input_token != 0,
 		params.normalization_epsilon,
+		params.sigmoid != 0,
 	};
 	auto pool = NS::AutoreleasePool::alloc()->init();
 	auto pipeline_value = context->kernel_cache.findKernel<MoERoutingKernel, MoERoutingDescriptor, MoERoutingKernelDescriptor>(descriptor, context->device.get(), DeviceProperties());

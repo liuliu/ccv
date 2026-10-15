@@ -16,8 +16,10 @@ typedef struct {
 static CCV_IMPLEMENT_QSORT(_ccv_nnc_moe_routing_pair_sort, ccv_nnc_moe_routing_pair_t, less_than)
 #undef less_than
 
-static float _ccv_nnc_moe_routing_probability(const float logit)
+static float _ccv_nnc_moe_routing_probability(const float logit, const int sigmoid)
 {
+	if (sigmoid)
+		return 1.0f / (1.0f + expf(-logit));
 	return sqrtf(ccv_max(logit, 0) + log1pf(expf(-fabsf(logit))));
 }
 
@@ -42,6 +44,7 @@ static int _ccv_nnc_moe_routing_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint
 	const int pair_count = token_count * kth;
 	const int group_count = ccv_min(pair_count, expert_count);
 	const int single_input_token = token_count == 1 && (cmd.info.moe_routing.flags & CCV_NNC_MOE_ROUTING_SINGLE_INPUT_TOKEN);
+	const int sigmoid = !!(cmd.info.moe_routing.flags & CCV_NNC_MOE_ROUTING_SIGMOID);
 	const int gathered_rows = single_input_token ? 1 : pair_count;
 	if (kth <= 0 || expert_count < kth || token_count <= 0 || hidden <= 0 || cmd.info.moe_routing.weight_scale <= 0 ||
 		!isfinite(cmd.info.moe_routing.normalization_epsilon) || cmd.info.moe_routing.normalization_epsilon < 0 ||
@@ -93,11 +96,11 @@ static int _ccv_nnc_moe_routing_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint
 		{
 			ccv_half_precision_to_float((const uint16_t*)logits->data.f16 + token * expert_count, probabilities, expert_count);
 			for (expert = 0; expert < expert_count; expert++)
-				probabilities[expert] = _ccv_nnc_moe_routing_probability(probabilities[expert]);
+				probabilities[expert] = _ccv_nnc_moe_routing_probability(probabilities[expert], sigmoid);
 		} else {
 			const float* const token_logits = logits->data.f32 + token * expert_count;
 			for (expert = 0; expert < expert_count; expert++)
-				probabilities[expert] = _ccv_nnc_moe_routing_probability(token_logits[expert]);
+				probabilities[expert] = _ccv_nnc_moe_routing_probability(token_logits[expert], sigmoid);
 		}
 		int slot;
 		if (cmd.info.moe_routing.preselected)
