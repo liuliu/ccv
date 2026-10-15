@@ -15,7 +15,8 @@ bool GatedDeltaDescriptor::operator==(const GatedDeltaDescriptor& rhs) const {
   stateCheckpointCount == rhs.stateCheckpointCount &&
   inputMemoryPrecision == rhs.inputMemoryPrecision &&
   betaMemoryPrecision == rhs.betaMemoryPrecision &&
-  logDecay == rhs.logDecay;
+  logDecay == rhs.logDecay &&
+  channelDecay == rhs.channelDecay;
 }
 
 std::size_t std::hash<GatedDeltaDescriptor>::operator()(const GatedDeltaDescriptor& hash) const noexcept {
@@ -28,6 +29,7 @@ std::size_t std::hash<GatedDeltaDescriptor>::operator()(const GatedDeltaDescript
   seed = combine_64(seed, hash.inputMemoryPrecision.value);
   seed = combine_64(seed, hash.betaMemoryPrecision.value);
   seed = combine_64(seed, hash.logDecay ? 1 : 0);
+  seed = combine_64(seed, hash.channelDecay ? 1 : 0);
   seed = combine_64(seed, hash.loadM ? 1 : 0);
   return seed;
 }
@@ -69,6 +71,7 @@ std::pair<GatedDeltaKernelDescriptor, PipelineValue<GatedDeltaKernel> *> GatedDe
     constants->setConstantValue(&valueDimMultipleOf4, MTL::DataTypeBool, NS::UInteger(8));
     if (stateCheckpointCount > 0)
       constants->setConstantValue(&stateCheckpointCount, MTL::DataTypeUInt, NS::UInteger(9));
+    constants->setConstantValue(&channelDecay, MTL::DataTypeBool, NS::UInteger(10));
 
     NS::String* swiftName = NS::String::string("gated_delta", NS::UTF8StringEncoding);
     NS::Error* error = nil;

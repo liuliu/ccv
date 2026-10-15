@@ -4,7 +4,7 @@
 
 static int _ccv_nnc_gated_delta_forw_bitmask(const ccv_nnc_cmd_param_t cmd, const int input_size, const int output_size, const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size)
 {
-	// Inputs: q, k, v, decay / log_decay, beta, state_in.
+	// Inputs: q, k, v, decay / log_decay ([B, T, Hv] per head or [B, T, Hv, Dk] per key channel), beta, state_in.
 	// Outputs: y, state_out.
 	if (input_size == 6 && output_size == 2 && (input_bitmasks[0] & 63u) == 63u && (output_bitmasks[0] & 3u) == 3u)
 		return 1;
@@ -37,7 +37,7 @@ static void _ccv_nnc_gated_delta_tensor_auto_forw(const ccv_nnc_cmd_param_t cmd,
 	assert(q_nd == 4);
 	assert(k_nd == 4);
 	assert(v_nd == 4);
-	assert(log_decay_nd == 3);
+	assert(log_decay_nd == 3 || log_decay_nd == 4);
 	assert(beta_nd == 3);
 	assert(state_nd == 4);
 	assert(state_checkpoint_count >= 0);
@@ -52,6 +52,7 @@ static void _ccv_nnc_gated_delta_tensor_auto_forw(const ccv_nnc_cmd_param_t cmd,
 	assert(inputs[3].dim[0] == inputs[0].dim[0]);
 	assert(inputs[3].dim[1] == inputs[0].dim[1]);
 	assert(inputs[3].dim[2] == inputs[2].dim[2]);
+	assert(log_decay_nd == 3 || inputs[3].dim[3] == inputs[0].dim[3]);
 	assert(inputs[4].dim[0] == inputs[3].dim[0]);
 	assert(inputs[4].dim[1] == inputs[3].dim[1]);
 	assert(inputs[4].dim[2] == inputs[3].dim[2]);

@@ -4986,6 +4986,7 @@ CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_rotate_half(const char* const name);
 /**
  * Apply the gated delta recurrent update.
  * Inputs are (q, k, v, decay / log_decay, beta, state_in), and outputs are (y, state_out).
+ * decay / log_decay is either [B, T, Hv] (one gate per head) or [B, T, Hv, Dk] (one gate per key channel, as in Kimi Delta Attention).
  * @param log_decay If 1, the fourth input is log-decay and should be exponentiated. If 0, the fourth input is precomputed decay.
  * @param name The unique name of the model.
  * @return A model that can be applied with six inputs and generates output plus updated recurrent state.

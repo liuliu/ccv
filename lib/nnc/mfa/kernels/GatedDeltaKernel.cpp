@@ -82,6 +82,8 @@ constant uint Dv [[function_constant(5)]];
 constant bool log_decay_input [[function_constant(6)]];
 constant bool key_dim_multiple_of_32 [[function_constant(7)]];
 constant bool value_dim_multiple_of_4 [[function_constant(8)]];
+constant bool channel_decay [[function_constant(10)]];
+constant uint decay_stride = channel_decay ? Dk : 1;
 )" + checkpointConstants + R"(constant uint hv_per_hk = Hv / Hk;
 constant uint dv_per_threadgroup = 4;
 )" + historyCountConstant + R"(
@@ -118,17 +120,18 @@ kernel void gated_delta(
   device const input_t* q_ptr = q + (b * T * Hk + hk) * Dk;
   device const input_t* k_ptr = k + (b * T * Hk + hk) * Dk;
   device const input_t* v_ptr = v + (b * T * Hv + hv) * Dv + dv;
-  device const float* decay_ptr = log_decay + (b * T * Hv + hv);
+  device const float* decay_ptr = log_decay + (b * T * Hv + hv) * decay_stride;
   device const beta_t* beta_ptr = beta + (b * T * Hv + hv);
   device input_t* y_ptr = y + (b * T * Hv + hv) * Dv + dv;
 
   for (uint t = 0; t < T; t++) {
-    const float decay = log_decay_input ? simd_broadcast_first((lane_id == 0) ? precise::exp(decay_ptr[0]) : 0.0f) : decay_ptr[0];
+    const float head_decay = channel_decay ? 0.0f : (log_decay_input ? simd_broadcast_first((lane_id == 0) ? precise::exp(decay_ptr[0]) : 0.0f) : decay_ptr[0]);
     float memory = 0.0f;
     for (uint i = 0; i < state_elements_per_lane; i++) {
       const uint dk = state_elements_per_lane * lane_id + i;
       if (key_dim_multiple_of_32 || dk < Dk) {
-        state[i] *= decay;
+        // Per key channel decay (KDA) gives each lane its own gates for the state slice it owns.
+        state[i] *= channel_decay ? (log_decay_input ? precise::exp(decay_ptr[dk]) : decay_ptr[dk]) : head_decay;
         memory += state[i] * static_cast<float>(k_ptr[dk]);
       }
     }
@@ -152,7 +155,7 @@ kernel void gated_delta(
     k_ptr += Hk * Dk;
     v_ptr += Hv * Dv;
     y_ptr += Hv * Dv;
-    decay_ptr += Hv;
+    decay_ptr += Hv * decay_stride;
     beta_ptr += Hv;
   }
 )" + finalStateStore + R"(

@@ -45,6 +45,8 @@ struct GatedDeltaDescriptor {
 
   bool logDecay;
 
+  bool channelDecay;
+
   bool loadM;
 
   bool operator==(const GatedDeltaDescriptor& rhs) const;

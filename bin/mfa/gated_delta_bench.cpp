@@ -27,6 +27,7 @@ struct BenchmarkConfig {
   int duplicated_dispatches = 8;
   uint32_t state_checkpoint_count = 0;
   bool log_decay_input = true;
+  bool channel_decay = false;
 };
 
 struct GatedDeltaCase {
@@ -120,7 +121,7 @@ Buffers create_buffers(MTL::Device* device, const GatedDeltaCase& bench, const B
   buffers.q = make_buffer(device, make_data<float>(qk_count(bench), 0.0015f, 1));
   buffers.k = make_buffer(device, make_data<float>(qk_count(bench), 0.0013f, 2));
   buffers.v = make_buffer(device, make_data<float>(v_count(bench), 0.0011f, 3));
-  buffers.log_decay = make_buffer(device, make_decay(gate_count(bench), config.log_decay_input));
+  buffers.log_decay = make_buffer(device, make_decay(gate_count(bench) * (config.channel_decay ? bench.Dk : 1), config.log_decay_input));
   buffers.beta = make_buffer(device, make_beta(gate_count(bench)));
   buffers.state_in = make_buffer(device, make_data<float>(state_count(bench), 0.0007f, 4));
   buffers.y = NS::TransferPtr(device->newBuffer(v_count(bench) * sizeof(float), kSharedResourceOptions));
@@ -141,6 +142,8 @@ GatedDeltaDescriptor create_descriptor(const GatedDeltaCase& bench, const Benchm
   descriptor.inputMemoryPrecision = GEMMOperandPrecision::FP32;
   descriptor.betaMemoryPrecision = GEMMOperandPrecision::FP32;
   descriptor.logDecay = config.log_decay_input;
+  descriptor.channelDecay = config.channel_decay;
+  descriptor.loadM = false;
   return descriptor;
 }
 
@@ -233,6 +236,7 @@ void print_stats(const GatedDeltaCase& bench, const BenchmarkConfig& config, con
             << " Dv=" << bench.Dv
             << " state_checkpoint_count=" << config.state_checkpoint_count
             << " log_decay_input=" << (config.log_decay_input ? 1 : 0)
+            << " channel_decay=" << (config.channel_decay ? 1 : 0)
             << " avg_ms=" << std::fixed << std::setprecision(4) << stats.average_seconds * 1e3
             << " best3_avg_ms=" << stats.best3_average_seconds * 1e3
             << " median_ms=" << stats.median_seconds * 1e3
@@ -250,7 +254,7 @@ void print_usage(const char* argv0)
   std::cerr
       << "usage: " << argv0
       << " [--single] [--label NAME] [--B N] [--T N] [--Hk N] [--Hv N] [--Dk N] [--Dv N]"
-      << " [--warmup N] [--iters N] [--dups N] [--state-checkpoint-count N] [--log-decay-input|--decay-input]\n";
+      << " [--warmup N] [--iters N] [--dups N] [--state-checkpoint-count N] [--log-decay-input|--decay-input] [--channel-decay]\n";
 }
 
 bool parse_u32(const char* text, uint32_t* value)
@@ -345,6 +349,8 @@ int main(int argc, char** argv)
       config.log_decay_input = true;
     } else if (arg == "--decay-input") {
       config.log_decay_input = false;
+    } else if (arg == "--channel-decay") {
+      config.channel_decay = true;
     } else if (arg == "--help" || arg == "-h") {
       print_usage(argv[0]);
       return 0;
@@ -388,6 +394,7 @@ int main(int argc, char** argv)
             << " duplicated_dispatches=" << config.duplicated_dispatches
             << " state_checkpoint_count=" << config.state_checkpoint_count
             << " log_decay_input=" << (config.log_decay_input ? 1 : 0)
+            << " channel_decay=" << (config.channel_decay ? 1 : 0)
             << '\n';
 
   ShaderCache shader_cache;

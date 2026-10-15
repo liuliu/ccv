@@ -45,7 +45,7 @@ static int _ccv_nnc_gated_delta_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint
 	assert(q_nd == 4);
 	assert(k_nd == 4);
 	assert(v_nd == 4);
-	assert(log_decay_nd == 3);
+	assert(log_decay_nd == 3 || log_decay_nd == 4);
 	assert(beta_nd == 3);
 	assert(state_in_nd == 4);
 	assert(y_nd == 4);
@@ -71,6 +71,9 @@ static int _ccv_nnc_gated_delta_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint
 	assert(log_decay->info.dim[0] == B);
 	assert(log_decay->info.dim[1] == T);
 	assert(log_decay->info.dim[2] == Hv);
+	// A rank-4 decay carries one gate per key channel (KDA-style); rank-3 shares one gate per head.
+	const int channel_decay = log_decay_nd == 4;
+	assert(!channel_decay || log_decay->info.dim[3] == Dk);
 	assert(beta->info.dim[0] == B);
 	assert(beta->info.dim[1] == T);
 	assert(beta->info.dim[2] == Hv);
@@ -119,10 +122,12 @@ static int _ccv_nnc_gated_delta_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint
 					const float* const q_row = qp + qk_offset;
 					const float* const k_row = kp + qk_offset;
 					const size_t gate_offset = ((size_t)b * T + t) * Hv + hv;
-					const float decay = log_decay_input ? expf(gp[gate_offset]) : gp[gate_offset];
+					const float* const decay_row = gp + (channel_decay ? gate_offset * Dk : gate_offset);
+					const float head_decay = channel_decay ? 0 : (log_decay_input ? expf(decay_row[0]) : decay_row[0]);
 					float memory = 0;
 					for (dk = 0; dk < Dk; dk++)
 					{
+						const float decay = channel_decay ? (log_decay_input ? expf(decay_row[dk]) : decay_row[dk]) : head_decay;
 						const float decayed = state_row[dk] * decay;
 						state_row[dk] = decayed;
 						memory += decayed * k_row[dk];
