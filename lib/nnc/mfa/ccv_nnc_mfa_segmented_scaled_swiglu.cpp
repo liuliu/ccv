@@ -51,7 +51,7 @@ typedef struct {
   PipelineValue<SegmentedScaledGEMMKernel>* segmented_pipeline_value;
 } ccv_nnc_mfa_segmented_scaled_swiglu_execution_t;
 
-static constexpr uint32_t kSegmentedScaledSwiGLUBlockM = 128;
+static constexpr uint32_t kSegmentedScaledSwiGLUBlockM = 32;
 
 static ccv_nnc_mfa_segmented_scaled_swiglu_activation_layout_t activation_layout(
     const ccv_nnc_mfa_segmented_scaled_swiglu_params_t params) noexcept

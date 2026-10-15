@@ -37,7 +37,7 @@ typedef struct {
   size_t scratch_bytes;
 } ccv_nnc_mfa_segmented_int8_matmul_layout_t;
 
-static constexpr uint32_t kSegmentedScaledGEMMBlockM = 128;
+static constexpr uint32_t kSegmentedScaledGEMMBlockM = 32;
 
 static GEMMOperandPrecision io_precision(uint64_t data_type) noexcept
 {

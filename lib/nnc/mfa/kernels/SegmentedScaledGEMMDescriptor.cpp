@@ -45,8 +45,8 @@ std::size_t std::hash<SegmentedScaledGEMMDescriptor>::operator()(const Segmented
 SegmentedScaledGEMMKernelDescriptor SegmentedScaledGEMMDescriptor::kernelDescriptor() const noexcept
 {
   return SegmentedScaledGEMMKernelDescriptor(
-      simd::ushort3 { 128, 128, 128 },
-      8,
+      simd::ushort3 { 32, 128, 128 },
+      4,
       ioPrecision,
       useBias,
       loadM);
