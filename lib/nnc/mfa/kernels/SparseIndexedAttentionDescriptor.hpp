@@ -22,6 +22,7 @@ struct SparseIndexedAttentionDescriptor {
   uint32_t K = 0;
   bool isCausal = false;
   uint32_t slidingWindow = 0;
+  uint32_t blockSize = 1;
   uint32_t sinkHeadStride = 0;
   float scale = 1;
   bool loadRows = false;

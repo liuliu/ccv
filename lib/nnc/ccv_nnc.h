@@ -380,6 +380,7 @@ typedef struct {
 			int is_causal; /**< [sparse_indexed_attention.is_causal] Whether to apply tail-aligned causal visibility to the dense K/V rows. */
 			int attention_sinks; /**< [sparse_indexed_attention.attention_sinks] Whether a scalar or per-query-head attention sink tensor is supplied as an input. */
 			int sliding_window; /**< [sparse_indexed_attention.sliding_window] Causal sliding-window size for dense K/V rows, including the current token. 0 disables sliding-window attention. */
+			int block_size; /**< [sparse_indexed_attention.block_size] If greater than 1, each sparse index i selects rows [i * block_size, (i + 1) * block_size), and causal dense rows start at the query's own block boundary (the incomplete block). Block boundaries are multiples of block_size counted from dense row 0. Requires is_causal, no sliding window, and non-empty sparse K/V. */
 		} sparse_indexed_attention;
 		struct {
 			float scale; /**< [walsh_hadamard_transform.scale] The scale applied after the Walsh-Hadamard transform. */

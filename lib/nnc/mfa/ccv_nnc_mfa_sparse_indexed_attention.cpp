@@ -64,6 +64,7 @@ void ccv_nnc_mfa_encode_sparse_indexed_attention(ccv_nnc_mfa_context_t* context,
     descriptor.K = params.K;
     descriptor.isCausal = params.is_causal != 0;
     descriptor.slidingWindow = params.sliding_window;
+    descriptor.blockSize = std::max(params.block_size, 1u);
     descriptor.sinkHeadStride = params.sink_head_stride;
     descriptor.scale = params.scale;
   };
@@ -143,7 +144,8 @@ void ccv_nnc_mfa_encode_sparse_indexed_attention(ccv_nnc_mfa_context_t* context,
             params.scale,
             true,
             params.attention_sinks != 0,
-            params.sliding_window);
+            params.sliding_window,
+            std::max(params.block_size, 1u));
     auto pipelineValue = shaderCache.findKernel<
         SparseIndexedAttentionR1Kernel,
         SparseIndexedAttentionR1Descriptor,

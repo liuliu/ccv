@@ -61,6 +61,8 @@ struct SparseIndexedAttentionR1Descriptor {
 
   uint32_t slidingWindow;
 
+  uint32_t blockSize;
+
   uint32_t simdgroups;
 
   uint32_t workgroups;
@@ -79,7 +81,8 @@ struct SparseIndexedAttentionR1Descriptor {
       float scale,
       bool loadK,
       bool attentionSinks,
-      uint32_t slidingWindow) noexcept;
+      uint32_t slidingWindow,
+      uint32_t blockSize = 1) noexcept;
 
   std::pair<SparseIndexedAttentionR1KernelDescriptor, PipelineValue<SparseIndexedAttentionR1Kernel>*> findKernel(
       MTL::Device* const device,

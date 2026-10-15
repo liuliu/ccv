@@ -62,9 +62,12 @@ static int _ccv_nnc_sparse_indexed_attention_forw(const ccv_nnc_cmd_t cmd, const
 	const int attention_sinks = cmd.info.sparse_indexed_attention.attention_sinks;
 	const int is_causal = cmd.info.sparse_indexed_attention.is_causal;
 	const int sliding_window = cmd.info.sparse_indexed_attention.sliding_window;
+	const int block_size = ccv_max(cmd.info.sparse_indexed_attention.block_size, 1);
 	if ((attention_sinks != 0) != (input_size == 7))
 		return CCV_NNC_EXEC_INVALID;
 	if (sliding_window < 0 || (sliding_window > 0 && !is_causal))
+		return CCV_NNC_EXEC_INVALID;
+	if (cmd.info.sparse_indexed_attention.block_size < 0 || (block_size > 1 && (!is_causal || sliding_window > 0)))
 		return CCV_NNC_EXEC_INVALID;
 	const ccv_nnc_tensor_view_t* const q = (const ccv_nnc_tensor_view_t*)inputs[0];
 	const ccv_nnc_tensor_view_t* const dense_k = (const ccv_nnc_tensor_view_t*)inputs[1];
@@ -125,6 +128,9 @@ static int _ccv_nnc_sparse_indexed_attention_forw(const ccv_nnc_cmd_t cmd, const
 	const int sparse_v_is_empty = sparse_v->info.dim[0] == 0;
 	if (sparse_k_is_empty != sparse_v_is_empty)
 		return CCV_NNC_EXEC_INVALID;
+	// The dense-only fallback has no blocked window; blocked callers pass sparse rows.
+	if (sparse_k_is_empty && block_size > 1)
+		return CCV_NNC_EXEC_INVALID;
 	if (sparse_k_is_empty)
 		return _ccv_nnc_sparse_indexed_attention_dense_forw(cmd, hint, flags, inputs[0], inputs[1], inputs[2], sinks ? inputs[6] : 0, outputs[0], stream_context);
 	const int sparse_k_nd = ccv_nnc_tensor_nd(sparse_k->info.dim);
@@ -162,6 +168,10 @@ static int _ccv_nnc_sparse_indexed_attention_forw(const ccv_nnc_cmd_t cmd, const
 				dense_end = dense_rows;
 			if (sliding_window > 0 && dense_end > sliding_window)
 				dense_start = dense_end - sliding_window;
+			// Blocked: dense rows are only the query's incomplete block; complete blocks
+			// are visible only through the sparse indices.
+			if (block_size > 1)
+				dense_start = dense_end / block_size * block_size;
 		}
 		for (h = 0; h < H; h++)
 		{
@@ -177,9 +187,10 @@ static int _ccv_nnc_sparse_indexed_attention_forw(const ccv_nnc_cmd_t cmd, const
 				const int idx = index_ptr[i];
 				if (idx < 0)
 					break;
-				if (idx >= sparse_rows)
+				if ((idx + 1) * block_size > sparse_rows)
 					return CCV_NNC_EXEC_INVALID;
-				_ccv_nnc_sparse_indexed_attention_attend_row(q_ptr, sparse_k->data.f32 + idx * D, sparse_v->data.f32 + idx * D, D, scale, &maxval, &sumval, acc);
+				for (r = idx * block_size; r < (idx + 1) * block_size; r++)
+					_ccv_nnc_sparse_indexed_attention_attend_row(q_ptr, sparse_k->data.f32 + r * D, sparse_v->data.f32 + r * D, D, scale, &maxval, &sumval, acc);
 			}
 			if (sinks)
 				_ccv_nnc_sparse_indexed_attention_attend_sink(sinks->data.f32[h * sink_head_stride], D, &maxval, &sumval, acc);

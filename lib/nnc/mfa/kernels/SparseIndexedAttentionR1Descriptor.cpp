@@ -46,6 +46,7 @@ bool SparseIndexedAttentionR1Descriptor::operator==(const SparseIndexedAttention
       scale == rhs.scale &&
       attentionSinks == rhs.attentionSinks &&
       slidingWindow == rhs.slidingWindow &&
+      blockSize == rhs.blockSize &&
       simdgroups == rhs.simdgroups &&
       workgroups == rhs.workgroups &&
       mode == rhs.mode;
@@ -61,7 +62,8 @@ SparseIndexedAttentionR1Descriptor SparseIndexedAttentionR1Descriptor::select(
     float scale,
     bool loadK,
     bool attentionSinks,
-    uint32_t slidingWindow) noexcept
+    uint32_t slidingWindow,
+    uint32_t blockSize) noexcept
 {
   SparseIndexedAttentionR1Descriptor descriptor;
   descriptor.memoryPrecision = memoryPrecision;
@@ -74,10 +76,13 @@ SparseIndexedAttentionR1Descriptor SparseIndexedAttentionR1Descriptor::select(
   descriptor.loadK = loadK;
   descriptor.attentionSinks = attentionSinks;
   descriptor.slidingWindow = slidingWindow;
+  descriptor.blockSize = blockSize;
 
+  // Blocked: one query sees its incomplete block densely and K blocks sparsely.
   const uint32_t visibleDenseRows =
-      slidingWindow > 0 ? std::min(denseRows, slidingWindow) : denseRows;
-  const uint64_t maximumRows = (uint64_t)visibleDenseRows + K;
+      blockSize > 1 ? std::min(denseRows, blockSize - 1)
+      : slidingWindow > 0 ? std::min(denseRows, slidingWindow) : denseRows;
+  const uint64_t maximumRows = (uint64_t)visibleDenseRows + (uint64_t)K * blockSize;
   if (maximumRows < 2048) {
     descriptor.mode = Mode::direct;
     descriptor.simdgroups = std::min(8u, directSIMDGroups(D, memoryPrecision));
@@ -104,6 +109,7 @@ std::size_t std::hash<SparseIndexedAttentionR1Descriptor>::operator()(const Spar
   seed = combine_64(seed, pack_64(simd::uint2 { hash.simdgroups, hash.workgroups }));
   seed = combine_32(seed, hash.loadK ? 1 : 0);
   seed = combine_32(seed, hash.slidingWindow);
+  seed = combine_32(seed, hash.blockSize);
   seed = combine_32(seed, hash.attentionSinks ? 1 : 0);
   seed = combine_32(seed, uint32_t(std::hash<float>{}(hash.scale)));
   return seed;
@@ -151,6 +157,7 @@ std::pair<SparseIndexedAttentionR1KernelDescriptor, PipelineValue<SparseIndexedA
     constants->setConstantValue(&scale, MTL::DataTypeFloat, NS::UInteger(4));
     constants->setConstantValue(
         &slidingWindow, MTL::DataTypeUInt, NS::UInteger(5));
+    constants->setConstantValue(&blockSize, MTL::DataTypeUInt, NS::UInteger(9));
     if (!loadK) {
       constants->setConstantValue(
           &denseRows, MTL::DataTypeUInt, NS::UInteger(6));

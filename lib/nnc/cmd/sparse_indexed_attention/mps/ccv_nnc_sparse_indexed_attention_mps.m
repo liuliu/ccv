@@ -32,9 +32,12 @@ static int _ccv_nnc_sparse_indexed_attention_forw(const ccv_nnc_cmd_t cmd, const
 	const int attention_sinks = cmd.info.sparse_indexed_attention.attention_sinks;
 	const int is_causal = cmd.info.sparse_indexed_attention.is_causal;
 	const int sliding_window = cmd.info.sparse_indexed_attention.sliding_window;
+	const int block_size = ccv_max(cmd.info.sparse_indexed_attention.block_size, 1);
 	if ((attention_sinks != 0) != (input_size == 7))
 		return CCV_NNC_EXEC_INVALID;
 	if (sliding_window < 0 || (sliding_window > 0 && !is_causal))
+		return CCV_NNC_EXEC_INVALID;
+	if (cmd.info.sparse_indexed_attention.block_size < 0 || (block_size > 1 && (!is_causal || sliding_window > 0)))
 		return CCV_NNC_EXEC_INVALID;
 	const ccv_nnc_tensor_view_t* const q = (const ccv_nnc_tensor_view_t*)inputs[0];
 	const ccv_nnc_tensor_view_t* const dense_k = (const ccv_nnc_tensor_view_t*)inputs[1];
@@ -101,6 +104,9 @@ static int _ccv_nnc_sparse_indexed_attention_forw(const ccv_nnc_cmd_t cmd, const
 	const int sparse_v_is_empty = sparse_v->info.dim[0] == 0;
 	if (sparse_k_is_empty != sparse_v_is_empty)
 		return CCV_NNC_EXEC_INVALID;
+	// The dense-only fallback has no blocked window; blocked callers pass sparse rows.
+	if (sparse_k_is_empty && block_size > 1)
+		return CCV_NNC_EXEC_INVALID;
 	if (sparse_k_is_empty)
 		return _ccv_nnc_sparse_indexed_attention_dense_forw(cmd, hint, flags, inputs[0], inputs[1], inputs[2], sinks ? inputs[6] : 0, outputs[0], stream_context);
 	const int sparse_k_nd = ccv_nnc_tensor_nd(sparse_k->info.dim);
@@ -150,6 +156,7 @@ static int _ccv_nnc_sparse_indexed_attention_forw(const ccv_nnc_cmd_t cmd, const
 			.is_causal = (uint8_t)(is_causal != 0),
 			.attention_sinks = (uint8_t)(attention_sinks != 0),
 			.sliding_window = (uint32_t)sliding_window,
+			.block_size = (uint32_t)block_size,
 			.sink_head_stride = sink_head_stride,
 			.variant = variant,
 			.loadM = (ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M) != 0,

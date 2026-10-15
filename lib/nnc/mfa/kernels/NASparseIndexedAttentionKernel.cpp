@@ -196,6 +196,7 @@ constant bool is_causal [[function_constant(5)]];
 constant uint sink_head_stride [[function_constant(6)]];
 constant float scale [[function_constant(7)]];
 constant uint sliding_window [[function_constant(8)]];
+constant uint block_size [[function_constant(9)]];
 
 constant uint K_edge = {{HEAD_DIMENSION}}u + 1u - {{DIM_BLOCK}}u;
 constant float log2_e = 1.442695041f;
@@ -295,6 +296,9 @@ kernel void sparse_indexed_attention(
     dense_end = uint(clamp(causal_end, 0, int(dense_rows)));
     if (sliding_window > 0 && dense_end > sliding_window) {
       dense_start = dense_end - sliding_window;
+    }
+    if (block_size > 1) {
+      dense_start = dense_end / block_size * block_size;
     }
   }
   const uint dense_count = dense_end - dense_start;
@@ -548,6 +552,16 @@ constant uint H [[function_constant(3)]];
 constant uint sink_head_stride [[function_constant(6)]];
 constant float scale [[function_constant(7)]];
 constant uint sliding_window [[function_constant(8)]];
+constant uint block_size [[function_constant(9)]];
+
+// Blocked sparse indices: virtual entry i reads block indices[i / block_size].
+inline int sparse_row(device const int* row_indices, uint i) {
+  if (block_size <= 1) {
+    return row_indices[i];
+  }
+  const int base = row_indices[i / block_size];
+  return base < 0 ? base : base * int(block_size) + int(i % block_size);
+}
 
 constant uint K_edge = {{HEAD_DIMENSION}}u + 1u - {{DIM_BLOCK}}u;
 constant float log2_e = 1.442695041f;
@@ -634,6 +648,9 @@ kernel void sparse_indexed_attention(
     if (sliding_window > 0 && dense_end > sliding_window) {
       dense_start = dense_end - sliding_window;
     }
+    if (block_size > 1) {
+      dense_start = dense_end / block_size * block_size;
+    }
   }
   for (uint dense_base = dense_start; dense_base < dense_end; dense_base += {{THREADGROUP_ROW_BLOCK}}u) {
     uint block_rows = min({{THREADGROUP_ROW_BLOCK}}u, dense_end - dense_base);
@@ -659,15 +676,16 @@ kernel void sparse_indexed_attention(
   }
   device const int* row_indices = indices + token * K;
   bool stop_sparse = false;
-  for (uint sparse_base = 0; sparse_base < K && !stop_sparse; sparse_base += {{THREADGROUP_ROW_BLOCK}}u) {
+  const uint sparse_count = K * block_size;
+  for (uint sparse_base = 0; sparse_base < sparse_count && !stop_sparse; sparse_base += {{THREADGROUP_ROW_BLOCK}}u) {
     uint block_rows = 0;
     #pragma clang loop unroll(full)
     for (uint j = 0; j < {{THREADGROUP_ROW_BLOCK}}u; j++) {
-      if (sparse_base + j >= K) {
+      if (sparse_base + j >= sparse_count) {
         stop_sparse = true;
         break;
       }
-      const int idx = row_indices[sparse_base + j];
+      const int idx = sparse_row(row_indices, sparse_base + j);
       if (idx < 0) {
         stop_sparse = true;
         break;
@@ -692,7 +710,7 @@ kernel void sparse_indexed_attention(
       const uint d = load_idx % {{HEAD_DIMENSION}}u;
       const uint row = load_idx / {{HEAD_DIMENSION}}u;
       if (row < block_rows) {
-        KV_buf[load_idx] = sparse_k[uint(row_indices[sparse_base + row]) * {{HEAD_DIMENSION}}u + d];
+        KV_buf[load_idx] = sparse_k[uint(sparse_row(row_indices, sparse_base + row)) * {{HEAD_DIMENSION}}u + d];
       } else {
         KV_buf[load_idx] = (real)0;
       }
@@ -862,6 +880,16 @@ constant uint H [[function_constant(3)]];
 constant uint sink_head_stride [[function_constant(6)]];
 constant float scale [[function_constant(7)]];
 constant uint sliding_window [[function_constant(8)]];
+constant uint block_size [[function_constant(9)]];
+
+// Blocked sparse indices: virtual entry i reads block indices[i / block_size].
+inline int sparse_row(device const int* row_indices, uint i) {
+  if (block_size <= 1) {
+    return row_indices[i];
+  }
+  const int base = row_indices[i / block_size];
+  return base < 0 ? base : base * int(block_size) + int(i % block_size);
+}
 
 constant float log2_e = 1.442695041f;
 
@@ -943,6 +971,9 @@ kernel void sparse_indexed_attention(
     if (sliding_window > 0 && dense_end > sliding_window) {
       dense_start = dense_end - sliding_window;
     }
+    if (block_size > 1) {
+      dense_start = dense_end / block_size * block_size;
+    }
   }
   for (uint dense_base = dense_start; dense_base < dense_end; dense_base += {{THREADGROUP_ROW_BLOCK_D128}}u) {
     uint block_rows = min({{THREADGROUP_ROW_BLOCK_D128}}u, dense_end - dense_base);
@@ -956,15 +987,16 @@ kernel void sparse_indexed_attention(
   }
   device const int* row_indices = indices + token * K;
   bool stop_sparse = false;
-  for (uint sparse_base = 0; sparse_base < K && !stop_sparse; sparse_base += {{THREADGROUP_ROW_BLOCK_D128}}u) {
+  const uint sparse_count = K * block_size;
+  for (uint sparse_base = 0; sparse_base < sparse_count && !stop_sparse; sparse_base += {{THREADGROUP_ROW_BLOCK_D128}}u) {
     uint block_rows = 0;
     #pragma clang loop unroll(full)
     for (uint j = 0; j < {{THREADGROUP_ROW_BLOCK_D128}}u; j++) {
-      if (sparse_base + j >= K) {
+      if (sparse_base + j >= sparse_count) {
         stop_sparse = true;
         break;
       }
-      const int idx = row_indices[sparse_base + j];
+      const int idx = sparse_row(row_indices, sparse_base + j);
       if (idx < 0) {
         stop_sparse = true;
         break;
@@ -979,7 +1011,7 @@ kernel void sparse_indexed_attention(
       continue;
     }
     for (uint j = uint(tid); j < block_rows; j += {{SPARSE_THREADS_D128}}u) {
-      row_ids[j] = uint(row_indices[sparse_base + j]);
+      row_ids[j] = uint(sparse_row(row_indices, sparse_base + j));
     }
     device real* kv_source = sparse_k;
 )";

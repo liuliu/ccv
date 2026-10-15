@@ -14,6 +14,7 @@ typedef struct {
   uint32_t D;
   uint32_t K;
   uint32_t sliding_window;
+  uint32_t block_size;
   uint32_t variant;
   float scale;
   uint64_t data_type;

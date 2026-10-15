@@ -58,6 +58,16 @@ constant uint D [[function_constant(4)]];
 constant uint sink_head_stride [[function_constant(7)]];
 constant float scale [[function_constant(8)]];
 constant uint sliding_window [[function_constant(9)]];
+constant uint block_size [[function_constant(10)]];
+
+// Blocked sparse indices: virtual entry i reads block indices[i / block_size].
+inline int sparse_row(device const int* row_indices, uint i) {
+  if (block_size <= 1) {
+    return row_indices[i];
+  }
+  const int base = row_indices[i / block_size];
+  return base < 0 ? base : base * int(block_size) + int(i % block_size);
+}
 
 constant float log2_e = 1.442695041f;
 constant float scale_log2e = scale * log2_e;
@@ -122,6 +132,9 @@ kernel void sparse_indexed_attention(
     if (sliding_window > 0 && dense_end > sliding_window) {
       dense_start = dense_end - sliding_window;
     }
+    if (block_size > 1) {
+      dense_start = dense_end / block_size * block_size;
+    }
   }
   for (uint row0 = dense_start; row0 < dense_end; row0 += {{ROWS_PER_BLOCK}}u) {
     const uint rows = min({{ROWS_PER_BLOCK}}u, dense_end - row0);
@@ -156,15 +169,16 @@ kernel void sparse_indexed_attention(
     }
     threadgroup_barrier(mem_flags::mem_threadgroup);
   }
-  for (uint i0 = 0; i0 < K; i0 += {{ROWS_PER_BLOCK}}u) {
+  const uint sparse_count = K * block_size;
+  for (uint i0 = 0; i0 < sparse_count; i0 += {{ROWS_PER_BLOCK}}u) {
     threadgroup int* row_ids = (threadgroup int*)(scratch + {{ROWS_PER_BLOCK}}u * {{MAX_HEAD_DIMENSION}}u * sizeof(real));
     threadgroup uint* row_count = (threadgroup uint*)(row_ids + {{ROWS_PER_BLOCK}}u);
     threadgroup uint* stop_flag = row_count + 1;
     if (tid == 0) {
       uint rows = 0;
       uint stop = 0;
-      for (uint i = 0; i < {{ROWS_PER_BLOCK}}u && i0 + i < K; ++i) {
-        const int index = indices[t * K + i0 + i];
+      for (uint i = 0; i < {{ROWS_PER_BLOCK}}u && i0 + i < sparse_count; ++i) {
+        const int index = sparse_row(indices + t * K, i0 + i);
         if (index < 0 || uint(index) >= sparse_rows) {
           stop = 1;
           break;

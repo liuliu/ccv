@@ -95,9 +95,11 @@ kernel void sparse_indexed_attention_r1_direct(
     for (uint d = lane_id; d < D_LEN; d += 32) {
       q_shared[d] = q_row[d];
     }
-    uint first_invalid = K;
-    for (uint i = lane_id; i < K; i += 32) {
-      const int index = Indices[i];
+    // Blocked indices expand to block_size rows each; scan virtual rows.
+    const uint sparse_capacity = K * block_size;
+    uint first_invalid = sparse_capacity;
+    for (uint i = lane_id; i < sparse_capacity; i += 32) {
+      const int index = sparse_row(Indices, i);
       if ((index < 0 || uint(index) >= sparse_rows) && i < first_invalid) {
         first_invalid = i;
       }
@@ -110,7 +112,9 @@ kernel void sparse_indexed_attention_r1_direct(
   threadgroup_barrier(mem_flags::mem_threadgroup);
 
   const uint sparse_count = sparse_count_shared[0];
+  // One query: blocked attention sees only its incomplete block densely.
   const uint dense_count =
+      block_size > 1 ? dense_rows % block_size :
       sliding_window > 0 && sliding_window < dense_rows ?
       sliding_window : dense_rows;
   const uint dense_start = dense_rows - dense_count;
@@ -135,7 +139,7 @@ kernel void sparse_indexed_attention_r1_direct(
       kv_row = DenseKV + (dense_start + row) * D_LEN;
     } else {
       const uint sparse_offset = row - dense_count;
-      kv_row = SparseKV + uint(Indices[sparse_offset]) * D_LEN;
+      kv_row = SparseKV + uint(sparse_row(Indices, sparse_offset)) * D_LEN;
     }
     float dot_acc = 0;
     for (uint i = 0; i < 16; ++i) {
@@ -250,9 +254,11 @@ kernel void sparse_indexed_attention_r1_split_partials(
     for (uint d = lane_id; d < D_LEN; d += 32) {
       q_shared[d] = q_row[d];
     }
-    uint first_invalid = K;
-    for (uint i = lane_id; i < K; i += 32) {
-      const int index = Indices[i];
+    // Blocked indices expand to block_size rows each; scan virtual rows.
+    const uint sparse_capacity = K * block_size;
+    uint first_invalid = sparse_capacity;
+    for (uint i = lane_id; i < sparse_capacity; i += 32) {
+      const int index = sparse_row(Indices, i);
       if ((index < 0 || uint(index) >= sparse_rows) && i < first_invalid) {
         first_invalid = i;
       }
@@ -265,7 +271,9 @@ kernel void sparse_indexed_attention_r1_split_partials(
   threadgroup_barrier(mem_flags::mem_threadgroup);
 
   const uint sparse_count = sparse_count_shared[0];
+  // One query: blocked attention sees only its incomplete block densely.
   const uint dense_count =
+      block_size > 1 ? dense_rows % block_size :
       sliding_window > 0 && sliding_window < dense_rows ?
       sliding_window : dense_rows;
   const uint dense_start = dense_rows - dense_count;
@@ -290,7 +298,7 @@ kernel void sparse_indexed_attention_r1_split_partials(
       kv_row = DenseKV + (dense_start + row) * D_LEN;
     } else {
       const uint sparse_offset = row - dense_count;
-      kv_row = SparseKV + uint(Indices[sparse_offset]) * D_LEN;
+      kv_row = SparseKV + uint(sparse_row(Indices, sparse_offset)) * D_LEN;
     }
     float dot_acc = 0;
     for (uint i = 0; i < 16; ++i) {
@@ -417,5 +425,15 @@ std::string SparseIndexedAttentionR1Kernel::createConstants() const noexcept {
     defines += "constant uint K [[function_constant(8)]];\n";
   }
   defines += "constant float scale_log2e = dot_product_scale * 1.442695041;\n";
+  defines += "constant uint block_size [[function_constant(9)]];\n";
+  // Blocked sparse indices: virtual row i reads block Indices[i / block_size].
+  defines +=
+      "inline int sparse_row(device const int* row_indices, uint i) {\n"
+      "  if (block_size <= 1) {\n"
+      "    return row_indices[i];\n"
+      "  }\n"
+      "  const int base = row_indices[i / block_size];\n"
+      "  return base < 0 ? base : base * int(block_size) + int(i % block_size);\n"
+      "}\n";
   return defines;
 }

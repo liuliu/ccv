@@ -20,6 +20,7 @@ bool NASparseIndexedAttentionDescriptor::operator==(const NASparseIndexedAttenti
   (loadK ? (K == 0) == (rhs.K == 0) : K == rhs.K) &&
   isCausal == rhs.isCausal &&
   slidingWindow == rhs.slidingWindow &&
+  blockSize == rhs.blockSize &&
   sinkHeadStride == rhs.sinkHeadStride &&
   scale == rhs.scale &&
   variant == rhs.variant;
@@ -34,6 +35,7 @@ std::size_t std::hash<NASparseIndexedAttentionDescriptor>::operator()(const NASp
   seed = combine_64(seed, pack_64(simd::uint2 { hash.H, hash.loadK ? (hash.K == 0 ? 1u : 0u) : hash.K }));
   seed = combine_64(seed, pack_64(simd::uint2 { hash.sinkHeadStride, hash.isCausal ? 1u : 0u }));
   seed = combine_32(seed, hash.slidingWindow);
+  seed = combine_32(seed, hash.blockSize);
   seed = combine_32(seed, pack_32(simd::ushort2 { (unsigned short)((hash.attentionSinks ? 1 : 0) | (hash.loadRows ? 2 : 0)), (unsigned short)hash.variant }));
   seed = combine_32(seed, uint32_t(std::hash<float>{}(hash.scale)));
   return seed;
@@ -77,6 +79,7 @@ std::pair<NASparseIndexedAttentionKernelDescriptor, PipelineValue<NASparseIndexe
     constants->setConstantValue(&sinkHeadStride, MTL::DataTypeUInt, NS::UInteger(6));
     constants->setConstantValue(&scale, MTL::DataTypeFloat, NS::UInteger(7));
     constants->setConstantValue(&slidingWindow, MTL::DataTypeUInt, NS::UInteger(8));
+    constants->setConstantValue(&blockSize, MTL::DataTypeUInt, NS::UInteger(9));
     NS::String* swiftName = NS::String::string("sparse_indexed_attention", NS::UTF8StringEncoding);
     NS::Error* error = nil;
     auto function = NS::TransferPtr(library->newFunction(swiftName, constants.get(), &error));
