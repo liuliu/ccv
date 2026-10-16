@@ -29,6 +29,9 @@ struct SparseIndexedAttentionR1Kernel {
   uint32_t threadgroupSize(
       const SparseIndexedAttentionR1Descriptor& descriptor) const noexcept;
 
+  uint32_t reduceThreadgroupSize(
+      const SparseIndexedAttentionR1Descriptor& descriptor) const noexcept;
+
 private:
   std::string createSource() const noexcept;
 

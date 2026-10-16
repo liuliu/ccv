@@ -225,7 +225,7 @@ void ccv_nnc_mfa_encode_sparse_indexed_attention(ccv_nnc_mfa_context_t* context,
           &params.sink_head_stride, sizeof(params.sink_head_stride), 7);
     }
     encoder->dispatchThreadgroups(
-        MTL::Size(params.H, 1, descriptor.workgroups),
+        MTL::Size((params.H + descriptor.simdgroups - 1) / descriptor.simdgroups, 1, descriptor.workgroups),
         MTL::Size(threadgroupSize, 1, 1));
     command_batch->finishCommand(encoder);
 
@@ -237,7 +237,7 @@ void ccv_nnc_mfa_encode_sparse_indexed_attention(ccv_nnc_mfa_context_t* context,
     reduceEncoder->setBuffer(tensors[7], tensor_offsets[7], 1);
     reduceEncoder->dispatchThreadgroups(
         MTL::Size(params.H, 1, 1),
-        MTL::Size(32, 1, 1));
+        MTL::Size(kernel->reduceThreadgroupSize(descriptor), 1, 1));
     command_batch->finishCommand(reduceEncoder);
     return;
   } else if (params.use_neural_accelerators) {

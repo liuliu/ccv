@@ -24,9 +24,15 @@ static uint32_t alignUp(uint32_t value, uint32_t alignment) noexcept {
 uint32_t SparseIndexedAttentionR1Kernel::threadgroupMemoryAllocation(
     const SparseIndexedAttentionR1Descriptor& descriptor) const noexcept
 {
+  // Every SIMD group publishes the first invalid sparse row it scanned.
+  const uint32_t scanBytes = descriptor.simdgroups * sizeof(uint32_t);
+  if (descriptor.mode == SparseIndexedAttentionR1Descriptor::Mode::splitReduce) {
+    return alignUp(scanBytes, 16);
+  }
+  // Direct mode also merges every SIMD group's output, sum, and maximum.
   const uint32_t partialBytes =
       descriptor.simdgroups * (descriptor.D + 2) * sizeof(float);
-  return alignUp(partialBytes + sizeof(uint32_t), 16);
+  return alignUp(partialBytes + scanBytes, 16);
 }
 
 uint32_t SparseIndexedAttentionR1Kernel::threadgroupSize(
@@ -35,74 +41,45 @@ uint32_t SparseIndexedAttentionR1Kernel::threadgroupSize(
   return 32 * descriptor.simdgroups;
 }
 
-std::string SparseIndexedAttentionR1Kernel::createSource() const noexcept {
-  std::string source = createConstants();
-  source += R"(
-#include <metal_stdlib>
-using namespace metal;
-
-kernel void sparse_indexed_attention_r1_direct(
-    device const real* Q [[buffer(0)]],
-    device const real* DenseKV [[buffer(1)]],
-    device const real* SparseKV [[buffer(2)]],
-    device const int* Indices [[buffer(3)]],
-)";
-  if (attentionSinks) {
-    source += R"(
-    device const real* Sinks [[buffer(4)]],
-)";
-  }
-  source += R"(
-    device real* O [[buffer(5)]],
-)";
-  if (loadK) {
-    source += R"(
-    const device uint* shape [[buffer(6)]],
-)";
-  }
-  if (attentionSinks) {
-    source += R"(
-    constant uint& sink_head_stride [[buffer(7)]],
-)";
-  }
-  source += R"(
-    threadgroup uchar* scratch [[threadgroup(0)]],
-    uint h [[threadgroup_position_in_grid]],
-    ushort lane_id [[thread_index_in_simdgroup]],
-    ushort sgid [[simdgroup_index_in_threadgroup]])
+uint32_t SparseIndexedAttentionR1Kernel::reduceThreadgroupSize(
+    const SparseIndexedAttentionR1Descriptor& descriptor) const noexcept
 {
-)";
-  if (loadK) {
-    source += R"(
-  const uniform<uint> dense_rows = make_uniform(shape[0]);
-  const uniform<uint> sparse_rows = make_uniform(shape[1]);
-  const uniform<uint> K = make_uniform(shape[2]);
-)";
-  }
-  source += R"(
-  threadgroup float* partial_o = (threadgroup float*)scratch;
-  threadgroup float* partial_s = partial_o + NSG * D_LEN;
-  threadgroup float* partial_m = partial_s + NSG;
-  threadgroup uint* sparse_count_shared = (threadgroup uint*)(partial_m + NSG);
+  // One output component per thread.
+  return (descriptor.D + 31) / 32 * 32;
+}
 
-  if (sgid == 0) {
-    // Blocked indices expand to block_size rows each; scan virtual rows.
-    const uint sparse_capacity = K * block_size;
-    uint first_invalid = sparse_capacity;
-    for (uint i = lane_id; i < sparse_capacity; i += 32) {
-      const int index = sparse_row(Indices, i);
-      if ((index < 0 || uint(index) >= sparse_rows) && i < first_invalid) {
-        first_invalid = i;
-      }
+// Shared by both modes. The caller defines h, stream, streams, and partial_invalid.
+// All SIMD groups scan for the terminator together; each then visits rows stream,
+// stream + streams, ... and leaves its softmax state in q, acc, row_m, and row_s.
+// exitPastHeads retires SIMD groups past the last head after the scan barrier.
+static std::string traversalSource(const bool attentionSinks, const char* sinkOwner, const bool exitPastHeads, const uint32_t rowsPerStep) {
+  std::string source = R"(
+  // All SIMD groups share the scan for the first invalid virtual sparse row.
+  // Blocked indices expand to block_size rows each.
+  const uint sparse_capacity = K * block_size;
+  uint first_invalid = sparse_capacity;
+  for (uint i = sgid * 32 + lane_id; i < sparse_capacity; i += NSG * 32) {
+    const int index = sparse_row(Indices, i);
+    if (index < 0 || uint(index) >= sparse_rows) {
+      first_invalid = i;
+      break;
     }
-    first_invalid = simd_min(first_invalid);
-    if (lane_id == 0) {
-      sparse_count_shared[0] = first_invalid;
-    }
+  }
+  first_invalid = simd_min(first_invalid);
+  if (lane_id == 0) {
+    partial_invalid[sgid] = first_invalid;
   }
   threadgroup_barrier(mem_flags::mem_threadgroup);
-
-  const uint sparse_count = sparse_count_shared[0];
+)";
+  if (exitPastHeads) {
+    source += R"(
+  if (h >= H) {
+    return;
+  }
+)";
+  }
+  source += R"(
+  const uint sparse_count = simd_min(lane_id < NSG ? partial_invalid[lane_id] : sparse_capacity);
   // One query: blocked attention sees only its incomplete block densely.
   const uint dense_count =
       block_size > 1 ? dense_rows % block_size :
@@ -111,54 +88,191 @@ kernel void sparse_indexed_attention_r1_direct(
   const uint dense_start = dense_rows - dense_count;
   const uint total_rows = dense_count + sparse_count;
 
-  // Cache contiguous query and shared key/value components in registers.
+  // Cache contiguous query and accumulator components in registers.
   const uint elements = (D_LEN + 31) / 32;
   float q[16], acc[16];
   for (uint i = 0; i < elements; ++i) {
     const uint d = lane_id * elements + i;
-    q[i] = d < D_LEN ? (float)Q[h * D_LEN + d] : 0;
+    q[i] = d < D_LEN ? (float)Q[h * D_LEN + d] * scale_log2e : 0;
     acc[i] = 0;
   }
   float row_m = )";
-  source += attentionSinks ?
-      "(sgid == 0 ? (float)Sinks[h * sink_head_stride] * 1.442695041 : -INFINITY)" :
-      "-INFINITY";
+  if (attentionSinks) {
+    source += std::string("(") + sinkOwner + " ? (float)Sinks[h * sink_head_stride] * 1.442695041 : -INFINITY)";
+  } else {
+    source += "-INFINITY";
+  }
   source += R"(;
   float row_s = )";
-  source += attentionSinks ? "(sgid == 0 ? 1 : 0)" : "0";
+  source += attentionSinks ? std::string("(") + sinkOwner + " ? 1 : 0)" : std::string("0");
   source += R"(;
 
-  for (uint row = sgid; row < total_rows; row += NSG) {
-    device const real* kv_row;
-    if (row < dense_count) {
-      kv_row = DenseKV + (dense_start + row) * D_LEN;
-    } else {
-      const uint sparse_offset = row - dense_count;
-      kv_row = SparseKV + uint(sparse_row(Indices, sparse_offset)) * D_LEN;
+  // Lane j resolves the row of step j in a 32-step batch, which keeps the
+  // index load off the serial softmax chain.
+  for (uint batch = stream; batch < total_rows; batch += 32 * streams) {
+    const uint lane_row = batch + lane_id * streams;
+    uint code = 0;
+    if (lane_row < dense_count) {
+      code = (dense_start + lane_row) | 0x80000000u;
+    } else if (lane_row < total_rows) {
+      code = uint(sparse_row(Indices, lane_row - dense_count));
     }
-    float kv[16];
-    float dot_acc = 0;
-    for (uint i = 0; i < elements; ++i) {
-      const uint d = lane_id * elements + i;
-      if (d < D_LEN) {
-        kv[i] = (float)kv_row[d];
-        dot_acc += q[i] * kv[i];
+    const uint steps = min(32u, (total_rows - batch + streams - 1) / streams);
+    uint j = 0;
+)";
+  if (rowsPerStep > 1) {
+    const std::string rows = std::to_string(rowsPerStep);
+    source += R"(
+    // Several rows per step keep their key/value loads and reductions in flight.
+    for (; j + )" + rows + R"( <= steps; j += )" + rows + R"() {
+      float kv[)" + rows + R"(][16], score[)" + rows + R"(];
+      #pragma clang loop unroll(full)
+      for (uint r = 0; r < )" + rows + R"(; ++r) {
+        device const real* kv_row = row_pointer(DenseKV, SparseKV, simd_shuffle(code, ushort(j + r)));
+        score[r] = 0;
+        for (uint i = 0; i < elements; ++i) {
+          const uint d = lane_id * elements + i;
+          if (d < D_LEN) {
+            kv[r][i] = (float)kv_row[d];
+            score[r] += q[i] * kv[r][i];
+          }
+        }
       }
-    }
-    const float score = simd_sum(dot_acc) * scale_log2e;
-    const float new_m = max(row_m, score);
-    const float old_scale = fast::exp2(row_m - new_m);
-    const float row_scale = fast::exp2(score - new_m);
-    for (uint i = 0; i < elements; ++i) {
-      const uint d = lane_id * elements + i;
-      if (d < D_LEN) {
-        acc[i] = acc[i] * old_scale + row_scale * kv[i];
+      float new_m = row_m;
+      #pragma clang loop unroll(full)
+      for (uint r = 0; r < )" + rows + R"(; ++r) {
+        score[r] = simd_sum(score[r]);
+        new_m = max(new_m, score[r]);
       }
+      const float old_scale = fast::exp2(row_m - new_m);
+      row_s *= old_scale;
+      for (uint i = 0; i < elements; ++i) {
+        acc[i] *= old_scale;
+      }
+      #pragma clang loop unroll(full)
+      for (uint r = 0; r < )" + rows + R"(; ++r) {
+        const float row_scale = fast::exp2(score[r] - new_m);
+        row_s += row_scale;
+        for (uint i = 0; i < elements; ++i) {
+          const uint d = lane_id * elements + i;
+          if (d < D_LEN) {
+            acc[i] += row_scale * kv[r][i];
+          }
+        }
+      }
+      row_m = new_m;
     }
-    row_s = row_s * old_scale + row_scale;
-    row_m = new_m;
+)";
   }
+  source += R"(
+    for (; j < steps; ++j) {
+      device const real* kv_row = row_pointer(DenseKV, SparseKV, simd_shuffle(code, ushort(j)));
+      float kv[16];
+      float score = 0;
+      for (uint i = 0; i < elements; ++i) {
+        const uint d = lane_id * elements + i;
+        if (d < D_LEN) {
+          kv[i] = (float)kv_row[d];
+          score += q[i] * kv[i];
+        }
+      }
+      score = simd_sum(score);
+      const float new_m = max(row_m, score);
+      const float old_scale = fast::exp2(row_m - new_m);
+      const float row_scale = fast::exp2(score - new_m);
+      for (uint i = 0; i < elements; ++i) {
+        const uint d = lane_id * elements + i;
+        if (d < D_LEN) {
+          acc[i] = acc[i] * old_scale + row_scale * kv[i];
+        }
+      }
+      row_s = row_s * old_scale + row_scale;
+      row_m = new_m;
+    }
+  }
+)";
+  return source;
+}
 
+std::string SparseIndexedAttentionR1Kernel::createSource() const noexcept {
+  std::string source = createConstants();
+  source += R"(
+#include <metal_stdlib>
+using namespace metal;
+
+// Dense rows carry the high bit; sparse rows index SparseKV directly.
+inline device const real* row_pointer(device const real* dense, device const real* sparse, const uint code) {
+  return (code & 0x80000000u) ? dense + (code & 0x7fffffffu) * D_LEN : sparse + code * D_LEN;
+}
+)";
+  for (const bool partial : {false, true}) {
+    source += partial ?
+        "\nkernel void sparse_indexed_attention_r1_split_partials(\n" :
+        "\nkernel void sparse_indexed_attention_r1_direct(\n";
+    source += R"(    device const real* Q [[buffer(0)]],
+    device const real* DenseKV [[buffer(1)]],
+    device const real* SparseKV [[buffer(2)]],
+    device const int* Indices [[buffer(3)]],
+)";
+    if (attentionSinks) {
+      source += "    device const real* Sinks [[buffer(4)]],\n";
+    }
+    source += partial ?
+        "    device float* Partial [[buffer(5)]],\n" :
+        "    device real* O [[buffer(5)]],\n";
+    if (loadK) {
+      source += "    const device uint* shape [[buffer(6)]],\n";
+    }
+    if (attentionSinks) {
+      source += "    constant uint& sink_head_stride [[buffer(7)]],\n";
+    }
+    source += R"(    threadgroup uchar* scratch [[threadgroup(0)]],
+    uint3 tgid [[threadgroup_position_in_grid]],
+    ushort lane_id [[thread_index_in_simdgroup]],
+    ushort sgid [[simdgroup_index_in_threadgroup]])
+{
+)";
+    if (loadK) {
+      source += R"(  const uniform<uint> dense_rows = make_uniform(shape[0]);
+  const uniform<uint> sparse_rows = make_uniform(shape[1]);
+  const uniform<uint> K = make_uniform(shape[2]);
+)";
+    }
+    if (partial) {
+      // NSG heads per workgroup walk the same rows, so their key/value loads
+      // share cache lines. Each SIMD group owns one head of one partition.
+      source += R"(  const uint h = tgid.x * NSG + sgid;
+  const uint stream = tgid.z;
+  const uint streams = NWG;
+  threadgroup uint* partial_invalid = (threadgroup uint*)scratch;
+)";
+      source += traversalSource(attentionSinks, "stream == 0", true, 4);
+      source += R"(
+  device float* partial = Partial + (h * NWG + stream) * (D_LEN + 2);
+  for (uint i = 0; i < elements; ++i) {
+    const uint d = lane_id * elements + i;
+    if (d < D_LEN) {
+      partial[d] = acc[i];
+    }
+  }
+  if (lane_id == 0) {
+    partial[D_LEN] = row_s;
+    partial[D_LEN + 1] = row_m;
+  }
+}
+)";
+    } else {
+      // One workgroup per head; its SIMD groups split the rows and merge here.
+      source += R"(  const uint h = tgid.x;
+  const uint stream = sgid;
+  const uint streams = NSG;
+  threadgroup float* partial_o = (threadgroup float*)scratch;
+  threadgroup float* partial_s = partial_o + NSG * D_LEN;
+  threadgroup float* partial_m = partial_s + NSG;
+  threadgroup uint* partial_invalid = (threadgroup uint*)(partial_m + NSG);
+)";
+      source += traversalSource(attentionSinks, "sgid == 0", false, 2);
+      source += R"(
   for (uint i = 0; i < elements; ++i) {
     const uint d = lane_id * elements + i;
     if (d < D_LEN) {
@@ -188,204 +302,34 @@ kernel void sparse_indexed_attention_r1_direct(
     if (d < D_LEN) o_row[d] = global_s > 0 ? (real)(numerator / global_s) : (real)0;
   }
 }
-
-kernel void sparse_indexed_attention_r1_split_partials(
-    device const real* Q [[buffer(0)]],
-    device const real* DenseKV [[buffer(1)]],
-    device const real* SparseKV [[buffer(2)]],
-    device const int* Indices [[buffer(3)]],
 )";
-  if (attentionSinks) {
-    source += R"(
-    device const real* Sinks [[buffer(4)]],
-)";
+    }
   }
   source += R"(
-    device float* Partial [[buffer(5)]],
-)";
-  if (loadK) {
-    source += R"(
-    const device uint* shape [[buffer(6)]],
-)";
-  }
-  if (attentionSinks) {
-    source += R"(
-    constant uint& sink_head_stride [[buffer(7)]],
-)";
-  }
-  source += R"(
-    threadgroup uchar* scratch [[threadgroup(0)]],
-    uint3 tgid [[threadgroup_position_in_grid]],
-    ushort lane_id [[thread_index_in_simdgroup]],
-    ushort sgid [[simdgroup_index_in_threadgroup]])
-{
-  const uint h = tgid.x;
-  const uint iwg = tgid.z;
-)";
-  if (loadK) {
-    source += R"(
-  const uniform<uint> dense_rows = make_uniform(shape[0]);
-  const uniform<uint> sparse_rows = make_uniform(shape[1]);
-  const uniform<uint> K = make_uniform(shape[2]);
-)";
-  }
-  source += R"(
-  threadgroup float* partial_o = (threadgroup float*)scratch;
-  threadgroup float* partial_s = partial_o + NSG * D_LEN;
-  threadgroup float* partial_m = partial_s + NSG;
-  threadgroup uint* sparse_count_shared = (threadgroup uint*)(partial_m + NSG);
-
-  if (sgid == 0) {
-    // Blocked indices expand to block_size rows each; scan virtual rows.
-    const uint sparse_capacity = K * block_size;
-    uint first_invalid = sparse_capacity;
-    for (uint i = lane_id; i < sparse_capacity; i += 32) {
-      const int index = sparse_row(Indices, i);
-      if ((index < 0 || uint(index) >= sparse_rows) && i < first_invalid) {
-        first_invalid = i;
-      }
-    }
-    first_invalid = simd_min(first_invalid);
-    if (lane_id == 0) {
-      sparse_count_shared[0] = first_invalid;
-    }
-  }
-  threadgroup_barrier(mem_flags::mem_threadgroup);
-
-  const uint sparse_count = sparse_count_shared[0];
-  // One query: blocked attention sees only its incomplete block densely.
-  const uint dense_count =
-      block_size > 1 ? dense_rows % block_size :
-      sliding_window > 0 && sliding_window < dense_rows ?
-      sliding_window : dense_rows;
-  const uint dense_start = dense_rows - dense_count;
-  const uint total_rows = dense_count + sparse_count;
-
-  // Cache contiguous query and shared key/value components in registers.
-  const uint elements = (D_LEN + 31) / 32;
-  float q[16], acc[16];
-  for (uint i = 0; i < elements; ++i) {
-    const uint d = lane_id * elements + i;
-    q[i] = d < D_LEN ? (float)Q[h * D_LEN + d] : 0;
-    acc[i] = 0;
-  }
-  float row_m = )";
-  source += attentionSinks ?
-      "(iwg == 0 && sgid == 0 ? (float)Sinks[h * sink_head_stride] * 1.442695041 : -INFINITY)" :
-      "-INFINITY";
-  source += R"(;
-  float row_s = )";
-  source += attentionSinks ? "(iwg == 0 && sgid == 0 ? 1 : 0)" : "0";
-  source += R"(;
-
-  for (uint row = iwg * NSG + sgid; row < total_rows; row += NWG * NSG) {
-    device const real* kv_row;
-    if (row < dense_count) {
-      kv_row = DenseKV + (dense_start + row) * D_LEN;
-    } else {
-      const uint sparse_offset = row - dense_count;
-      kv_row = SparseKV + uint(sparse_row(Indices, sparse_offset)) * D_LEN;
-    }
-    float kv[16];
-    float dot_acc = 0;
-    for (uint i = 0; i < elements; ++i) {
-      const uint d = lane_id * elements + i;
-      if (d < D_LEN) {
-        kv[i] = (float)kv_row[d];
-        dot_acc += q[i] * kv[i];
-      }
-    }
-    const float score = simd_sum(dot_acc) * scale_log2e;
-    const float new_m = max(row_m, score);
-    const float old_scale = fast::exp2(row_m - new_m);
-    const float row_scale = fast::exp2(score - new_m);
-    for (uint i = 0; i < elements; ++i) {
-      const uint d = lane_id * elements + i;
-      if (d < D_LEN) {
-        acc[i] = acc[i] * old_scale + row_scale * kv[i];
-      }
-    }
-    row_s = row_s * old_scale + row_scale;
-    row_m = new_m;
-  }
-
-  for (uint i = 0; i < elements; ++i) {
-    const uint d = lane_id * elements + i;
-    if (d < D_LEN) {
-      partial_o[sgid * D_LEN + d] = acc[i];
-    }
-  }
-  if (lane_id == 0) {
-    partial_s[sgid] = row_s;
-    partial_m[sgid] = row_m;
-  }
-  threadgroup_barrier(mem_flags::mem_threadgroup);
-
-  if (sgid == 0) {
-    float global_m = -INFINITY;
-    for (uint i = 0; i < NSG; ++i) {
-      if (partial_s[i] > 0) {
-        global_m = max(global_m, partial_m[i]);
-      }
-    }
-    float global_s = 0;
-    for (uint i = 0; i < NSG; ++i) {
-      if (partial_s[i] > 0) {
-        global_s += partial_s[i] * fast::exp2(partial_m[i] - global_m);
-      }
-    }
-    device float* row =
-        Partial + (h * NWG + iwg) * (D_LEN + 2);
-    for (uint d = lane_id; d < D_LEN; d += 32) {
-      float numerator = 0;
-      for (uint i = 0; i < NSG; ++i) {
-        if (partial_s[i] > 0) {
-          numerator += partial_o[i * D_LEN + d] *
-              fast::exp2(partial_m[i] - global_m);
-        }
-      }
-      row[d] = numerator;
-    }
-    if (lane_id == 0) {
-      row[D_LEN] = global_s;
-      row[D_LEN + 1] = global_m;
-    }
-  }
-}
-
 kernel void sparse_indexed_attention_r1_split_reduce(
     device const float* Partial [[buffer(0)]],
     device real* O [[buffer(1)]],
     uint h [[threadgroup_position_in_grid]],
-    ushort lane_id [[thread_index_in_simdgroup]])
+    ushort lane_id [[thread_index_in_simdgroup]],
+    ushort sgid [[simdgroup_index_in_threadgroup]],
+    ushort nsg [[simdgroups_per_threadgroup]])
 {
+  // One lane per partition (NWG <= 32); shuffles broadcast each rescale.
   device const float* base = Partial + h * NWG * (D_LEN + 2);
-  float local_m = -INFINITY;
-  if (lane_id < NWG) {
-    device const float* row = base + lane_id * (D_LEN + 2);
-    if (row[D_LEN] > 0) {
-      local_m = row[D_LEN + 1];
-    }
-  }
+  const bool valid = lane_id < NWG && base[lane_id * (D_LEN + 2) + D_LEN] > 0;
+  const float local_m = valid ? base[lane_id * (D_LEN + 2) + D_LEN + 1] : -INFINITY;
   const float global_m = simd_max(local_m);
-  float local_s = 0;
-  if (lane_id < NWG) {
-    device const float* row = base + lane_id * (D_LEN + 2);
-    if (row[D_LEN] > 0) {
-      local_s = row[D_LEN] * fast::exp2(row[D_LEN + 1] - global_m);
-    }
-  }
-  const float global_s = simd_sum(local_s);
+  const float factor = valid ? fast::exp2(local_m - global_m) : 0;
+  const float global_s = simd_sum(valid ? base[lane_id * (D_LEN + 2) + D_LEN] * factor : 0);
   device real* o_row = O + h * D_LEN;
-  for (uint d = lane_id; d < D_LEN; d += 32) {
+  for (uint tile = sgid * 32; tile < D_LEN; tile += nsg * 32) {
+    const uint d = tile + lane_id;
     float numerator = 0;
     for (uint i = 0; i < NWG; ++i) {
-      device const float* row = base + i * (D_LEN + 2);
-      if (row[D_LEN] > 0) {
-        numerator += row[d] * fast::exp2(row[D_LEN + 1] - global_m);
-      }
+      const float rescale = simd_shuffle(factor, i);
+      if (d < D_LEN) numerator += base[i * (D_LEN + 2) + d] * rescale;
     }
-    o_row[d] = global_s > 0 ? (real)(numerator / global_s) : (real)0;
+    if (d < D_LEN) o_row[d] = global_s > 0 ? (real)(numerator / global_s) : (real)0;
   }
 }
 )";

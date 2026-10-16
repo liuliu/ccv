@@ -13662,6 +13662,8 @@ TEST_CASE("sparse indexed attention R1 with MFA")
 	int max_idx;
 	const int direct_status = _mps_sparse_indexed_attention_compare(CCV_16F, 1, 64, 512, 127, 257, 65, 1, 0, 1, 1e-2, &max_abs, &max_relative, &max_idx, &expected, &actual);
 	REQUIRE(direct_status == 0, "MFA FP16 sparse indexed attention R1 direct mode should match CPU reference (status=%d max abs %g relative %g at %d: CPU %g GPU %g)", direct_status, max_abs, max_relative, max_idx, expected, actual);
+	const int short_split_status = _mps_sparse_indexed_attention_compare(CCV_16F, 1, 64, 512, 127, 257, 513, 1, 0, 1, 1e-2, &max_abs, &max_relative, &max_idx, &expected, &actual);
+	REQUIRE(short_split_status == 0, "MFA FP16 sparse indexed attention R1 sixteen-partition split mode should match CPU reference (status=%d max abs %g relative %g at %d: CPU %g GPU %g)", short_split_status, max_abs, max_relative, max_idx, expected, actual);
 	const int runtime_shape_status = _mps_sparse_indexed_attention_compare(CCV_16F, 1, 64, 512, 31, 91, 33, 1, 0, 1, 1e-2, &max_abs, &max_relative, &max_idx, &expected, &actual);
 	REQUIRE(runtime_shape_status == 0, "MFA FP16 sparse indexed attention R1 should reuse its direct pipeline with runtime dense rows, sparse rows, and K (status=%d max abs %g relative %g at %d: CPU %g GPU %g)", runtime_shape_status, max_abs, max_relative, max_idx, expected, actual);
 	const int window_status = _mps_sparse_indexed_attention_compare(CCV_16F, 1, 64, 512, 37, 97, 17, 1, 3, 1, 1e-2, &max_abs, &max_relative, &max_idx, &expected, &actual);
@@ -13686,6 +13688,10 @@ TEST_CASE("sparse indexed attention R1 randomized partial widths and traversal b
 		{3, 31, 1, 1, 1, 0, 0},
 		{3, 1, 7, 19, 9, 1, 1},
 		{7, 130, 31, 91, 0, 0, 1},
+		{64, 512, 129, 1153, 1024, 128, 1},
+		{5, 512, 7, 2049, 2048, 0, 0},
+		{6, 64, 40, 700, 650, 0, 1},
+		{4, 128, 3, 700, 600, 0, 1},
 	};
 	dsfmt_t dsfmt;
 	dsfmt_init_gen_rand(&dsfmt, 918);
@@ -13731,6 +13737,11 @@ TEST_CASE("sparse indexed attention R1 randomized partial widths and traversal b
 				// Include empty sparse traversals and early termination.
 				if (trial == 1) indices->data.i32[3] = -1;
 				if (trial == 5) indices->data.i32[0] = -1;
+				// Split partitions past the terminator, or past every visible row, stay empty.
+				if (trial == 8) indices->data.i32[400] = -1;
+				if (trial == 9) indices->data.i32[0] = -1;
+				// A short terminated split traversal keeps the sink significant.
+				if (trial == 11) indices->data.i32[2] = -1;
 				ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(indices), TENSOR_LIST(gindices), 0);
 				ccv_nnc_tensor_t* const expected = ccv_nnc_tensor_new(0, host[0]->info, 0);
 				ccv_nnc_tensor_t* const out = ccv_nnc_tensor_new(0, gpu[0]->info, 0);

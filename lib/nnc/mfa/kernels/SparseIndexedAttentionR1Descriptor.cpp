@@ -13,9 +13,9 @@ static uint32_t alignUp(uint32_t value, uint32_t alignment) noexcept {
 
 static uint32_t directSIMDGroups(uint32_t D) noexcept {
   const uint32_t maxThreadgroupMemoryBytes = 32768;
-  const uint32_t fixedBytes = sizeof(uint32_t);
-  const uint32_t partialBytes = (D + 2) * sizeof(float);
-  uint32_t maxSIMDGroups = (maxThreadgroupMemoryBytes - fixedBytes) / partialBytes;
+  // Output, sum, and maximum partials plus the first invalid sparse row.
+  const uint32_t partialBytes = (D + 3) * sizeof(float);
+  uint32_t maxSIMDGroups = maxThreadgroupMemoryBytes / partialBytes;
   if (maxSIMDGroups > 32) {
     maxSIMDGroups = 32;
   }
@@ -23,7 +23,7 @@ static uint32_t directSIMDGroups(uint32_t D) noexcept {
     --maxSIMDGroups;
   }
   while (maxSIMDGroups > 2 &&
-      alignUp(fixedBytes + maxSIMDGroups * partialBytes, 16) > maxThreadgroupMemoryBytes) {
+      alignUp(maxSIMDGroups * partialBytes, 16) > maxThreadgroupMemoryBytes) {
     maxSIMDGroups -= 2;
   }
   return maxSIMDGroups < 1 ? 1 : maxSIMDGroups;
@@ -79,14 +79,18 @@ SparseIndexedAttentionR1Descriptor SparseIndexedAttentionR1Descriptor::select(
       blockSize > 1 ? std::min(denseRows, blockSize - 1)
       : slidingWindow > 0 ? std::min(denseRows, slidingWindow) : denseRows;
   const uint64_t maximumRows = (uint64_t)visibleDenseRows + (uint64_t)K * blockSize;
-  if (maximumRows < 2048) {
+  // Each SIMD stream walks about 72 rows. Up to eight streams, one workgroup
+  // per head merges them in place and avoids the reduce dispatch.
+  if (maximumRows <= 72 * 8) {
     descriptor.mode = Mode::direct;
-    descriptor.simdgroups = std::min(D == 512 ? 16u : 8u, directSIMDGroups(D));
+    descriptor.simdgroups = std::min(8u, directSIMDGroups(D));
     descriptor.workgroups = 1;
   } else {
+    // Four heads per workgroup share key/value rows through the cache. The
+    // reduce pass gives every partition one lane, so there are at most 32.
     descriptor.mode = Mode::splitReduce;
-    descriptor.simdgroups = 8;
-    descriptor.workgroups = 32;
+    descriptor.simdgroups = 4;
+    descriptor.workgroups = maximumRows > 72 * 16 ? 32 : 16;
   }
   return descriptor;
 }
