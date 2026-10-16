@@ -24,6 +24,10 @@ uint16_t NASparseIndexedAttentionKernel::sparseExecutionSIMDGroups() const noexc
 }
 
 uint32_t NASparseIndexedAttentionKernel::threadgroupMemoryAllocation() const noexcept {
+  if (variant == NASparseIndexedAttentionVariant::Threadgroup64TwoPass) {
+    // One dimension slice of the rows at a time.
+    return dimBlock * threadgroupRowBlock * memoryPrecision.size();
+  }
   if (denseOnly) {
     return headGroup * denseBlockColumns * denseExecutionSIMDGroups * memoryPrecision.size();
   }
@@ -34,6 +38,9 @@ uint32_t NASparseIndexedAttentionKernel::threadgroupMemoryAllocation() const noe
 }
 
 MTL::Size NASparseIndexedAttentionKernel::threadgroupSize() const noexcept {
+  if (variant == NASparseIndexedAttentionVariant::Threadgroup64TwoPass) {
+    return MTL::Size(simdGroupSize * twoPassSIMDGroups, 1, 1);
+  }
   if (denseOnly) {
     return MTL::Size(simdGroupSize * denseExecutionSIMDGroups, 1, 1);
   }
@@ -44,11 +51,27 @@ MTL::Size NASparseIndexedAttentionKernel::threadgroupSize() const noexcept {
 }
 
 MTL::Size NASparseIndexedAttentionKernel::threadgroupsPerGrid(uint32_t T, uint32_t H) const noexcept {
+  if (variant == NASparseIndexedAttentionVariant::Threadgroup64TwoPass) {
+    return MTL::Size((H + twoPassHeadGroup - 1) / twoPassHeadGroup, T, 1);
+  }
   if (denseOnly) {
     return MTL::Size((H + headGroup - 1) / headGroup, (T + denseExecutionSIMDGroups - 1) / denseExecutionSIMDGroups, 1);
   }
   const uint32_t heads_per_threadgroup = sparseHeadGroup() * sparseExecutionSIMDGroups();
   return MTL::Size((H + heads_per_threadgroup - 1) / heads_per_threadgroup, T, 1);
+}
+
+uint32_t NASparseIndexedAttentionKernel::valuesThreadgroupMemoryAllocation() const noexcept {
+  // Probabilities of the head group and one slice of value rows.
+  return (twoPassHeadGroup + dimBlock) * threadgroupRowBlock * memoryPrecision.size();
+}
+
+MTL::Size NASparseIndexedAttentionKernel::valuesThreadgroupSize() const noexcept {
+  return MTL::Size(simdGroupSize * twoPassSIMDGroups, 1, 1);
+}
+
+MTL::Size NASparseIndexedAttentionKernel::valuesThreadgroupsPerGrid(uint32_t T, uint32_t H) const noexcept {
+  return MTL::Size((H + twoPassHeadGroup - 1) / twoPassHeadGroup, T, headDimension / dimBlock);
 }
 
 NASparseIndexedAttentionKernel::NASparseIndexedAttentionKernel(NASparseIndexedAttentionKernelDescriptor descriptor, MTL::Device *const device) {
@@ -68,6 +91,66 @@ NASparseIndexedAttentionKernel::NASparseIndexedAttentionKernel(NASparseIndexedAt
     options->setLanguageVersion(MTL::LanguageVersion(0x40000));
   library = NS::TransferPtr(device->newLibrary(string, options.get(), &error));
   CCV_NNC_MFA_CHECK_ERROR(error);
+}
+
+// Includes, shape function constants, and the blocked sparse row lookup shared
+// by the sparse threadgroup kernels.
+std::string NASparseIndexedAttentionKernel::sparsePreamble() const noexcept {
+  std::string text = R"(
+#include <metal_stdlib>
+#include <metal_tensor>
+#include <MetalPerformancePrimitives/MPPTensorOpsMatMul2d.h>
+
+using namespace metal;
+using namespace mpp::tensor_ops;
+
+typedef {{REAL}} real;
+
+{{T_FUNCTION_CONSTANT}})";
+  if (!loadRows) {
+    text += R"(
+constant uint dense_rows [[function_constant(1)]];
+constant uint sparse_rows [[function_constant(2)]];)";
+  }
+  text += R"(
+constant uint H [[function_constant(3)]];
+{{K_FUNCTION_CONSTANT}}constant bool is_causal [[function_constant(5)]];)";
+  if (attentionSinks) {
+    text += R"(
+constant uint sink_head_stride [[function_constant(6)]];)";
+  }
+  text += R"(
+constant float scale [[function_constant(7)]];
+constant uint sliding_window [[function_constant(8)]];
+constant uint block_size [[function_constant(9)]];
+
+// Blocked sparse indices: virtual entry i reads block indices[i / block_size].
+inline int sparse_row(device const int* row_indices, uint i) {
+  if (block_size <= 1) {
+    return row_indices[i];
+  }
+  const int base = row_indices[i / block_size];
+  return base < 0 ? base : base * int(block_size) + int(i % block_size);
+}
+)";
+  return text;
+}
+
+// Visible dense rows [dense_start, dense_end) of query token `token`.
+std::string NASparseIndexedAttentionKernel::causalDenseRange() noexcept {
+  return R"(  uint dense_start = 0;
+  uint dense_end = dense_rows;
+  if (is_causal) {
+    const int causal_end = int(dense_rows) - int(T) + int(token) + 1;
+    dense_end = uint(clamp(causal_end, 0, int(dense_rows)));
+    if (sliding_window > 0 && dense_end > sliding_window) {
+      dense_start = dense_end - sliding_window;
+    }
+    if (block_size > 1) {
+      dense_start = dense_end / block_size * block_size;
+    }
+  }
+)";
 }
 
 void NASparseIndexedAttentionKernel::createThreadgroupAttendBlock(CodeWriter& source) const noexcept {
@@ -160,13 +243,15 @@ std::string NASparseIndexedAttentionKernel::createSource() const noexcept {
   if (variant == NASparseIndexedAttentionVariant::Threadgroup64D128) {
     return createThreadgroupD128Source();
   }
+  if (variant == NASparseIndexedAttentionVariant::Threadgroup64TwoPass) {
+    return createThreadgroupTwoPassSource();
+  }
   return createThreadgroupSource();
 }
 
 std::string NASparseIndexedAttentionKernel::createDenseOnlySource() const noexcept {
   CodeWriter source;
   source.SetValue("T_FUNCTION_CONSTANT", loadM ? "" : "constant uint T [[function_constant(0)]];\n");
-  source.SetValue("K_FUNCTION_CONSTANT", loadK ? "" : "constant uint K [[function_constant(4)]];\n");
   source.SetValue("REAL", memoryPrecision.name());
   source.SetValue("HEAD_DIMENSION", std::to_string(headDimension));
   source.SetValue("HEAD_GROUP", std::to_string(headGroup));
@@ -192,8 +277,12 @@ constant uint dense_rows [[function_constant(1)]];\)";
   }
   source += R"(
 constant uint H [[function_constant(3)]];
-constant bool is_causal [[function_constant(5)]];
-constant uint sink_head_stride [[function_constant(6)]];
+constant bool is_causal [[function_constant(5)]];\)";
+  if (attentionSinks) {
+    source += R"(
+constant uint sink_head_stride [[function_constant(6)]];\)";
+  }
+  source += R"(
 constant float scale [[function_constant(7)]];
 constant uint sliding_window [[function_constant(8)]];
 constant uint block_size [[function_constant(9)]];
@@ -212,7 +301,7 @@ kernel void sparse_indexed_attention(
   }
   source += R"(
   device real* out [[buffer(5)]],\)";
-  if (loadRows || loadM || loadK) {
+  if (loadRows || loadM) {
     source += R"(
   constant uint4& runtime_rows [[buffer(6)]],\)";
   }
@@ -223,8 +312,6 @@ kernel void sparse_indexed_attention(
 ) {\)";
   if (loadM)
     source += "  const uniform<uint> T = make_uniform(runtime_rows.z);\n";
-  if (loadK && !denseOnly)
-    source += "  const uniform<uint> K = make_uniform(runtime_rows.w);\n";
   if (loadRows) {
     source += R"(
   const uniform<uint> dense_rows = make_uniform(runtime_rows.x);\)";
@@ -289,19 +376,9 @@ kernel void sparse_indexed_attention(
       cO3[i] = 0;
     }
   }
-  uint dense_start = 0;
-  uint dense_end = dense_rows;
-  if (is_causal) {
-    const int causal_end = int(dense_rows) - int(T) + int(token) + 1;
-    dense_end = uint(clamp(causal_end, 0, int(dense_rows)));
-    if (sliding_window > 0 && dense_end > sliding_window) {
-      dense_start = dense_end - sliding_window;
-    }
-    if (block_size > 1) {
-      dense_start = dense_end / block_size * block_size;
-    }
-  }
-  const uint dense_count = dense_end - dense_start;
+\)";
+  source += causalDenseRange() + "\\";
+  source += R"(  const uint dense_count = dense_end - dense_start;
   const uint dense_full_count = (dense_count / {{DENSE_BLOCK_COLUMNS}}u) * {{DENSE_BLOCK_COLUMNS}}u;
   const uint dense_remainder = dense_count - dense_full_count;
   const float dot_scale = scale * log2_e;
@@ -530,39 +607,8 @@ std::string NASparseIndexedAttentionKernel::createThreadgroupSource() const noex
   source.SetValue("DIM_BLOCK", std::to_string(dimBlock));
   source.SetValue("DIM_BLOCK_2", std::to_string(dimBlock * 2));
   source.SetValue("DIM_BLOCK_3", std::to_string(dimBlock * 3));
+  source += sparsePreamble() + "\\";
   source += R"(
-#include <metal_stdlib>
-#include <metal_tensor>
-#include <MetalPerformancePrimitives/MPPTensorOpsMatMul2d.h>
-
-using namespace metal;
-using namespace mpp::tensor_ops;
-
-typedef {{REAL}} real;
-
-{{T_FUNCTION_CONSTANT}}\)";
-  if (!loadRows) {
-    source += R"(
-constant uint dense_rows [[function_constant(1)]];
-constant uint sparse_rows [[function_constant(2)]];\)";
-  }
-  source += R"(
-constant uint H [[function_constant(3)]];
-{{K_FUNCTION_CONSTANT}}constant bool is_causal [[function_constant(5)]];
-constant uint sink_head_stride [[function_constant(6)]];
-constant float scale [[function_constant(7)]];
-constant uint sliding_window [[function_constant(8)]];
-constant uint block_size [[function_constant(9)]];
-
-// Blocked sparse indices: virtual entry i reads block indices[i / block_size].
-inline int sparse_row(device const int* row_indices, uint i) {
-  if (block_size <= 1) {
-    return row_indices[i];
-  }
-  const int base = row_indices[i / block_size];
-  return base < 0 ? base : base * int(block_size) + int(i % block_size);
-}
-
 constant uint K_edge = {{HEAD_DIMENSION}}u + 1u - {{DIM_BLOCK}}u;
 constant float log2_e = 1.442695041f;
 
@@ -591,7 +637,7 @@ kernel void sparse_indexed_attention(
 ) {\)";
   if (loadM)
     source += "  const uniform<uint> T = make_uniform(runtime_rows.z);\n";
-  if (loadK && !denseOnly)
+  if (loadK)
     source += "  const uniform<uint> K = make_uniform(runtime_rows.w);\n";
   if (loadRows) {
     source += R"(
@@ -640,19 +686,9 @@ kernel void sparse_indexed_attention(
     }
   }
   const float dot_scale = scale * log2_e;
-  uint dense_start = 0;
-  uint dense_end = dense_rows;
-  if (is_causal) {
-    const int causal_end = int(dense_rows) - int(T) + int(token) + 1;
-    dense_end = uint(clamp(causal_end, 0, int(dense_rows)));
-    if (sliding_window > 0 && dense_end > sliding_window) {
-      dense_start = dense_end - sliding_window;
-    }
-    if (block_size > 1) {
-      dense_start = dense_end / block_size * block_size;
-    }
-  }
-  for (uint dense_base = dense_start; dense_base < dense_end; dense_base += {{THREADGROUP_ROW_BLOCK}}u) {
+\)";
+  source += causalDenseRange() + "\\";
+  source += R"(  for (uint dense_base = dense_start; dense_base < dense_end; dense_base += {{THREADGROUP_ROW_BLOCK}}u) {
     uint block_rows = min({{THREADGROUP_ROW_BLOCK}}u, dense_end - dense_base);
     #pragma clang loop unroll(full)
     for (ushort i = 0; i < cS.get_capacity(); ++i) {
@@ -676,12 +712,12 @@ kernel void sparse_indexed_attention(
   }
   device const int* row_indices = indices + token * K;
   bool stop_sparse = false;
-  const uint sparse_count = K * block_size;
-  for (uint sparse_base = 0; sparse_base < sparse_count && !stop_sparse; sparse_base += {{THREADGROUP_ROW_BLOCK}}u) {
+  const uint sparse_capacity = K * block_size;
+  for (uint sparse_base = 0; sparse_base < sparse_capacity && !stop_sparse; sparse_base += {{THREADGROUP_ROW_BLOCK}}u) {
     uint block_rows = 0;
     #pragma clang loop unroll(full)
     for (uint j = 0; j < {{THREADGROUP_ROW_BLOCK}}u; j++) {
-      if (sparse_base + j >= sparse_count) {
+      if (sparse_base + j >= sparse_capacity) {
         stop_sparse = true;
         break;
       }
@@ -858,39 +894,8 @@ std::string NASparseIndexedAttentionKernel::createThreadgroupD128Source() const 
   source.SetValue("SPARSE_EXECUTION_SIMD_GROUPS_D128", std::to_string(sparseExecutionSIMDGroups()));
   source.SetValue("SPARSE_HEAD_GROUP_D128", std::to_string(sparseHeadGroup()));
   source.SetValue("SPARSE_THREADS_D128", std::to_string(simdGroupSize * sparseExecutionSIMDGroups()));
+  source += sparsePreamble() + "\\";
   source += R"(
-#include <metal_stdlib>
-#include <metal_tensor>
-#include <MetalPerformancePrimitives/MPPTensorOpsMatMul2d.h>
-
-using namespace metal;
-using namespace mpp::tensor_ops;
-
-typedef {{REAL}} real;
-
-{{T_FUNCTION_CONSTANT}}\)";
-  if (!loadRows) {
-    source += R"(
-constant uint dense_rows [[function_constant(1)]];
-constant uint sparse_rows [[function_constant(2)]];\)";
-  }
-  source += R"(
-constant uint H [[function_constant(3)]];
-{{K_FUNCTION_CONSTANT}}constant bool is_causal [[function_constant(5)]];
-constant uint sink_head_stride [[function_constant(6)]];
-constant float scale [[function_constant(7)]];
-constant uint sliding_window [[function_constant(8)]];
-constant uint block_size [[function_constant(9)]];
-
-// Blocked sparse indices: virtual entry i reads block indices[i / block_size].
-inline int sparse_row(device const int* row_indices, uint i) {
-  if (block_size <= 1) {
-    return row_indices[i];
-  }
-  const int base = row_indices[i / block_size];
-  return base < 0 ? base : base * int(block_size) + int(i % block_size);
-}
-
 constant float log2_e = 1.442695041f;
 
 kernel void sparse_indexed_attention(
@@ -918,7 +923,7 @@ kernel void sparse_indexed_attention(
 ) {\)";
   if (loadM)
     source += "  const uniform<uint> T = make_uniform(runtime_rows.z);\n";
-  if (loadK && !denseOnly)
+  if (loadK)
     source += "  const uniform<uint> K = make_uniform(runtime_rows.w);\n";
   if (loadRows) {
     source += R"(
@@ -963,19 +968,9 @@ kernel void sparse_indexed_attention(
     }
   }
   const float dot_scale = scale * log2_e;
-  uint dense_start = 0;
-  uint dense_end = dense_rows;
-  if (is_causal) {
-    const int causal_end = int(dense_rows) - int(T) + int(token) + 1;
-    dense_end = uint(clamp(causal_end, 0, int(dense_rows)));
-    if (sliding_window > 0 && dense_end > sliding_window) {
-      dense_start = dense_end - sliding_window;
-    }
-    if (block_size > 1) {
-      dense_start = dense_end / block_size * block_size;
-    }
-  }
-  for (uint dense_base = dense_start; dense_base < dense_end; dense_base += {{THREADGROUP_ROW_BLOCK_D128}}u) {
+\)";
+  source += causalDenseRange() + "\\";
+  source += R"(  for (uint dense_base = dense_start; dense_base < dense_end; dense_base += {{THREADGROUP_ROW_BLOCK_D128}}u) {
     uint block_rows = min({{THREADGROUP_ROW_BLOCK_D128}}u, dense_end - dense_base);
     for (uint j = uint(tid); j < block_rows; j += {{SPARSE_THREADS_D128}}u) {
       row_ids[j] = dense_base + j;
@@ -987,12 +982,12 @@ kernel void sparse_indexed_attention(
   }
   device const int* row_indices = indices + token * K;
   bool stop_sparse = false;
-  const uint sparse_count = K * block_size;
-  for (uint sparse_base = 0; sparse_base < sparse_count && !stop_sparse; sparse_base += {{THREADGROUP_ROW_BLOCK_D128}}u) {
+  const uint sparse_capacity = K * block_size;
+  for (uint sparse_base = 0; sparse_base < sparse_capacity && !stop_sparse; sparse_base += {{THREADGROUP_ROW_BLOCK_D128}}u) {
     uint block_rows = 0;
     #pragma clang loop unroll(full)
     for (uint j = 0; j < {{THREADGROUP_ROW_BLOCK_D128}}u; j++) {
-      if (sparse_base + j >= sparse_count) {
+      if (sparse_base + j >= sparse_capacity) {
         stop_sparse = true;
         break;
       }
@@ -1061,5 +1056,260 @@ kernel void sparse_indexed_attention(
   }
 }
 )";
+  return source.ToString();
+}
+
+// Scores of one block of rows for the head group, staged one dimension slice at
+// a time; `row` reads element d of staged row `row`.
+std::string NASparseIndexedAttentionKernel::twoPassScores(const char* row) noexcept {
+  return std::string(R"(
+    #pragma clang loop unroll(full)
+    for (ushort i = 0; i < cS.get_capacity(); ++i) {
+      if (cS.is_valid_element(i)) {
+        cS[i] = 0;
+      }
+    }
+    #pragma clang loop unroll(full)
+    for (ushort k = 0; k < {{HEAD_DIMENSION}}u; k += {{DIM_BLOCK}}u) {
+      threadgroup_barrier(mem_flags::mem_threadgroup);
+      for (uint load_idx = uint(tid); load_idx < {{DIM_BLOCK}}u * {{ROW_BLOCK}}u; load_idx += {{THREADS}}u) {
+        const uint d = uint(k) + load_idx % {{DIM_BLOCK}}u;
+        const uint row = load_idx / {{DIM_BLOCK}}u;
+        KV_buf[load_idx] = row < block_rows ? )") + row + R"( : (real)0;
+      }
+      threadgroup_barrier(mem_flags::mem_threadgroup);
+      auto mQ_k = Q.slice<{{DIM_BLOCK}}, {{HEAD_GROUP}}>(k, token * H + head_base);
+      qk_op.run(mQ_k, mK, cS);
+    }
+    #pragma clang loop unroll(full)
+    for (ushort i = 0; i < cS.get_capacity(); ++i) {
+      if (cS.is_valid_element(i)) {
+        auto idx = cS.get_multidimensional_index(i);
+        if (uint(idx[0]) < block_rows) {
+          token_probabilities[(head_base + uint(idx[1])) * chunk.columns + column + uint(idx[0])] = cS[i] * dot_scale;
+        }
+      }
+    }
+)";
+}
+
+// D=512 prefill in two passes over a chunk of tokens. MPP keeps the row
+// reductions of an in-register softmax on a single SIMD group, so the first pass
+// stores every head's probabilities. The values pass then gives each workgroup
+// one output slice, keeping a quarter of the accumulators of a fused kernel.
+std::string NASparseIndexedAttentionKernel::createThreadgroupTwoPassSource() const noexcept {
+  std::string runtimeShape;
+  if (loadRows || loadM || loadK) {
+    runtimeShape = "  constant uint4& runtime_rows [[buffer(6)]],\n";
+  }
+  std::string runtimeValues;
+  if (loadM) {
+    runtimeValues += "  const uniform<uint> T = make_uniform(runtime_rows.z);\n";
+  }
+  if (loadK) {
+    runtimeValues += "  const uniform<uint> K = make_uniform(runtime_rows.w);\n";
+  }
+  if (loadRows) {
+    runtimeValues += "  const uniform<uint> dense_rows = make_uniform(runtime_rows.x);\n";
+  }
+  std::string text = sparsePreamble() + R"(
+constant float log2_e = 1.442695041f;
+// A head's largest probability is stored as 2^12 rather than 1, so probabilities
+// down to 2^-26 of it (about e^-18) stay normal in FP16.
+constant float log2_probability_peak = 12;
+
+// One scratch chunk: its first token, its token count, and the probability
+// columns kept per head (every visible dense row and K * block_size sparse rows).
+struct two_pass_chunk {
+  uint token_base;
+  uint tokens;
+  uint columns;
+};
+
+kernel void sparse_indexed_attention_probabilities(
+  device real* q [[buffer(0)]],
+  device real* dense_k [[buffer(1)]],
+  device real* sparse_k [[buffer(2)]],
+  device const int* indices [[buffer(3)]],
+)";
+  if (attentionSinks) {
+    text += "  device const real* sinks [[buffer(4)]],\n";
+  }
+  text += "  device float* probabilities [[buffer(5)]],\n" + runtimeShape + R"(  constant two_pass_chunk& chunk [[buffer(7)]],
+  device uint* column_counts [[buffer(8)]],
+  device float* normalizers [[buffer(9)]],
+  threadgroup uchar* threadgroup_block [[threadgroup(0)]],
+  ushort sgid [[simdgroup_index_in_threadgroup]],
+  ushort tid [[thread_index_in_threadgroup]],
+  uint2 tgid [[threadgroup_position_in_grid]]
+) {
+)" + runtimeValues;
+  if (loadRows) {
+    text += "  const uniform<uint> sparse_rows = make_uniform(runtime_rows.y);\n";
+  }
+  text += R"(  const uint head_base = tgid.x * {{HEAD_GROUP}}u;
+  const uint local_token = tgid.y;
+  const uint token = chunk.token_base + local_token;
+  if (local_token >= chunk.tokens || token >= T) {
+    return;
+  }
+  threadgroup real* KV_buf = (threadgroup real*)threadgroup_block;
+  auto Q = tensor<device real, dextents<int32_t, 2>, tensor_inline>(q, dextents<int32_t, 2>({{HEAD_DIMENSION}}, int(T * H)));
+  auto KV = tensor<threadgroup real, dextents<int32_t, 2>, tensor_inline>(KV_buf, extents<int32_t, {{DIM_BLOCK}}, {{ROW_BLOCK}}>());
+  constexpr auto qk_desc = matmul2d_descriptor({{HEAD_GROUP}}, {{ROW_BLOCK}}, {{DIM_BLOCK}}, false, true, true, matmul2d_descriptor::mode::multiply_accumulate);
+  matmul2d<qk_desc, execution_simdgroups<{{SIMD_GROUPS}}>> qk_op;
+  auto mQ = Q.slice<{{DIM_BLOCK}}, {{HEAD_GROUP}}>(0, token * H + head_base);
+  auto mK = KV.slice<{{DIM_BLOCK}}, {{ROW_BLOCK}}>(0, 0);
+  auto cS = qk_op.get_destination_cooperative_tensor<decltype(mQ), decltype(mK), float>();
+  const float dot_scale = scale * log2_e;
+  device float* token_probabilities = probabilities + ulong(local_token) * H * chunk.columns;
+)" + causalDenseRange() + R"(  const uint dense_count = dense_end - dense_start;
+  for (uint dense_base = dense_start; dense_base < dense_end; dense_base += {{ROW_BLOCK}}u) {
+    const uint block_rows = min({{ROW_BLOCK}}u, dense_end - dense_base);
+    const uint column = dense_base - dense_start;)" + twoPassScores("dense_k[(ulong(dense_base) + row) * {{HEAD_DIMENSION}}u + d]") + R"(  }
+  device const int* row_indices = indices + token * K;
+  const uint sparse_capacity = K * block_size;
+  uint sparse_count = 0;
+  bool stop_sparse = false;
+  for (uint sparse_base = 0; sparse_base < sparse_capacity && !stop_sparse; sparse_base += {{ROW_BLOCK}}u) {
+    uint block_rows = 0;
+    #pragma clang loop unroll(full)
+    for (uint j = 0; j < {{ROW_BLOCK}}u; j++) {
+      if (sparse_base + j >= sparse_capacity) {
+        stop_sparse = true;
+        break;
+      }
+      const int idx = sparse_row(row_indices, sparse_base + j);
+      if (idx < 0 || uint(idx) >= sparse_rows) {
+        stop_sparse = true;
+        break;
+      }
+      block_rows++;
+    }
+    if (block_rows == 0) {
+      break;
+    }
+    const uint column = dense_count + sparse_base;
+    sparse_count += block_rows;)" + twoPassScores("sparse_k[ulong(uint(sparse_row(row_indices, sparse_base + row))) * {{HEAD_DIMENSION}}u + d]") + R"(  }
+  // The cooperative matmul and the SIMD softmax map elements to lanes differently.
+  threadgroup_barrier(mem_flags::mem_device);
+  const uint columns = dense_count + sparse_count;
+  if (tgid.x == 0 && tid == 0) {
+    column_counts[local_token] = columns;
+  }
+  // Probabilities stay unnormalized, so small ones keep their precision in the
+  // FP16 values multiply. That pass applies the normalizer, which also removes
+  // the peak scale.
+  device float* token_normalizers = normalizers + ulong(local_token) * H;
+  const uint lane = uint(tid) % 32u;
+  for (uint head = head_base + uint(sgid); head < head_base + {{HEAD_GROUP}}u; head += {{SIMD_GROUPS}}u) {
+    device float* head_probabilities = token_probabilities + head * chunk.columns;
+    float maximum = -numeric_limits<float>::infinity();
+    for (uint column = lane; column < columns; column += 32u) {
+      maximum = max(maximum, head_probabilities[column]);
+    }
+    maximum = simd_max(maximum) - log2_probability_peak;
+    float denominator = 0;
+    for (uint column = lane; column < columns; column += 32u) {
+      const float p = fast::exp2(head_probabilities[column] - maximum);
+      denominator += p;
+      head_probabilities[column] = p;
+    }
+    denominator = simd_sum(denominator);
+)";
+  if (attentionSinks) {
+    text += R"(    // The sink joins the denominator only.
+    denominator += fast::exp2(float(sinks[head * sink_head_stride]) * log2_e - maximum);
+)";
+  }
+  text += R"(    if (lane == 0) {
+      token_normalizers[head] = columns > 0 ? 1.0f / denominator : 0;
+    }
+  }
+}
+
+kernel void sparse_indexed_attention_values(
+  device const float* probabilities [[buffer(0)]],
+  device const real* dense_k [[buffer(1)]],
+  device const real* sparse_k [[buffer(2)]],
+  device const int* indices [[buffer(3)]],
+  device real* out [[buffer(5)]],
+)" + runtimeShape + R"(  constant two_pass_chunk& chunk [[buffer(7)]],
+  device const uint* column_counts [[buffer(8)]],
+  device const float* normalizers [[buffer(9)]],
+  threadgroup real* threadgroup_block [[threadgroup(0)]],
+  ushort tid [[thread_index_in_threadgroup]],
+  uint3 tgid [[threadgroup_position_in_grid]]
+) {
+)" + runtimeValues + R"(  const uint head_base = tgid.x * {{HEAD_GROUP}}u;
+  const uint local_token = tgid.y;
+  const uint token = chunk.token_base + local_token;
+  const uint dimension_base = tgid.z * {{DIM_BLOCK}}u;
+  if (local_token >= chunk.tokens || token >= T) {
+    return;
+  }
+  const uint columns = column_counts[local_token];
+)" + causalDenseRange() + R"(  const uint dense_count = dense_end - dense_start;
+  device const int* row_indices = indices + token * K;
+  device const float* token_probabilities = probabilities + ulong(local_token) * H * chunk.columns;
+  threadgroup real* P_buf = threadgroup_block;
+  threadgroup real* V_buf = threadgroup_block + {{HEAD_GROUP}}u * {{ROW_BLOCK}}u;
+  auto P = tensor<threadgroup real, dextents<int32_t, 2>, tensor_inline>(P_buf, extents<int32_t, {{ROW_BLOCK}}, {{HEAD_GROUP}}>());
+  auto V = tensor<threadgroup real, dextents<int32_t, 2>, tensor_inline>(V_buf, extents<int32_t, {{DIM_BLOCK}}, {{ROW_BLOCK}}>());
+  constexpr auto pv_desc = matmul2d_descriptor({{HEAD_GROUP}}, {{DIM_BLOCK}}, {{ROW_BLOCK}}, false, false, true, matmul2d_descriptor::mode::multiply_accumulate);
+  matmul2d<pv_desc, execution_simdgroups<{{SIMD_GROUPS}}>> pv_op;
+  auto mP = P.slice<{{ROW_BLOCK}}, {{HEAD_GROUP}}>(0, 0);
+  auto mV = V.slice<{{DIM_BLOCK}}, {{ROW_BLOCK}}>(0, 0);
+  auto cO = pv_op.get_destination_cooperative_tensor<decltype(mP), decltype(mV), float>();
+  #pragma clang loop unroll(full)
+  for (ushort i = 0; i < cO.get_capacity(); ++i) {
+    if (cO.is_valid_element(i)) {
+      cO[i] = 0;
+    }
+  }
+  for (uint column_base = 0; column_base < columns; column_base += {{ROW_BLOCK}}u) {
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+    for (uint i = tid; i < {{HEAD_GROUP}}u * {{ROW_BLOCK}}u; i += {{THREADS}}u) {
+      const uint head = head_base + i / {{ROW_BLOCK}}u;
+      const uint column = column_base + i % {{ROW_BLOCK}}u;
+      P_buf[i] = column < columns ? (real)token_probabilities[head * chunk.columns + column] : (real)0;
+    }
+    for (uint i = tid; i < {{ROW_BLOCK}}u * {{DIM_BLOCK}}u; i += {{THREADS}}u) {
+      const uint column = column_base + i / {{DIM_BLOCK}}u;
+      const uint d = dimension_base + i % {{DIM_BLOCK}}u;
+      real value = 0;
+      if (column < dense_count) {
+        value = dense_k[(ulong(dense_start) + column) * {{HEAD_DIMENSION}}u + d];
+      } else if (column < columns) {
+        value = sparse_k[ulong(uint(sparse_row(row_indices, column - dense_count))) * {{HEAD_DIMENSION}}u + d];
+      }
+      V_buf[i] = value;
+    }
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+    pv_op.run(mP, mV, cO);
+  }
+  // Head groups tile H exactly. A head guard here costs this pass about 45%.
+  device const float* token_normalizers = normalizers + ulong(local_token) * H;
+  #pragma clang loop unroll(full)
+  for (ushort i = 0; i < cO.get_capacity(); ++i) {
+    if (cO.is_valid_element(i)) {
+      auto idx = cO.get_multidimensional_index(i);
+      const uint head = head_base + uint(idx[1]);
+      out[(ulong(token) * H + head) * {{HEAD_DIMENSION}}u + dimension_base + uint(idx[0])] = (real)(cO[i] * token_normalizers[head]);
+    }
+  }
+}
+)";
+  CodeWriter source;
+  source.SetValue("T_FUNCTION_CONSTANT", loadM ? "" : "constant uint T [[function_constant(0)]];\n");
+  source.SetValue("K_FUNCTION_CONSTANT", loadK ? "" : "constant uint K [[function_constant(4)]];\n");
+  source.SetValue("REAL", memoryPrecision.name());
+  source.SetValue("HEAD_DIMENSION", std::to_string(headDimension));
+  source.SetValue("HEAD_GROUP", std::to_string(twoPassHeadGroup));
+  source.SetValue("SIMD_GROUPS", std::to_string(twoPassSIMDGroups));
+  source.SetValue("THREADS", std::to_string(simdGroupSize * twoPassSIMDGroups));
+  source.SetValue("ROW_BLOCK", std::to_string(threadgroupRowBlock));
+  source.SetValue("DIM_BLOCK", std::to_string(dimBlock));
+  source += text;
   return source.ToString();
 }

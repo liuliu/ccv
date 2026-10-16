@@ -64,7 +64,7 @@ std::pair<NASparseIndexedAttentionKernelDescriptor, PipelineValue<NASparseIndexe
   kernelDesc.variant = variant;
 
   auto createPipeline =
-  [=](MTL::Library* library) -> MTL::ComputePipelineState* {
+  [=](MTL::Library* library, const char* functionName) -> MTL::ComputePipelineState* {
     auto constants = NS::TransferPtr(MTL::FunctionConstantValues::alloc()->init());
     if (!loadM)
       constants->setConstantValue(&T, MTL::DataTypeUInt, NS::UInteger(0));
@@ -80,7 +80,7 @@ std::pair<NASparseIndexedAttentionKernelDescriptor, PipelineValue<NASparseIndexe
     constants->setConstantValue(&scale, MTL::DataTypeFloat, NS::UInteger(7));
     constants->setConstantValue(&slidingWindow, MTL::DataTypeUInt, NS::UInteger(8));
     constants->setConstantValue(&blockSize, MTL::DataTypeUInt, NS::UInteger(9));
-    NS::String* swiftName = NS::String::string("sparse_indexed_attention", NS::UTF8StringEncoding);
+    NS::String* swiftName = NS::String::string(functionName, NS::UTF8StringEncoding);
     NS::Error* error = nil;
     auto function = NS::TransferPtr(library->newFunction(swiftName, constants.get(), &error));
     CCV_NNC_MFA_CHECK_ERROR(error);
@@ -92,8 +92,11 @@ std::pair<NASparseIndexedAttentionKernelDescriptor, PipelineValue<NASparseIndexe
   };
 
   NASparseIndexedAttentionKernel* kernel = createKernel(kernelDesc);
-  auto pipeline = NS::TransferPtr(createPipeline(kernel->library.get()));
+  const bool twoPass = variant == NASparseIndexedAttentionVariant::Threadgroup64TwoPass;
+  auto pipeline = NS::TransferPtr(createPipeline(kernel->library.get(), twoPass ? "sparse_indexed_attention_probabilities" : "sparse_indexed_attention"));
 
   PipelineValue<NASparseIndexedAttentionKernel>* output = new PipelineValue<NASparseIndexedAttentionKernel> { kernel, pipeline };
+  if (twoPass)
+    output->second = NS::TransferPtr(createPipeline(kernel->library.get(), "sparse_indexed_attention_values"));
   return std::make_pair(kernelDesc, output);
 }

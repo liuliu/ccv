@@ -8,6 +8,8 @@ enum class NASparseIndexedAttentionVariant : uint32_t {
   Threadgroup24 = 1,
   Threadgroup64 = 3,
   Threadgroup64D128 = 4,
+  // Probabilities for 64 heads go to scratch; values run per output slice.
+  Threadgroup64TwoPass = 5,
 };
 
 struct NASparseIndexedAttentionKernelDescriptor {
