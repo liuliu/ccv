@@ -37,7 +37,11 @@ NormalizationKernel::NormalizationKernel(NormalizationKernelDescriptor descripto
   CCV_NNC_MFA_PRECONDITION(dataType == MTL::DataTypeFloat || dataType == MTL::DataTypeHalf || dataType == MTL::DataTypeBFloat);
   CCV_NNC_MFA_PRECONDITION(channelGroups == 1);
 
-  const uint16_t threadgroup_size = (channelCount <= 384) ? 128 : 256;
+  // On Apple10, wide FP32 RMS rows benefit from spreading cached values over more lanes.
+  const uint16_t threadgroup_size =
+    device->supportsFamily(MTL::GPUFamily(1010)) && normalizationType == 2 &&
+    dataType == MTL::DataTypeFloat && channelCount >= 4096 ?
+      1024 : ((channelCount <= 384) ? 128 : 256);
   gridSize = MTL::Size(sequenceCount, 1, 1);
   groupSize = MTL::Size(threadgroup_size, 1, 1);
 
@@ -124,9 +128,13 @@ kernel void normalization(
   threadgroup_barrier(mem_flags::mem_threadgroup);
   if (sidx == 0) {
     variance = simd_lane < (threadgroup_size / 32) ? partials[simd_lane] : 0;
-    variance = quad_sum(variance);
-    if (threadgroup_size >= 256) {
-      variance += simd_shuffle_xor(variance, 4);
+    if (threadgroup_size > 256) {
+      variance = simd_sum(variance);
+    } else {
+      variance = quad_sum(variance);
+      if (threadgroup_size >= 256) {
+        variance += simd_shuffle_xor(variance, 4);
+      }
     }
     if (simd_lane == 0) {
       variance = variance / float(sample_count) + epsilon;

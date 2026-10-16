@@ -211,7 +211,11 @@ cc_binary(
 	deps = [
 		"//test:case",
 		"//lib:nnc"
-	]
+	],
+	linkopts = select({
+		"@platforms//os:macos": ["-Wl,-U,___test_case_teardown"],
+		"//conditions:default": [],
+	}),
 )
 
 cc_binary(
@@ -303,4 +307,32 @@ cc_binary(
     srcs = ["segmented_swiglu.tests.c"],
     copts = ccv_default_copts(),
     deps = ["//test:case", "//lib:nnc"],
+)
+
+cc_binary(
+	name = "hyper_connection.tests",
+	srcs = ["hyper_connection.tests.c"],
+	copts = ccv_default_copts(),
+	deps = [
+		"//test:case",
+		"//lib:nnc"
+	],
+	linkopts = select({
+		"@platforms//os:macos": ["-Wl,-U,___test_case_setup,-U,___test_case_teardown"],
+		"//conditions:default": [],
+	}),
+)
+
+cc_binary(
+	name = "moe_routing.tests",
+	srcs = ["moe_routing.tests.c"],
+	copts = ccv_default_copts(),
+	deps = [
+		"//test:case",
+		"//lib:nnc"
+	],
+	linkopts = select({
+		"@platforms//os:macos": ["-Wl,-U,___test_case_teardown"],
+		"//conditions:default": [],
+	}),
 )

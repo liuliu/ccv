@@ -24,15 +24,19 @@ kernel void hyper_connection(
 	device float* output1 [[buffer(5)]],
 	device float* output2 [[buffer(6)]],
 	device float* output3 [[buffer(7)]],
-	uint row [[threadgroup_position_in_grid]],
+	uint2 tgid [[threadgroup_position_in_grid]],
 	uint tid [[thread_index_in_threadgroup]],
-	uint ntg [[threads_per_threadgroup]])
+	uint2 ntg2 [[threads_per_threadgroup]])
 {
+	const uint row = tgid.x;
+	const uint ntg = ntg2.x;
 	if (row >= row_count || hc == 0 || hc > 16)
 		return;
 	if (operation == 2)
 	{
-		for (uint index = tid; index < hc * hidden; index += ntg)
+		// Decode needs several threadgroups; prefill already has independent rows.
+		const uint block_size = row_count == 1 ? 256 : hc * hidden;
+		for (uint index = tgid.y * block_size + tid; index < min((tgid.y + 1) * block_size, hc * hidden); index += ntg)
 		{
 			const uint i = index / hidden;
 			const uint d = index - i * hidden;
@@ -134,7 +138,7 @@ kernel void hyper_connection(
 		const std::string::size_type rowCountConstantPosition = source.find(rowCountConstant);
 		CCV_NNC_MFA_PRECONDITION(rowCountConstantPosition != std::string::npos);
 		source.erase(rowCountConstantPosition, rowCountConstant.size());
-		const std::string::size_type argumentPosition = source.find("\tuint row [[threadgroup_position_in_grid]],");
+		const std::string::size_type argumentPosition = source.find("\tuint2 tgid [[threadgroup_position_in_grid]],");
 		CCV_NNC_MFA_PRECONDITION(argumentPosition != std::string::npos);
 		source.insert(argumentPosition, "\tdevice const uint* loadM [[buffer(8)]],\n");
 		const std::string::size_type rowCountPosition = source.find("\tif (row >= row_count || hc == 0 || hc > 16)");

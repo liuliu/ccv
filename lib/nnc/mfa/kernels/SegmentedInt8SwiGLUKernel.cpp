@@ -76,13 +76,18 @@ static void appendIQ2XXSScaledGrid(std::string& shader)
 
 static void appendIQ2XXSSigns(std::string& shader)
 {
-  shader += "constant uint iq2xxs_ksigns[128] = {";
+  shader += "constant uint2 iq2xxs_ksigns[128] = {";
   for (uint32_t i = 0; i < 128; ++i) {
     if (i != 0)
       shader += ",";
-    if ((i % 16) == 0)
-      shader += "\n  ";
-    shader += std::to_string((uint32_t)ccv_nnc_8i_rowwise_packed_iq2xxs_ksigns[i]) + "u";
+    shader += "\n  uint2(";
+    for (uint32_t word = 0; word < 2; ++word) {
+      uint32_t mask = 0;
+      for (uint32_t lane = 0; lane < 4; ++lane)
+        if (ccv_nnc_8i_rowwise_packed_iq2xxs_ksigns[i] & (1u << (word * 4 + lane)))
+          mask |= 255u << (lane * 8);
+      shader += std::to_string(mask) + (word == 0 ? "u, " : "u)");
+    }
   }
   shader += "\n};\n";
 }
@@ -779,19 +784,11 @@ constant ulong weight_expert_stride [[function_constant(7)]];
 using namespace metal;
 
 inline float4 signed_iq2xxs_values(
-  const uint packed, const uint signs, const uint sign_lane)
+  const uint packed, const uint2 signs, const uint sign_lane)
 {
-  const float4 mag = float4(
-    (float)(packed & 255u),
-    (float)((packed >> 8) & 255u),
-    (float)((packed >> 16) & 255u),
-    (float)((packed >> 24) & 255u));
-  const uint sign_bits = signs >> sign_lane;
-  return select(mag, -mag, bool4(
-    (sign_bits & 1u) != 0u,
-    (sign_bits & 2u) != 0u,
-    (sign_bits & 4u) != 0u,
-    (sign_bits & 8u) != 0u));
+  const uint mask = sign_lane == 0 ? signs.x : signs.y;
+  // Positive magnitudes are 1...127, so negating each byte cannot carry between bytes.
+  return float4(as_type<char4>((packed ^ mask) + (mask & 0x01010101u)));
 }
 
 inline float iq2xxs_dot(
@@ -804,10 +801,10 @@ inline float iq2xxs_dot(
     (uint)p[4] | ((uint)p[5] << 8) | ((uint)p[6] << 16) |
     (((uint)p[7] & 15u) << 24);
   const uint scale_base = ((uint)p[7] >> 4) << 9;
-  const uint signs0 = iq2xxs_ksigns[sign_codes & 127u];
-  const uint signs1 = iq2xxs_ksigns[(sign_codes >> 7) & 127u];
-  const uint signs2 = iq2xxs_ksigns[(sign_codes >> 14) & 127u];
-  const uint signs3 = iq2xxs_ksigns[(sign_codes >> 21) & 127u];
+  const uint2 signs0 = iq2xxs_ksigns[sign_codes & 127u];
+  const uint2 signs1 = iq2xxs_ksigns[(sign_codes >> 7) & 127u];
+  const uint2 signs2 = iq2xxs_ksigns[(sign_codes >> 14) & 127u];
+  const uint2 signs3 = iq2xxs_ksigns[(sign_codes >> 21) & 127u];
   const uint grid0 = scale_base + ((uint)p[0] << 1);
   const uint grid1 = scale_base + ((uint)p[1] << 1);
   const uint grid2 = scale_base + ((uint)p[2] << 1);

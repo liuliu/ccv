@@ -3572,6 +3572,98 @@ TEST_CASE("compare rmsnorm with mps in half precision for qwen shape")
 	ccv_nnc_tensor_free(scale16_tensor);
 }
 
+
+TEST_CASE("compare rmsnorm with mps for wide rows and runtime shapes")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_RMSNORM_FORWARD, CCV_NNC_BACKEND_MPS));
+	const uint64_t old_flags = ccv_nnc_flags();
+	ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA);
+	const int widths[] = {4097, 5120, 20480, 20513};
+	const int datatypes[] = {CCV_32F, CCV_16F, CCV_16BF};
+	dsfmt_t dsfmt;
+	dsfmt_init_gen_rand(&dsfmt, 731);
+	for (int runtime = 0; runtime < 2; ++runtime)
+	{
+		if (runtime)
+			ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M);
+		else
+			ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M);
+		for (int dtype = 0; dtype < 3; ++dtype)
+			for (int shape = 0; shape < 4; ++shape)
+				for (int rows = 1; rows <= 7; rows += 6)
+					for (int affine = 0; affine < 2; ++affine)
+					{
+						const int channels = widths[shape];
+						const int count = rows * channels;
+						ccv_nnc_tensor_param_t data_info = CPU_TENSOR_NHWC(32F, rows, channels);
+						ccv_nnc_tensor_param_t scale_info = CPU_TENSOR_NHWC(32F, 1, channels);
+						ccv_nnc_tensor_param_t stats_info = CPU_TENSOR_NHWC(32F, rows, 1);
+						ccv_nnc_tensor_t* const ha = ccv_nnc_tensor_new(0, data_info, 0);
+						ccv_nnc_tensor_t* const hs = ccv_nnc_tensor_new(0, scale_info, 0);
+						ccv_nnc_tensor_t* const expected = ccv_nnc_tensor_new(0, data_info, 0);
+						ccv_nnc_tensor_t* const expected_inv = ccv_nnc_tensor_new(0, stats_info, 0);
+						ccv_nnc_tensor_t* const actual = ccv_nnc_tensor_new(0, data_info, 0);
+						ccv_nnc_tensor_t* const actual_inv = ccv_nnc_tensor_new(0, stats_info, 0);
+						data_info.datatype = scale_info.datatype = stats_info.datatype = datatypes[dtype];
+						ccv_nnc_tensor_t* const input = ccv_nnc_tensor_new(0, data_info, 0);
+						ccv_nnc_tensor_t* const scale = ccv_nnc_tensor_new(0, scale_info, 0);
+						ccv_nnc_tensor_t* const output = ccv_nnc_tensor_new(0, data_info, 0);
+						ccv_nnc_tensor_t* const stats = ccv_nnc_tensor_new(0, stats_info, 0);
+						data_info.type = scale_info.type = stats_info.type = CCV_TENSOR_GPU_MEMORY;
+						ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, data_info, 0);
+						ccv_nnc_tensor_t* const s = ccv_nnc_tensor_new(0, scale_info, 0);
+						ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, data_info, 0);
+						ccv_nnc_tensor_t* const inv = ccv_nnc_tensor_new(0, stats_info, 0);
+						for (int i = 0; i < count; ++i)
+							ha->data.f32[i] = (dsfmt_genrand_open_close(&dsfmt) * 2 - 1) * 20;
+						for (int i = 0; i < channels; ++i)
+							hs->data.f32[i] = (dsfmt_genrand_open_close(&dsfmt) * 2 - 1) * 2;
+						const ccv_nnc_cmd_t conversion = dtype ? CMD_DATATYPE_CONVERSION_FORWARD() : CMD_DATA_TRANSFER_FORWARD();
+						ccv_nnc_cmd_exec(conversion, ccv_nnc_no_hint, 0, TENSOR_LIST(ha, hs), TENSOR_LIST(input, scale), 0);
+						ccv_nnc_cmd_exec(conversion, ccv_nnc_no_hint, 0, TENSOR_LIST(input, scale), TENSOR_LIST(ha, hs), 0);
+						ccv_nnc_cmd_t cmd = CMD_RMSNORM_FORWARD(1e-6, affine, 1);
+						cmd.info.rmsnorm.scale = 0.75;
+						ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, (ccv_nnc_tensor_t*[]){ha, hs}, affine ? 2 : 1, TENSOR_LIST(expected, expected_inv), 0);
+						ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(input, scale), TENSOR_LIST(a, s), 0);
+						cmd.backend = CCV_NNC_BACKEND_MPS;
+						REQUIRE_EQ(ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, (ccv_nnc_tensor_t*[]){a, s}, affine ? 2 : 1, TENSOR_LIST(b, inv), 0), CCV_NNC_EXEC_SUCCESS, "wide RMS normalization should execute");
+						ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(b, inv), TENSOR_LIST(output, stats), 0);
+						ccv_nnc_cmd_exec(conversion, ccv_nnc_no_hint, 0, TENSOR_LIST(output, stats), TENSOR_LIST(actual, actual_inv), 0);
+						// FP16 normalization rounds intermediate products; use relative error for low precision.
+						const float tolerance = dtype == 0 ? 5e-5 : (dtype == 1 ? 1.5e-3 : 1e-2);
+						if (dtype)
+							for (int i = 0; i < count; ++i)
+							{
+								const float denominator = fmaxf(fabsf(expected->data.f32[i]), 1);
+								expected->data.f32[i] /= denominator;
+								actual->data.f32[i] /= denominator;
+							}
+						REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, expected->data.f32, actual->data.f32, count, tolerance, "wide RMS output should match rounded-input CPU reference");
+						REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, expected_inv->data.f32, actual_inv->data.f32, rows, tolerance, "wide RMS statistics should match CPU reference");
+						ccv_nnc_tensor_free(ha);
+						ccv_nnc_tensor_free(hs);
+						ccv_nnc_tensor_free(expected);
+						ccv_nnc_tensor_free(expected_inv);
+						ccv_nnc_tensor_free(actual);
+						ccv_nnc_tensor_free(actual_inv);
+						ccv_nnc_tensor_free(input);
+						ccv_nnc_tensor_free(scale);
+						ccv_nnc_tensor_free(output);
+						ccv_nnc_tensor_free(stats);
+						ccv_nnc_tensor_free(a);
+						ccv_nnc_tensor_free(s);
+						ccv_nnc_tensor_free(b);
+						ccv_nnc_tensor_free(inv);
+					}
+	}
+	if (old_flags & CCV_NNC_DISABLE_MFA)
+		ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA);
+	if (old_flags & CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M)
+		ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M);
+	else
+		ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M);
+}
+
 TEST_CASE("compare layer norm with mps in bfloat precision through mfa and graph")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_LAYER_NORM_FORWARD, CCV_NNC_BACKEND_MPS));

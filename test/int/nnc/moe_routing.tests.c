@@ -767,4 +767,27 @@ TEST_CASE("moe routing MPS rejects invalid epsilon")
 		ccv_nnc_tensor_free(inputs[i]);
 }
 
+TEST_CASE("multi-token moe routing gathers prefill rows and partial widths exactly")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_MOE_ROUTING_FORWARD, CCV_NNC_BACKEND_MPS));
+	const struct {
+		int tokens, hidden, datatype, preselected;
+	} cases[] = {
+		{4096, 5120, CCV_16F, 0},
+		{129, 513, CCV_16BF, 1},
+		{257, 31, CCV_32F, 0},
+		{193, 5120, CCV_16F, 1},
+	};
+	int i;
+	for (i = 0; i < sizeof(cases) / sizeof(cases[0]); i++)
+	{
+		const moe_routing_mps_result_t result = _moe_routing_mps_case(cases[i].tokens, 384, 6, cases[i].hidden,
+			cases[i].preselected, 0, CCV_32F, cases[i].datatype, 0, 1e-6f, 0);
+		REQUIRE_EQ(result.status, CCV_NNC_EXEC_SUCCESS, "prefill row gathering should execute");
+		REQUIRE(result.metadata_match, "prefill expert and token grouping should match CPU");
+		REQUIRE(result.gathered_match, "prefill gathered activation rows should match CPU exactly");
+		REQUIRE(result.max_weight_difference <= 5e-4f, "prefill route weights should match CPU");
+	}
+}
+
 #include "case_main.h"

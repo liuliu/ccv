@@ -2,6 +2,7 @@
 #include "ccv_case.h"
 #include "ccv_nnc_case.h"
 #include <ccv.h>
+#include <3rdparty/dsfmt/dSFMT.h>
 #include <nnc/ccv_nnc.h>
 #include <nnc/ccv_nnc_easy.h>
 #include <nnc/mps/ccv_nnc_mps.h>
@@ -351,6 +352,66 @@ TEST_CASE("hyper connection Metal scalar-count fallback matches CPU reference")
 	ccv_nnc_tensor_free(hbase);
 	ccv_nnc_tensor_free(hscale);
 	ccv_nnc_tensor_free(hmix);
+}
+
+TEST_CASE("hyper connection Metal expansion handles runtime rows and partial tiles")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_HYPER_CONNECTION_FORWARD, CCV_NNC_BACKEND_MPS));
+	const uint64_t old_flags = ccv_nnc_flags();
+	ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M);
+	const int shapes[][3] = {{1, 4097, 4}, {7, 5120, 4}, {1, 5120, 4}, {1, 513, 3}, {1, 1025, 8}, {1, 257, 16}};
+	dsfmt_t dsfmt;
+	dsfmt_init_gen_rand(&dsfmt, 914);
+	for (int shape = 0; shape < 6; ++shape)
+		for (int half = 0; half < 2; ++half)
+		{
+			const int rows = shapes[shape][0];
+			const int hidden = shapes[shape][1];
+			const int hc = shapes[shape][2];
+			ccv_nnc_tensor_t* const hb = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, hidden), 0);
+			ccv_nnc_tensor_t* const hr = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, hc, hidden), 0);
+			ccv_nnc_tensor_t* const hp = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, hc), 0);
+			ccv_nnc_tensor_t* const hcmt = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, hc, hc), 0);
+			ccv_nnc_tensor_t* const expected = ccv_nnc_tensor_new(0, hr->info, 0);
+			ccv_nnc_tensor_t* const actual = ccv_nnc_tensor_new(0, hr->info, 0);
+			ccv_nnc_tensor_param_t block_info = hb->info;
+			block_info.datatype = half ? CCV_16F : CCV_32F;
+			ccv_nnc_tensor_t* const input = ccv_nnc_tensor_new(0, block_info, 0);
+			block_info.type = CCV_TENSOR_GPU_MEMORY;
+			ccv_nnc_tensor_t* const block = ccv_nnc_tensor_new(0, block_info, 0);
+			ccv_nnc_tensor_t* const residual = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, rows, hc, hidden), 0);
+			ccv_nnc_tensor_t* const post = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, rows, hc), 0);
+			ccv_nnc_tensor_t* const combination = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, rows, hc, hc), 0);
+			ccv_nnc_tensor_t* const output = ccv_nnc_tensor_new(0, residual->info, 0);
+			ccv_nnc_tensor_t* const inputs[] = {hb, hr, hp, hcmt};
+			for (int tensor = 0; tensor < 4; ++tensor)
+				for (int i = 0; i < ccv_nnc_tensor_count(inputs[tensor]->info); ++i)
+					inputs[tensor]->data.f32[i] = dsfmt_genrand_open_close(&dsfmt) * 2 - 1;
+			const ccv_nnc_cmd_t conversion = half ? CMD_DATATYPE_CONVERSION_FORWARD() : CMD_DATA_TRANSFER_FORWARD();
+			ccv_nnc_cmd_exec(conversion, ccv_nnc_no_hint, 0, TENSOR_LIST(hb), TENSOR_LIST(input), 0);
+			ccv_nnc_cmd_exec(conversion, ccv_nnc_no_hint, 0, TENSOR_LIST(input), TENSOR_LIST(hb), 0);
+			ccv_nnc_cmd_t cmd = CMD_HYPER_CONNECTION_FORWARD(hc, 20, 1e-6);
+			ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(hb, hr, hp, hcmt), TENSOR_LIST(expected), 0);
+			ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(input, hr, hp, hcmt), TENSOR_LIST(block, residual, post, combination), 0);
+			cmd.backend = CCV_NNC_BACKEND_MPS;
+			REQUIRE_EQ(ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(block, residual, post, combination), TENSOR_LIST(output), 0), CCV_NNC_EXEC_SUCCESS, "runtime expansion should execute");
+			ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(output), TENSOR_LIST(actual), 0);
+			REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, expected->data.f32, actual->data.f32, rows * hc * hidden, 2e-5, "tiled expansion should match CPU reference for every row and tail element");
+			ccv_nnc_tensor_free(hb);
+			ccv_nnc_tensor_free(hr);
+			ccv_nnc_tensor_free(hp);
+			ccv_nnc_tensor_free(hcmt);
+			ccv_nnc_tensor_free(expected);
+			ccv_nnc_tensor_free(actual);
+			ccv_nnc_tensor_free(input);
+			ccv_nnc_tensor_free(block);
+			ccv_nnc_tensor_free(residual);
+			ccv_nnc_tensor_free(post);
+			ccv_nnc_tensor_free(combination);
+			ccv_nnc_tensor_free(output);
+		}
+	if (!(old_flags & CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M))
+		ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M);
 }
 
 #include "case_main.h"

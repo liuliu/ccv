@@ -11,13 +11,9 @@ static uint32_t alignUp(uint32_t value, uint32_t alignment) noexcept {
   return (value + alignment - 1) / alignment * alignment;
 }
 
-static uint32_t directSIMDGroups(uint32_t D, GEMMOperandPrecision memoryPrecision) noexcept {
+static uint32_t directSIMDGroups(uint32_t D) noexcept {
   const uint32_t maxThreadgroupMemoryBytes = 32768;
-  const uint32_t queryBytes = alignUp(D * (uint32_t)memoryPrecision.size(), sizeof(float));
-  const uint32_t fixedBytes = queryBytes + sizeof(uint32_t);
-  if (fixedBytes >= maxThreadgroupMemoryBytes) {
-    return 1;
-  }
+  const uint32_t fixedBytes = sizeof(uint32_t);
   const uint32_t partialBytes = (D + 2) * sizeof(float);
   uint32_t maxSIMDGroups = (maxThreadgroupMemoryBytes - fixedBytes) / partialBytes;
   if (maxSIMDGroups > 32) {
@@ -85,7 +81,7 @@ SparseIndexedAttentionR1Descriptor SparseIndexedAttentionR1Descriptor::select(
   const uint64_t maximumRows = (uint64_t)visibleDenseRows + (uint64_t)K * blockSize;
   if (maximumRows < 2048) {
     descriptor.mode = Mode::direct;
-    descriptor.simdgroups = std::min(8u, directSIMDGroups(D, memoryPrecision));
+    descriptor.simdgroups = std::min(D == 512 ? 16u : 8u, directSIMDGroups(D));
     descriptor.workgroups = 1;
   } else {
     descriptor.mode = Mode::splitReduce;

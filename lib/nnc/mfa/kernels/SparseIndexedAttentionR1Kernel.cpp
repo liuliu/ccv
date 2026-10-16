@@ -24,12 +24,9 @@ static uint32_t alignUp(uint32_t value, uint32_t alignment) noexcept {
 uint32_t SparseIndexedAttentionR1Kernel::threadgroupMemoryAllocation(
     const SparseIndexedAttentionR1Descriptor& descriptor) const noexcept
 {
-  const uint32_t queryBytes = alignUp(
-      descriptor.D * (uint32_t)descriptor.memoryPrecision.size(),
-      sizeof(float));
   const uint32_t partialBytes =
       descriptor.simdgroups * (descriptor.D + 2) * sizeof(float);
-  return alignUp(queryBytes + partialBytes + sizeof(uint32_t), 16);
+  return alignUp(partialBytes + sizeof(uint32_t), 16);
 }
 
 uint32_t SparseIndexedAttentionR1Kernel::threadgroupSize(
@@ -83,18 +80,12 @@ kernel void sparse_indexed_attention_r1_direct(
 )";
   }
   source += R"(
-  const uint q_shared_bytes = ((D_LEN * (uint)sizeof(real) + 3) / 4) * 4;
-  threadgroup real* q_shared = (threadgroup real*)scratch;
-  threadgroup float* partial_o = (threadgroup float*)(scratch + q_shared_bytes);
+  threadgroup float* partial_o = (threadgroup float*)scratch;
   threadgroup float* partial_s = partial_o + NSG * D_LEN;
   threadgroup float* partial_m = partial_s + NSG;
   threadgroup uint* sparse_count_shared = (threadgroup uint*)(partial_m + NSG);
 
   if (sgid == 0) {
-    device const real* q_row = Q + h * D_LEN;
-    for (uint d = lane_id; d < D_LEN; d += 32) {
-      q_shared[d] = q_row[d];
-    }
     // Blocked indices expand to block_size rows each; scan virtual rows.
     const uint sparse_capacity = K * block_size;
     uint first_invalid = sparse_capacity;
@@ -120,8 +111,12 @@ kernel void sparse_indexed_attention_r1_direct(
   const uint dense_start = dense_rows - dense_count;
   const uint total_rows = dense_count + sparse_count;
 
-  float acc[16];
-  for (uint i = 0; i < 16; ++i) {
+  // Cache contiguous query and shared key/value components in registers.
+  const uint elements = (D_LEN + 31) / 32;
+  float q[16], acc[16];
+  for (uint i = 0; i < elements; ++i) {
+    const uint d = lane_id * elements + i;
+    q[i] = d < D_LEN ? (float)Q[h * D_LEN + d] : 0;
     acc[i] = 0;
   }
   float row_m = )";
@@ -141,29 +136,31 @@ kernel void sparse_indexed_attention_r1_direct(
       const uint sparse_offset = row - dense_count;
       kv_row = SparseKV + uint(sparse_row(Indices, sparse_offset)) * D_LEN;
     }
+    float kv[16];
     float dot_acc = 0;
-    for (uint i = 0; i < 16; ++i) {
-      const uint d = lane_id + i * 32;
+    for (uint i = 0; i < elements; ++i) {
+      const uint d = lane_id * elements + i;
       if (d < D_LEN) {
-        dot_acc += (float)q_shared[d] * (float)kv_row[d];
+        kv[i] = (float)kv_row[d];
+        dot_acc += q[i] * kv[i];
       }
     }
     const float score = simd_sum(dot_acc) * scale_log2e;
     const float new_m = max(row_m, score);
     const float old_scale = fast::exp2(row_m - new_m);
     const float row_scale = fast::exp2(score - new_m);
-    for (uint i = 0; i < 16; ++i) {
-      const uint d = lane_id + i * 32;
+    for (uint i = 0; i < elements; ++i) {
+      const uint d = lane_id * elements + i;
       if (d < D_LEN) {
-        acc[i] = acc[i] * old_scale + row_scale * (float)kv_row[d];
+        acc[i] = acc[i] * old_scale + row_scale * kv[i];
       }
     }
     row_s = row_s * old_scale + row_scale;
     row_m = new_m;
   }
 
-  for (uint i = 0; i < 16; ++i) {
-    const uint d = lane_id + i * 32;
+  for (uint i = 0; i < elements; ++i) {
+    const uint d = lane_id * elements + i;
     if (d < D_LEN) {
       partial_o[sgid * D_LEN + d] = acc[i];
     }
@@ -174,30 +171,21 @@ kernel void sparse_indexed_attention_r1_direct(
   }
   threadgroup_barrier(mem_flags::mem_threadgroup);
 
-  if (sgid == 0) {
-    float global_m = -INFINITY;
+  const bool valid = lane_id < NSG && partial_s[lane_id] > 0;
+  const float local_m = valid ? partial_m[lane_id] : -INFINITY;
+  const float global_m = simd_max(local_m);
+  const float factor = valid ? fast::exp2(local_m - global_m) : 0;
+  const float global_s = simd_sum(valid ? partial_s[lane_id] * factor : 0);
+  device real* o_row = O + h * D_LEN;
+  // Keep all lanes active for the shuffles, including a partial output tile.
+  for (uint base = sgid * 32; base < D_LEN; base += NSG * 32) {
+    const uint d = base + lane_id;
+    float numerator = 0;
     for (uint i = 0; i < NSG; ++i) {
-      if (partial_s[i] > 0) {
-        global_m = max(global_m, partial_m[i]);
-      }
+      const float rescale = simd_shuffle(factor, i);
+      if (d < D_LEN) numerator += partial_o[i * D_LEN + d] * rescale;
     }
-    float global_s = 0;
-    for (uint i = 0; i < NSG; ++i) {
-      if (partial_s[i] > 0) {
-        global_s += partial_s[i] * fast::exp2(partial_m[i] - global_m);
-      }
-    }
-    device real* o_row = O + h * D_LEN;
-    for (uint d = lane_id; d < D_LEN; d += 32) {
-      float numerator = 0;
-      for (uint i = 0; i < NSG; ++i) {
-        if (partial_s[i] > 0) {
-          numerator += partial_o[i * D_LEN + d] *
-              fast::exp2(partial_m[i] - global_m);
-        }
-      }
-      o_row[d] = global_s > 0 ? (real)(numerator / global_s) : (real)0;
-    }
+    if (d < D_LEN) o_row[d] = global_s > 0 ? (real)(numerator / global_s) : (real)0;
   }
 }
 
@@ -242,18 +230,12 @@ kernel void sparse_indexed_attention_r1_split_partials(
 )";
   }
   source += R"(
-  const uint q_shared_bytes = ((D_LEN * (uint)sizeof(real) + 3) / 4) * 4;
-  threadgroup real* q_shared = (threadgroup real*)scratch;
-  threadgroup float* partial_o = (threadgroup float*)(scratch + q_shared_bytes);
+  threadgroup float* partial_o = (threadgroup float*)scratch;
   threadgroup float* partial_s = partial_o + NSG * D_LEN;
   threadgroup float* partial_m = partial_s + NSG;
   threadgroup uint* sparse_count_shared = (threadgroup uint*)(partial_m + NSG);
 
   if (sgid == 0) {
-    device const real* q_row = Q + h * D_LEN;
-    for (uint d = lane_id; d < D_LEN; d += 32) {
-      q_shared[d] = q_row[d];
-    }
     // Blocked indices expand to block_size rows each; scan virtual rows.
     const uint sparse_capacity = K * block_size;
     uint first_invalid = sparse_capacity;
@@ -279,8 +261,12 @@ kernel void sparse_indexed_attention_r1_split_partials(
   const uint dense_start = dense_rows - dense_count;
   const uint total_rows = dense_count + sparse_count;
 
-  float acc[16];
-  for (uint i = 0; i < 16; ++i) {
+  // Cache contiguous query and shared key/value components in registers.
+  const uint elements = (D_LEN + 31) / 32;
+  float q[16], acc[16];
+  for (uint i = 0; i < elements; ++i) {
+    const uint d = lane_id * elements + i;
+    q[i] = d < D_LEN ? (float)Q[h * D_LEN + d] : 0;
     acc[i] = 0;
   }
   float row_m = )";
@@ -300,29 +286,31 @@ kernel void sparse_indexed_attention_r1_split_partials(
       const uint sparse_offset = row - dense_count;
       kv_row = SparseKV + uint(sparse_row(Indices, sparse_offset)) * D_LEN;
     }
+    float kv[16];
     float dot_acc = 0;
-    for (uint i = 0; i < 16; ++i) {
-      const uint d = lane_id + i * 32;
+    for (uint i = 0; i < elements; ++i) {
+      const uint d = lane_id * elements + i;
       if (d < D_LEN) {
-        dot_acc += (float)q_shared[d] * (float)kv_row[d];
+        kv[i] = (float)kv_row[d];
+        dot_acc += q[i] * kv[i];
       }
     }
     const float score = simd_sum(dot_acc) * scale_log2e;
     const float new_m = max(row_m, score);
     const float old_scale = fast::exp2(row_m - new_m);
     const float row_scale = fast::exp2(score - new_m);
-    for (uint i = 0; i < 16; ++i) {
-      const uint d = lane_id + i * 32;
+    for (uint i = 0; i < elements; ++i) {
+      const uint d = lane_id * elements + i;
       if (d < D_LEN) {
-        acc[i] = acc[i] * old_scale + row_scale * (float)kv_row[d];
+        acc[i] = acc[i] * old_scale + row_scale * kv[i];
       }
     }
     row_s = row_s * old_scale + row_scale;
     row_m = new_m;
   }
 
-  for (uint i = 0; i < 16; ++i) {
-    const uint d = lane_id + i * 32;
+  for (uint i = 0; i < elements; ++i) {
+    const uint d = lane_id * elements + i;
     if (d < D_LEN) {
       partial_o[sgid * D_LEN + d] = acc[i];
     }

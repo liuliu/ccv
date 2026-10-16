@@ -13674,6 +13674,96 @@ TEST_CASE("sparse indexed attention R1 with MFA")
 	REQUIRE(bf16_status == 0, "MFA BF16 sparse indexed attention R1 direct mode should match CPU reference (status=%d max abs %g relative %g at %d: CPU %g GPU %g)", bf16_status, max_abs, max_relative, max_idx, expected, actual);
 }
 
+TEST_CASE("sparse indexed attention R1 randomized partial widths and traversal boundaries")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SPARSE_INDEXED_ATTENTION_FORWARD, CCV_NNC_BACKEND_MPS));
+	const struct { int H, D, dense_rows, sparse_rows, K, window, sinks; } cases[] = {
+		{64, 512, 129, 1153, 1024, 128, 1},
+		{7, 130, 23, 71, 19, 0, 0},
+		{7, 511, 127, 2049, 1920, 0, 1},
+		{7, 512, 127, 2049, 1921, 0, 0},
+		{7, 129, 127, 2049, 2049, 3, 1},
+		{3, 31, 1, 1, 1, 0, 0},
+		{3, 1, 7, 19, 9, 1, 1},
+		{7, 130, 31, 91, 0, 0, 1},
+	};
+	dsfmt_t dsfmt;
+	dsfmt_init_gen_rand(&dsfmt, 918);
+	const uint64_t original_flags = ccv_nnc_flags();
+	for (int runtime = 0; runtime < 2; ++runtime)
+	{
+		if (runtime)
+			ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA_ATTENTION_SPECIALIZING_C);
+		else
+			ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA_ATTENTION_SPECIALIZING_C);
+		for (int datatype_idx = 0; datatype_idx < 2; ++datatype_idx)
+			for (int trial = 0; trial < sizeof(cases) / sizeof(cases[0]); ++trial)
+			{
+				const int datatype = datatype_idx ? CCV_16BF : CCV_16F;
+				const int H = cases[trial].H, D = cases[trial].D, K = cases[trial].K;
+				ccv_nnc_tensor_param_t params[] = {
+					CPU_TENSOR_NHWC(32F, 1, 1, H, D),
+					CPU_TENSOR_NHWC(32F, 1, cases[trial].dense_rows, 1, D),
+					CPU_TENSOR_NHWC(32F, 1, cases[trial].sparse_rows, 1, D),
+					CPU_TENSOR_NHWC(32F, 1, 1, H, 1),
+				};
+				ccv_nnc_tensor_t* host[4];
+				ccv_nnc_tensor_t* packed[4];
+				ccv_nnc_tensor_t* gpu[4];
+				for (int t = 0; t < 4; ++t)
+				{
+					host[t] = ccv_nnc_tensor_new(0, params[t], 0);
+					params[t].datatype = datatype;
+					packed[t] = ccv_nnc_tensor_new(0, params[t], 0);
+					params[t].type = CCV_TENSOR_GPU_MEMORY;
+					gpu[t] = ccv_nnc_tensor_new(0, params[t], 0);
+					const int count = ccv_nnc_tensor_count(host[t]->info);
+					for (int i = 0; i < count; ++i)
+						host[t]->data.f32[i] = (dsfmt_genrand_open_close(&dsfmt) * 2 - 1) * (t == 0 && trial % 2 == 0 ? 8 : 3);
+					_mps_sdpa_store_float_as_datatype(datatype, host[t]->data.f32, packed[t]->data.u8, count);
+					_mps_forward_scaled_gemm_to_float(datatype, packed[t]->data.u8, count, host[t]->data.f32);
+					ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(packed[t]), TENSOR_LIST(gpu[t]), 0);
+				}
+				ccv_nnc_tensor_t* const indices = ccv_nnc_tensor_new(0, K ? CPU_TENSOR_NHWC(32S, 1, K) : CPU_TENSOR_NHWC(32S, 1), 0);
+				ccv_nnc_tensor_t* const gindices = ccv_nnc_tensor_new(0, K ? GPU_TENSOR_NHWC(000, 32S, 1, K) : GPU_TENSOR_NHWC(000, 32S, 1), 0);
+				for (int i = 0; i < ccv_nnc_tensor_count(indices->info); ++i)
+					indices->data.i32[i] = (int)(dsfmt_genrand_close_open(&dsfmt) * cases[trial].sparse_rows);
+				// Include empty sparse traversals and early termination.
+				if (trial == 1) indices->data.i32[3] = -1;
+				if (trial == 5) indices->data.i32[0] = -1;
+				ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(indices), TENSOR_LIST(gindices), 0);
+				ccv_nnc_tensor_t* const expected = ccv_nnc_tensor_new(0, host[0]->info, 0);
+				ccv_nnc_tensor_t* const out = ccv_nnc_tensor_new(0, gpu[0]->info, 0);
+				ccv_nnc_cmd_t cmd = CMD_SPARSE_INDEXED_ATTENTION_FORWARD(1.0f / sqrtf((float)D), 1, cases[trial].sinks);
+				cmd.info.sparse_indexed_attention.sliding_window = cases[trial].window;
+				ccv_nnc_tensor_t* cpu_inputs[] = {host[0], host[1], host[1], host[2], host[2], indices, host[3]};
+				ccv_nnc_tensor_t* gpu_inputs[] = {gpu[0], gpu[1], gpu[1], gpu[2], gpu[2], gindices, gpu[3]};
+				REQUIRE_EQ(ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, cpu_inputs, cases[trial].sinks ? 7 : 6, TENSOR_LIST(expected), 0), CCV_NNC_EXEC_SUCCESS, "CPU sparse attention should execute (trial=%d runtime=%d type=%d)", trial, runtime, datatype);
+				REQUIRE_EQ(ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, gpu_inputs, cases[trial].sinks ? 7 : 6, TENSOR_LIST(out), 0), CCV_NNC_EXEC_SUCCESS, "GPU sparse attention should execute (trial=%d runtime=%d type=%d)", trial, runtime, datatype);
+				ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(out), TENSOR_LIST(packed[0]), 0);
+				_mps_forward_scaled_gemm_to_float(datatype, packed[0]->data.u8, H * D, host[0]->data.f32);
+				for (int i = 0; i < H * D; ++i)
+				{
+					const float actual = host[0]->data.f32[i], reference = expected->data.f32[i];
+					const float relative = fabsf(actual - reference) / fmaxf(1, fmaxf(fabsf(actual), fabsf(reference)));
+					REQUIRE(isfinite(actual) && relative < (datatype_idx ? 0.025 : 0.005), "random sparse attention mismatch: runtime=%d type=%d trial=%d index=%d CPU=%g GPU=%g", runtime, datatype, trial, i, reference, actual);
+				}
+				ccv_nnc_tensor_free(out);
+				ccv_nnc_tensor_free(expected);
+				ccv_nnc_tensor_free(gindices);
+				ccv_nnc_tensor_free(indices);
+				for (int t = 0; t < 4; ++t)
+				{
+					ccv_nnc_tensor_free(gpu[t]);
+					ccv_nnc_tensor_free(packed[t]);
+					ccv_nnc_tensor_free(host[t]);
+				}
+			}
+	}
+	ccv_nnc_disable_flag(ccv_nnc_flags() & ~original_flags);
+	ccv_nnc_enable_flag(original_flags);
+}
+
 TEST_CASE("sparse indexed attention sliding window with MFA FP16")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SPARSE_INDEXED_ATTENTION_FORWARD, CCV_NNC_BACKEND_MPS));
