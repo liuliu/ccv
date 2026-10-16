@@ -10,6 +10,7 @@ using namespace ccv::nnc;
 #include "kernels/SegmentedScaledGEMMDescriptor.hpp"
 #include "kernels/Int8MatMulDescriptor.hpp"
 #include "kernels/Int8MatMulKernel.hpp"
+#include "kernels/Dequantize8iRowwiseXDescriptor.hpp"
 
 namespace {
 
@@ -70,14 +71,25 @@ static size_t rowwise_8i_scale_offset(const size_t rows, const size_t cols) noex
   return align_up(rows * cols * sizeof(int8_t), 128);
 }
 
+static size_t packed_8i_rowwise_x_scale_offset(const uint32_t format, const uint32_t expert_count, const uint32_t rows_per_expert, const uint32_t cols) noexcept
+{
+  Dequantize8iRowwiseXSelectedDescriptor packed = {};
+  packed.format = format;
+  packed.rowLength = cols;
+  packed.rowsPerExpert = rows_per_expert;
+  packed.expertCount = expert_count;
+  return (size_t)packed.inputScaleOffset();
+}
+
 static ccv_nnc_mfa_segmented_scaled_swiglu_plan_layout_t plan_layout(
     const ccv_nnc_mfa_segmented_scaled_swiglu_params_t params) noexcept
 {
   const ccv_nnc_mfa_segmented_scaled_swiglu_activation_layout_t a_layout =
     activation_layout(params);
   const size_t records_offset = align_up(a_layout.scratch_bytes, 256);
-  const size_t records_per_bin =
-    (params.M + kSegmentedScaledSwiGLUBlockM - 1) / kSegmentedScaledSwiGLUBlockM;
+  // Packed kernels may use 16-row tiles; keep the existing unpacked allocation.
+  const uint32_t block_m = SegmentedScaledGEMMKernel::fusesPackedFormat(params.format, params.M, params.bincount) ? 16 : kSegmentedScaledSwiGLUBlockM;
+  const size_t records_per_bin = (params.M + block_m - 1) / block_m;
   const size_t records = (size_t)params.bincount *
     (records_per_bin > 0 ? records_per_bin : (size_t)1);
   const size_t records_bytes = align_up(records * sizeof(simd::uint4), 256);
@@ -126,6 +138,7 @@ static ccv_nnc_mfa_segmented_scaled_swiglu_execution_t execution(
   segmented_desc.binCount = params.bincount;
   segmented_desc.useBias = false;
   segmented_desc.loadM = params.loadM;
+  segmented_desc.format = SegmentedScaledGEMMKernel::fusesPackedFormat(params.format, params.M, params.bincount) ? params.format : 0;
 
   auto pool = NS::AutoreleasePool::alloc()->init();
   auto& shader_cache = context->kernel_cache;
@@ -213,8 +226,9 @@ static void encode_projection(
     activation_layout(params);
   const ccv_nnc_mfa_segmented_scaled_swiglu_plan_layout_t p_layout =
     plan_layout(params);
-  const size_t weight_scale_offset = rowwise_8i_scale_offset(
-    (size_t)params.expert_count * params.N, params.K);
+  const size_t weight_scale_offset = execution.segmented_desc.format ?
+    packed_8i_rowwise_x_scale_offset(params.format, params.expert_count, params.N, params.K) :
+    rowwise_8i_scale_offset((size_t)params.expert_count * params.N, params.K);
   auto segmented_kernel = execution.segmented_pipeline_value->kernel;
   auto segmented_pipeline = execution.segmented_pipeline_value->pipeline;
 
@@ -420,12 +434,12 @@ void ccv_nnc_mfa_encode_segmented_scaled_swiglu(
   const ccv_nnc_mfa_segmented_scaled_swiglu_plan_layout_t p_layout =
     plan_layout(params);
   const size_t row_count = (size_t)params.expert_count * params.N;
-  const size_t decoded_weight_size = params.format ?
+  const size_t decoded_weight_size = (params.format && !execution_state.segmented_desc.format) ?
     rowwise_8i_scale_offset(row_count, params.K) +
       row_count * io_precision(params.data_type).size() : 0;
   ccv_nnc_mfa_dequantize_8i_rowwise_x_selected_params_t decode_params = {};
   size_t decode_scratch_size = 0;
-  if (params.format) {
+  if (params.format && !execution_state.segmented_desc.format) {
     decode_params = (ccv_nnc_mfa_dequantize_8i_rowwise_x_selected_params_t){
       .data_type = params.data_type,
       .format = params.format,
@@ -463,7 +477,7 @@ void ccv_nnc_mfa_encode_segmented_scaled_swiglu(
   for (int projection = 0; projection < 2; ++projection) {
     MTL::Buffer* weight = tensors[projection];
     size_t weight_offset = tensor_offsets[projection];
-    if (params.format) {
+    if (params.format && !execution_state.segmented_desc.format) {
       MTL::Buffer* decode_tensors[6] = {
         weight, tensors[3], tensors[4], scratch, scratch, nullptr,
       };

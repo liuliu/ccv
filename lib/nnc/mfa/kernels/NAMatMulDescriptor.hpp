@@ -48,6 +48,8 @@ struct NAMatMulDescriptor {
 
   bool operator==(const NAMatMulDescriptor& rhs) const;
 
+  uint16_t blockN() const noexcept;
+
   uint16_t splitK() const noexcept;
 
   static bool threadBarrierOverK(uint32_t K, uint16_t splitK) noexcept;

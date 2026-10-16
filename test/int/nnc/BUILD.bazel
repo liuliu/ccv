@@ -172,6 +172,10 @@ cc_binary(
 
 cc_binary(
 	name = "mpsblas.tests",
+	linkopts = select({
+		"@platforms//os:macos": ["-Wl,-U,___test_case_setup,-U,___test_case_teardown"],
+		"//conditions:default": [],
+	}),
 	srcs = ["mpsblas.tests.c"],
 	copts = ccv_default_copts(),
 	deps = [
@@ -288,4 +292,15 @@ cc_binary(
 		"//test:case",
 		"//lib:nnc"
 	]
+)
+
+cc_binary(
+    name = "segmented_swiglu.tests",
+    linkopts = select({
+        "@platforms//os:macos": ["-Wl,-U,___test_case_setup,-U,___test_case_teardown"],
+        "//conditions:default": [],
+    }),
+    srcs = ["segmented_swiglu.tests.c"],
+    copts = ccv_default_copts(),
+    deps = ["//test:case", "//lib:nnc"],
 )

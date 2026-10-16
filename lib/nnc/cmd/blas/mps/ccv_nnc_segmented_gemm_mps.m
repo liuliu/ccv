@@ -419,6 +419,10 @@ static int _ccv_nnc_segmented_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_h
 		{
 			ccv_nnc_mfa_segmented_scaled_gemm_params_t params = {
 				.data_type = mtl_data_type,
+				// Packed weights can be decoded per tile instead of expanding the expert bank into scratch.
+				.format = use_neural_accelerators && !bias &&
+					(b_cols % 256) == 0 && (w_rows % 256) == 0 &&
+					ccv_nnc_mfa_segmented_scaled_gemm_fuses_packed_format(w_8i_rowwise_x_format, b_rows, bincount) ? w_8i_rowwise_x_format : 0,
 				.M = (uint32_t)(b_rows + ccv_max(bincount - 2, 0)) / ccv_max(bincount - 1, 1),
 				.N = (uint32_t)b_cols,
 				.K = (uint32_t)w_rows,
@@ -435,7 +439,7 @@ static int _ccv_nnc_segmented_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_h
 			size_t w_dataof = w->dataof;
 			ccv_nnc_mfa_dequantize_8i_rowwise_x_selected_params_t w_decode_params;
 			mtl_buffer_t* scratch = 0;
-			if (w_8i_rowwise_x_format)
+			if (w_8i_rowwise_x_format && !params.format)
 			{
 				w_decode_params = (ccv_nnc_mfa_dequantize_8i_rowwise_x_selected_params_t){
 					.data_type = mtl_data_type,
@@ -453,7 +457,7 @@ static int _ccv_nnc_segmented_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_h
 			}
 			mtl_command_batch_t* command_batch = ccv_nnc_stream_context_start_command_batch(stream_context);
 			ccv_nnc_mps_moe_weights_encode_wait(inputs[3], command_batch);
-			if (w_8i_rowwise_x_format)
+			if (w_8i_rowwise_x_format && !params.format)
 			{
 				mtl_buffer_t* decode_tensors[6] = {
 					mpgetbuffer((ccv_nnc_tensor_t*)w),

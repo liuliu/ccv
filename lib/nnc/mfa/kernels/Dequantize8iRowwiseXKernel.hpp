@@ -17,6 +17,9 @@ struct Dequantize8iRowwiseXKernel {
 
 	MTL::Size gridSize(uint32_t dispatchItems) const noexcept;
 
+	// Metal source defining decode_group(source, group_index, q8) for one packed format, shared with fused kernels.
+	static std::string createDecodeGroupSource(uint32_t format) noexcept;
+
 private:
 	std::string createSource() const noexcept;
 	std::string createConstants() const noexcept;

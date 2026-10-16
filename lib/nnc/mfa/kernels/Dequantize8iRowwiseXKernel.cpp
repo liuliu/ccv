@@ -74,9 +74,9 @@ MTL::Size Dequantize8iRowwiseXKernel::gridSize(uint32_t dispatchItems) const noe
 	return MTL::Size((dispatchItems + 255) / 256, 1, 1);
 }
 
-std::string Dequantize8iRowwiseXKernel::createSource() const noexcept
+std::string Dequantize8iRowwiseXKernel::createDecodeGroupSource(const uint32_t format) noexcept
 {
-	std::string shader = createConstants() + "\n";
+	std::string shader;
 	if (format == CCV_NNC_QX_8I_ROWWISE_IQ2_XXS) {
 		append_compact_grid(shader, "iq2xxs_grid", ccv_nnc_8i_rowwise_packed_iq2xxs_grid, 256, [](const uint16_t value) { return (uint32_t)value; });
 		append_compact_grid(shader, "iq2xxs_ksigns", ccv_nnc_8i_rowwise_packed_iq2xxs_ksigns, 128, [](const uint8_t value) { return (uint32_t)value; });
@@ -88,11 +88,6 @@ std::string Dequantize8iRowwiseXKernel::createSource() const noexcept
 		append_compact_grid(shader, "iq3s_grid", ccv_nnc_8i_rowwise_packed_iq3s_grid, 512, compact_iq3s_grid_entry);
 	else if (format == CCV_NNC_QX_8I_ROWWISE_IQ3_XXS)
 		append_compact_grid(shader, "iq3xxs_grid", ccv_nnc_8i_rowwise_packed_iq3xxs_grid, 256, compact_iq3xxs_grid_entry);
-
-	shader += R"(
-#include <metal_stdlib>
-using namespace metal;
-)";
 
 	if (format == CCV_NNC_QX_8I_ROWWISE_Q6_K) {
 		shader += R"(
@@ -396,6 +391,17 @@ inline void decode_group(device const uchar* source, const ulong group_index, th
 		default:
 			break;
 	}
+	return shader;
+}
+
+std::string Dequantize8iRowwiseXKernel::createSource() const noexcept
+{
+	std::string shader = createConstants() + "\n";
+	shader += R"(
+#include <metal_stdlib>
+using namespace metal;
+)";
+	shader += createDecodeGroupSource(format);
 
 	shader += R"(
 inline char4 q8_char4(const int4 v)

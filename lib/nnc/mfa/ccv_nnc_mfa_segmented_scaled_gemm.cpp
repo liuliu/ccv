@@ -10,6 +10,7 @@ using namespace ccv::nnc;
 #include "kernels/SegmentedScaledGEMMDescriptor.hpp"
 #include "kernels/Int8MatMulDescriptor.hpp"
 #include "kernels/Int8MatMulKernel.hpp"
+#include "kernels/Dequantize8iRowwiseXDescriptor.hpp"
 
 namespace {
 
@@ -72,6 +73,16 @@ static size_t rowwise_8i_scale_offset(const size_t rows, const size_t cols) noex
   return align_up(rows * cols * sizeof(int8_t), 128);
 }
 
+static size_t packed_8i_rowwise_x_scale_offset(const uint32_t format, const uint32_t expert_count, const uint32_t rows_per_expert, const uint32_t cols) noexcept
+{
+  Dequantize8iRowwiseXSelectedDescriptor packed = {};
+  packed.format = format;
+  packed.rowLength = cols;
+  packed.rowsPerExpert = rows_per_expert;
+  packed.expertCount = expert_count;
+  return (size_t)packed.inputScaleOffset();
+}
+
 static ccv_nnc_mfa_segmented_int8_matmul_layout_t int8_matmul_layout(ccv_nnc_mfa_segmented_scaled_gemm_params_t params) noexcept
 {
   const size_t activation_offset = 0;
@@ -89,7 +100,9 @@ static ccv_nnc_mfa_segmented_scaled_gemm_plan_layout_t plan_layout(ccv_nnc_mfa_s
 {
   const ccv_nnc_mfa_activation_quant_layout_t a_layout = activation_quant_layout(params);
   const size_t records_offset = align_up(a_layout.scratch_bytes, 256);
-  const size_t records_per_bin = (params.originalM + kSegmentedScaledGEMMBlockM - 1) / kSegmentedScaledGEMMBlockM;
+  // Packed kernels may use 16-row tiles; keep the existing unpacked allocation.
+  const uint32_t blockM = params.format ? 16 : kSegmentedScaledGEMMBlockM;
+  const size_t records_per_bin = (params.originalM + blockM - 1) / blockM;
   const size_t records = (size_t)params.bincount * (records_per_bin > 0 ? records_per_bin : (size_t)1);
   const size_t records_bytes = align_up(records * sizeof(simd::uint4), 256);
   const size_t dispatch_offset = records_offset + records_bytes;
@@ -117,6 +130,11 @@ size_t ccv_nnc_mfa_segmented_scaled_gemm_reserved_scratch_size(ccv_nnc_mfa_segme
   return plan_layout(params).scratch_bytes;
 }
 
+int ccv_nnc_mfa_segmented_scaled_gemm_fuses_packed_format(uint32_t format, uint64_t M, uint32_t bincount)
+{
+  return SegmentedScaledGEMMKernel::fusesPackedFormat(format, M, bincount) ? 1 : 0;
+}
+
 void ccv_nnc_mfa_encode_segmented_scaled_gemm(
     mfa::context* context,
     ccv_nnc_mfa_segmented_scaled_gemm_params_t params,
@@ -128,6 +146,9 @@ void ccv_nnc_mfa_encode_segmented_scaled_gemm(
   while (tensors[num_tensors] != nullptr)
     ++num_tensors;
   CCV_NNC_MFA_PRECONDITION((num_tensors == 5) || (num_tensors == 6));
+  CCV_NNC_MFA_PRECONDITION(params.format == 0 ||
+    ((params.format & ~CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK) == 0 && params.use_neural_accelerators &&
+      !params.fused_bias && params.N % 256 == 0 && params.K % 256 == 0));
   if (!params.use_neural_accelerators) {
     CCV_NNC_MFA_PRECONDITION(params.data_type == MTL::DataTypeFloat && !params.fused_bias && num_tensors == 5);
     CCV_NNC_MFA_PRECONDITION((params.N % 8) == 0 && (params.K % 8) == 0);
@@ -219,6 +240,7 @@ void ccv_nnc_mfa_encode_segmented_scaled_gemm(
   segmentedDesc.binCount = params.bincount;
   segmentedDesc.useBias = params.fused_bias;
   segmentedDesc.loadM = params.loadM;
+  segmentedDesc.format = params.format;
 
   auto &shaderCache = context->kernel_cache;
   const DeviceProperties& dprops = context->device_properties;
@@ -233,7 +255,9 @@ void ccv_nnc_mfa_encode_segmented_scaled_gemm(
   const ccv_nnc_mfa_activation_quant_layout_t a_layout = activation_quant_layout(params);
   const ccv_nnc_mfa_segmented_scaled_gemm_plan_layout_t p_layout = plan_layout(params);
   auto scratch = context->request_scratch(p_layout.scratch_bytes);
-  const size_t b_scale_offset = rowwise_8i_scale_offset((size_t)params.expert_count * params.N, params.K);
+  const size_t b_scale_offset = params.format ?
+    packed_8i_rowwise_x_scale_offset(params.format, params.expert_count, params.N, params.K) :
+    rowwise_8i_scale_offset((size_t)params.expert_count * params.N, params.K);
 
   {
     auto encoder = command_batch->startCommand();

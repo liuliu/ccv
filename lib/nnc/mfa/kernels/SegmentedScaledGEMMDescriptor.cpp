@@ -19,6 +19,9 @@ bool SegmentedScaledGEMMDescriptor::operator==(const SegmentedScaledGEMMDescript
   return
     ioPrecision == rhs.ioPrecision &&
     loadM == rhs.loadM &&
+    // Runtime M can reuse a pipeline only while its selected tile stays the same.
+    kernelDescriptor().blockDimensions[0] == rhs.kernelDescriptor().blockDimensions[0] &&
+    format == rhs.format &&
     (loadM || matrixDimensions[0] == rhs.matrixDimensions[0]) &&
     matrixDimensions[1] == rhs.matrixDimensions[1] &&
     matrixDimensions[2] == rhs.matrixDimensions[2] &&
@@ -39,17 +42,22 @@ std::size_t std::hash<SegmentedScaledGEMMDescriptor>::operator()(const Segmented
   seed = combine_32(seed, hash.binCount);
   seed = combine_32(seed, hash.useBias ? 1 : 0);
   seed = combine_32(seed, hash.loadM ? 1 : 0);
+  seed = combine_32(seed, hash.format);
+  // Keep the small packed tile class from kernelDescriptor() in the runtime-M key.
+  seed = combine_32(seed, hash.format && (uint64_t)hash.matrixDimensions[0] <= (uint64_t)hash.binCount * 4);
   return seed;
 }
 
 SegmentedScaledGEMMKernelDescriptor SegmentedScaledGEMMDescriptor::kernelDescriptor() const noexcept
 {
+  // Sparse packed batches waste most of a 64-row tile; use 16 rows for short prefill.
   return SegmentedScaledGEMMKernelDescriptor(
-      simd::ushort3 { 32, 128, 128 },
+      simd::ushort3 { (uint16_t)(format ? ((uint64_t)matrixDimensions[0] <= (uint64_t)binCount * 4 ? 16 : 64) : 32), 128, 128 },
       4,
       ioPrecision,
       useBias,
-      loadM);
+      loadM,
+      format);
 }
 
 std::pair<SegmentedScaledGEMMKernelDescriptor, PipelineValue<SegmentedScaledGEMMKernel>*> SegmentedScaledGEMMDescriptor::findKernel(

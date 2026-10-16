@@ -17,6 +17,7 @@ struct SegmentedScaledGEMMDescriptor {
   uint32_t binCount;
   bool useBias;
   bool loadM;
+  uint32_t format = 0;
 
   bool operator==(const SegmentedScaledGEMMDescriptor& rhs) const;
 

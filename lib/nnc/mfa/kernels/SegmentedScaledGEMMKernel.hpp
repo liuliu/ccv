@@ -14,6 +14,7 @@ struct SegmentedScaledGEMMKernel {
   GEMMOperandPrecision ioPrecision;
   bool useBias;
   bool loadM;
+  uint32_t format = 0;
 
   NS::SharedPtr<MTL::Library> library;
   std::string source;
@@ -22,6 +23,9 @@ struct SegmentedScaledGEMMKernel {
 
   uint16_t threadgroupSize(MTL::ComputePipelineState* const pipelineState) const noexcept;
   uint32_t maxTileRecords(uint32_t originalM, uint32_t bincount) const noexcept;
+
+  // Whether packed weights in this format should be decoded per tile rather than expanded into scratch.
+  static bool fusesPackedFormat(uint32_t format, uint64_t M, uint32_t binCount) noexcept;
 
   std::string createSource() const noexcept;
 };

@@ -66,8 +66,22 @@ std::size_t std::hash<NAMatMulDescriptor>::operator()(const NAMatMulDescriptor& 
   return seed;
 }
 
+uint16_t NAMatMulDescriptor::blockN() const noexcept {
+  const uint32_t N = matrixDimensions[1];
+  // Fit narrow FP32 projections in a complete tile so the long reduction can
+  // use split K instead of the unsplit edge path.
+  if (N > 0 && N < 64 && (N % 8) == 0 && matrixDimensions[2] >= 4096 &&
+      (matrixDimensions[2] % 128) == 0 &&
+      memoryPrecisions.A == GEMMOperandPrecision::FP32 &&
+      memoryPrecisions.B == GEMMOperandPrecision::FP32 &&
+      memoryPrecisions.C == GEMMOperandPrecision::FP32) {
+    return N;
+  }
+  return 64;
+}
+
 uint16_t NAMatMulDescriptor::splitK() const noexcept {
-  if ((this->matrixDimensions[1] % 64) != 0) { // If cannot divide by 64, we cannot have splitK.
+  if ((this->matrixDimensions[1] % blockN()) != 0) { // Split K requires complete column tiles.
     assert(this->matrixDimensions[2] < 65536); // It seems without split K, MPP have issues with K >= 65536.
     return 1;
   }
@@ -237,7 +251,7 @@ std::pair<NAMatMulKernelDescriptor, PipelineValue<NAMatMulKernel> *> NAMatMulDes
   const bool threadBarrierOverK = NAMatMulDescriptor::threadBarrierOverK(this->matrixDimensions[2], splitK);
   const uint32_t groupMValue = groupM(this->matrixDimensions[0]);
   const uint32_t groupNValue = this->transposeState[1] ? groupN(this->matrixDimensions[1]) : 0;
-  auto kernelDesc = NAMatMulKernelDescriptor(simd::ushort3 { 128, 64, 64 }, this->memoryPrecisions, registerPrecisions, splitK, 4, threadBarrierOverK, this->transposeState, this->useBias, this->loadM, groupMValue, groupNValue, this->leadingDimensions.has_value());
+  auto kernelDesc = NAMatMulKernelDescriptor(simd::ushort3 { 128, blockN(), 64 }, this->memoryPrecisions, registerPrecisions, splitK, 4, threadBarrierOverK, this->transposeState, this->useBias, this->loadM, groupMValue, groupNValue, this->leadingDimensions.has_value());
   NAMatMulKernel* kernel = createKernel(kernelDesc);
   auto pipelines = createPipeline(kernel->library.get(), splitK, (this->matrixDimensions[1] % 2) == 0);
 

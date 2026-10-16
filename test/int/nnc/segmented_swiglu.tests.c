@@ -4,6 +4,7 @@
 #include <ccv.h>
 #include <nnc/ccv_nnc.h>
 #include <nnc/ccv_nnc_easy.h>
+#include <nnc/mps/ccv_nnc_mps.h>
 #include <3rdparty/dsfmt/dSFMT.h>
 #include <math.h>
 #include <string.h>
@@ -452,7 +453,51 @@ TEST_CASE("MPS segmented SwiGLU executes grouped rowwise int8 prefill")
 	_segmented_swiglu_mps_rowwise_case(0, 0, 1, 10, "Q8_0 grouped prefill", __case_result__);
 }
 
-static void _segmented_swiglu_mps_float_rowwise_case(const int format, const int n, const int k, const int large_groups, int* const __case_result__)
+// Builds packed 8i row-wise X weights directly instead of fitting them with the quantizer, which
+// is slow in debug builds. Every IQ bit pattern decodes within INT8. K-quants scale each code by a
+// per-group multiplier, which is capped here so the decoded codes stay within INT8 as well.
+static void _segmented_swiglu_packed_weights(dsfmt_t* const dsfmt, const int format, const size_t count, const int k, uint8_t* const packed, const size_t packed_size, float* const dense)
+{
+	const size_t group_size = ccv_nnc_8i_rowwise_x_group_size(format);
+	const size_t group_bits = ccv_nnc_8i_rowwise_x_group_bits(format);
+	const size_t scale_offset = ((count / group_size * group_bits + 7) / 8 + 127) & ~(size_t)127;
+	int multiplier_bit = 0, multiplier_width = 0, multiplier_limit = 0;
+	switch (format)
+	{
+		case CCV_NNC_QX_8I_ROWWISE_Q5_K: // (q - 16) * m + b, b in [-16, 15]
+			multiplier_bit = 80, multiplier_width = 3, multiplier_limit = 6;
+			break;
+		case CCV_NNC_QX_8I_ROWWISE_Q6_K: // q * m + b, q in [-32, 31], b in [-2, 1]
+			multiplier_bit = 48, multiplier_width = 2, multiplier_limit = 3;
+			break;
+		case CCV_NNC_QX_8I_ROWWISE_Q4_K: // (q - 8) * m + b, b in [-8, 7]
+			multiplier_bit = 64, multiplier_width = 4, multiplier_limit = 14;
+			break;
+		case CCV_NNC_QX_8I_ROWWISE_Q3_K: // (q - 4) * m + b, b in [-8, 6]
+			multiplier_bit = 48, multiplier_width = 5, multiplier_limit = 29;
+			break;
+		case CCV_NNC_QX_8I_ROWWISE_Q2_K: // q * m - z, q in [0, 3], z in [0, 120]
+			multiplier_bit = 32, multiplier_width = 6, multiplier_limit = 42;
+			break;
+	}
+	size_t i;
+	for (i = 0; i < scale_offset; i++)
+		packed[i] = dsfmt_genrand_uint32(dsfmt) & 255;
+	for (i = 0; multiplier_width > 0 && i < count / group_size; i++)
+	{
+		// The field stores m - 1.
+		const uint32_t field = dsfmt_genrand_uint32(dsfmt) % multiplier_limit;
+		const size_t bit = i * group_bits + multiplier_bit;
+		int j;
+		for (j = 0; j < multiplier_width; j++)
+			packed[(bit + j) / 8] = (packed[(bit + j) / 8] & ~(1 << ((bit + j) % 8))) | (((field >> j) & 1) << ((bit + j) % 8));
+	}
+	for (i = 0; i < count / k; i++)
+		((float*)(packed + scale_offset))[i] = (1 + dsfmt_genrand_open_close(dsfmt)) / 256;
+	ccv_nnc_dequantize_8i_rowwise_x(packed, CCV_32F, CCV_TENSOR_CPU_MEMORY, packed_size, k, format, dense, count);
+}
+
+static void _segmented_swiglu_mps_float_rowwise_case(const int format, const int n, const int k, const int large_groups, const int use_neural_accelerators, int* const __case_result__)
 {
 	const int rows = large_groups ? 389 : 97;
 	const int segments = 6;
@@ -499,31 +544,25 @@ static void _segmented_swiglu_mps_float_rowwise_case(const int format, const int
 		ccv_nnc_tensor_8i_rowwise_x(hgate->info, format) : ccv_nnc_tensor_8i_rowwise(hgate->info);
 	ccv_nnc_tensor_t* const hgate_q = ccv_nnc_tensor_new(0, q_params, 0);
 	ccv_nnc_tensor_t* const hup_q = ccv_nnc_tensor_new(0, q_params, 0);
-	const size_t gate_qsize = format ? ccv_nnc_quantize_8i_rowwise_x(
-		hgate->data.u8, CCV_32F, CCV_TENSOR_CPU_MEMORY, weight_count, k, format, 0, 0,
-		hgate_q->data.u8, ccv_nnc_tensor_data_size_without_padding(hgate_q->info)) : ccv_nnc_quantize_8i_rowwise(
-		hgate->data.u8, CCV_32F, CCV_TENSOR_CPU_MEMORY, weight_count, k, 0, 0,
-		hgate_q->data.u8, ccv_nnc_tensor_data_size_without_padding(hgate_q->info));
-	const size_t up_qsize = format ? ccv_nnc_quantize_8i_rowwise_x(
-		hup->data.u8, CCV_32F, CCV_TENSOR_CPU_MEMORY, weight_count, k, format, 0, 0,
-		hup_q->data.u8, ccv_nnc_tensor_data_size_without_padding(hup_q->info)) : ccv_nnc_quantize_8i_rowwise(
-		hup->data.u8, CCV_32F, CCV_TENSOR_CPU_MEMORY, weight_count, k, 0, 0,
-		hup_q->data.u8, ccv_nnc_tensor_data_size_without_padding(hup_q->info));
-	REQUIRE_EQ(gate_qsize, ccv_nnc_tensor_data_size_without_padding(hgate_q->info),
-		"float gate weights should quantize to the declared rowwise size");
-	REQUIRE_EQ(up_qsize, ccv_nnc_tensor_data_size_without_padding(hup_q->info),
-		"float up weights should quantize to the declared rowwise size");
 	ccv_nnc_tensor_t* const hgate_dequant = ccv_nnc_tensor_new(0, hgate->info, 0);
 	ccv_nnc_tensor_t* const hup_dequant = ccv_nnc_tensor_new(0, hup->info, 0);
 	if (format)
 	{
-		ccv_nnc_dequantize_8i_rowwise_x(
-			hgate_q->data.u8, CCV_32F, CCV_TENSOR_CPU_MEMORY, gate_qsize, k, format,
-			hgate_dequant->data.u8, weight_count);
-		ccv_nnc_dequantize_8i_rowwise_x(
-			hup_q->data.u8, CCV_32F, CCV_TENSOR_CPU_MEMORY, up_qsize, k, format,
-			hup_dequant->data.u8, weight_count);
+		_segmented_swiglu_packed_weights(&dsfmt, format, weight_count, k, hgate_q->data.u8,
+			ccv_nnc_tensor_data_size_without_padding(hgate_q->info), hgate_dequant->data.f32);
+		_segmented_swiglu_packed_weights(&dsfmt, format, weight_count, k, hup_q->data.u8,
+			ccv_nnc_tensor_data_size_without_padding(hup_q->info), hup_dequant->data.f32);
 	} else {
+		const size_t gate_qsize = ccv_nnc_quantize_8i_rowwise(
+			hgate->data.u8, CCV_32F, CCV_TENSOR_CPU_MEMORY, weight_count, k, 0, 0,
+			hgate_q->data.u8, ccv_nnc_tensor_data_size_without_padding(hgate_q->info));
+		const size_t up_qsize = ccv_nnc_quantize_8i_rowwise(
+			hup->data.u8, CCV_32F, CCV_TENSOR_CPU_MEMORY, weight_count, k, 0, 0,
+			hup_q->data.u8, ccv_nnc_tensor_data_size_without_padding(hup_q->info));
+		REQUIRE_EQ(gate_qsize, ccv_nnc_tensor_data_size_without_padding(hgate_q->info),
+			"float gate weights should quantize to the declared rowwise size");
+		REQUIRE_EQ(up_qsize, ccv_nnc_tensor_data_size_without_padding(hup_q->info),
+			"float up weights should quantize to the declared rowwise size");
 		ccv_nnc_dequantize_8i_rowwise(
 			hgate_q->data.u8, CCV_32F, CCV_TENSOR_CPU_MEMORY, gate_qsize, k,
 			hgate_dequant->data.u8, weight_count);
@@ -568,16 +607,21 @@ static void _segmented_swiglu_mps_float_rowwise_case(const int format, const int
 	ccv_nnc_cmd_t command = CMD_SEGMENTED_SWIGLU_FORWARD(clamp);
 	command.backend = CCV_NNC_BACKEND_MPS;
 	const uint64_t old_flags = ccv_nnc_flags();
-	ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS);
+	if (use_neural_accelerators)
+		ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS);
+	else
+		ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS);
 	const int exec_status = ccv_nnc_cmd_exec(command, ccv_nnc_no_hint, 0,
 		TENSOR_LIST(a, indices, counts, gate_q, up_q, route), TENSOR_LIST(output), stream);
 	if (exec_status == CCV_NNC_EXEC_SUCCESS)
 		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0,
 			TENSOR_LIST(output), TENSOR_LIST(actual), stream);
 	ccv_nnc_stream_context_wait(stream);
-	if (!(old_flags & CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS))
+	if (old_flags & CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS)
+		ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS);
+	else
 		ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS);
-	REQUIRE_EQ(exec_status, CCV_NNC_EXEC_SUCCESS, "float rowwise segmented SwiGLU fallback should execute");
+	REQUIRE_EQ(exec_status, CCV_NNC_EXEC_SUCCESS, "float rowwise segmented SwiGLU should execute");
 	double difference_norm = 0;
 	double expected_norm = 0;
 	double max_abs = 0;
@@ -637,7 +681,7 @@ static void _segmented_swiglu_mps_float_rowwise_case(const int format, const int
 TEST_CASE("MPS segmented SwiGLU emulates int8 with normalized half values and float scales")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SEGMENTED_SWIGLU_FORWARD, CCV_NNC_BACKEND_MPS));
-	_segmented_swiglu_mps_float_rowwise_case(0, 64, 128, 0, __case_result__);
+	_segmented_swiglu_mps_float_rowwise_case(0, 64, 128, 0, 0, __case_result__);
 }
 
 TEST_CASE("MPS segmented SwiGLU uses Int8MatMul for packed weights and float scales")
@@ -652,11 +696,11 @@ TEST_CASE("MPS segmented SwiGLU uses Int8MatMul for packed weights and float sca
 	};
 	int i;
 	for (i = 0; i < sizeof(formats) / sizeof(formats[0]); i++)
-		_segmented_swiglu_mps_float_rowwise_case(formats[i], 256, 256, 0, __case_result__);
-	_segmented_swiglu_mps_float_rowwise_case(CCV_NNC_QX_8I_ROWWISE_IQ2_XXS, 512, 256, 0, __case_result__);
-	_segmented_swiglu_mps_float_rowwise_case(CCV_NNC_QX_8I_ROWWISE_IQ2_XXS, 256, 512, 0, __case_result__);
-	_segmented_swiglu_mps_float_rowwise_case(CCV_NNC_QX_8I_ROWWISE_IQ2_XXS, 256, 4096, 0, __case_result__);
-	_segmented_swiglu_mps_float_rowwise_case(CCV_NNC_QX_8I_ROWWISE_IQ2_XXS, 256, 4096, 1, __case_result__);
+		_segmented_swiglu_mps_float_rowwise_case(formats[i], 256, 256, 0, 0, __case_result__);
+	_segmented_swiglu_mps_float_rowwise_case(CCV_NNC_QX_8I_ROWWISE_IQ2_XXS, 512, 256, 0, 0, __case_result__);
+	_segmented_swiglu_mps_float_rowwise_case(CCV_NNC_QX_8I_ROWWISE_IQ2_XXS, 256, 512, 0, 0, __case_result__);
+	_segmented_swiglu_mps_float_rowwise_case(CCV_NNC_QX_8I_ROWWISE_IQ2_XXS, 256, 4096, 0, 0, __case_result__);
+	_segmented_swiglu_mps_float_rowwise_case(CCV_NNC_QX_8I_ROWWISE_IQ2_XXS, 256, 4096, 1, 0, __case_result__);
 }
 
 TEST_CASE("MPS segmented SwiGLU executes grouped IQ2_XXS prefill")
@@ -920,6 +964,365 @@ TEST_CASE("MPS segmented SwiGLU preserves route weights with 257 experts")
 	for (int i = 0; i < sizeof(tensors) / sizeof(tensors[0]); i++)
 		ccv_nnc_tensor_free(tensors[i]);
 	ccfree(expected);
+}
+
+TEST_CASE("MPS segmented SwiGLU packed prefill with neural accelerators")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SEGMENTED_SWIGLU_FORWARD, CCV_NNC_BACKEND_MPS));
+	const int formats[] = {
+		CCV_NNC_QX_8I_ROWWISE_Q4_K, CCV_NNC_QX_8I_ROWWISE_Q3_K,
+		CCV_NNC_QX_8I_ROWWISE_Q2_K, CCV_NNC_QX_8I_ROWWISE_IQ2_S,
+		CCV_NNC_QX_8I_ROWWISE_IQ2_XS, CCV_NNC_QX_8I_ROWWISE_IQ3_S,
+		CCV_NNC_QX_8I_ROWWISE_IQ3_XXS, CCV_NNC_QX_8I_ROWWISE_IQ2_XXS,
+		CCV_NNC_QX_8I_ROWWISE_Q5_K, CCV_NNC_QX_8I_ROWWISE_Q6_K,
+	};
+	int i;
+	for (i = 0; i < sizeof(formats) / sizeof(formats[0]); i++)
+	{
+		_segmented_swiglu_mps_float_rowwise_case(formats[i], 256, 256, 0, 1, __case_result__);
+		_segmented_swiglu_mps_float_rowwise_case(formats[i], 256, 512, 1, 1, __case_result__);
+	}
+}
+
+
+TEST_CASE("MPS segmented SwiGLU packed matrix selection preserves small batch boundaries")
+{
+#ifdef HAVE_MPS
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SEGMENTED_SWIGLU_FORWARD, CCV_NNC_BACKEND_MPS));
+	extern uint8_t ccv_nnc_mfa_has_neural_accelerators(ccv_nnc_mfa_context_t* context);
+	GUARD_ELSE_RETURN(ccv_nnc_mfa_has_neural_accelerators(ccv_nnc_default_mfa_context()));
+	const int segments = 6, experts = 8, n = 256, k = 256;
+	const int row_counts[] = { 23, 24, 25, 5, 6, 7, 12, 18, 19, 24, 25, 6 };
+	const int layouts[] = { CCV_TENSOR_FORMAT_NHWC, CCV_TENSOR_FORMAT_NCHW };
+	const int formats[] = {
+		CCV_NNC_QX_8I_ROWWISE_Q4_K, CCV_NNC_QX_8I_ROWWISE_Q3_K,
+		CCV_NNC_QX_8I_ROWWISE_Q2_K, CCV_NNC_QX_8I_ROWWISE_IQ2_S,
+		CCV_NNC_QX_8I_ROWWISE_IQ2_XS, CCV_NNC_QX_8I_ROWWISE_IQ3_S,
+		CCV_NNC_QX_8I_ROWWISE_IQ3_XXS, CCV_NNC_QX_8I_ROWWISE_IQ2_XXS,
+		CCV_NNC_QX_8I_ROWWISE_Q5_K, CCV_NNC_QX_8I_ROWWISE_Q6_K,
+	};
+	dsfmt_t dsfmt;
+	dsfmt_init_gen_rand(&dsfmt, 987);
+	for (int f = 0; f < sizeof(formats) / sizeof(formats[0]); f++)
+	{
+		const int format = formats[f];
+		for (int layout = 0; layout < 2; layout++)
+		{
+			ccv_nnc_tensor_param_t dense_info = CPU_TENSOR_NHWC(32F, experts, n, k);
+			dense_info.format = layouts[layout];
+			const ccv_nnc_tensor_param_t packed_info = ccv_nnc_tensor_8i_rowwise_x(dense_info, format);
+			const size_t packed_size = ccv_nnc_tensor_data_size_without_padding(packed_info);
+			ccv_nnc_tensor_t* const hg = ccv_nnc_tensor_new(0, packed_info, 0);
+			ccv_nnc_tensor_t* const hu = ccv_nnc_tensor_new(0, packed_info, 0);
+			ccv_nnc_tensor_t* const gd = ccv_nnc_tensor_new(0, dense_info, 0);
+			ccv_nnc_tensor_t* const ud = ccv_nnc_tensor_new(0, dense_info, 0);
+			_segmented_swiglu_packed_weights(&dsfmt, format, (size_t)experts * n * k, k, hg->data.u8, packed_size, gd->data.f32);
+			_segmented_swiglu_packed_weights(&dsfmt, format, (size_t)experts * n * k, k, hu->data.u8, packed_size, ud->data.f32);
+			ccv_nnc_tensor_param_t gpu_info = packed_info;
+			gpu_info.type = CCV_TENSOR_GPU_MEMORY;
+			ccv_nnc_tensor_t* const gate = ccv_nnc_tensor_new(0, gpu_info, 0);
+			ccv_nnc_tensor_t* const up = ccv_nnc_tensor_new(0, gpu_info, 0);
+			ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(hg, hu), TENSOR_LIST(gate, up), 0);
+			for (int accelerated = 0; accelerated < 2; accelerated++)
+				for (int step = 0; step < sizeof(row_counts) / sizeof(row_counts[0]); step++)
+				{
+					const int rows = row_counts[step];
+					ccv_nnc_tensor_param_t a_info = CPU_TENSOR_NHWC(32F, rows, k);
+					a_info.format = layouts[layout];
+					ccv_nnc_tensor_t* const ha = ccv_nnc_tensor_new(0, a_info, 0);
+					ccv_nnc_tensor_t* const reference_a = ccv_nnc_tensor_new(0, a_info, 0);
+					ccv_nnc_tensor_t* const hi = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, segments), 0);
+					ccv_nnc_tensor_t* const hc = ccv_nnc_tensor_new(0, hi->info, 0);
+					ccv_nnc_tensor_t* const hr = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows), 0);
+					ccv_nnc_tensor_param_t out_info = CPU_TENSOR_NHWC(32F, rows, n);
+					out_info.format = layouts[layout];
+					ccv_nnc_tensor_t* const expected = ccv_nnc_tensor_new(0, out_info, 0);
+					ccv_nnc_tensor_t* const actual = ccv_nnc_tensor_new(0, out_info, 0);
+					const int selected[] = { 7, 1, 5, 2, 1, 3 };
+					int counts[] = { 0, 2, 0, rows - 3, 1, 0 };
+					if (rows == segments)
+						for (int bin = 0; bin < segments; bin++)
+							counts[bin] = 1;
+					memcpy(hi->data.i32, selected, sizeof(selected));
+					memcpy(hc->data.i32, counts, sizeof(counts));
+					for (int row = 0; row < rows; row++)
+					{
+						hr->data.f32[row] = dsfmt_genrand_open_close(&dsfmt);
+						// Quarter-step inputs exercise quantization without tie rounding.
+						for (int j = 0; j < k; j++)
+							ha->data.f32[row * k + j] = ((int)(dsfmt_genrand_uint32(&dsfmt) % 253) - 126 + 0.25f) / 128;
+						ha->data.f32[row * k] = 127.f / 128;
+						for (int j = 0; j < k; j++)
+							reference_a->data.f32[row * k + j] = rows > (accelerated ? 0 : 18) ?
+								lrintf(ha->data.f32[row * k + j] * 128) / 128.f : ha->data.f32[row * k + j];
+					}
+					_segmented_swiglu_reference(reference_a->data.f32, hi->data.i32, hc->data.i32,
+						gd->data.f32, ud->data.f32, hr->data.f32, rows, segments, n, k, 10, expected->data.f32);
+					a_info.type = out_info.type = CCV_TENSOR_GPU_MEMORY;
+					ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, a_info, 0);
+					ccv_nnc_tensor_t* const output = ccv_nnc_tensor_new(0, out_info, 0);
+					ccv_nnc_tensor_t* const indices = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32S, segments), 0);
+					ccv_nnc_tensor_t* const counts_gpu = ccv_nnc_tensor_new(0, indices->info, 0);
+					ccv_nnc_tensor_t* const route = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, rows), 0);
+					ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha, hi, hc, hr), TENSOR_LIST(a, indices, counts_gpu, route), 0);
+					ccv_nnc_cmd_t command = CMD_SEGMENTED_SWIGLU_FORWARD(10);
+					command.backend = CCV_NNC_BACKEND_MPS;
+					const uint64_t old_flags = ccv_nnc_flags();
+					ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA);
+					if (step >= 3)
+						ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M);
+					else
+						ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M);
+					if (accelerated)
+						ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS);
+					else
+						ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS);
+					const int status = ccv_nnc_cmd_exec(command, ccv_nnc_no_hint, 0, TENSOR_LIST(a, indices, counts_gpu, gate, up, route), TENSOR_LIST(output), 0);
+					if (old_flags & CCV_NNC_DISABLE_MFA) ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA);
+					if (old_flags & CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M)
+						ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M);
+					else
+						ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M);
+					if (old_flags & CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS)
+						ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS);
+					else
+						ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS);
+					REQUIRE_EQ(status, CCV_NNC_EXEC_SUCCESS, "small packed batch should execute for format=%d", format);
+					ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(output), TENSOR_LIST(actual), 0);
+					for (int row = 0; row < rows; row++)
+					{
+						double error = 0, norm = 0;
+						for (int j = 0; j < n; j++)
+						{
+							const double value = actual->data.f32[row * n + j];
+							const double reference = expected->data.f32[row * n + j];
+							REQUIRE(isfinite(value), "finite output at format=%d layout=%d accelerated=%d rows=%d", format, layout, accelerated, rows);
+							error += (value - reference) * (value - reference);
+							norm += reference * reference;
+						}
+						REQUIRE(sqrt(error / ccv_max(norm, 1e-20)) < 1e-4,
+							"CPU reference parity at format=%d layout=%d accelerated=%d rows=%d row=%d", format, layout, accelerated, rows, row);
+					}
+					ccv_nnc_tensor_t* const tensors[] = { ha, reference_a, hi, hc, hr, expected, actual, a, output, indices, counts_gpu, route };
+					for (int i = 0; i < sizeof(tensors) / sizeof(tensors[0]); i++)
+						ccv_nnc_tensor_free(tensors[i]);
+				}
+			ccv_nnc_tensor_t* const weights[] = { hg, hu, gd, ud, gate, up };
+			for (int i = 0; i < sizeof(weights) / sizeof(weights[0]); i++)
+				ccv_nnc_tensor_free(weights[i]);
+		}
+	}
+#endif
+}
+
+TEST_CASE("MPS segmented SwiGLU packed 16-row tiles reserve records for many partial bins")
+{
+#ifdef HAVE_MPS
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SEGMENTED_SWIGLU_FORWARD, CCV_NNC_BACKEND_MPS));
+	extern uint8_t ccv_nnc_mfa_has_neural_accelerators(ccv_nnc_mfa_context_t* context);
+	GUARD_ELSE_RETURN(ccv_nnc_mfa_has_neural_accelerators(ccv_nnc_default_mfa_context()));
+	// 32 rows over 16 bins selects 16-row tiles. One bin needs two tiles and every
+	// other bin one, so there are more tile records than bins * ceil(32 / 32).
+	const int segments = 16, experts = 16, rows = 32, n = 256, k = 256;
+	const int formats[] = {
+		CCV_NNC_QX_8I_ROWWISE_Q4_K, CCV_NNC_QX_8I_ROWWISE_Q3_K,
+		CCV_NNC_QX_8I_ROWWISE_Q2_K, CCV_NNC_QX_8I_ROWWISE_IQ2_S,
+		CCV_NNC_QX_8I_ROWWISE_IQ2_XS, CCV_NNC_QX_8I_ROWWISE_IQ3_S,
+		CCV_NNC_QX_8I_ROWWISE_IQ3_XXS, CCV_NNC_QX_8I_ROWWISE_IQ2_XXS,
+		CCV_NNC_QX_8I_ROWWISE_Q5_K, CCV_NNC_QX_8I_ROWWISE_Q6_K,
+	};
+	dsfmt_t dsfmt;
+	dsfmt_init_gen_rand(&dsfmt, 1607);
+	int f;
+	for (f = 0; f < sizeof(formats) / sizeof(formats[0]); f++)
+	{
+		const int format = formats[f];
+		const ccv_nnc_tensor_param_t dense_info = CPU_TENSOR_NHWC(32F, experts, n, k);
+		const ccv_nnc_tensor_param_t packed_info = ccv_nnc_tensor_8i_rowwise_x(dense_info, format);
+		const size_t packed_size = ccv_nnc_tensor_data_size_without_padding(packed_info);
+		ccv_nnc_tensor_t* const hg = ccv_nnc_tensor_new(0, packed_info, 0);
+		ccv_nnc_tensor_t* const hu = ccv_nnc_tensor_new(0, packed_info, 0);
+		ccv_nnc_tensor_t* const gd = ccv_nnc_tensor_new(0, dense_info, 0);
+		ccv_nnc_tensor_t* const ud = ccv_nnc_tensor_new(0, dense_info, 0);
+		int i, j;
+		_segmented_swiglu_packed_weights(&dsfmt, format, (size_t)experts * n * k, k, hg->data.u8, packed_size, gd->data.f32);
+		_segmented_swiglu_packed_weights(&dsfmt, format, (size_t)experts * n * k, k, hu->data.u8, packed_size, ud->data.f32);
+		ccv_nnc_tensor_t* const ha = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, k), 0);
+		ccv_nnc_tensor_t* const reference_a = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, k), 0);
+		ccv_nnc_tensor_t* const hi = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, segments), 0);
+		ccv_nnc_tensor_t* const hc = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, segments), 0);
+		ccv_nnc_tensor_t* const hr = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows), 0);
+		ccv_nnc_tensor_t* const expected = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, n), 0);
+		ccv_nnc_tensor_t* const actual = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, n), 0);
+		for (i = 0; i < segments; i++)
+		{
+			hi->data.i32[i] = (i * 7 + 3) % experts;
+			hc->data.i32[i] = i == 0 ? rows - (segments - 1) : 1;
+		}
+		for (i = 0; i < rows; i++)
+		{
+			hr->data.f32[i] = dsfmt_genrand_open_close(&dsfmt);
+			// Quarter-step inputs make the per-row INT8 activation quantization exact.
+			for (j = 0; j < k; j++)
+				ha->data.f32[i * k + j] = ((int)(dsfmt_genrand_uint32(&dsfmt) % 253) - 126 + 0.25f) / 128;
+			ha->data.f32[i * k] = 127.f / 128;
+			for (j = 0; j < k; j++)
+				reference_a->data.f32[i * k + j] = lrintf(ha->data.f32[i * k + j] * 128) / 128.f;
+		}
+		_segmented_swiglu_reference(reference_a->data.f32, hi->data.i32, hc->data.i32,
+			gd->data.f32, ud->data.f32, hr->data.f32, rows, segments, n, k, 10, expected->data.f32);
+		ccv_nnc_tensor_param_t gpu_info = packed_info;
+		gpu_info.type = CCV_TENSOR_GPU_MEMORY;
+		ccv_nnc_tensor_t* const gate = ccv_nnc_tensor_new(0, gpu_info, 0);
+		ccv_nnc_tensor_t* const up = ccv_nnc_tensor_new(0, gpu_info, 0);
+		ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, rows, k), 0);
+		ccv_nnc_tensor_t* const output = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, rows, n), 0);
+		ccv_nnc_tensor_t* const indices = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32S, segments), 0);
+		ccv_nnc_tensor_t* const counts = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32S, segments), 0);
+		ccv_nnc_tensor_t* const route = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, rows), 0);
+		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(hg, hu, ha, hi, hc, hr), TENSOR_LIST(gate, up, a, indices, counts, route), 0);
+		ccv_nnc_cmd_t command = CMD_SEGMENTED_SWIGLU_FORWARD(10);
+		command.backend = CCV_NNC_BACKEND_MPS;
+		const uint64_t old_flags = ccv_nnc_flags();
+		ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA | CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS);
+		int runtime;
+		for (runtime = 0; runtime < 2; runtime++)
+		{
+			if (runtime)
+				ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M);
+			else
+				ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M);
+			REQUIRE_EQ(ccv_nnc_cmd_exec(command, ccv_nnc_no_hint, 0, TENSOR_LIST(a, indices, counts, gate, up, route), TENSOR_LIST(output), 0), CCV_NNC_EXEC_SUCCESS, "packed 16-row tiles should execute for format=%d", format);
+			ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(output), TENSOR_LIST(actual), 0);
+			for (i = 0; i < rows; i++)
+			{
+				double error = 0, norm = 0;
+				for (j = 0; j < n; j++)
+				{
+					const double value = actual->data.f32[i * n + j];
+					const double reference = expected->data.f32[i * n + j];
+					REQUIRE(isfinite(value), "finite output at format=%d runtime=%d row=%d", format, runtime, i);
+					error += (value - reference) * (value - reference);
+					norm += reference * reference;
+				}
+				REQUIRE(sqrt(error / ccv_max(norm, 1e-20)) < 1e-4, "every tile record should be computed: format=%d runtime=%d row=%d", format, runtime, i);
+			}
+		}
+		const uint64_t flags[] = { CCV_NNC_DISABLE_MFA, CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS, CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M };
+		for (i = 0; i < 3; i++)
+			if (old_flags & flags[i])
+				ccv_nnc_enable_flag(flags[i]);
+			else
+				ccv_nnc_disable_flag(flags[i]);
+		ccv_nnc_tensor_t* const tensors[] = { hg, hu, gd, ud, ha, reference_a, hi, hc, hr, expected, actual, gate, up, a, output, indices, counts, route };
+		for (i = 0; i < sizeof(tensors) / sizeof(tensors[0]); i++)
+			ccv_nnc_tensor_free(tensors[i]);
+	}
+#endif
+}
+
+TEST_CASE("MPS segmented SwiGLU packed broadcast input keeps the vector path")
+{
+#ifdef HAVE_MPS
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SEGMENTED_SWIGLU_FORWARD, CCV_NNC_BACKEND_MPS));
+	// One activation row routed to more rows than bins cannot use the grouped matrix path,
+	// which needs one input row per output row, so packed weights must keep the vector path.
+	const int segments = 6, experts = 8, n = 256, k = 256;
+	const int row_counts[] = { 7, 12, 18 };
+	const int formats[] = {
+		CCV_NNC_QX_8I_ROWWISE_Q4_K, CCV_NNC_QX_8I_ROWWISE_Q3_K,
+		CCV_NNC_QX_8I_ROWWISE_Q2_K, CCV_NNC_QX_8I_ROWWISE_IQ2_S,
+		CCV_NNC_QX_8I_ROWWISE_IQ2_XS, CCV_NNC_QX_8I_ROWWISE_IQ3_S,
+		CCV_NNC_QX_8I_ROWWISE_IQ3_XXS, CCV_NNC_QX_8I_ROWWISE_IQ2_XXS,
+		CCV_NNC_QX_8I_ROWWISE_Q5_K, CCV_NNC_QX_8I_ROWWISE_Q6_K,
+	};
+	dsfmt_t dsfmt;
+	dsfmt_init_gen_rand(&dsfmt, 2027);
+	const uint64_t old_flags = ccv_nnc_flags();
+	ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA | CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS);
+	int f, step, i, j;
+	for (f = 0; f < sizeof(formats) / sizeof(formats[0]); f++)
+	{
+		const int format = formats[f];
+		const ccv_nnc_tensor_param_t dense_info = CPU_TENSOR_NHWC(32F, experts, n, k);
+		const ccv_nnc_tensor_param_t packed_info = ccv_nnc_tensor_8i_rowwise_x(dense_info, format);
+		const size_t packed_size = ccv_nnc_tensor_data_size_without_padding(packed_info);
+		ccv_nnc_tensor_t* const hg = ccv_nnc_tensor_new(0, packed_info, 0);
+		ccv_nnc_tensor_t* const hu = ccv_nnc_tensor_new(0, packed_info, 0);
+		ccv_nnc_tensor_t* const gd = ccv_nnc_tensor_new(0, dense_info, 0);
+		ccv_nnc_tensor_t* const ud = ccv_nnc_tensor_new(0, dense_info, 0);
+		_segmented_swiglu_packed_weights(&dsfmt, format, (size_t)experts * n * k, k, hg->data.u8, packed_size, gd->data.f32);
+		_segmented_swiglu_packed_weights(&dsfmt, format, (size_t)experts * n * k, k, hu->data.u8, packed_size, ud->data.f32);
+		ccv_nnc_tensor_param_t gpu_info = packed_info;
+		gpu_info.type = CCV_TENSOR_GPU_MEMORY;
+		ccv_nnc_tensor_t* const gate = ccv_nnc_tensor_new(0, gpu_info, 0);
+		ccv_nnc_tensor_t* const up = ccv_nnc_tensor_new(0, gpu_info, 0);
+		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(hg, hu), TENSOR_LIST(gate, up), 0);
+		for (step = 0; step < sizeof(row_counts) / sizeof(row_counts[0]); step++)
+		{
+			const int rows = row_counts[step];
+			ccv_nnc_tensor_t* const ha = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, k), 0);
+			ccv_nnc_tensor_t* const reference_a = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, k), 0);
+			ccv_nnc_tensor_t* const hi = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, segments), 0);
+			ccv_nnc_tensor_t* const hc = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, segments), 0);
+			ccv_nnc_tensor_t* const hr = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows), 0);
+			ccv_nnc_tensor_t* const expected = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, n), 0);
+			ccv_nnc_tensor_t* const actual = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, n), 0);
+			const int selected[] = { 7, 1, 5, 2, 6, 3 };
+			for (i = 0; i < segments; i++)
+			{
+				hi->data.i32[i] = selected[i];
+				hc->data.i32[i] = i == 0 ? rows - (segments - 1) : 1;
+			}
+			for (j = 0; j < k; j++)
+				ha->data.f32[j] = ((int)(dsfmt_genrand_uint32(&dsfmt) % 253) - 126 + 0.25f) / 128;
+			for (i = 0; i < rows; i++)
+			{
+				hr->data.f32[i] = dsfmt_genrand_open_close(&dsfmt);
+				memcpy(reference_a->data.f32 + i * k, ha->data.f32, sizeof(float) * k);
+			}
+			_segmented_swiglu_reference(reference_a->data.f32, hi->data.i32, hc->data.i32,
+				gd->data.f32, ud->data.f32, hr->data.f32, rows, segments, n, k, 10, expected->data.f32);
+			ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 1, k), 0);
+			ccv_nnc_tensor_t* const indices = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32S, segments), 0);
+			ccv_nnc_tensor_t* const counts = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32S, segments), 0);
+			ccv_nnc_tensor_t* const route = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, rows), 0);
+			ccv_nnc_tensor_t* const output = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, rows, n), 0);
+			ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha, hi, hc, hr), TENSOR_LIST(a, indices, counts, route), 0);
+			ccv_nnc_cmd_t command = CMD_SEGMENTED_SWIGLU_FORWARD(10);
+			command.backend = CCV_NNC_BACKEND_MPS;
+			REQUIRE_EQ(ccv_nnc_cmd_exec(command, ccv_nnc_no_hint, 0, TENSOR_LIST(a, indices, counts, gate, up, route), TENSOR_LIST(output), 0), CCV_NNC_EXEC_SUCCESS,
+				"broadcast packed batch should execute: format=%d rows=%d", format, rows);
+			ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(output), TENSOR_LIST(actual), 0);
+			for (i = 0; i < rows; i++)
+			{
+				double error = 0, norm = 0;
+				for (j = 0; j < n; j++)
+				{
+					const double value = actual->data.f32[i * n + j];
+					const double reference = expected->data.f32[i * n + j];
+					REQUIRE(isfinite(value), "finite output at format=%d rows=%d row=%d", format, rows, i);
+					error += (value - reference) * (value - reference);
+					norm += reference * reference;
+				}
+				REQUIRE(sqrt(error / ccv_max(norm, 1e-20)) < 1e-4,
+					"broadcast CPU reference parity at format=%d rows=%d row=%d", format, rows, i);
+			}
+			ccv_nnc_tensor_t* const tensors[] = { ha, reference_a, hi, hc, hr, expected, actual, a, indices, counts, route, output };
+			for (i = 0; i < sizeof(tensors) / sizeof(tensors[0]); i++)
+				ccv_nnc_tensor_free(tensors[i]);
+		}
+		ccv_nnc_tensor_t* const weights[] = { hg, hu, gd, ud, gate, up };
+		for (i = 0; i < sizeof(weights) / sizeof(weights[0]); i++)
+			ccv_nnc_tensor_free(weights[i]);
+	}
+	const uint64_t flags[] = { CCV_NNC_DISABLE_MFA, CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS };
+	for (i = 0; i < 2; i++)
+		if (old_flags & flags[i])
+			ccv_nnc_enable_flag(flags[i]);
+		else
+			ccv_nnc_disable_flag(flags[i]);
+#endif
 }
 
 #include "case_main.h"

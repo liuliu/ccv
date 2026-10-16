@@ -83,9 +83,19 @@ static int _ccv_nnc_segmented_swiglu_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc
 	const int rowwise_shape_supported = gate_format == 0 ? (K % 4) == 0 : (K % 256) == 0 && (N % 256) == 0;
 	const uint64_t mtl_datatype = _ccv_nnc_segmented_swiglu_mtl_datatype(a->info.datatype);
 	ccv_nnc_mfa_context_t* const context = ccv_nnc_default_mfa_context();
-	// Small batches avoid expanding expert weights for matrix multiply.
+	const int use_neural_accelerators =
+		!(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS) &&
+		ccv_nnc_mfa_has_neural_accelerators(context) &&
+		(mtl_datatype != 121 || ccv_nnc_mfa_neural_accelerators_support_bfloat(context));
+	// Fused packed matrix tiles need no expanded weight bank, even for sparse batches.
+	// The grouped matrix path needs one input row per output row, so a single input
+	// row (token decode or a broadcast input) keeps the vector path.
+	const int fused_packed_matrix_supported =
+		ccv_nnc_mfa_segmented_scaled_gemm_fuses_packed_format(gate_format, M, bincount) &&
+		a->info.datatype == CCV_32F && use_neural_accelerators;
 	const int direct_small_batch =
-		input_shape_supported && (uint64_t)M <= (uint64_t)bincount * 3 &&
+		input_shape_supported && (!fused_packed_matrix_supported || input_rows == 1) &&
+		(uint64_t)M <= (uint64_t)bincount * 3 &&
 		M > 0 && N > 0 && K > 0 && expert_count > 0 &&
 		gate_rowwise && up_rowwise && gate_format == up_format && rowwise_shape_supported &&
 		gate_w->info.datatype == up_w->info.datatype &&
@@ -228,10 +238,6 @@ static int _ccv_nnc_segmented_swiglu_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc
 		((gate_w->info.datatype & 0xff) << 12) == a->info.datatype;
 	if (!dense_weights && !rowwise_weights)
 		return CCV_NNC_EXEC_INVALID;
-	const int use_neural_accelerators =
-		!(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS) &&
-		ccv_nnc_mfa_has_neural_accelerators(context) &&
-		(mtl_datatype != 121 || ccv_nnc_mfa_neural_accelerators_support_bfloat(context));
 	const int use_segmented_scaled_swiglu_without_neural_accelerators =
 		!use_neural_accelerators && rowwise_shape_supported && a->info.datatype == CCV_32F &&
 		(N % 8) == 0 && (K % 8) == 0 &&

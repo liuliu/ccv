@@ -8,7 +8,8 @@ bool SegmentedScaledGEMMKernelDescriptor::operator==(const SegmentedScaledGEMMKe
     executionSIMDGroups == rhs.executionSIMDGroups &&
     ioPrecision == rhs.ioPrecision &&
     useBias == rhs.useBias &&
-    loadM == rhs.loadM;
+    loadM == rhs.loadM &&
+    format == rhs.format;
 }
 
 std::size_t std::hash<SegmentedScaledGEMMKernelDescriptor>::operator()(const SegmentedScaledGEMMKernelDescriptor& hash) const noexcept
@@ -21,6 +22,7 @@ std::size_t std::hash<SegmentedScaledGEMMKernelDescriptor>::operator()(const Seg
   }));
   seed = combine_32(seed, pack_32(simd::ushort2 { (uint16_t)hash.ioPrecision.value, (uint16_t)hash.useBias }));
   seed = combine_32(seed, hash.loadM ? 1 : 0);
+  seed = combine_32(seed, hash.format);
   return seed;
 }
 
@@ -29,11 +31,13 @@ SegmentedScaledGEMMKernelDescriptor::SegmentedScaledGEMMKernelDescriptor(
     uint16_t executionSIMDGroups,
     GEMMOperandPrecision ioPrecision,
     bool useBias,
-    bool loadM) noexcept
+    bool loadM,
+    uint32_t format) noexcept
 {
   this->blockDimensions = blockDimensions;
   this->executionSIMDGroups = executionSIMDGroups;
   this->ioPrecision = ioPrecision;
   this->useBias = useBias;
   this->loadM = loadM;
+  this->format = format;
 }
