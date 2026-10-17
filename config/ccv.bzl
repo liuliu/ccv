@@ -43,8 +43,10 @@ def _ccv_setting_impl(repository_ctx):
         linkopts.append("-fopenmp")
     if repository_ctx.attr.use_dispatch:
         defines.append("USE_DISPATCH")
-        copts.append("-fblocks") 
-        linkopts += ["-ldispatch", "-lBlocksRuntime"]
+        copts.append("-fblocks")
+        # libdispatch and the blocks runtime are part of libSystem on Darwin.
+        if not repository_ctx.os.name.startswith("mac os"):
+            linkopts += ["-ldispatch", "-lBlocksRuntime"]
     config = {
         "%{ccv_setting_defines}": str(defines),
         "%{ccv_setting_copts}": str(copts),
