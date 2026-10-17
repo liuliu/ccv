@@ -14543,6 +14543,8 @@ TEST_CASE("sparse indexed attention prefill randomized row boundaries and softma
 		{17, 64, 512, 130, 64, 9, 0, 1, 1, 4},
 		{9, 64, 512, 200, 512, 5, 0, 0, 1, 64},
 		{33, 64, 512, 64, 128, 40, 0, 1, 1, 4},
+		// GLM 5.3 Flash compressed MLA: 512 four-token pools plus the dense tail.
+		{17, 64, 512, 8209, 8192, 512, 0, 0, 1, 4},
 	};
 	dsfmt_t dsfmt;
 	dsfmt_init_gen_rand(&dsfmt, 918);
@@ -14713,18 +14715,25 @@ TEST_CASE("sparse indexed attention prefill keeps small probabilities precise")
 	// Next to a few high columns, a gap of 18 falls under FP16 entirely unless
 	// probabilities are scaled up, and over 4096 blocked columns with larger values,
 	// the scale must keep it normal for the rounding errors to stay within tolerance.
-	const struct { int T, dense_rows, sparse_rows, K, block_size, gap, high_every, value, causal, sinks; } cases[] = {
-		{5, 16, 64, 2048, 1, 8, 2, 1000, 0, 0},
-		{5, 16, 64, 1024, 1, 8, 2, 1000, 0, 1},
-		{5, 1, 4096, 2048, 1, 18, 4096, 1000, 0, 0},
-		{5, 5, 4096, 64, 64, 18, 4096, 20000, 1, 0},
+	const struct { int T, D, dense_rows, sparse_rows, K, block_size, gap, high_every, value, causal, sinks, valid_k; } cases[] = {
+		{5, 512, 16, 64, 2048, 1, 8, 2, 1000, 0, 0, 2048},
+		{5, 512, 16, 64, 1024, 1, 8, 2, 1000, 0, 1, 1024},
+		{5, 512, 1, 4096, 2048, 1, 18, 4096, 1000, 0, 0, 2048},
+		{5, 512, 5, 4096, 64, 64, 18, 4096, 20000, 1, 0, 64},
+		// Force fused attention while a terminator keeps actual traversal bounded.
+		{12, 512, 1, 4096, 131072, 1, 18, 4096, 1000, 0, 0, 2048},
+		// The D=128 kernel, then the dense-only kernel over whole blocks and over
+		// its remainder alone.
+		{5, 128, 1, 4096, 2048, 1, 18, 4096, 1000, 0, 0, 2048},
+		{5, 512, 4096, 1, 0, 1, 18, 4096, 1000, 0, 0, 0},
+		{5, 512, 63, 1, 0, 1, 18, 4096, 20000, 0, 0, 0},
 	};
-	const int H = 64, D = 512;
+	const int H = 64;
 	dsfmt_t dsfmt;
 	dsfmt_init_gen_rand(&dsfmt, 1025);
 	for (int trial = 0; trial < sizeof(cases) / sizeof(cases[0]); ++trial)
 	{
-		const int T = cases[trial].T, K = cases[trial].K;
+		const int T = cases[trial].T, D = cases[trial].D, K = cases[trial].K;
 		ccv_nnc_tensor_param_t params[] = {
 			CPU_TENSOR_NHWC(32F, 1, T, H, D),
 			CPU_TENSOR_NHWC(32F, 1, cases[trial].dense_rows, 1, D),
@@ -14765,7 +14774,7 @@ TEST_CASE("sparse indexed attention prefill keeps small probabilities precise")
 		ccv_nnc_tensor_t* const indices = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, T, K), 0);
 		ccv_nnc_tensor_t* const gindices = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32S, T, K), 0);
 		for (int i = 0; i < T * K; ++i)
-			indices->data.i32[i] = (int)(dsfmt_genrand_close_open(&dsfmt) * (cases[trial].sparse_rows / cases[trial].block_size));
+			indices->data.i32[i] = i % K < cases[trial].valid_k ? (int)(dsfmt_genrand_close_open(&dsfmt) * (cases[trial].sparse_rows / cases[trial].block_size)) : -1;
 		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(indices), TENSOR_LIST(gindices), 0);
 		ccv_nnc_tensor_t* const expected = ccv_nnc_tensor_new(0, host[0]->info, 0);
 		ccv_nnc_tensor_t* const out = ccv_nnc_tensor_new(0, gpu[0]->info, 0);
@@ -14794,6 +14803,108 @@ TEST_CASE("sparse indexed attention prefill keeps small probabilities precise")
 			ccv_nnc_tensor_free(host[t]);
 		}
 	}
+}
+
+TEST_CASE("sparse indexed attention prefill normalizes rounded probabilities")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SPARSE_INDEXED_ATTENTION_FORWARD, CCV_NNC_BACKEND_MPS));
+	extern uint8_t ccv_nnc_mfa_has_neural_accelerators(ccv_nnc_mfa_context_t* context);
+	GUARD_ELSE_RETURN(ccv_nnc_mfa_has_neural_accelerators(ccv_nnc_default_mfa_context()));
+	const uint64_t original_flags = ccv_nnc_flags();
+	ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS);
+	// Dense row 0 scores 0 and every other visited row scores `score`. The second
+	// shape permits only seven scratch tokens, forcing fused attention even on a
+	// one-core device. A terminator limits actual traversal to 512 sparse rows.
+	// The D=128 kernel follows, then the dense-only kernel, whose 513 rows mostly
+	// fill whole blocks while 63 rows leave only its remainder.
+	const struct { int T, D, dense_rows, K; } cases[] = {
+		{5, 512, 1, 512},
+		{12, 512, 1, 131072},
+		{5, 128, 1, 512},
+		{5, 512, 513, 0},
+		{5, 512, 63, 0},
+	};
+	const int H = 64;
+	// This score is representable in FP16 and BF16, and both round its probability
+	// down by about 1.6 times half the output's ULP below 1. Constant value
+	// components expose a denominator mismatch.
+	const float score = -0.63671875f;
+	dsfmt_t dsfmt;
+	dsfmt_init_gen_rand(&dsfmt, 4096);
+	for (int datatype_idx = 0; datatype_idx < 2; ++datatype_idx)
+		for (int trial = 0; trial < sizeof(cases) / sizeof(cases[0]); ++trial)
+		{
+			const int datatype = datatype_idx ? CCV_16BF : CCV_16F;
+			const int T = cases[trial].T, D = cases[trial].D, K = cases[trial].K;
+			ccv_nnc_tensor_param_t params[] = {
+				CPU_TENSOR_NHWC(32F, 1, T, H, D),
+				CPU_TENSOR_NHWC(32F, 1, cases[trial].dense_rows, 1, D),
+				CPU_TENSOR_NHWC(32F, 1, 512, 1, D),
+				CPU_TENSOR_NHWC(32F, 1, 1, H, 1),
+			};
+			ccv_nnc_tensor_t* host[4];
+			ccv_nnc_tensor_t* packed[4];
+			ccv_nnc_tensor_t* gpu[4];
+			for (int t = 0; t < 4; ++t)
+			{
+				host[t] = ccv_nnc_tensor_new(0, params[t], 0);
+				params[t].datatype = datatype;
+				packed[t] = ccv_nnc_tensor_new(0, params[t], 0);
+				params[t].type = CCV_TENSOR_GPU_MEMORY;
+				gpu[t] = ccv_nnc_tensor_new(0, params[t], 0);
+				const int count = ccv_nnc_tensor_count(host[t]->info);
+				for (int i = 0; i < count; ++i)
+				{
+					const float random = dsfmt_genrand_open_close(&dsfmt) * 2 - 1;
+					if (t == 0)
+						host[t]->data.f32[i] = i % D == 0 ? 1 : 0;
+					else if (t == 3)
+						host[t]->data.f32[i] = random * 8;
+					else
+						host[t]->data.f32[i] = i % D == 0 ? (t == 1 && i < D ? 0 : score) : i % 8 == 1 ? 1 : random;
+				}
+				_mps_sdpa_store_float_as_datatype(datatype, host[t]->data.f32, packed[t]->data.u8, count);
+				_mps_forward_scaled_gemm_to_float(datatype, packed[t]->data.u8, count, host[t]->data.f32);
+				ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(packed[t]), TENSOR_LIST(gpu[t]), 0);
+			}
+			ccv_nnc_tensor_t* const indices = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, T, K), 0);
+			ccv_nnc_tensor_t* const gindices = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32S, T, K), 0);
+			for (int i = 0; i < T * K; ++i)
+				indices->data.i32[i] = i % K < 512 ? i % K : -1;
+			ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(indices), TENSOR_LIST(gindices), 0);
+			ccv_nnc_tensor_t* const expected = ccv_nnc_tensor_new(0, host[0]->info, 0);
+			ccv_nnc_tensor_t* const out = ccv_nnc_tensor_new(0, gpu[0]->info, 0);
+			ccv_nnc_tensor_t* const result = ccv_nnc_tensor_new(0, host[0]->info, 0);
+			for (int sinks = 0; sinks < 2; ++sinks)
+			{
+				ccv_nnc_cmd_t cmd = CMD_SPARSE_INDEXED_ATTENTION_FORWARD(1, 0, sinks);
+				ccv_nnc_tensor_t* cpu_inputs[] = {host[0], host[1], host[1], host[2], host[2], indices, host[3]};
+				ccv_nnc_tensor_t* gpu_inputs[] = {gpu[0], gpu[1], gpu[1], gpu[2], gpu[2], gindices, gpu[3]};
+				REQUIRE_EQ(ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, cpu_inputs, sinks ? 7 : 6, TENSOR_LIST(expected), 0), CCV_NNC_EXEC_SUCCESS, "CPU sparse attention should execute");
+				REQUIRE_EQ(ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, gpu_inputs, sinks ? 7 : 6, TENSOR_LIST(out), 0), CCV_NNC_EXEC_SUCCESS, "GPU sparse attention should execute");
+				ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(out), TENSOR_LIST(packed[0]), 0);
+				_mps_forward_scaled_gemm_to_float(datatype, packed[0]->data.u8, T * H * D, result->data.f32);
+				for (int i = 0; i < T * H * D; ++i)
+				{
+					const float actual = result->data.f32[i], reference = expected->data.f32[i];
+					const float tolerance = !sinks && i % 8 == 1 ? 1e-5 : datatype_idx ? 0.008 : 0.001;
+					REQUIRE(isfinite(actual) && fabsf(actual - reference) < tolerance, "rounded probability normalization mismatch: type=%d trial=%d sinks=%d index=%d CPU=%g GPU=%g", datatype, trial, sinks, i, reference, actual);
+				}
+			}
+			ccv_nnc_tensor_free(result);
+			ccv_nnc_tensor_free(out);
+			ccv_nnc_tensor_free(expected);
+			ccv_nnc_tensor_free(gindices);
+			ccv_nnc_tensor_free(indices);
+			for (int t = 0; t < 4; ++t)
+			{
+				ccv_nnc_tensor_free(gpu[t]);
+				ccv_nnc_tensor_free(packed[t]);
+				ccv_nnc_tensor_free(host[t]);
+			}
+		}
+	ccv_nnc_disable_flag(ccv_nnc_flags() & ~original_flags);
+	ccv_nnc_enable_flag(original_flags);
 }
 
 #include "case_main.h"

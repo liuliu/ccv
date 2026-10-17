@@ -58,6 +58,7 @@ private:
   std::string createThreadgroupD128Source() const noexcept;
   std::string createThreadgroupTwoPassSource() const noexcept;
   std::string sparsePreamble() const noexcept;
+  static std::string probabilityPeak() noexcept;
   static std::string causalDenseRange() noexcept;
   static std::string twoPassScores(const char* row) noexcept;
   void createThreadgroupAttendBlock(CodeWriter& source) const noexcept;

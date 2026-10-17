@@ -93,6 +93,16 @@ NASparseIndexedAttentionKernel::NASparseIndexedAttentionKernel(NASparseIndexedAt
   CCV_NNC_MFA_CHECK_ERROR(error);
 }
 
+// Shared by every kernel that casts unnormalized probabilities for its values
+// multiply.
+std::string NASparseIndexedAttentionKernel::probabilityPeak() noexcept {
+  return R"(
+// A head's largest probability is stored as 2^12 rather than 1, so probabilities
+// down to 2^-26 of it (about e^-18) stay normal in FP16.
+constant float log2_probability_peak = 12;
+)";
+}
+
 // Includes, shape function constants, and the blocked sparse row lookup shared
 // by the sparse threadgroup kernels.
 std::string NASparseIndexedAttentionKernel::sparsePreamble() const noexcept {
@@ -105,7 +115,7 @@ using namespace metal;
 using namespace mpp::tensor_ops;
 
 typedef {{REAL}} real;
-
+)" + probabilityPeak() + R"(
 {{T_FUNCTION_CONSTANT}})";
   if (!loadRows) {
     text += R"(
@@ -175,7 +185,7 @@ void NASparseIndexedAttentionKernel::createThreadgroupAttendBlock(CodeWriter& so
   for (ushort i = 0; i < cM.get_capacity(); ++i) {
     if (cM.is_valid_element(i)) {
       correction[i] = 1;
-      const float new_m = cM_new[i] * dot_scale;
+      const float new_m = cM_new[i] * dot_scale - log2_probability_peak;
       if (new_m > cM[i]) {
         correction[i] = fast::exp2(cM[i] - new_m);
         cM[i] = new_m;
@@ -188,7 +198,8 @@ void NASparseIndexedAttentionKernel::createThreadgroupAttendBlock(CodeWriter& so
       auto idx = cS.get_multidimensional_index(i);
       auto it = cS.get_iterator(i);
       auto dst_it = cM.map_iterator(it);
-      cS[i] = (idx[0] >= int(block_rows)) ? 0 : fast::exp2(cS[i] * dot_scale - *dst_it);
+      // Sum the same rounded probabilities that the values multiply consumes.
+      cS[i] = (idx[0] >= int(block_rows)) ? 0 : float(real(fast::exp2(cS[i] * dot_scale - *dst_it)));
     }
   }
   auto cL_new = qk_op.get_row_reduction_destination_cooperative_tensor<decltype(mQ), decltype(mK), float>();
@@ -269,7 +280,9 @@ using namespace metal;
 using namespace mpp::tensor_ops;
 
 typedef {{REAL}} real;
-
+)";
+  source += probabilityPeak();
+  source += R"(
 {{T_FUNCTION_CONSTANT}}\)";
   if (!loadRows) {
     source += R"(
@@ -350,8 +363,9 @@ kernel void sparse_indexed_attention(
     if (cM.is_valid_element(i)) {
       auto idx = cM.get_multidimensional_index(i);
       const uint head = head_base + uint(idx[0]);
-      cM[i] = (head >= H) ? -numeric_limits<float>::infinity() : (float)sinks[head * sink_head_stride] * log2_e;
-      cL[i] = (head >= H) ? numeric_limits<float>::denorm_min() : 1;
+      // The sink starts as the maximum, so its probability is the peak.
+      cM[i] = (head >= H) ? -numeric_limits<float>::infinity() : (float)sinks[head * sink_head_stride] * log2_e - log2_probability_peak;
+      cL[i] = (head >= H) ? numeric_limits<float>::denorm_min() : fast::exp2(log2_probability_peak);
     }
   }
 )";
@@ -410,7 +424,7 @@ kernel void sparse_indexed_attention(
     for (ushort i = 0; i < cM.get_capacity(); ++i) {
       if (cM.is_valid_element(i)) {
         correction[i] = 1;
-        const float new_m = cM_new[i] * dot_scale;
+        const float new_m = cM_new[i] * dot_scale - log2_probability_peak;
         if (new_m > cM[i]) {
           correction[i] = fast::exp2(cM[i] - new_m);
           cM[i] = new_m;
@@ -422,7 +436,8 @@ kernel void sparse_indexed_attention(
       if (cS.is_valid_element(i)) {
         auto it = cS.get_iterator(i);
         auto dst_it = cM.map_iterator(it);
-        cS[i] = fast::exp2(cS[i] * dot_scale - *dst_it);
+        // Sum the same rounded probabilities that the values multiply consumes.
+        cS[i] = float(real(fast::exp2(cS[i] * dot_scale - *dst_it)));
       }
     }
     auto cL_new = qk_op.get_row_reduction_destination_cooperative_tensor<decltype(mQ), decltype(mK), float>();
@@ -500,7 +515,7 @@ kernel void sparse_indexed_attention(
     for (ushort i = 0; i < cM.get_capacity(); ++i) {
       if (cM.is_valid_element(i)) {
         correction[i] = 1;
-        const float new_m = cM_new[i] * dot_scale;
+        const float new_m = cM_new[i] * dot_scale - log2_probability_peak;
         if (new_m > cM[i]) {
           correction[i] = fast::exp2(cM[i] - new_m);
           cM[i] = new_m;
@@ -517,7 +532,7 @@ kernel void sparse_indexed_attention(
         if (idx[0] >= int(dense_remainder) || head >= H) {
           cS[i] = 0;
         } else {
-          cS[i] = fast::exp2(cS[i] * dot_scale - *dst_it);
+          cS[i] = float(real(fast::exp2(cS[i] * dot_scale - *dst_it)));
         }
       }
     }
@@ -840,7 +855,7 @@ void NASparseIndexedAttentionKernel::createThreadgroupD128AttendBlock(CodeWriter
   for (ushort i = 0; i < cM.get_capacity(); ++i) {
     if (cM.is_valid_element(i)) {
       correction[i] = 1;
-      const float new_m = cM_new[i] * dot_scale;
+      const float new_m = cM_new[i] * dot_scale - log2_probability_peak;
       if (new_m > cM[i]) {
         correction[i] = fast::exp2(cM[i] - new_m);
         cM[i] = new_m;
@@ -853,7 +868,8 @@ void NASparseIndexedAttentionKernel::createThreadgroupD128AttendBlock(CodeWriter
       auto idx = cS.get_multidimensional_index(i);
       auto it = cS.get_iterator(i);
       auto dst_it = cM.map_iterator(it);
-      cS[i] = (idx[0] >= int(block_rows)) ? 0 : fast::exp2(cS[i] * dot_scale - *dst_it);
+      // Sum the same rounded probabilities that the values multiply consumes.
+      cS[i] = (idx[0] >= int(block_rows)) ? 0 : float(real(fast::exp2(cS[i] * dot_scale - *dst_it)));
     }
   }
   auto cL_new = qk_op.get_row_reduction_destination_cooperative_tensor<decltype(mQ), decltype(mK), float>();
@@ -1114,9 +1130,6 @@ std::string NASparseIndexedAttentionKernel::createThreadgroupTwoPassSource() con
   }
   std::string text = sparsePreamble() + R"(
 constant float log2_e = 1.442695041f;
-// A head's largest probability is stored as 2^12 rather than 1, so probabilities
-// down to 2^-26 of it (about e^-18) stay normal in FP16.
-constant float log2_probability_peak = 12;
 
 // One scratch chunk: its first token, its token count, and the probability
 // columns kept per head (every visible dense row and K * block_size sparse rows).
@@ -1198,8 +1211,8 @@ kernel void sparse_indexed_attention_probabilities(
     column_counts[local_token] = columns;
   }
   // Probabilities stay unnormalized, so small ones keep their precision in the
-  // FP16 values multiply. That pass applies the normalizer, which also removes
-  // the peak scale.
+  // FP16 values multiply. Round before summing so its numerator and denominator
+  // use the same probabilities. That pass also removes the peak scale.
   device float* token_normalizers = normalizers + ulong(local_token) * H;
   const uint lane = uint(tid) % 32u;
   for (uint head = head_base + uint(sgid); head < head_base + {{HEAD_GROUP}}u; head += {{SIMD_GROUPS}}u) {
@@ -1211,7 +1224,7 @@ kernel void sparse_indexed_attention_probabilities(
     maximum = simd_max(maximum) - log2_probability_peak;
     float denominator = 0;
     for (uint column = lane; column < columns; column += 32u) {
-      const float p = fast::exp2(head_probabilities[column] - maximum);
+      const float p = float(real(fast::exp2(head_probabilities[column] - maximum)));
       denominator += p;
       head_probabilities[column] = p;
     }
