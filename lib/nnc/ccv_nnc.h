@@ -324,6 +324,9 @@ typedef struct {
 			float beta; /**< [swish.beta] The beta parameter in swish: x * sigmoid(beta * x). */
 		} swish;
 		struct {
+			float soft_cap; /**< [tanh.soft_cap] The soft cap in soft_cap * tanh(x / soft_cap). 0 or 1 is the plain tanh. */
+		} tanh;
+		struct {
 			float minimum_magnitude; /**< [signed_sqrt.minimum_magnitude] Finite positive floor for abs(x) before the sign-preserving square root. Backward uses the active derivative at the floor and zero inside it (including zero). */
 		} signed_sqrt;
 		struct {
@@ -4715,10 +4718,11 @@ CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_relu(const char* const name);
 CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_sigmoid(const char* const name);
 /**
  * A tanh activation layer model.
+ * @param soft_cap The soft cap in soft_cap * tanh(x / soft_cap), 1 is the plain tanh.
  * @param name The unique name of the model.
  * @return A tanh activation layer model.
  */
-CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_tanh(const char* const name);
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_tanh(const float soft_cap, const char* const name);
 /**
  * An exp activation layer model.
  * @param name The unique name of the model.

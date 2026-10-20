@@ -399,9 +399,9 @@
 // CCV_NNC_SWISH_MUL_BACKWARD
 #define CMD_SWISH_MUL_BACKWARD(_beta, _scale) ccv_nnc_cmd(CCV_NNC_SWISH_MUL_BACKWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.swish_mul={.beta=_beta,.scale=_scale}}), 0)
 // CCV_NNC_TANH_FORWARD
-#define CMD_TANH_FORWARD() ccv_nnc_cmd(CCV_NNC_TANH_FORWARD, 0, ccv_nnc_cmd_auto, 0)
+#define CMD_TANH_FORWARD(_soft_cap) ccv_nnc_cmd(CCV_NNC_TANH_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.tanh={.soft_cap=_soft_cap}}), 0)
 // CCV_NNC_TANH_BACKWARD
-#define CMD_TANH_BACKWARD() ccv_nnc_cmd(CCV_NNC_TANH_BACKWARD, 0, ccv_nnc_cmd_auto, 0)
+#define CMD_TANH_BACKWARD(_soft_cap) ccv_nnc_cmd(CCV_NNC_TANH_BACKWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.tanh={.soft_cap=_soft_cap}}), 0)
 // CCV_NNC_UNIQUE_CONSECUTIVE_FORWARD
 #define CMD_UNIQUE_CONSECUTIVE_FORWARD(_bincount) ccv_nnc_cmd(CCV_NNC_UNIQUE_CONSECUTIVE_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.unique_consecutive={.bincount=_bincount}}), 0)
 // CCV_NNC_UNIQUE_CONSECUTIVE_BACKWARD

@@ -1738,6 +1738,7 @@ static ccv_cnnp_model_t* _ccv_cnnp_sigmoid_copy(const ccv_cnnp_model_t* const se
 typedef struct {
 	ccv_cnnp_model_t super;
 	ccv_nnc_tensor_symbol_t output;
+	float soft_cap;
 } ccv_cnnp_model_tanh_t;
 
 static void _ccv_cnnp_tanh_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
@@ -1745,9 +1746,10 @@ static void _ccv_cnnp_tanh_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic
 	PRINT(CCV_CLI_VERBOSE, "[cnnp_tanh_build] -\n");
 	assert(input_size == 1);
 	assert(output_size == 1);
+	ccv_cnnp_model_tanh_t* const self = (ccv_cnnp_model_tanh_t*)super;
 	ccv_nnc_tensor_param_t params = ccv_nnc_tensor_symbol_params(graph, inputs[0]);
 	ccv_nnc_tensor_param_t output_params;
-	const ccv_nnc_cmd_t tanh = CMD_TANH_FORWARD();
+	const ccv_nnc_cmd_t tanh = CMD_TANH_FORWARD(self->soft_cap);
 	ccv_nnc_hint_tensor_auto(tanh, (ccv_nnc_tensor_param_t []){
 			params,
 		}, 1, ccv_nnc_no_hint, &output_params, 1);
@@ -1763,20 +1765,22 @@ static const ccv_cnnp_model_vtab_t ccv_cnnp_tanh_isa = {
 	.copy = _ccv_cnnp_tanh_copy,
 };
 
-ccv_cnnp_model_t* ccv_cnnp_tanh(const char* const name)
+ccv_cnnp_model_t* ccv_cnnp_tanh(const float soft_cap, const char* const name)
 {
 	ccv_cnnp_model_tanh_t* const model_tanh = (ccv_cnnp_model_tanh_t*)cccalloc(1, sizeof(ccv_cnnp_model_tanh_t));
 	model_tanh->super.isa = &ccv_cnnp_tanh_isa;
 	model_tanh->super.input_size = 1;
 	model_tanh->super.outputs = &model_tanh->output;
 	model_tanh->super.output_size = 1;
+	model_tanh->soft_cap = soft_cap;
 	ccv_cnnp_model_copy_name(&model_tanh->super, name);
 	return (ccv_cnnp_model_t*)model_tanh;
 }
 
-static ccv_cnnp_model_t* _ccv_cnnp_tanh_copy(const ccv_cnnp_model_t* const self, void* const context)
+static ccv_cnnp_model_t* _ccv_cnnp_tanh_copy(const ccv_cnnp_model_t* const super, void* const context)
 {
-	return ccv_cnnp_tanh(self->name);
+	const ccv_cnnp_model_tanh_t* const self = (const ccv_cnnp_model_tanh_t*)super;
+	return ccv_cnnp_tanh(self->soft_cap, self->super.name);
 }
 
 // MARK - Exp Layer
@@ -4994,8 +4998,9 @@ static void _ccv_cnnp_scaled_dot_product_attention_build(ccv_cnnp_model_t* const
 	const ccv_nnc_tensor_param_t q_seq_offsets_params = self->is_varlen ? ccv_nnc_tensor_symbol_params(graph, inputs[3]) : (ccv_nnc_tensor_param_t){};
 	const ccv_nnc_tensor_param_t kv_seq_offsets_params = self->is_varlen ? ccv_nnc_tensor_symbol_params(graph, inputs[4]) : (ccv_nnc_tensor_param_t){};
 	const int v_nd = ccv_nnc_tensor_nd(v_params.dim);
-	assert(v_nd == 3 || v_nd == 4);
-	const int hEv = (v_nd == 3 ? 1 : v_params.dim[2]) * v_params.dim[v_nd - 1];
+	// 0-length values have no rank, the command infers 0-length outputs from them.
+	assert(v_nd == 3 || v_nd == 4 || v_params.dim[0] == 0);
+	const int hEv = v_nd == 0 ? 0 : (v_nd == 3 ? 1 : v_params.dim[2]) * v_params.dim[v_nd - 1];
 	ccv_nnc_tensor_param_t weights_params = q_params;
 	memset(weights_params.dim, 0, sizeof(weights_params.dim));
 	weights_params.dim[0] = hEv;

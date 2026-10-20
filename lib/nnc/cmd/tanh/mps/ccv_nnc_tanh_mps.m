@@ -11,7 +11,36 @@ static int _ccv_nnc_tanh_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	assert(output_size == 1);
 	const ccv_nnc_tensor_view_t* const a = (const ccv_nnc_tensor_view_t*)inputs[0];
 	ccv_nnc_tensor_view_t* const b = (ccv_nnc_tensor_view_t*)outputs[0];
+	if (a->info.dim[0] == 0 || b->info.dim[0] == 0)
+		return CCV_NNC_EXEC_SUCCESS;
+	const float soft_cap = cmd.info.tanh.soft_cap > 0 ? cmd.info.tanh.soft_cap : 1;
+	const size_t count = ccv_nnc_tensor_count(a->info);
 	@autoreleasepool {
+		ccv_nnc_mfa_context_t* const context = ccv_nnc_default_mfa_context();
+		if (CCV_IS_TENSOR_CONTIGUOUS(a) && CCV_IS_TENSOR_CONTIGUOUS(b) && a->info.datatype == b->info.datatype && count <= UINT32_MAX && ccv_nnc_mfa_context_supported(context) && !(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA))
+		{
+			const ccv_nnc_mfa_tanh_params_t params = {
+				.gradient = 0,
+				.soft_cap = soft_cap,
+				.data_type = a->info.datatype == CCV_32F ? 3 : (a->info.datatype == CCV_16BF ? 121 : 16),
+				.length = (uint32_t)count,
+				.loadM = !!(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M),
+			};
+			ccv_nnc_mfa_prepare_tanh(context, params);
+			mtl_buffer_t* tensors[3] = {
+				mpgetbuffer(inputs[0]),
+				mpgetbuffer(outputs[0]),
+				NULL,
+			};
+			size_t tensor_offsets[2] = {
+				a->dataof,
+				b->dataof,
+			};
+			mtl_command_batch_t* const command_batch = ccv_nnc_stream_context_start_command_batch(stream_context);
+			ccv_nnc_mfa_encode_tanh(context, params, command_batch, tensors, tensor_offsets);
+			ccv_nnc_stream_context_finish_command_batch(stream_context, command_batch);
+			return CCV_NNC_EXEC_SUCCESS;
+		}
 		MPSCommandBuffer* command_buffer = ccv_nnc_stream_context_start_mps_command_buffer(stream_context);
 		ccv_nnc_mps_graph_key_t key = ccv_nnc_mps_graph_key_new(cmd, 0, hint, flags, inputs, input_size, outputs, output_size);
 		int indices[1];
@@ -21,7 +50,21 @@ static int _ccv_nnc_tanh_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 			[inputTensors addObject:mps_input_a];
 			MPSGraphShapedType* mps_a_shape = ccv_nnc_mps_graph_tensor_input_shape(a, a->info.dim, a->stride);
 			[inputShapedTypes addObject:mps_a_shape];
-			MPSGraphTensor* mps_b = [graph tanhWithTensor:mps_a name:nil];
+			MPSGraphTensor* mps_a_f32 = mps_a;
+			if (a->info.datatype != CCV_32F)
+				mps_a_f32 = [graph castTensor:mps_a toType:MPSDataTypeFloat32 name:@"mps_a_float"];
+			MPSGraphTensor* mps_b_f32;
+			if (soft_cap != 1)
+			{
+				MPSGraphTensor* mps_soft_cap = [graph constantWithScalar:soft_cap dataType:MPSDataTypeFloat32];
+				MPSGraphTensor* mps_a_capped = [graph divisionWithPrimaryTensor:mps_a_f32 secondaryTensor:mps_soft_cap name:nil];
+				MPSGraphTensor* mps_tanh = [graph tanhWithTensor:mps_a_capped name:nil];
+				mps_b_f32 = [graph multiplicationWithPrimaryTensor:mps_tanh secondaryTensor:mps_soft_cap name:nil];
+			} else
+				mps_b_f32 = [graph tanhWithTensor:mps_a_f32 name:nil];
+			MPSGraphTensor* mps_b = mps_b_f32;
+			if (b->info.datatype != CCV_32F)
+				mps_b = [graph castTensor:mps_b_f32 toType:ccv_nnc_mps_datatype(b->info.datatype) name:@"mps_b"];
 			[resultTensors addObject:mps_b];
 		});
 		MPSGraphTensorData* data_a = ccv_nnc_mps_graph_tensor_data(a, a->info.dim, a->stride);
@@ -38,7 +81,38 @@ static int _ccv_nnc_tanh_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	const ccv_nnc_tensor_view_t* const g = (const ccv_nnc_tensor_view_t*)inputs[0];
 	const ccv_nnc_tensor_view_t* const b = (const ccv_nnc_tensor_view_t*)inputs[2];
 	ccv_nnc_tensor_view_t* const h = (ccv_nnc_tensor_view_t*)outputs[0];
+	if (g->info.dim[0] == 0 || b->info.dim[0] == 0 || h->info.dim[0] == 0)
+		return CCV_NNC_EXEC_SUCCESS;
+	const float soft_cap = cmd.info.tanh.soft_cap > 0 ? cmd.info.tanh.soft_cap : 1;
+	const size_t count = ccv_nnc_tensor_count(b->info);
 	@autoreleasepool {
+		ccv_nnc_mfa_context_t* const context = ccv_nnc_default_mfa_context();
+		if (CCV_IS_TENSOR_CONTIGUOUS(g) && CCV_IS_TENSOR_CONTIGUOUS(b) && CCV_IS_TENSOR_CONTIGUOUS(h) && g->info.datatype == h->info.datatype && b->info.datatype == h->info.datatype && count <= UINT32_MAX && ccv_nnc_mfa_context_supported(context) && !(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA))
+		{
+			const ccv_nnc_mfa_tanh_params_t params = {
+				.gradient = 1,
+				.soft_cap = soft_cap,
+				.data_type = h->info.datatype == CCV_32F ? 3 : (h->info.datatype == CCV_16BF ? 121 : 16),
+				.length = (uint32_t)count,
+				.loadM = !!(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M),
+			};
+			ccv_nnc_mfa_prepare_tanh(context, params);
+			mtl_buffer_t* tensors[4] = {
+				mpgetbuffer(inputs[0]),
+				mpgetbuffer(inputs[2]),
+				mpgetbuffer(outputs[0]),
+				NULL,
+			};
+			size_t tensor_offsets[3] = {
+				g->dataof,
+				b->dataof,
+				h->dataof,
+			};
+			mtl_command_batch_t* const command_batch = ccv_nnc_stream_context_start_command_batch(stream_context);
+			ccv_nnc_mfa_encode_tanh(context, params, command_batch, tensors, tensor_offsets);
+			ccv_nnc_stream_context_finish_command_batch(stream_context, command_batch);
+			return CCV_NNC_EXEC_SUCCESS;
+		}
 		MPSCommandBuffer* command_buffer = ccv_nnc_stream_context_start_mps_command_buffer(stream_context);
 		ccv_nnc_mps_graph_key_t key = ccv_nnc_mps_graph_key_new(cmd, 0, hint, flags, inputs, input_size, outputs, output_size);
 		int indices[2];
@@ -55,10 +129,24 @@ static int _ccv_nnc_tanh_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 			MPSGraphShapedType* mps_b_shape = ccv_nnc_mps_graph_tensor_input_shape(b, b->info.dim, b->stride);
 			[inputShapedTypes addObject:mps_b_shape];
 
-			MPSGraphTensor *ones =  [graph constantWithScalar:1.0 dataType:mps_b.dataType];
-			MPSGraphTensor* b_squared = [graph squareWithTensor:mps_b name:nil];
+			MPSGraphTensor* mps_g_f32 = mps_g;
+			if (g->info.datatype != CCV_32F)
+				mps_g_f32 = [graph castTensor:mps_g toType:MPSDataTypeFloat32 name:@"mps_g_float"];
+			MPSGraphTensor* mps_b_f32 = mps_b;
+			if (b->info.datatype != CCV_32F)
+				mps_b_f32 = [graph castTensor:mps_b toType:MPSDataTypeFloat32 name:@"mps_b_float"];
+			// d(soft_cap * tanh(x / soft_cap)) / dx = 1 - (y / soft_cap)^2.
+			if (soft_cap != 1)
+			{
+				MPSGraphTensor* mps_soft_cap = [graph constantWithScalar:soft_cap dataType:MPSDataTypeFloat32];
+				mps_b_f32 = [graph divisionWithPrimaryTensor:mps_b_f32 secondaryTensor:mps_soft_cap name:nil];
+			}
+			MPSGraphTensor *ones =  [graph constantWithScalar:1.0 dataType:MPSDataTypeFloat32];
+			MPSGraphTensor* b_squared = [graph squareWithTensor:mps_b_f32 name:nil];
 			MPSGraphTensor* b_squared_minus = [graph subtractionWithPrimaryTensor:ones secondaryTensor:b_squared name:nil];
-			MPSGraphTensor* mps_h = [graph multiplicationWithPrimaryTensor:mps_g secondaryTensor:b_squared_minus name:nil];
+			MPSGraphTensor* mps_h = [graph multiplicationWithPrimaryTensor:mps_g_f32 secondaryTensor:b_squared_minus name:nil];
+			if (h->info.datatype != CCV_32F)
+				mps_h = [graph castTensor:mps_h toType:ccv_nnc_mps_datatype(h->info.datatype) name:@"mps_h"];
 			[resultTensors addObject:mps_h];
 		});
 		MPSGraphTensorData* data_g = ccv_nnc_mps_graph_tensor_data(g, g->info.dim, g->stride);

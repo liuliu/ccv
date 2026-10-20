@@ -13,6 +13,8 @@ static int _ccv_nnc_tanh_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 {
 	assert(input_size == 1);
 	assert(output_size == 1);
+	// TODO: cuDNN activation cannot scale its input, soft cap needs its own kernel.
+	assert(cmd.info.tanh.soft_cap == 0 || cmd.info.tanh.soft_cap == 1);
 	cudnnHandle_t cudnn = ccv_nnc_stream_context_get_cudnn(stream_context);
 	cudnnActivationDescriptor_t tanh = ccv_nnc_stream_context_get_activation_descriptor(stream_context);
 	CUDNN_ENFORCE(cudnnSetActivationDescriptor(tanh, CUDNN_ACTIVATION_TANH, CUDNN_PROPAGATE_NAN, 0));
@@ -30,6 +32,8 @@ static int _ccv_nnc_tanh_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 {
 	assert(input_size == 3);
 	assert(output_size == 1);
+	// TODO: cuDNN activation cannot scale its input, soft cap needs its own kernel.
+	assert(cmd.info.tanh.soft_cap == 0 || cmd.info.tanh.soft_cap == 1);
 	cudnnHandle_t cudnn = ccv_nnc_stream_context_get_cudnn(stream_context);
 	cudnnActivationDescriptor_t tanh = ccv_nnc_stream_context_get_activation_descriptor(stream_context);
 	CUDNN_ENFORCE(cudnnSetActivationDescriptor(tanh, CUDNN_ACTIVATION_TANH, CUDNN_PROPAGATE_NAN, 0));

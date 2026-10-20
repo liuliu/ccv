@@ -7727,7 +7727,7 @@ TEST_CASE("compare tanh with mps")
 	ccv_nnc_symbolic_graph_t* const symbolic_graph = ccv_nnc_symbolic_graph_new();
 	ccv_nnc_tensor_symbol_t a = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NCHW(000, 32F, 20, 10), "a");
 	ccv_nnc_tensor_symbol_t b = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NCHW(000, 32F, 20, 10), "b");
-	ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_TANH_FORWARD(), TENSOR_SYMBOL_LIST(a), TENSOR_SYMBOL_LIST(b), "tanh");
+	ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_TANH_FORWARD(1), TENSOR_SYMBOL_LIST(a), TENSOR_SYMBOL_LIST(b), "tanh");
 	ccv_nnc_graph_exec_symbol_autogen(symbolic_graph, 0, 0, CCV_NNC_AUTOGEN_ALL_EXECS | CCV_NNC_AUTOGEN_SOURCES_AND_DESTINATIONS);
 	SYMBOLIC_GRAPH_GEN(symbolic_graph, CCV_NNC_LONG_DOT_GRAPH);
 	ccv_nnc_graph_t* graph = 0;
@@ -7748,7 +7748,7 @@ TEST_CASE("compare tanh with mps")
 	ccv_nnc_tensor_t* const b_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, b);
 	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(b_tensor), TENSOR_LIST(y_tensor), 0);
 	ccv_nnc_tensor_t* const ty = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 20, 10), 0);
-	ccv_nnc_cmd_exec(CMD_TANH_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(x_tensor), TENSOR_LIST(ty), 0);
+	ccv_nnc_cmd_exec(CMD_TANH_FORWARD(1), ccv_nnc_no_hint, 0, TENSOR_LIST(x_tensor), TENSOR_LIST(ty), 0);
 	REQUIRE_TENSOR_EQ(ty, y_tensor, "tanh from mps should match from CPU");
 	ccv_nnc_tensor_free(x_tensor);
 	ccv_nnc_tensor_free(y_tensor);
@@ -7765,7 +7765,7 @@ TEST_CASE("compare tanh with mps in half precision")
 	ccv_nnc_symbolic_graph_t* const symbolic_graph = ccv_nnc_symbolic_graph_new();
 	ccv_nnc_tensor_symbol_t a = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NCHW(000, 16F, 20, 10), "a");
 	ccv_nnc_tensor_symbol_t b = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NCHW(000, 16F, 20, 10), "b");
-	ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_TANH_FORWARD(), TENSOR_SYMBOL_LIST(a), TENSOR_SYMBOL_LIST(b), "tanh");
+	ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_TANH_FORWARD(1), TENSOR_SYMBOL_LIST(a), TENSOR_SYMBOL_LIST(b), "tanh");
 	ccv_nnc_graph_exec_symbol_autogen(symbolic_graph, 0, 0, CCV_NNC_AUTOGEN_ALL_EXECS | CCV_NNC_AUTOGEN_SOURCES_AND_DESTINATIONS);
 	SYMBOLIC_GRAPH_GEN(symbolic_graph, CCV_NNC_LONG_DOT_GRAPH);
 	ccv_nnc_graph_t* graph = 0;
@@ -7790,7 +7790,7 @@ TEST_CASE("compare tanh with mps in half precision")
 	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(b_tensor), TENSOR_LIST(y16_tensor), 0);
 	ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(y16_tensor), TENSOR_LIST(y_tensor), 0);
 	ccv_nnc_tensor_t* const ty = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 20, 10), 0);
-	ccv_nnc_cmd_exec(CMD_TANH_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(x_tensor), TENSOR_LIST(ty), 0);
+	ccv_nnc_cmd_exec(CMD_TANH_FORWARD(1), ccv_nnc_no_hint, 0, TENSOR_LIST(x_tensor), TENSOR_LIST(ty), 0);
 	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, ty->data.f32, y_tensor->data.f32, 20 * 10, 1e-3, "tanh from mps should match from CPU");
 	ccv_nnc_tensor_free(x_tensor);
 	ccv_nnc_tensor_free(x16_tensor);
@@ -7810,7 +7810,7 @@ TEST_CASE("compare tanh gradient with mps")
 	ccv_nnc_symbolic_graph_t* const symbolic_graph = ccv_nnc_symbolic_graph_new();
 	ccv_nnc_tensor_symbol_t x = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NHWC(000, 32F, 10, 100), "x");
 	ccv_nnc_tensor_symbol_t y = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NHWC(000, 32F, 10, 100), "y");
-	ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_TANH_FORWARD(), TENSOR_SYMBOL_LIST(x), TENSOR_SYMBOL_LIST(y), "tanh");
+	ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_TANH_FORWARD(1), TENSOR_SYMBOL_LIST(x), TENSOR_SYMBOL_LIST(y), "tanh");
 	ccv_nnc_graph_exec_symbol_autogen(symbolic_graph, 0, 0, CCV_NNC_AUTOGEN_ALL_EXECS | CCV_NNC_AUTOGEN_SOURCES_AND_DESTINATIONS);
 	ccv_nnc_symbolic_graph_backward(symbolic_graph, TENSOR_SYMBOL_LIST(y), TENSOR_SYMBOL_LIST(x), SYMBOLIC_GRAPH_SOURCES(symbolic_graph), SYMBOLIC_GRAPH_DESTINATIONS(symbolic_graph));
 	ccv_nnc_graph_exec_symbol_autogen(symbolic_graph, 0, 0, CCV_NNC_AUTOGEN_ALL_EXECS | CCV_NNC_AUTOGEN_SOURCES_AND_DESTINATIONS);
@@ -7845,10 +7845,10 @@ TEST_CASE("compare tanh gradient with mps")
 	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(dxt), TENSOR_LIST(dx_tensor), 0);
 	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(yt), TENSOR_LIST(y_tensor), 0);
 	ccv_nnc_tensor_t* const ty_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 10, 100), 0);
-	ccv_nnc_cmd_exec(CMD_TANH_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(x_tensor), TENSOR_LIST(ty_tensor), 0);
+	ccv_nnc_cmd_exec(CMD_TANH_FORWARD(1), ccv_nnc_no_hint, 0, TENSOR_LIST(x_tensor), TENSOR_LIST(ty_tensor), 0);
 	REQUIRE_TENSOR_EQ(ty_tensor, y_tensor, "forward pass should match");
 	ccv_nnc_tensor_t* const tdx_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 10, 100), 0);
-	ccv_nnc_cmd_exec(CMD_TANH_BACKWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(dy_tensor, 0, ty_tensor), TENSOR_LIST(tdx_tensor), 0);
+	ccv_nnc_cmd_exec(CMD_TANH_BACKWARD(1), ccv_nnc_no_hint, 0, TENSOR_LIST(dy_tensor, 0, ty_tensor), TENSOR_LIST(tdx_tensor), 0);
 	REQUIRE_TENSOR_EQ(tdx_tensor, dx_tensor, "backward pass should match");
 	ccv_nnc_tensor_free(x_tensor);
 	ccv_nnc_tensor_free(y_tensor);
@@ -7870,7 +7870,7 @@ TEST_CASE("compare tanh gradient with mps in half precision")
 	ccv_nnc_symbolic_graph_t* const symbolic_graph = ccv_nnc_symbolic_graph_new();
 	ccv_nnc_tensor_symbol_t x = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NHWC(000, 16F, 10, 100), "x");
 	ccv_nnc_tensor_symbol_t y = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NHWC(000, 16F, 10, 100), "y");
-	ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_TANH_FORWARD(), TENSOR_SYMBOL_LIST(x), TENSOR_SYMBOL_LIST(y), "tanh");
+	ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_TANH_FORWARD(1), TENSOR_SYMBOL_LIST(x), TENSOR_SYMBOL_LIST(y), "tanh");
 	ccv_nnc_graph_exec_symbol_autogen(symbolic_graph, 0, 0, CCV_NNC_AUTOGEN_ALL_EXECS | CCV_NNC_AUTOGEN_SOURCES_AND_DESTINATIONS);
 	ccv_nnc_symbolic_graph_backward(symbolic_graph, TENSOR_SYMBOL_LIST(y), TENSOR_SYMBOL_LIST(x), SYMBOLIC_GRAPH_SOURCES(symbolic_graph), SYMBOLIC_GRAPH_DESTINATIONS(symbolic_graph));
 	ccv_nnc_graph_exec_symbol_autogen(symbolic_graph, 0, 0, CCV_NNC_AUTOGEN_ALL_EXECS | CCV_NNC_AUTOGEN_SOURCES_AND_DESTINATIONS);
@@ -7913,10 +7913,10 @@ TEST_CASE("compare tanh gradient with mps in half precision")
 	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(yt), TENSOR_LIST(y16_tensor), 0);
 	ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(y16_tensor), TENSOR_LIST(y_tensor), 0);
 	ccv_nnc_tensor_t* const ty_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 10, 100), 0);
-	ccv_nnc_cmd_exec(CMD_TANH_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(x_tensor), TENSOR_LIST(ty_tensor), 0);
+	ccv_nnc_cmd_exec(CMD_TANH_FORWARD(1), ccv_nnc_no_hint, 0, TENSOR_LIST(x_tensor), TENSOR_LIST(ty_tensor), 0);
 	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, ty_tensor->data.f32, y_tensor->data.f32, 10 * 100, 1e-3, "forward pass should match");
 	ccv_nnc_tensor_t* const tdx_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 10, 100), 0);
-	ccv_nnc_cmd_exec(CMD_TANH_BACKWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(dy_tensor, 0, ty_tensor), TENSOR_LIST(tdx_tensor), 0);
+	ccv_nnc_cmd_exec(CMD_TANH_BACKWARD(1), ccv_nnc_no_hint, 0, TENSOR_LIST(dy_tensor, 0, ty_tensor), TENSOR_LIST(tdx_tensor), 0);
 	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, tdx_tensor->data.f32, dx_tensor->data.f32, 10 * 100, 1e-3, "backward pass should match");
 	ccv_nnc_tensor_free(x_tensor);
 	ccv_nnc_tensor_free(x16_tensor);
@@ -7933,6 +7933,169 @@ TEST_CASE("compare tanh gradient with mps in half precision")
 	ccv_nnc_tensor_arena_free(tensor_arena);
 	ccv_nnc_graph_exec_arena_free(graph_exec_arena);
 	ccv_nnc_symbolic_graph_free(symbolic_graph);
+}
+
+TEST_CASE("compare soft cap tanh with mps")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_TANH_FORWARD, CCV_NNC_BACKEND_MPS));
+	ccv_nnc_tensor_t* const x_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 64, 1024), 0);
+	dsfmt_t dsfmt;
+	dsfmt_init_gen_rand(&dsfmt, 0);
+	int i;
+	// Large inputs saturate the cap, small ones stay in the linear region.
+	for (i = 0; i < 64 * 1024; i++)
+		x_tensor->data.f32[i] = (dsfmt_genrand_open_close(&dsfmt) * 2 - 1) * (i % 2 ? 500 : 20);
+	ccv_nnc_tensor_t* const xt = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 64, 1024), 0);
+	ccv_nnc_tensor_t* const yt = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 64, 1024), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(x_tensor), TENSOR_LIST(xt), 0);
+	ccv_nnc_cmd_exec(CMD_TANH_FORWARD(25), ccv_nnc_no_hint, 0, TENSOR_LIST(xt), TENSOR_LIST(yt), 0);
+	ccv_nnc_tensor_t* const y_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 64, 1024), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(yt), TENSOR_LIST(y_tensor), 0);
+	ccv_nnc_tensor_t* const ty_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 64, 1024), 0);
+	ccv_nnc_cmd_exec(CMD_TANH_FORWARD(25), ccv_nnc_no_hint, 0, TENSOR_LIST(x_tensor), TENSOR_LIST(ty_tensor), 0);
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, ty_tensor->data.f32, y_tensor->data.f32, 64 * 1024, 1e-4, "soft cap tanh from mps should match from CPU");
+	ccv_nnc_tensor_free(x_tensor);
+	ccv_nnc_tensor_free(xt);
+	ccv_nnc_tensor_free(yt);
+	ccv_nnc_tensor_free(y_tensor);
+	ccv_nnc_tensor_free(ty_tensor);
+}
+
+TEST_CASE("compare soft cap tanh with mps in half precision")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_TANH_FORWARD, CCV_NNC_BACKEND_MPS));
+	ccv_nnc_tensor_t* const x_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 7, 143), 0);
+	dsfmt_t dsfmt;
+	dsfmt_init_gen_rand(&dsfmt, 0);
+	int i;
+	for (i = 0; i < 7 * 143; i++)
+		x_tensor->data.f32[i] = (dsfmt_genrand_open_close(&dsfmt) * 2 - 1) * 16;
+	ccv_nnc_tensor_t* const x16_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, 7, 143), 0);
+	ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(x_tensor), TENSOR_LIST(x16_tensor), 0);
+	// Compare against the CPU reference on the same rounded inputs.
+	ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(x16_tensor), TENSOR_LIST(x_tensor), 0);
+	ccv_nnc_tensor_t* const xt = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, 7, 143), 0);
+	ccv_nnc_tensor_t* const yt = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, 7, 143), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(x16_tensor), TENSOR_LIST(xt), 0);
+	ccv_nnc_cmd_exec(CMD_TANH_FORWARD(4), ccv_nnc_no_hint, 0, TENSOR_LIST(xt), TENSOR_LIST(yt), 0);
+	ccv_nnc_tensor_t* const y16_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, 7, 143), 0);
+	ccv_nnc_tensor_t* const y_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 7, 143), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(yt), TENSOR_LIST(y16_tensor), 0);
+	ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(y16_tensor), TENSOR_LIST(y_tensor), 0);
+	ccv_nnc_tensor_t* const ty_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 7, 143), 0);
+	ccv_nnc_cmd_exec(CMD_TANH_FORWARD(4), ccv_nnc_no_hint, 0, TENSOR_LIST(x_tensor), TENSOR_LIST(ty_tensor), 0);
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, ty_tensor->data.f32, y_tensor->data.f32, 7 * 143, 4e-3, "soft cap tanh from mps should match from CPU");
+	ccv_nnc_tensor_free(x_tensor);
+	ccv_nnc_tensor_free(x16_tensor);
+	ccv_nnc_tensor_free(xt);
+	ccv_nnc_tensor_free(yt);
+	ccv_nnc_tensor_free(y16_tensor);
+	ccv_nnc_tensor_free(y_tensor);
+	ccv_nnc_tensor_free(ty_tensor);
+}
+
+TEST_CASE("compare soft cap tanh gradient with mps in half precision")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_TANH_BACKWARD, CCV_NNC_BACKEND_MPS));
+	ccv_nnc_tensor_t* const y_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 7, 143), 0);
+	ccv_nnc_tensor_t* const dy_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 7, 143), 0);
+	dsfmt_t dsfmt;
+	dsfmt_init_gen_rand(&dsfmt, 0);
+	int i;
+	// The backward takes the forward output, which lives in (-soft_cap, soft_cap).
+	for (i = 0; i < 7 * 143; i++)
+	{
+		y_tensor->data.f32[i] = (dsfmt_genrand_open_close(&dsfmt) * 2 - 1) * 25;
+		dy_tensor->data.f32[i] = dsfmt_genrand_open_close(&dsfmt) * 2 - 1;
+	}
+	ccv_nnc_tensor_t* const y16_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, 7, 143), 0);
+	ccv_nnc_tensor_t* const dy16_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, 7, 143), 0);
+	ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(y_tensor, dy_tensor), TENSOR_LIST(y16_tensor, dy16_tensor), 0);
+	ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(y16_tensor, dy16_tensor), TENSOR_LIST(y_tensor, dy_tensor), 0);
+	ccv_nnc_tensor_t* const yt = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, 7, 143), 0);
+	ccv_nnc_tensor_t* const dyt = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, 7, 143), 0);
+	ccv_nnc_tensor_t* const dxt = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, 7, 143), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(y16_tensor, dy16_tensor), TENSOR_LIST(yt, dyt), 0);
+	ccv_nnc_cmd_exec(CMD_TANH_BACKWARD(25), ccv_nnc_no_hint, 0, TENSOR_LIST(dyt, 0, yt), TENSOR_LIST(dxt), 0);
+	ccv_nnc_tensor_t* const dx16_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, 7, 143), 0);
+	ccv_nnc_tensor_t* const dx_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 7, 143), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(dxt), TENSOR_LIST(dx16_tensor), 0);
+	ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(dx16_tensor), TENSOR_LIST(dx_tensor), 0);
+	ccv_nnc_tensor_t* const tdx_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 7, 143), 0);
+	ccv_nnc_cmd_exec(CMD_TANH_BACKWARD(25), ccv_nnc_no_hint, 0, TENSOR_LIST(dy_tensor, 0, y_tensor), TENSOR_LIST(tdx_tensor), 0);
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, tdx_tensor->data.f32, dx_tensor->data.f32, 7 * 143, 2e-3, "soft cap tanh backward from mps should match from CPU");
+	ccv_nnc_tensor_free(y_tensor);
+	ccv_nnc_tensor_free(dy_tensor);
+	ccv_nnc_tensor_free(y16_tensor);
+	ccv_nnc_tensor_free(dy16_tensor);
+	ccv_nnc_tensor_free(yt);
+	ccv_nnc_tensor_free(dyt);
+	ccv_nnc_tensor_free(dxt);
+	ccv_nnc_tensor_free(dx16_tensor);
+	ccv_nnc_tensor_free(dx_tensor);
+	ccv_nnc_tensor_free(tdx_tensor);
+}
+
+TEST_CASE("compare large soft cap tanh with mps graph in half precision")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_TANH_FORWARD, CCV_NNC_BACKEND_MPS) && ccv_nnc_cmd_ok(CCV_NNC_TANH_BACKWARD, CCV_NNC_BACKEND_MPS));
+	// A soft cap beyond the half precision range has to be computed in single precision on the MPSGraph path.
+	const float soft_cap = 100000;
+	ccv_nnc_tensor_t* const x_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 7, 143), 0);
+	ccv_nnc_tensor_t* const dy_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 7, 143), 0);
+	dsfmt_t dsfmt;
+	dsfmt_init_gen_rand(&dsfmt, 0);
+	int i;
+	for (i = 0; i < 7 * 143; i++)
+	{
+		x_tensor->data.f32[i] = (dsfmt_genrand_open_close(&dsfmt) * 2 - 1) * 16;
+		dy_tensor->data.f32[i] = dsfmt_genrand_open_close(&dsfmt) * 2 - 1;
+	}
+	ccv_nnc_tensor_t* const x16_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, 7, 143), 0);
+	ccv_nnc_tensor_t* const dy16_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, 7, 143), 0);
+	ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(x_tensor, dy_tensor), TENSOR_LIST(x16_tensor, dy16_tensor), 0);
+	ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(x16_tensor, dy16_tensor), TENSOR_LIST(x_tensor, dy_tensor), 0);
+	ccv_nnc_tensor_t* const xt = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, 7, 143), 0);
+	ccv_nnc_tensor_t* const yt = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, 7, 143), 0);
+	ccv_nnc_tensor_t* const dyt = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, 7, 143), 0);
+	ccv_nnc_tensor_t* const dxt = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, 7, 143), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(x16_tensor, dy16_tensor), TENSOR_LIST(xt, dyt), 0);
+	const uint64_t old_flags = ccv_nnc_flags();
+	ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA);
+	ccv_nnc_cmd_exec(CMD_TANH_FORWARD(soft_cap), ccv_nnc_no_hint, 0, TENSOR_LIST(xt), TENSOR_LIST(yt), 0);
+	ccv_nnc_cmd_exec(CMD_TANH_BACKWARD(soft_cap), ccv_nnc_no_hint, 0, TENSOR_LIST(dyt, 0, yt), TENSOR_LIST(dxt), 0);
+	if (!(old_flags & CCV_NNC_DISABLE_MFA))
+		ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA);
+	ccv_nnc_tensor_t* const y16_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, 7, 143), 0);
+	ccv_nnc_tensor_t* const dx16_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, 7, 143), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(yt, dxt), TENSOR_LIST(y16_tensor, dx16_tensor), 0);
+	ccv_nnc_tensor_t* const y_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 7, 143), 0);
+	ccv_nnc_tensor_t* const dx_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 7, 143), 0);
+	ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(y16_tensor, dx16_tensor), TENSOR_LIST(y_tensor, dx_tensor), 0);
+	ccv_nnc_tensor_t* const ty_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 7, 143), 0);
+	ccv_nnc_tensor_t* const tdx_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 7, 143), 0);
+	ccv_nnc_cmd_exec(CMD_TANH_FORWARD(soft_cap), ccv_nnc_no_hint, 0, TENSOR_LIST(x_tensor), TENSOR_LIST(ty_tensor), 0);
+	// Feed the backward with the same rounded forward output the GPU used.
+	ccv_nnc_cmd_exec(CMD_TANH_BACKWARD(soft_cap), ccv_nnc_no_hint, 0, TENSOR_LIST(dy_tensor, 0, y_tensor), TENSOR_LIST(tdx_tensor), 0);
+	// The tolerance comparison lets NaNs through, check them explicitly.
+	for (i = 0; i < 7 * 143; i++)
+		REQUIRE(!isnan(y_tensor->data.f32[i]) && !isnan(dx_tensor->data.f32[i]), "large soft cap tanh from mps graph should not be NaN at %d", i);
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, ty_tensor->data.f32, y_tensor->data.f32, 7 * 143, 1e-2, "large soft cap tanh from mps graph should match from CPU");
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, tdx_tensor->data.f32, dx_tensor->data.f32, 7 * 143, 1e-3, "large soft cap tanh backward from mps graph should match from CPU");
+	ccv_nnc_tensor_free(x_tensor);
+	ccv_nnc_tensor_free(dy_tensor);
+	ccv_nnc_tensor_free(x16_tensor);
+	ccv_nnc_tensor_free(dy16_tensor);
+	ccv_nnc_tensor_free(xt);
+	ccv_nnc_tensor_free(yt);
+	ccv_nnc_tensor_free(dyt);
+	ccv_nnc_tensor_free(dxt);
+	ccv_nnc_tensor_free(y16_tensor);
+	ccv_nnc_tensor_free(dx16_tensor);
+	ccv_nnc_tensor_free(y_tensor);
+	ccv_nnc_tensor_free(dx_tensor);
+	ccv_nnc_tensor_free(ty_tensor);
+	ccv_nnc_tensor_free(tdx_tensor);
 }
 
 #include "case_main.h"

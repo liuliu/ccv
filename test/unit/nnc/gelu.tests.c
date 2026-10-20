@@ -28,7 +28,7 @@ TEST_CASE("compare fast GELU gradient with fine-grained symbolic graph")
 	ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_MUL_FORWARD(0.044715), TENSOR_SYMBOL_LIST(x_sq, x), TENSOR_SYMBOL_LIST(x_cube), "x_cube");
 	ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_ADD_FORWARD(1, 1), TENSOR_SYMBOL_LIST(x, x_cube), TENSOR_SYMBOL_LIST(x_sum), "x_sum");
 	ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_SCALAR_MUL_FORWARD(0.797884560802865355), TENSOR_SYMBOL_LIST(x_sum), TENSOR_SYMBOL_LIST(beta_x_sum), "beta_x_sum");
-	ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_TANH_FORWARD(), TENSOR_SYMBOL_LIST(beta_x_sum), TENSOR_SYMBOL_LIST(tanh), "tanh");
+	ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_TANH_FORWARD(1), TENSOR_SYMBOL_LIST(beta_x_sum), TENSOR_SYMBOL_LIST(tanh), "tanh");
 	ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_ADD_FORWARD(1, 1), TENSOR_SYMBOL_LIST(tanh, one), TENSOR_SYMBOL_LIST(tanh_1), "tanh_1");
 	ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_MUL_FORWARD(0.5), TENSOR_SYMBOL_LIST(x, tanh_1), TENSOR_SYMBOL_LIST(y), "y");
 	ccv_nnc_graph_exec_symbol_autogen(symbolic_graph, 0, 0, CCV_NNC_AUTOGEN_ALL_EXECS | CCV_NNC_AUTOGEN_SOURCES_AND_DESTINATIONS);

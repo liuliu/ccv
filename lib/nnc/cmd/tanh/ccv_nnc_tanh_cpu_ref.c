@@ -22,10 +22,11 @@ static int _ccv_nnc_tanh_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	int i;
 	for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC && a->info.dim[i] > 0; i++)
 		{ assert(a->info.dim[i] == b->info.dim[i]); }
+	const float soft_cap = cmd.info.tanh.soft_cap > 0 ? cmd.info.tanh.soft_cap : 1;
 	float* const ap = a->data.f32;
 	float* const bp = b->data.f32;
 	for (i = 0; i < count; i++)
-		bp[i] = tanh(ap[i]);
+		bp[i] = soft_cap * tanh(ap[i] / soft_cap);
 	return CCV_NNC_EXEC_SUCCESS;
 }
 
@@ -42,6 +43,8 @@ static int _ccv_nnc_tanh_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	int i;
 	for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC && g->info.dim[i] > 0; i++)
 		{ assert(h->info.dim[i] == b->info.dim[i]); }
+	// d(soft_cap * tanh(x / soft_cap)) / dx = 1 - (y / soft_cap)^2.
+	const float soft_cap = cmd.info.tanh.soft_cap > 0 ? cmd.info.tanh.soft_cap : 1;
 	if (g)
 	{
 		assert(CCV_IS_TENSOR_CONTIGUOUS(g));
@@ -51,12 +54,18 @@ static int _ccv_nnc_tanh_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 		float* const bp = b->data.f32;
 		float* const hp = h->data.f32;
 		for (i = 0; i < count; i++)
-			hp[i] = gp[i] * (1 - bp[i] * bp[i]);
+		{
+			const float y = bp[i] / soft_cap;
+			hp[i] = gp[i] * (1 - y * y);
+		}
 	} else {
 		float* const bp = b->data.f32;
 		float* const hp = h->data.f32;
 		for (i = 0; i < count; i++)
-			hp[i] = 1 - bp[i] * bp[i];
+		{
+			const float y = bp[i] / soft_cap;
+			hp[i] = 1 - y * y;
+		}
 	}
 	return CCV_NNC_EXEC_SUCCESS;
 }

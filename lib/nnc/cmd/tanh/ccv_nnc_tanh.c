@@ -55,6 +55,6 @@ REGISTER_COMMAND(CCV_NNC_TANH_BACKWARD)(ccv_nnc_cmd_registry_t* const registry)
 }
 
 //@REGISTER_EASY_COMMAND_MACRO(CCV_NNC_TANH_FORWARD)
-#define CMD_TANH_FORWARD() ccv_nnc_cmd(CCV_NNC_TANH_FORWARD, 0, ccv_nnc_cmd_auto, 0)
+#define CMD_TANH_FORWARD(_soft_cap) ccv_nnc_cmd(CCV_NNC_TANH_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.tanh={.soft_cap=_soft_cap}}), 0)
 //@REGISTER_EASY_COMMAND_MACRO(CCV_NNC_TANH_BACKWARD)
-#define CMD_TANH_BACKWARD() ccv_nnc_cmd(CCV_NNC_TANH_BACKWARD, 0, ccv_nnc_cmd_auto, 0)
+#define CMD_TANH_BACKWARD(_soft_cap) ccv_nnc_cmd(CCV_NNC_TANH_BACKWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.tanh={.soft_cap=_soft_cap}}), 0)
