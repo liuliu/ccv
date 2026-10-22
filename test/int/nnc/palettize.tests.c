@@ -12,6 +12,199 @@ TEST_SETUP()
 	ccv_nnc_init();
 }
 
+static void _test_iq1_write_bits(uint8_t* const data, const size_t bit, const unsigned value, const int width)
+{
+	int i;
+	for (i = 0; i < width; i++)
+		data[(bit + i) / 8] |= ((value >> i) & 1) << ((bit + i) % 8);
+}
+
+TEST_CASE("CPU IQ1 rowwise-x decodes independent packed groups across row boundaries")
+{
+	enum { rows = 9, cols = 37, count = rows * cols };
+	const int formats[2] = {CCV_NNC_QX_8I_ROWWISE_IQ1_S, CCV_NNC_QX_8I_ROWWISE_IQ1_M};
+	const int indices[4] = {0, 1, 2, 2047};
+	const int scales[8] = {1, 2, 3, 5, 7, 9, 12, 16};
+	int f;
+	for (f = 0; f < 2; f++)
+	{
+		const int group_size = f == 0 ? 32 : 16;
+		const int group_bits = f == 0 ? 50 : 28;
+		const int groups_per_row = (cols + group_size - 1) / group_size;
+		const size_t payload = (rows * groups_per_row * group_bits + 7) / 8;
+		const size_t scale_offset = (payload + 127) & -128;
+		const size_t size = scale_offset + rows * sizeof(float);
+		const ccv_nnc_tensor_param_t params = ccv_nnc_tensor_8i_rowwise_x(CPU_TENSOR_NHWC(32F, rows, cols), formats[f]);
+		REQUIRE_EQ(ccv_nnc_8i_rowwise_x_data_size(formats[f], CCV_32F, count, cols), size, "size includes trailing row scales");
+		REQUIRE_EQ(ccv_nnc_tensor_data_size_without_padding(params), size, "tensor allocation uses the same group layout");
+		uint8_t* const packed = cccalloc(size, 1);
+		float expected[count];
+		int r, g, sg, j;
+		for (r = 0; r < rows; r++)
+		{
+			const float row_scale = (r + 1) / 32.f;
+			((float*)(packed + scale_offset))[r] = row_scale;
+			for (g = 0; g < groups_per_row; g++)
+			{
+				const int group = r * groups_per_row + g;
+				const size_t bit = (size_t)group * group_bits;
+				unsigned shifts = group & 7;
+				shifts |= ((shifts ^ (shifts >> 1) ^ (shifts >> 2)) & 1) << 3;
+				const int m = f == 0 ? scales[group % 8] : 16 - group % 16;
+				for (sg = 0; sg < group_size / 8; sg++)
+				{
+					const int index = indices[(group + sg) % 4];
+					const int negative_shift = (shifts >> sg) & 1;
+					if (f == 0)
+						_test_iq1_write_bits(packed, bit + sg * 11, index, 11);
+					else
+						_test_iq1_write_bits(packed, bit + sg * 12, index | (negative_shift << 11), 12);
+					for (j = 0; j < 8 && g * group_size + sg * 8 + j < cols; j++)
+					{
+						const int trit = index == 2047 ? 1 : (index == 1 && j == 0) ? 1 : (index == 2 && j < 2) ? 0 : -1;
+						const int q = ccv_clamp(m * (8 * trit + (negative_shift ? -1 : 1)), -127, 127);
+						expected[r * cols + g * group_size + sg * 8 + j] = row_scale * q;
+					}
+				}
+				if (f == 0)
+				{
+					_test_iq1_write_bits(packed, bit + 44, shifts & 7, 3);
+					_test_iq1_write_bits(packed, bit + 47, group % 8, 3);
+				} else
+					_test_iq1_write_bits(packed, bit + 24, m - 1, 4);
+			}
+		}
+		float actual[count];
+		ccv_nnc_dequantize_8i_rowwise_x(packed, CCV_32F, CCV_TENSOR_CPU_MEMORY, size, cols, formats[f], actual, count);
+		REQUIRE_ARRAY_EQ(float, expected, actual, count, "grid order, shifts, multipliers, saturation and tail decoding match the format");
+		ccfree(packed);
+	}
+}
+
+TEST_CASE("CPU IQ1 rowwise-x supports every precision, partial groups and imatrix slices")
+{
+	enum { rows = 9, cols = 37, count = rows * cols, slice_count = 3, rows_per_slice = rows / slice_count };
+	const int formats[2] = {CCV_NNC_QX_8I_ROWWISE_IQ1_S, CCV_NNC_QX_8I_ROWWISE_IQ1_M};
+	const int datatypes[4] = {CCV_16F, CCV_16BF, CCV_32F, CCV_64F};
+	float values[count], importance[cols * slice_count];
+	int i, f, d;
+	for (i = 0; i < count; i++)
+		values[i] = i < cols ? 0 : sinf(i * 0.37f) + cosf(i * 0.71f) * 0.4f;
+	for (i = 0; i < cols * slice_count; i++)
+		importance[i] = i % 11 == 0 ? 0 : 0.1f + (i * 17 % 31) / 8.f;
+	for (d = 0; d < 4; d++)
+	{
+		ccv_nnc_tensor_param_t params = CPU_TENSOR_NHWC(32F, rows, cols);
+		params.datatype = datatypes[d];
+		ccv_nnc_tensor_t* const source = ccv_nnc_tensor_new(0, params, 0);
+		ccv_nnc_tensor_t* const decoded = ccv_nnc_tensor_new(0, params, 0);
+		ccv_nnc_tensor_t* const sliced = ccv_nnc_tensor_new(0, params, 0);
+		if (datatypes[d] == CCV_16F)
+			ccv_float_to_half_precision(values, (uint16_t*)source->data.u8, count);
+		else if (datatypes[d] == CCV_16BF)
+			ccv_float_to_bfloat(values, (uint16_t*)source->data.u8, count);
+		else if (datatypes[d] == CCV_32F)
+			memcpy(source->data.f32, values, sizeof(values));
+		else
+			for (i = 0; i < count; i++)
+				source->data.f64[i] = values[i];
+		const size_t element_size = CCV_GET_DATA_TYPE_SIZE(datatypes[d]);
+		for (f = 0; f < 2; f++)
+		{
+			const size_t size = ccv_nnc_8i_rowwise_x_data_size(formats[f], datatypes[d], count, cols);
+			uint8_t* const packed = ccmalloc(size + 16);
+			memset(packed, 0xa5, size + 16);
+			REQUIRE_EQ(ccv_nnc_quantize_8i_rowwise_x(source->data.u8, datatypes[d], CCV_TENSOR_CPU_MEMORY, count, cols, formats[f], importance, cols * slice_count, packed, size - 1), 0, "short output is rejected");
+			for (i = 0; i < size + 16; i++)
+				REQUIRE_EQ(packed[i], 0xa5, "rejected output stays unchanged");
+			REQUIRE_EQ(ccv_nnc_quantize_8i_rowwise_x(source->data.u8, datatypes[d], CCV_TENSOR_CPU_MEMORY, count, cols, formats[f], importance, cols * slice_count, packed, size), size, "quantizer returns exact size");
+			for (i = 0; i < 16; i++)
+				REQUIRE_EQ(packed[size + i], 0xa5, "quantizer preserves output guard bytes");
+			ccv_nnc_dequantize_8i_rowwise_x(packed, datatypes[d], CCV_TENSOR_CPU_MEMORY, size, cols, formats[f], decoded->data.u8, count);
+			int slice;
+			for (slice = 0; slice < slice_count; slice++)
+			{
+				const size_t slice_size = ccv_nnc_8i_rowwise_x_data_size(formats[f], datatypes[d], rows_per_slice * cols, cols);
+				uint8_t* const slice_packed = ccmalloc(slice_size);
+				const size_t offset = (size_t)slice * rows_per_slice * cols * element_size;
+				REQUIRE_EQ(ccv_nnc_quantize_8i_rowwise_x(source->data.u8 + offset, datatypes[d], CCV_TENSOR_CPU_MEMORY, rows_per_slice * cols, cols, formats[f], importance + slice * cols, cols, slice_packed, slice_size), slice_size, "individual imatrix slice quantizes");
+				ccv_nnc_dequantize_8i_rowwise_x(slice_packed, datatypes[d], CCV_TENSOR_CPU_MEMORY, slice_size, cols, formats[f], sliced->data.u8 + offset, rows_per_slice * cols);
+				ccfree(slice_packed);
+			}
+			REQUIRE_ARRAY_EQ(uint8_t, decoded->data.u8, sliced->data.u8, count * element_size, "packed imatrix slices match independent quantization");
+			float output[count];
+			if (datatypes[d] == CCV_16F)
+				ccv_half_precision_to_float((const uint16_t*)decoded->data.u8, output, count);
+			else if (datatypes[d] == CCV_16BF)
+				ccv_bfloat_to_float((const uint16_t*)decoded->data.u8, output, count);
+			else if (datatypes[d] == CCV_32F)
+				memcpy(output, decoded->data.f32, sizeof(output));
+			else
+				for (i = 0; i < count; i++)
+					output[i] = decoded->data.f64[i];
+			for (i = 0; i < count; i++)
+				REQUIRE(isfinite(output[i]), "decoded values are finite");
+			for (i = 0; i < cols; i++)
+				REQUIRE_EQ(output[i], 0, "zero source row is exactly zero");
+			ccfree(packed);
+		}
+		ccv_nnc_tensor_free(sliced);
+		ccv_nnc_tensor_free(decoded);
+		ccv_nnc_tensor_free(source);
+	}
+}
+
+TEST_CASE("CPU IQ1 rowwise-x metadata and payload survive tensor persistence")
+{
+	const int formats[2] = {CCV_NNC_QX_8I_ROWWISE_IQ1_S, CCV_NNC_QX_8I_ROWWISE_IQ1_M};
+	ccv_nnc_tensor_t* const source = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 3, 37), 0);
+	int i, f;
+	for (i = 0; i < 3 * 37; i++)
+		source->data.f32[i] = sinf(i * 0.37f);
+	sqlite3* db = 0;
+	REQUIRE_EQ(sqlite3_open(":memory:", &db), SQLITE_OK, "in-memory database opens");
+	for (f = 0; f < 2; f++)
+	{
+		ccv_nnc_tensor_t* const packed = ccv_nnc_tensor_new(0, ccv_nnc_tensor_8i_rowwise_x(source->info, formats[f]), 0);
+		const size_t size = ccv_nnc_tensor_data_size_without_padding(packed->info);
+		REQUIRE_EQ(ccv_nnc_quantize_8i_rowwise_x(source->data.f32, CCV_32F, CCV_TENSOR_CPU_MEMORY, 3 * 37, 37, formats[f], 0, 0, packed->data.u8, size), size, "allocated tensor quantizes");
+		const char* const name = f == 0 ? "iq1_s" : "iq1_m";
+		REQUIRE_EQ(ccv_nnc_tensor_write(packed, db, name, 0), CCV_IO_FINAL, "IQ1 tensor writes");
+		ccv_nnc_tensor_t* restored = 0;
+		REQUIRE_EQ(ccv_nnc_tensor_read(db, name, 0, 0, 0, &restored), CCV_IO_FINAL, "IQ1 tensor reads");
+		REQUIRE_EQ(restored->info.datatype, packed->info.datatype, "source precision persists");
+		REQUIRE_EQ(restored->info.reserved, formats[f], "codec persists");
+		REQUIRE_EQ(ccv_nnc_tensor_data_size_without_padding(restored->info), size, "size persists");
+		REQUIRE_EQ(memcmp(restored->data.u8, packed->data.u8, size), 0, "payload and trailing scales persist");
+		ccv_nnc_tensor_free(restored);
+		ccv_nnc_tensor_free(packed);
+	}
+	sqlite3_close(db);
+	ccv_nnc_tensor_free(source);
+}
+
+TEST_CASE("CPU IQ1 rowwise-x fits the imatrix-weighted objective")
+{
+	const int formats[2] = {CCV_NNC_QX_8I_ROWWISE_IQ1_S, CCV_NNC_QX_8I_ROWWISE_IQ1_M};
+	float source[32], importance[32] = {1};
+	int i, f;
+	for (i = 0; i < 32; i++)
+		source[i] = i == 0 ? 0.317f : sinf(i * 1.32f) * 3;
+	for (f = 0; f < 2; f++)
+	{
+		const size_t size = ccv_nnc_8i_rowwise_x_data_size(formats[f], CCV_32F, 32, 32);
+		uint8_t* const packed = ccmalloc(size);
+		float weighted[32], plain[32];
+		REQUIRE_EQ(ccv_nnc_quantize_8i_rowwise_x(source, CCV_32F, CCV_TENSOR_CPU_MEMORY, 32, 32, formats[f], 0, 0, packed, size), size, "null imatrix is supported");
+		ccv_nnc_dequantize_8i_rowwise_x(packed, CCV_32F, CCV_TENSOR_CPU_MEMORY, size, 32, formats[f], plain, 32);
+		REQUIRE_EQ(ccv_nnc_quantize_8i_rowwise_x(source, CCV_32F, CCV_TENSOR_CPU_MEMORY, 32, 32, formats[f], importance, 32, packed, size), size, "weighted quantization succeeds");
+		ccv_nnc_dequantize_8i_rowwise_x(packed, CCV_32F, CCV_TENSOR_CPU_MEMORY, size, 32, formats[f], weighted, 32);
+		REQUIRE(fabsf(weighted[0] - source[0]) < 1e-6f, "important lane is fitted accurately");
+		REQUIRE(fabsf(weighted[0] - source[0]) < fabsf(plain[0] - source[0]), "imatrix changes the fitting objective");
+		ccfree(packed);
+	}
+}
+
 static double _test_8i_rowwise_x_format(const int format, const ccv_nnc_tensor_param_t params, int* const finite, int* const size_matches)
 {
 	enum {

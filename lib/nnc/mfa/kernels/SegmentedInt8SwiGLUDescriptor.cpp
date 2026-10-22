@@ -30,8 +30,10 @@ uint32_t SegmentedInt8SwiGLUDescriptor::groupSize() const noexcept
 {
   switch (format) {
     case CCV_NNC_QX_8I_ROWWISE_Q2_K:
+    case CCV_NNC_QX_8I_ROWWISE_IQ1_M:
       return 16;
     case CCV_NNC_QX_8I_ROWWISE_IQ2_XXS:
+    case CCV_NNC_QX_8I_ROWWISE_IQ1_S:
       return 32;
     case CCV_NNC_QX_8I_ROWWISE_IQ2_XS:
     case CCV_NNC_QX_8I_ROWWISE_IQ3_XXS:
@@ -61,7 +63,14 @@ uint64_t SegmentedInt8SwiGLUDescriptor::inputScaleOffset() const noexcept
       const uint64_t payloadBytes = (payloadBits + 7) / 8;
       return (payloadBytes + 127) & ~UINT64_C(127);
     }
-    case CCV_NNC_QX_8I_ROWWISE_IQ3_XXS: {
+    case CCV_NNC_QX_8I_ROWWISE_IQ1_S: {
+      const uint64_t payloadBits =
+        (uint64_t)expertCount * matrixDimensions[0] * groupsPerRow() * 50;
+      const uint64_t payloadBytes = (payloadBits + 7) / 8;
+      return (payloadBytes + 127) & ~UINT64_C(127);
+    }
+    case CCV_NNC_QX_8I_ROWWISE_IQ3_XXS:
+    case CCV_NNC_QX_8I_ROWWISE_IQ1_M: {
       const uint64_t payloadBits =
         (uint64_t)expertCount * matrixDimensions[0] * groupsPerRow() * 28;
       const uint64_t payloadBytes = (payloadBits + 7) / 8;
@@ -90,7 +99,14 @@ uint64_t SegmentedInt8SwiGLUDescriptor::weightExpertStride() const noexcept
       CCV_NNC_MFA_PRECONDITION((expertBits % 8) == 0);
       return expertBits / 8;
     }
-    case CCV_NNC_QX_8I_ROWWISE_IQ3_XXS: {
+    case CCV_NNC_QX_8I_ROWWISE_IQ1_S: {
+      const uint64_t expertBits =
+        (uint64_t)matrixDimensions[0] * groupsPerRow() * 50;
+      CCV_NNC_MFA_PRECONDITION((expertBits % 8) == 0);
+      return expertBits / 8;
+    }
+    case CCV_NNC_QX_8I_ROWWISE_IQ3_XXS:
+    case CCV_NNC_QX_8I_ROWWISE_IQ1_M: {
       const uint64_t expertBits =
         (uint64_t)matrixDimensions[0] * groupsPerRow() * 28;
       CCV_NNC_MFA_PRECONDITION((expertBits % 8) == 0);

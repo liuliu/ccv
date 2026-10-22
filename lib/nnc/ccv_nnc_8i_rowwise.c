@@ -218,6 +218,191 @@ typedef struct {
 	uint32_t signs;
 } ccv_nnc_8i_rowwise_packed_group_t;
 
+static const int ccv_nnc_8i_rowwise_packed_iq1s_scales[8] = {1, 2, 3, 5, 7, 9, 12, 16};
+static const int ccv_nnc_8i_rowwise_packed_iq1_powers[8] = {1, 3, 9, 27, 81, 243, 729, 2187};
+
+typedef struct {
+	int lane;
+	int trit[3];
+	double cost[3];
+} ccv_nnc_8i_rowwise_iq1_lane_t;
+
+typedef struct {
+	ccv_nnc_8i_rowwise_iq1_lane_t lanes[8];
+	const int16_t* map;
+	double best;
+	int index;
+} ccv_nnc_8i_rowwise_iq1_search_t;
+
+static void _ccv_nnc_8i_rowwise_packed_iq1_search(ccv_nnc_8i_rowwise_iq1_search_t* const search, const int depth, const int code, const double cost)
+{
+	if (cost >= search->best)
+		return;
+	if (depth == 8)
+	{
+		if (search->map[code] >= 0)
+		{
+			search->best = cost;
+			search->index = search->map[code];
+		}
+		return;
+	}
+	const ccv_nnc_8i_rowwise_iq1_lane_t* const lane = search->lanes + depth;
+	int k;
+	for (k = 0; k < 3; k++)
+	{
+		const double next = cost + lane->cost[k];
+		if (next >= search->best)
+			break;
+		_ccv_nnc_8i_rowwise_packed_iq1_search(search, depth + 1, code + lane->trit[k] * ccv_nnc_8i_rowwise_packed_iq1_powers[lane->lane], next);
+	}
+}
+
+static double _ccv_nnc_8i_rowwise_packed_iq1_nearest(const double* const y, const double* const w, const int m, const int shift, const int16_t* const map, int* const index)
+{
+	const int levels[3] = {ccv_max((-8 + shift) * m, -127), shift * m, ccv_min((8 + shift) * m, 127)};
+	ccv_nnc_8i_rowwise_iq1_search_t search;
+	search.map = map;
+	double baseline = 0;
+	int natural_code = 0;
+	int j, k;
+	for (j = 0; j < 8; j++)
+	{
+		ccv_nnc_8i_rowwise_iq1_lane_t* const lane = search.lanes + j;
+		lane->lane = j;
+		for (k = 0; k < 3; k++)
+		{
+			const double d = levels[k] - y[j];
+			lane->trit[k] = k;
+			lane->cost[k] = w[j] * d * d;
+		}
+		for (k = 1; k < 3; k++)
+		{
+			int t;
+			for (t = k; t > 0 && lane->cost[t] < lane->cost[t - 1]; t--)
+			{
+				const double cost = lane->cost[t];
+				lane->cost[t] = lane->cost[t - 1];
+				lane->cost[t - 1] = cost;
+				const int trit = lane->trit[t];
+				lane->trit[t] = lane->trit[t - 1];
+				lane->trit[t - 1] = trit;
+			}
+		}
+		natural_code += lane->trit[0] * ccv_nnc_8i_rowwise_packed_iq1_powers[j];
+		const double minimum = lane->cost[0];
+		baseline += minimum;
+		for (k = 0; k < 3; k++)
+			lane->cost[k] -= minimum;
+	}
+	if (map[natural_code] >= 0)
+	{
+		*index = map[natural_code];
+		return baseline;
+	}
+	search.best = DBL_MAX;
+	search.index = -1;
+	for (j = 0; j < 8; j++)
+		for (k = 1; k < 3; k++)
+		{
+			const ccv_nnc_8i_rowwise_iq1_lane_t* const lane = search.lanes + j;
+			const int code = natural_code + (lane->trit[k] - lane->trit[0]) * ccv_nnc_8i_rowwise_packed_iq1_powers[j];
+			if (map[code] >= 0 && lane->cost[k] < search.best)
+			{
+				search.best = lane->cost[k];
+				search.index = map[code];
+			}
+		}
+	// Independent lane costs bound the exact search; put cheap changes last.
+	for (j = 1; j < 8; j++)
+		for (k = j; k > 0 && search.lanes[k].cost[1] > search.lanes[k - 1].cost[1]; k--)
+		{
+			const ccv_nnc_8i_rowwise_iq1_lane_t lane = search.lanes[k];
+			search.lanes[k] = search.lanes[k - 1];
+			search.lanes[k - 1] = lane;
+		}
+	_ccv_nnc_8i_rowwise_packed_iq1_search(&search, 0, 0, 0);
+	assert(search.index >= 0);
+	*index = search.index;
+	return baseline + search.best;
+}
+
+static void _ccv_nnc_8i_rowwise_packed_quant_iq1_m(const double* const y, const double* const w, const int16_t* const map, ccv_nnc_8i_rowwise_packed_group_t* const group)
+{
+	double best_sse = DBL_MAX;
+	int m, sg, j;
+	for (m = 1; m <= 16; m++)
+	{
+		double sse = 0;
+		int grid[2];
+		uint32_t shifts = 0;
+		for (sg = 0; sg < 2; sg++)
+		{
+			int index[2];
+			const double plus = _ccv_nnc_8i_rowwise_packed_iq1_nearest(y + sg * 8, w + sg * 8, m, 1, map, index);
+			const double minus = _ccv_nnc_8i_rowwise_packed_iq1_nearest(y + sg * 8, w + sg * 8, m, -1, map, index + 1);
+			const int shift = minus < plus;
+			sse += shift ? minus : plus;
+			grid[sg] = index[shift];
+			shifts |= (uint32_t)shift << sg;
+		}
+		if (sse < best_sse)
+		{
+			best_sse = sse;
+			group->scale = m;
+			group->signs = shifts;
+			memcpy(group->grid, grid, sizeof(grid));
+		}
+	}
+	for (sg = 0; sg < 2; sg++)
+		for (j = 0; j < 8; j++)
+		{
+			const int g = (int)((ccv_nnc_8i_rowwise_packed_iq1_grid[group->grid[sg]] >> (2 * j)) & 3) - 1;
+			const int shift = (group->signs & (1u << sg)) ? -1 : 1;
+			group->q8[sg * 8 + j] = ccv_clamp(group->scale * (8 * g + shift), -127, 127);
+		}
+}
+
+static void _ccv_nnc_8i_rowwise_packed_quant_iq1_s(const double* const y, const double* const w, const int16_t* const map, ccv_nnc_8i_rowwise_packed_group_t* const group)
+{
+	double best_sse = DBL_MAX;
+	int sc, sg, j;
+	for (sc = 0; sc < 8; sc++)
+	{
+		const int m = ccv_nnc_8i_rowwise_packed_iq1s_scales[sc];
+		double costs[4][2];
+		int indices[4][2];
+		for (sg = 0; sg < 4; sg++)
+			for (j = 0; j < 2; j++)
+				costs[sg][j] = _ccv_nnc_8i_rowwise_packed_iq1_nearest(y + sg * 8, w + sg * 8, m, j ? -1 : 1, map, &indices[sg][j]);
+		int mask;
+		for (mask = 0; mask < 16; mask++)
+		{
+			if ((mask ^ (mask >> 1) ^ (mask >> 2) ^ (mask >> 3)) & 1)
+				continue;
+			double sse = 0;
+			for (sg = 0; sg < 4; sg++)
+				sse += costs[sg][(mask >> sg) & 1];
+			if (sse < best_sse)
+			{
+				best_sse = sse;
+				group->scale = sc;
+				group->signs = (uint32_t)mask;
+				for (sg = 0; sg < 4; sg++)
+					group->grid[sg] = indices[sg][(mask >> sg) & 1];
+			}
+		}
+	}
+	const int m = ccv_nnc_8i_rowwise_packed_iq1s_scales[group->scale];
+	for (sg = 0; sg < 4; sg++)
+		for (j = 0; j < 8; j++)
+		{
+			const int g = (int)((ccv_nnc_8i_rowwise_packed_iq1_grid[group->grid[sg]] >> (2 * j)) & 3) - 1;
+			const int shift = (group->signs & (1u << sg)) ? -1 : 1;
+			group->q8[sg * 8 + j] = ccv_clamp(m * (8 * g + shift), -127, 127);
+		}
+}
+
 static void _ccv_nnc_8i_rowwise_packed_nearest_candidates(const uint8_t* const grid, const int grid_size, const int lanes, const int levels, const int code_count, const int candidate_count, uint16_t* const candidates)
 {
 	assert(candidate_count <= CCV_NNC_8I_ROWWISE_IQ3_CANDIDATES);
@@ -1232,10 +1417,16 @@ static void _ccv_nnc_8i_rowwise_packed_quant_iq3_xxs(const double* const y, cons
 	}
 }
 
-static void _ccv_nnc_8i_rowwise_packed_quant_group(const int format, const double* const y, const double* const w, ccv_nnc_8i_rowwise_packed_group_t* const group)
+static void _ccv_nnc_8i_rowwise_packed_quant_group(const int format, const double* const y, const double* const w, const int16_t* const iq1_map, ccv_nnc_8i_rowwise_packed_group_t* const group)
 {
 	switch (format)
 	{
+		case CCV_NNC_QX_8I_ROWWISE_IQ1_S:
+			_ccv_nnc_8i_rowwise_packed_quant_iq1_s(y, w, iq1_map, group);
+			break;
+		case CCV_NNC_QX_8I_ROWWISE_IQ1_M:
+			_ccv_nnc_8i_rowwise_packed_quant_iq1_m(y, w, iq1_map, group);
+			break;
 		case CCV_NNC_QX_8I_ROWWISE_Q5_K:
 			_ccv_nnc_8i_rowwise_packed_quant_q5(y, w, group);
 			break;
@@ -1278,6 +1469,17 @@ static void _ccv_nnc_8i_rowwise_packed_pack_group(uint8_t* const output, const s
 	int j;
 	switch (format)
 	{
+		case CCV_NNC_QX_8I_ROWWISE_IQ1_S:
+			for (j = 0; j < 4; j++)
+				_ccv_nnc_8i_rowwise_packed_write_bits(output, bit + j * 11, (uint32_t)group->grid[j], 11);
+			_ccv_nnc_8i_rowwise_packed_write_bits(output, bit + 44, group->signs & 7, 3);
+			_ccv_nnc_8i_rowwise_packed_write_bits(output, bit + 47, (uint32_t)group->scale, 3);
+			break;
+		case CCV_NNC_QX_8I_ROWWISE_IQ1_M:
+			for (j = 0; j < 2; j++)
+				_ccv_nnc_8i_rowwise_packed_write_bits(output, bit + j * 12, (uint32_t)group->grid[j] | (((group->signs >> j) & 1) << 11), 12);
+			_ccv_nnc_8i_rowwise_packed_write_bits(output, bit + 24, (uint32_t)(group->scale - 1), 4);
+			break;
 		case CCV_NNC_QX_8I_ROWWISE_Q5_K:
 			for (j = 0; j < 16; j++, bit += 5)
 				_ccv_nnc_8i_rowwise_packed_write_bits(output, bit, (uint32_t)(group->q[j] + 16), 5);
@@ -1350,6 +1552,38 @@ static void _ccv_nnc_8i_rowwise_packed_decode_group(const uint8_t* const input, 
 	int j;
 	switch (format)
 	{
+		case CCV_NNC_QX_8I_ROWWISE_IQ1_S: {
+			uint32_t shifts = _ccv_nnc_8i_rowwise_packed_read_bits(input, bit + 44, 3);
+			shifts |= ((shifts ^ (shifts >> 1) ^ (shifts >> 2)) & 1) << 3;
+			const int m = ccv_nnc_8i_rowwise_packed_iq1s_scales[_ccv_nnc_8i_rowwise_packed_read_bits(input, bit + 47, 3)];
+			int sg;
+			for (sg = 0; sg < 4; sg++)
+			{
+				const int index = (int)_ccv_nnc_8i_rowwise_packed_read_bits(input, bit + sg * 11, 11);
+				const int shift = (shifts & (1u << sg)) ? -1 : 1;
+				for (j = 0; j < 8; j++)
+				{
+					const int g = (int)((ccv_nnc_8i_rowwise_packed_iq1_grid[index] >> (2 * j)) & 3) - 1;
+					q8[sg * 8 + j] = ccv_clamp(m * (8 * g + shift), -127, 127);
+				}
+			}
+			break;
+		}
+		case CCV_NNC_QX_8I_ROWWISE_IQ1_M: {
+			const int m = (int)_ccv_nnc_8i_rowwise_packed_read_bits(input, bit + 24, 4) + 1;
+			int sg;
+			for (sg = 0; sg < 2; sg++)
+			{
+				const uint32_t code = _ccv_nnc_8i_rowwise_packed_read_bits(input, bit + sg * 12, 12);
+				const int shift = (code & 2048) ? -1 : 1;
+				for (j = 0; j < 8; j++)
+				{
+					const int g = (int)((ccv_nnc_8i_rowwise_packed_iq1_grid[code & 2047] >> (2 * j)) & 3) - 1;
+					q8[sg * 8 + j] = ccv_clamp(m * (8 * g + shift), -127, 127);
+				}
+			}
+			break;
+		}
 		case CCV_NNC_QX_8I_ROWWISE_Q5_K: {
 			int q[16];
 			for (j = 0; j < 16; j++, bit += 5)
@@ -1528,6 +1762,22 @@ CCV_WARN_UNUSED(size_t) ccv_nnc_quantize_8i_rowwise_x(const void* input, const i
 	const size_t output_size = scale_offset + row_count * CCV_GET_DATA_TYPE_SIZE(datatype);
 	if (output_length < output_size)
 		return 0;
+	int16_t* iq1_map = 0;
+	const int starts = (codec == CCV_NNC_QX_8I_ROWWISE_IQ1_S || codec == CCV_NNC_QX_8I_ROWWISE_IQ1_M) ? 3 : 1;
+	if (starts == 3)
+	{
+		iq1_map = (int16_t*)ccmalloc(sizeof(int16_t) * 6561);
+		int i, j;
+		for (i = 0; i < 6561; i++)
+			iq1_map[i] = -1;
+		for (i = 0; i < 2048; i++)
+		{
+			int code = 0;
+			for (j = 0; j < 8; j++)
+				code += ((ccv_nnc_8i_rowwise_packed_iq1_grid[i] >> (2 * j)) & 3) * ccv_nnc_8i_rowwise_packed_iq1_powers[j];
+			iq1_map[code] = (int16_t)i;
+		}
+	}
 	switch (codec)
 	{
 		case CCV_NNC_QX_8I_ROWWISE_IQ2_XXS:
@@ -1597,56 +1847,66 @@ CCV_WARN_UNUSED(size_t) ccv_nnc_quantize_8i_rowwise_x(const void* input, const i
 			}
 			for (; j < padded_row_length; j++)
 				weights[j] = 0;
-			double scale = max_abs / 127.;
 			double best_scale = 0;
 			double best_sse = DBL_MAX;
 			int has_best = 0;
-			int k;
-			for (k = 0; k < CCV_NNC_8I_ROWWISE_X_REFINEMENT_STEPS; k++)
+			int start;
+			for (start = 0; start < starts; start++)
 			{
-				const double stored_scale = _ccv_nnc_8i_rowwise_packed_stored_scale(scale, datatype);
-				if (!(stored_scale > 0))
-					break;
-				double sse = 0;
-				double sum_qx = 0;
-				double sum_qq = 0;
-				size_t g;
-				for (g = 0; g < groups_per_row; g++)
+				double scale = max_abs / 127.;
+				if (starts == 3)
 				{
-					double y[32] = {0};
-					double w[32] = {0};
-					for (j = 0; j < group_size; j++)
-					{
-						y[j] = row[g * group_size + j] / stored_scale;
-						w[j] = weights[g * group_size + j];
-					}
-					ccv_nnc_8i_rowwise_packed_group_t group;
-					_ccv_nnc_8i_rowwise_packed_quant_group(codec, y, w, &group);
-					groups[g] = group;
-					const size_t group_start = g * group_size;
-					const size_t group_end = ccv_min(group_start + group_size, row_length);
-					for (j = group_start; j < group_end; j++)
-					{
-						const int q8 = group.q8[j - group_start];
-						const double d = row[j] - stored_scale * q8;
-						sse += weights[j] * d * d;
-						sum_qx += weights[j] * q8 * row[j];
-						sum_qq += weights[j] * q8 * q8;
-					}
+					scale *= start == 0 ? 0.75 : start == 1 ? 1. : 1.25;
+					if (datatype == CCV_16F && max_abs > 0 && _ccv_nnc_8i_rowwise_packed_stored_scale(scale, datatype) == 0)
+						scale = 0x1p-24;
 				}
-				if (sse < best_sse)
+				int k;
+				for (k = 0; k < CCV_NNC_8I_ROWWISE_X_REFINEMENT_STEPS; k++)
 				{
-					best_sse = sse;
-					best_scale = stored_scale;
-					has_best = 1;
-					memcpy(best_groups, groups, sizeof(ccv_nnc_8i_rowwise_packed_group_t) * groups_per_row);
+					const double stored_scale = _ccv_nnc_8i_rowwise_packed_stored_scale(scale, datatype);
+					if (!(stored_scale > 0))
+						break;
+					double sse = 0;
+					double sum_qx = 0;
+					double sum_qq = 0;
+					size_t g;
+					for (g = 0; g < groups_per_row; g++)
+					{
+						double y[32] = {0};
+						double w[32] = {0};
+						for (j = 0; j < group_size; j++)
+						{
+							y[j] = row[g * group_size + j] / stored_scale;
+							w[j] = weights[g * group_size + j];
+						}
+						ccv_nnc_8i_rowwise_packed_group_t group;
+						_ccv_nnc_8i_rowwise_packed_quant_group(codec, y, w, iq1_map, &group);
+						groups[g] = group;
+						const size_t group_start = g * group_size;
+						const size_t group_end = ccv_min(group_start + group_size, row_length);
+						for (j = group_start; j < group_end; j++)
+						{
+							const int q8 = group.q8[j - group_start];
+							const double d = row[j] - stored_scale * q8;
+							sse += weights[j] * d * d;
+							sum_qx += weights[j] * q8 * row[j];
+							sum_qq += weights[j] * q8 * q8;
+						}
+					}
+					if (sse < best_sse)
+					{
+						best_sse = sse;
+						best_scale = stored_scale;
+						has_best = 1;
+						memcpy(best_groups, groups, sizeof(ccv_nnc_8i_rowwise_packed_group_t) * groups_per_row);
+					}
+					if (!(sum_qq > 0) || !(sum_qx > 0))
+						break;
+					const double next_scale = sum_qx / sum_qq;
+					if (_ccv_nnc_8i_rowwise_packed_stored_scale(next_scale, datatype) == stored_scale)
+						break;
+					scale = next_scale;
 				}
-				if (!(sum_qq > 0) || !(sum_qx > 0))
-					break;
-				const double next_scale = sum_qx / sum_qq;
-				if (_ccv_nnc_8i_rowwise_packed_stored_scale(next_scale, datatype) == stored_scale)
-					break;
-				scale = next_scale;
 			}
 			_ccv_nnc_8i_rowwise_packed_store_scale(scales, datatype, i, best_scale);
 			size_t g;
@@ -1665,7 +1925,7 @@ CCV_WARN_UNUSED(size_t) ccv_nnc_quantize_8i_rowwise_x(const void* input, const i
 						w[j] = weights[g * group_size + j];
 					}
 					ccv_nnc_8i_rowwise_packed_group_t group;
-					_ccv_nnc_8i_rowwise_packed_quant_group(codec, y, w, &group);
+					_ccv_nnc_8i_rowwise_packed_quant_group(codec, y, w, iq1_map, &group);
 					_ccv_nnc_8i_rowwise_packed_pack_group(u8, i * groups_per_row + g, codec, &group);
 				}
 			}
@@ -1679,6 +1939,7 @@ CCV_WARN_UNUSED(size_t) ccv_nnc_quantize_8i_rowwise_x(const void* input, const i
 #else
 	} parallel_endfor
 #endif
+	ccfree(iq1_map);
 	return output_size;
 }
 

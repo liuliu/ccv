@@ -724,6 +724,263 @@ kernel void int8_gemv(
 )";
 }
 
+// IQ1_S / IQ1_M helpers. Like the IQ2 helpers, every packed-format kernel keeps
+// its own copy of what it uses. The next time these need a change, factor the
+// IQ1 and IQ2 logic out into shared code instead of editing each copy.
+// iq1_unit_dot(unit, y0, ..., y7): the dot of a unit's 32 int8 values with 32
+// activations, for one IQ1_S group or two IQ1_M groups.
+// With `values`, also iq1_unit_values(unit, w) for reuse across activation rows.
+static std::string create_iq1_dot_source(const uint32_t format, const bool values)
+{
+  std::string shader;
+  shader += R"(
+// The 64 bits starting `shift` (0...7) bits into p.
+inline uint2 iq1_payload_bytes(device const uchar* p, const uint shift)
+{
+  const uint lo = (uint)p[0] | ((uint)p[1] << 8) | ((uint)p[2] << 16) | ((uint)p[3] << 24);
+  const uint hi = (uint)p[4] | ((uint)p[5] << 8) | ((uint)p[6] << 16) | ((uint)p[7] << 24);
+  // Shifting by 1 and then 31 - shift keeps every shift below 32, also for shift == 0.
+  return uint2((lo >> shift) | ((hi << 1) << (31u - shift)), hi >> shift);
+}
+
+struct iq1_unit {
+  uint4 index;
+  uint shifts;
+  uint2 m;
+};
+)";
+  shader += (format & CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK) == CCV_NNC_QX_8I_ROWWISE_IQ1_S ? R"(
+constant uint iq1s_multipliers[8] = {1, 2, 3, 5, 7, 9, 12, 16};
+
+// Four 11-bit indices, three shift bits and a 3-bit multiplier code. The
+// fourth shift is the parity of the first three (0x96 is the parity table).
+inline iq1_unit iq1s_unit(const uint2 payload)
+{
+  const uint shifts = (payload.y >> 12) & 7u;
+  iq1_unit unit;
+  unit.index = uint4(payload.x & 2047u, (payload.x >> 11) & 2047u, (payload.x >> 22) | ((payload.y & 1u) << 10), (payload.y >> 1) & 2047u);
+  unit.shifts = shifts | (((0x96u >> shifts) & 1u) << 3);
+  unit.m = uint2(iq1s_multipliers[(payload.y >> 15) & 7u]);
+  return unit;
+}
+)" : R"(
+// Two 28-bit groups: per group two 12-bit (index, shift) codes and a 4-bit
+// multiplier code m - 1.
+inline iq1_unit iq1m_unit(const uint2 payload)
+{
+  iq1_unit unit;
+  unit.index = uint4(payload.x & 2047u, (payload.x >> 12) & 2047u, (payload.x >> 28) | ((payload.y & 127u) << 4), (payload.y >> 8) & 2047u);
+  unit.shifts = ((payload.x >> 11) & 1u) | ((payload.x >> 22) & 2u) | ((payload.y >> 5) & 4u) | ((payload.y >> 16) & 8u);
+  unit.m = uint2(((payload.x >> 24) & 15u) + 1u, ((payload.y >> 20) & 15u) + 1u);
+  return unit;
+}
+)";
+  // Entry 2 * index + negative holds the eight half lanes v = 8 g + s, with
+  // s = -1 for negative: v is one of -9, -7, -1, 1, 7, 9.
+  shader += "constant uint4 iq1_grid_levels[4096] = {";
+  for (uint32_t i = 0; i < 4096; ++i) {
+    const uint16_t value = ccv_nnc_8i_rowwise_packed_iq1_grid[i >> 1];
+    const int shift = (i & 1) ? -1 : 1;
+    uint32_t words[4] = {0, 0, 0, 0};
+    for (uint32_t j = 0; j < 8; ++j) {
+      const int v = 8 * ((int)((value >> (j * 2)) & 3u) - 1) + shift;
+      // Half bit patterns of the six levels.
+      const uint32_t bits = v == -9 ? 0xc880u : v == -7 ? 0xc700u : v == -1 ? 0xbc00u : v == 1 ? 0x3c00u : v == 7 ? 0x4700u : 0x4880u;
+      words[j / 2] |= bits << ((j % 2) * 16);
+    }
+    if (i != 0)
+      shader += ",";
+    if ((i % 4) == 0)
+      shader += "\n  ";
+    shader += "uint4(" + std::to_string(words[0]) + "u, " + std::to_string(words[1]) + "u, " + std::to_string(words[2]) + "u, " + std::to_string(words[3]) + "u)";
+  }
+  shader += "\n};\n";
+  shader += R"(
+inline float iq1_subgroup_dot(const uint index, const uint negative, const float4 y0, const float4 y1)
+{
+  const uint4 lanes = iq1_grid_levels[(index << 1) | negative];
+  return dot(float4(as_type<half4>(lanes.xy)), y0) + dot(float4(as_type<half4>(lanes.zw)), y1);
+}
+
+// The sum of sign(v) * y over the lanes whose level is +/-9.
+inline float iq1_subgroup_saturation_dot(const uint index, const uint negative, const float4 y0, const float4 y1)
+{
+  const uint4 lanes = iq1_grid_levels[(index << 1) | negative];
+  const float4 v0 = float4(as_type<half4>(lanes.xy));
+  const float4 v1 = float4(as_type<half4>(lanes.zw));
+  return dot(select(float4(0.0f), sign(v0), abs(v0) > 8.0f), y0) + dot(select(float4(0.0f), sign(v1), abs(v1) > 8.0f), y1);
+}
+)";
+  if (values)
+    shader += R"(
+// A unit's 32 int8 values as floats, for kernels that reuse them across
+// several activation rows.
+inline void iq1_unit_values(const iq1_unit unit, thread float4* w)
+{
+  #pragma clang loop unroll(full)
+  for (uint sg = 0; sg < 4; ++sg) {
+    const uint4 lanes = iq1_grid_levels[(unit.index[sg] << 1) | ((unit.shifts >> sg) & 1u)];
+    const float m = (float)unit.m[sg >> 1];
+    w[sg * 2] = clamp(float4(as_type<half4>(lanes.xy)) * m, -127.0f, 127.0f);
+    w[sg * 2 + 1] = clamp(float4(as_type<half4>(lanes.zw)) * m, -127.0f, 127.0f);
+  }
+}
+)";
+  shader += R"(
+// A codeword contributes m * sum(v * y) with v = 8 g + s. Where 9 m > 127
+// the +/-9 levels saturate to +/-127, removing c = 9 m - 127 times
+// sign(v) * y on those lanes. Saturating multipliers are rare.
+inline float iq1_unit_dot(const iq1_unit unit,
+  const float4 y0, const float4 y1, const float4 y2, const float4 y3,
+  const float4 y4, const float4 y5, const float4 y6, const float4 y7)
+{
+  const uint4 negative = (uint4(unit.shifts) >> uint4(0, 1, 2, 3)) & 1u;
+  const float4 d = float4(
+    iq1_subgroup_dot(unit.index.x, negative.x, y0, y1),
+    iq1_subgroup_dot(unit.index.y, negative.y, y2, y3),
+    iq1_subgroup_dot(unit.index.z, negative.z, y4, y5),
+    iq1_subgroup_dot(unit.index.w, negative.w, y6, y7));
+  const float2 m = float2(unit.m);
+  float result = m.x * (d.x + d.y) + m.y * (d.z + d.w);
+  if (max(unit.m.x, unit.m.y) > 14u) {
+    const float4 e = float4(
+      iq1_subgroup_saturation_dot(unit.index.x, negative.x, y0, y1),
+      iq1_subgroup_saturation_dot(unit.index.y, negative.y, y2, y3),
+      iq1_subgroup_saturation_dot(unit.index.z, negative.z, y4, y5),
+      iq1_subgroup_saturation_dot(unit.index.w, negative.w, y6, y7));
+    const float2 c = max(9.0f * m - 127.0f, float2(0.0f));
+    result -= c.x * (e.x + e.y) + c.y * (e.z + e.w);
+  }
+  return result;
+}
+)";
+  return shader;
+}
+
+// IQ1 kernels for one to three activation rows. Each lane decodes 32 weights per
+// step (one IQ1_S group or two IQ1_M groups) for two weight rows.
+static void append_iq1_kernel(std::string& shader, const uint32_t format, const uint32_t mrows, const bool fusedBias)
+{
+  shader += R"(
+#include <metal_stdlib>
+using namespace metal;
+)";
+  const bool iq1s = format == CCV_NNC_QX_8I_ROWWISE_IQ1_S;
+  // IQ1_M expands each weight row once when several activation rows reuse it.
+  shader += create_iq1_dot_source(format, !iq1s && mrows > 1);
+  shader += iq1s ? "constant uint unit_bits = 50;\n#define IQ1_UNIT iq1s_unit\n" : "constant uint unit_bits = 56;\n#define IQ1_UNIT iq1m_unit\n";
+  shader += R"(
+kernel void int8_gemv(
+  device const uchar *src0 [[buffer(0)]],
+  device const real *src1 [[buffer(1)]],
+  device real *dst [[buffer(2)]],
+  device const real *scales [[buffer(3)]],
+)";
+  if (fusedBias) {
+    shader += R"(
+  device const real *bias [[buffer(4)]],
+)";
+  }
+  shader += R"(
+  uint tgpig [[threadgroup_position_in_grid]],
+  uint sgitg [[simdgroup_index_in_threadgroup]],
+  uint tiisg [[thread_index_in_simdgroup]]
+) {
+  constexpr uint ROWS = )";
+  shader += std::to_string(kInt8GemvRowsPerThreadgroup);
+  shader += R"(;
+  constexpr uint S = )";
+  shader += std::to_string(kInt8GemvSIMDGroupsPerThreadgroup);
+  shader += R"(;
+  const uint rb = tgpig * ROWS;
+  const bool active1 = rb + 1 < nrows;
+  // K is a multiple of 256, so every packed row starts on a byte boundary.
+  const uint units_per_row = ncols >> 5;
+  const uint row_bytes = units_per_row * unit_bits / 8u;
+  device const uchar* row0 = src0 + (ulong)rb * row_bytes;
+  device const uchar* row1 = active1 ? row0 + row_bytes : row0;
+  threadgroup float partials[)";
+  shader += std::to_string(mrows * 2);
+  shader += "][32];\n";
+  for (uint32_t m = 0; m < mrows; ++m) {
+    const std::string i = std::to_string(m);
+    shader += "  device const real4* y" + i + " = (device const real4*)(src1 + ncols * " + i + ");\n";
+    shader += "  float sum" + i + "0 = 0;\n  float sum" + i + "1 = 0;\n";
+  }
+  shader += R"(
+  const uint unit_stride = S * 32;
+  for (uint g = sgitg * 32 + tiisg; g < units_per_row; g += unit_stride) {
+    const uint bit = g * unit_bits;
+    const uint yv_base = g * 8u;
+)";
+  // IQ1_M multipliers saturate often enough that a SIMD group usually takes
+  // iq1_unit_dot's correction branch once per activation row. With several
+  // activation rows, expanding each weight row once is faster for it; IQ1_S
+  // rarely saturates and keeps the direct dot.
+  if (mrows == 1 || iq1s) {
+    shader += R"(
+    const iq1_unit unit0 = IQ1_UNIT(iq1_payload_bytes(row0 + (bit >> 3), bit & 7u));
+    const iq1_unit unit1 = IQ1_UNIT(iq1_payload_bytes(row1 + (bit >> 3), bit & 7u));
+)";
+    for (uint32_t m = 0; m < mrows; ++m) {
+      const std::string i = std::to_string(m);
+      shader += "    {\n";
+      for (uint32_t j = 0; j < 8; ++j)
+        shader += "      const float4 v" + std::to_string(j) + " = float4(y" + i + "[yv_base + " + std::to_string(j) + "]);\n";
+      shader += R"(      sum)" + i + R"(0 += iq1_unit_dot(unit0, v0, v1, v2, v3, v4, v5, v6, v7);
+      if (active1)
+        sum)" + i + R"(1 += iq1_unit_dot(unit1, v0, v1, v2, v3, v4, v5, v6, v7);
+    }
+)";
+    }
+  } else {
+    for (uint32_t r = 0; r < 2; ++r) {
+      const std::string row = std::to_string(r);
+      shader += r == 0 ? "    {\n" : "    if (active1) {\n";
+      shader += "      float4 w[8];\n";
+      shader += "      iq1_unit_values(IQ1_UNIT(iq1_payload_bytes(row" + row + " + (bit >> 3), bit & 7u)), w);\n";
+      for (uint32_t m = 0; m < mrows; ++m) {
+        const std::string i = std::to_string(m);
+        shader += "      sum" + i + row + " +=";
+        for (uint32_t j = 0; j < 8; ++j)
+          shader += std::string(j ? " +" : "") + " dot(w[" + std::to_string(j) + "], float4(y" + i + "[yv_base + " + std::to_string(j) + "]))";
+        shader += ";\n";
+      }
+      shader += "    }\n";
+    }
+  }
+  shader += "  }\n\n  if (sgitg == 0) {\n";
+  for (uint32_t i = 0; i < mrows * 2; ++i)
+    shader += "    partials[" + std::to_string(i) + "][tiisg] = 0;\n";
+  shader += "  }\n";
+  for (uint32_t m = 0; m < mrows; ++m)
+    for (uint32_t r = 0; r < 2; ++r) {
+      const std::string i = std::to_string(m) + std::to_string(r);
+      shader += "  const float lane_sum" + i + " = simd_sum(sum" + i + ");\n";
+    }
+  shader += "  threadgroup_barrier(mem_flags::mem_threadgroup);\n  if (tiisg == 0) {\n";
+  for (uint32_t m = 0; m < mrows; ++m)
+    for (uint32_t r = 0; r < 2; ++r)
+      shader += "    partials[" + std::to_string(m * 2 + r) + "][sgitg] = lane_sum" + std::to_string(m) + std::to_string(r) + ";\n";
+  shader += "  }\n  threadgroup_barrier(mem_flags::mem_threadgroup);\n  if (sgitg == 0) {\n";
+  for (uint32_t m = 0; m < mrows; ++m)
+    for (uint32_t r = 0; r < 2; ++r)
+      shader += "    const float all_sum" + std::to_string(m) + std::to_string(r) + " = simd_sum(partials[" + std::to_string(m * 2 + r) + "][tiisg]);\n";
+  for (uint32_t r = 0; r < 2; ++r) {
+    const std::string row = std::to_string(r);
+    shader += r == 0 ? "    if (tiisg == 0) {\n" : "    if (tiisg == 1 && active1) {\n";
+    shader += "      const float scale = (float)scales[rb + " + row + "];\n";
+    if (fusedBias)
+      shader += "      const float biasv = (float)bias[rb + " + row + "];\n";
+    for (uint32_t m = 0; m < mrows; ++m) {
+      const std::string offset = m == 0 ? "" : (m == 1 ? "nrows + " : "nrows * 2 + ");
+      shader += "      dst[" + offset + "rb + " + row + "] = (real)(all_sum" + std::to_string(m) + row + " * scale" + (fusedBias ? " + biasv" : "") + ");\n";
+    }
+    shader += "    }\n";
+  }
+  shader += "  }\n}\n";
+}
+
 }
 
 Int8GemvKernel::Int8GemvKernel(Int8GemvKernelDescriptor descriptor, MTL::Device* const device) {
@@ -757,6 +1014,10 @@ std::string Int8GemvKernel::createSource() const noexcept {
         append_q6_m2_kernel(shader, fusedBias);
       else
         append_q6_m1_kernel(shader, fusedBias);
+      return shader;
+    }
+    if (format == CCV_NNC_QX_8I_ROWWISE_IQ1_S || format == CCV_NNC_QX_8I_ROWWISE_IQ1_M) {
+      append_iq1_kernel(shader, format, mrows, fusedBias);
       return shader;
     }
     if (mrows == 3) {

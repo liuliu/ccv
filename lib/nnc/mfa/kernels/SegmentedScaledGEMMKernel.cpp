@@ -6,6 +6,144 @@
 #include "../../ccv_nnc_8i_rowwise_packed_grids.inc"
 #include "../ccv_nnc_mfa.hpp"
 
+namespace {
+
+// IQ1_S / IQ1_M helpers. Like the IQ2 helpers, every packed-format kernel keeps
+// its own copy of what it uses. The next time these need a change, factor the
+// IQ1 and IQ2 logic out into shared code instead of editing each copy.
+template<typename Transform>
+static void append_iq1_grid(std::string& shader, const char* const type, const char* const name, Transform transform)
+{
+  shader += "constant ";
+  shader += type;
+  shader += " ";
+  shader += name;
+  shader += "[2048] = {";
+  for (uint32_t i = 0; i < 2048; ++i) {
+    if (i != 0)
+      shader += ",";
+    if ((i % 4) == 0)
+      shader += "\n  ";
+    shader += transform(ccv_nnc_8i_rowwise_packed_iq1_grid[i]);
+  }
+  shader += "\n};\n";
+}
+
+// The fused tile decoder's helpers: payload words, the unit unpacker, and
+// iq1_store_unit_bytes expanding a unit to int8.
+static std::string create_iq1_tile_source(const uint32_t format)
+{
+  std::string shader;
+  shader += R"(
+// The 64 bits starting `shift` (0...31) bits into three consecutive words.
+inline uint2 iq1_payload_words(const uint3 words, const uint shift)
+{
+  return uint2((words.x >> shift) | ((words.y << 1) << (31u - shift)), (words.y >> shift) | ((words.z << 1) << (31u - shift)));
+}
+
+struct iq1_unit {
+  uint4 index;
+  uint shifts;
+  uint2 m;
+};
+)";
+  shader += (format & CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK) == CCV_NNC_QX_8I_ROWWISE_IQ1_S ? R"(
+constant uint iq1s_multipliers[8] = {1, 2, 3, 5, 7, 9, 12, 16};
+
+// Four 11-bit indices, three shift bits and a 3-bit multiplier code. The
+// fourth shift is the parity of the first three (0x96 is the parity table).
+inline iq1_unit iq1s_unit(const uint2 payload)
+{
+  const uint shifts = (payload.y >> 12) & 7u;
+  iq1_unit unit;
+  unit.index = uint4(payload.x & 2047u, (payload.x >> 11) & 2047u, (payload.x >> 22) | ((payload.y & 1u) << 10), (payload.y >> 1) & 2047u);
+  unit.shifts = shifts | (((0x96u >> shifts) & 1u) << 3);
+  unit.m = uint2(iq1s_multipliers[(payload.y >> 15) & 7u]);
+  return unit;
+}
+)" : R"(
+// Two 28-bit groups: per group two 12-bit (index, shift) codes and a 4-bit
+// multiplier code m - 1.
+inline iq1_unit iq1m_unit(const uint2 payload)
+{
+  iq1_unit unit;
+  unit.index = uint4(payload.x & 2047u, (payload.x >> 12) & 2047u, (payload.x >> 28) | ((payload.y & 127u) << 4), (payload.y >> 8) & 2047u);
+  unit.shifts = ((payload.x >> 11) & 1u) | ((payload.x >> 22) & 2u) | ((payload.y >> 5) & 4u) | ((payload.y >> 16) & 8u);
+  unit.m = uint2(((payload.x >> 24) & 15u) + 1u, ((payload.y >> 20) & 15u) + 1u);
+  return unit;
+}
+)";
+  // The trits of lanes 0-3 sit at bits 0, 8, 4, 12 and those of lanes 4-7 at
+  // bits 2, 10, 6, 14, so two shift-ors spread them into the bytes of two words.
+  append_iq1_grid(shader, "ushort", "iq1_grid_spread", [](const uint16_t value) {
+    static constexpr uint32_t positions[8] = {0, 8, 4, 12, 2, 10, 6, 14};
+    uint32_t spread = 0;
+    for (uint32_t j = 0; j < 8; ++j)
+      spread |= ((value >> (j * 2)) & 3u) << positions[j];
+    return std::to_string(spread);
+  });
+  shader += R"(
+inline uint2 iq1_grid_bytes(const uint index)
+{
+  const uint packed = iq1_grid_spread[index];
+  return uint2((packed | (packed << 12)) & 0x03030303u, ((packed >> 2) | (packed << 10)) & 0x03030303u);
+}
+
+// Each byte of t holds a trit in 0...2, and the levels offset by 128 lie in
+// 1...255. Below saturation (m <= 14) they are (s - 8) m + 8 m t, so one
+// multiply-add per 16-bit half (whose two bytes sum below 2^16) expands two
+// trits; flipping the top bits removes the offset. `base` is the offset lowest
+// level in both bytes.
+inline uint2 iq1_unsaturated_bytes(const uint2 t, const ushort base, const ushort step)
+{
+  return uint2(
+    as_type<uint>(ushort2(base) + as_type<ushort2>(t.x) * step),
+    as_type<uint>(ushort2(base) + as_type<ushort2>(t.y) * step)) ^ 0x80808080u;
+}
+
+// With saturation the levels L0, L1, L2 are no longer evenly spaced, so the
+// t == 2 bytes add E = (L2 - L0) - 2 (L1 - L0). Every byte's final value is in
+// range, so wrapping intermediate sums still pack exactly.
+inline uint2 iq1_saturated_bytes(const uint2 t, const bool negative, const int m)
+{
+  const int shift = negative ? -1 : 1;
+  const int low = clamp(m * (shift - 8), -127, 127);
+  const int step = m * shift - low;
+  const int extra = clamp(m * (shift + 8), -127, 127) - low - 2 * step;
+  return (uint2((uint)(low + 128) * 0x01010101u) + t * (uint)step + ((t >> 1) & 0x01010101u) * (uint)extra) ^ 0x80808080u;
+}
+
+// Writes a unit's 32 int8 weights as eight-byte codewords to destination[0...3],
+// one at a time, which keeps few values live next to a matmul's accumulators.
+template<typename Destination>
+inline void iq1_store_unit_bytes(const iq1_unit unit, Destination destination)
+{
+  const uint2 low = 128u - 7u * unit.m;
+  const uint2 low_negative = low - 2u * unit.m;
+  const ushort2 step = ushort2(unit.m * 8u);
+  uint2 t[4];
+  #pragma clang loop unroll(full)
+  for (uint sg = 0; sg < 4; ++sg) {
+    const uint pair = sg >> 1;
+    const uint base = ((unit.shifts >> sg) & 1u) ? low_negative[pair] : low[pair];
+    t[sg] = iq1_grid_bytes(unit.index[sg]);
+    destination[sg] = iq1_unsaturated_bytes(t[sg], (ushort)(base * 0x0101u), step[pair]);
+  }
+  // Rewrite only the codeword pairs whose multiplier saturates; they are rare,
+  // so diverging SIMD lanes seldom wait on this.
+  #pragma clang loop unroll(full)
+  for (uint pair = 0; pair < 2; ++pair)
+    if (unit.m[pair] > 14u) {
+      destination[pair * 2u] = iq1_saturated_bytes(t[pair * 2u], (unit.shifts >> (pair * 2u)) & 1u, (int)unit.m[pair]);
+      destination[pair * 2u + 1u] = iq1_saturated_bytes(t[pair * 2u + 1u], (unit.shifts >> (pair * 2u + 1u)) & 1u, (int)unit.m[pair]);
+    }
+}
+)";
+  return shader;
+}
+
+}
+
 SegmentedScaledGEMMKernel::SegmentedScaledGEMMKernel(
     SegmentedScaledGEMMKernelDescriptor descriptor,
     MTL::Device* const device)
@@ -45,7 +183,8 @@ bool SegmentedScaledGEMMKernel::fusesPackedFormat(uint32_t format, uint64_t M, u
   if (format == 0 || (format & ~CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK) != 0)
     return false;
   // Dedicated tile decoders beat expanding the expert bank at every measured batch size.
-  if (format == CCV_NNC_QX_8I_ROWWISE_IQ2_XXS || format == CCV_NNC_QX_8I_ROWWISE_IQ3_XXS || format == CCV_NNC_QX_8I_ROWWISE_Q2_K)
+  if (format == CCV_NNC_QX_8I_ROWWISE_IQ2_XXS || format == CCV_NNC_QX_8I_ROWWISE_IQ3_XXS || format == CCV_NNC_QX_8I_ROWWISE_Q2_K ||
+      format == CCV_NNC_QX_8I_ROWWISE_IQ1_S || format == CCV_NNC_QX_8I_ROWWISE_IQ1_M)
     return true;
   // The shared group decoder decodes each weight again for every row tile. It wins up to
   // about 64 rows per bin, but expanding once is faster for longer prefill.
@@ -66,6 +205,8 @@ std::string SegmentedScaledGEMMKernel::createSource() const noexcept
     // K is a multiple of 256, so every packed row starts on a byte boundary.
     source.SetValue("GROUP_SIZE", std::to_string(packed.groupSize()));
     source.SetValue("PACKED_ROW_BYTES", "(K / " + std::to_string(packed.groupSize()) + "u * " + std::to_string(packed.groupBits()) + "u / 8u)");
+    source.SetValue("IQ1_UNIT", format == CCV_NNC_QX_8I_ROWWISE_IQ1_S ? "iq1s_unit" : "iq1m_unit");
+    source.SetValue("IQ1_UNIT_BITS", format == CCV_NNC_QX_8I_ROWWISE_IQ1_S ? "50" : "56");
   }
   source.SetValue("MAX_TILE_RECORDS_CONSTANT", loadM ? "" : "constant uint max_tile_records [[function_constant(6)]];\n");
   source.SetValue("LOAD_M_ARGUMENT", loadM ? "    const device uint* loadM [[buffer(4)]],\n" : "");
@@ -128,8 +269,8 @@ kernel void segmented_scaled_gemm_plan(
   dispatch_args[2] = 1;
 }
 )";
-  // Packed projections expand only the current weight tile. IQ2_XXS, IQ3_XXS and Q2_K
-  // have dedicated tile decoders; other formats fall back to the dequantizer's group decoder.
+  // Packed projections expand only the current weight tile. IQ2_XXS, IQ3_XXS, Q2_K, IQ1_S
+  // and IQ1_M have dedicated tile decoders; other formats fall back to the dequantizer's group decoder.
   if (format == CCV_NNC_QX_8I_ROWWISE_IQ2_XXS) {
     source += "constant uint iq2_grid[512] = {";
     for (uint32_t code = 0; code < 256; ++code)
@@ -157,6 +298,8 @@ kernel void segmented_scaled_gemm_plan(
         packed |= ((ccv_nnc_8i_rowwise_packed_iq3xxs_grid[code] >> (j * 8)) & 255) >> 2 << (j * 8);
       source += std::to_string(packed) + (code == 255 ? "u};" : "u,");
     }
+  } else if (format == CCV_NNC_QX_8I_ROWWISE_IQ1_S || format == CCV_NNC_QX_8I_ROWWISE_IQ1_M) {
+    source += create_iq1_tile_source(format);
   } else if (format && format != CCV_NNC_QX_8I_ROWWISE_Q2_K)
     source += Dequantize8iRowwiseXKernel::createDecodeGroupSource(format);
   if (format) {
@@ -195,6 +338,27 @@ kernel void segmented_scaled_gemm(
   #pragma clang loop unroll(full)
   for (ushort i = 0; i < cT.get_capacity(); ++i)
     if (cT.is_valid_element(i)) cT[i] = 0;
+)";
+    if (format == CCV_NNC_QX_8I_ROWWISE_IQ1_S || format == CCV_NNC_QX_8I_ROWWISE_IQ1_M) {
+      source += R"(
+  // Each thread expands whole 32-weight units (one IQ1_S group or two IQ1_M
+  // groups). Their payload words for the next slice load while the current
+  // slice multiplies. The tile starts at a multiple of 128 rows, a 4-byte
+  // boundary, so the bit offsets below are relative to aligned words.
+  constexpr uint units_per_thread = {{BLOCK_N}}u * {{BLOCK_K}}u / 32u / ({{SIMDGROUPS}}u * 32u);
+  static_assert(units_per_thread * {{SIMDGROUPS}}u * 32u * 32u == {{BLOCK_N}}u * {{BLOCK_K}}u, "units must divide evenly");
+  device const uint* B_words = (device const uint*)B_buf;
+  uint3 payload_words[units_per_thread];
+  #pragma clang loop unroll(full)
+  for (uint i = 0; i < units_per_thread; ++i) {
+    const uint g = tid + i * {{SIMDGROUPS}}u * 32u;
+    const uint bit = g / ({{BLOCK_K}}u / 32u) * ({{PACKED_ROW_BYTES}} * 8u) + g % ({{BLOCK_K}}u / 32u) * {{IQ1_UNIT_BITS}}u;
+    device const uint* p = B_words + (bit >> 5);
+    payload_words[i] = uint3(p[0], p[1], p[2]);
+  }
+)";
+    }
+    source += R"(
   for (uint k = 0; k < K; k += {{BLOCK_K}}u) {
 )";
     if (format == CCV_NNC_QX_8I_ROWWISE_Q2_K) {
@@ -271,6 +435,22 @@ kernel void segmented_scaled_gemm(
           weight_words[row * ({{BLOCK_K}}u / 4u) + pair * 4u + group * 2u + word] = (magnitude ^ mask) + (mask & 0x01010101u);
         }
       }
+    }
+)";
+    } else if (format == CCV_NNC_QX_8I_ROWWISE_IQ1_S || format == CCV_NNC_QX_8I_ROWWISE_IQ1_M) {
+      source += R"(
+    #pragma clang loop unroll(full)
+    for (uint i = 0; i < units_per_thread; ++i) {
+      const uint g = tid + i * {{SIMDGROUPS}}u * 32u;
+      const uint row = g / ({{BLOCK_K}}u / 32u);
+      const uint unit = g % ({{BLOCK_K}}u / 32u);
+      const uint bit = row * ({{PACKED_ROW_BYTES}} * 8u) + (k / 32u + unit) * {{IQ1_UNIT_BITS}}u;
+      const uint3 words = payload_words[i];
+      if (k + {{BLOCK_K}}u < K) {
+        device const uint* p = B_words + ((bit + {{BLOCK_K}}u / 32u * {{IQ1_UNIT_BITS}}u) >> 5);
+        payload_words[i] = uint3(p[0], p[1], p[2]);
+      }
+      iq1_store_unit_bytes({{IQ1_UNIT}}(iq1_payload_words(words, bit & 31u)), (threadgroup uint2*)(weight_words + row * ({{BLOCK_K}}u / 4u) + unit * 8u));
     }
 )";
     } else {

@@ -55,6 +55,191 @@ static void append_compact_grid(std::string& shader, const char* const name, con
 	shader += "\n};\n";
 }
 
+
+// IQ1_S / IQ1_M helpers. Like the IQ2 helpers, every packed-format kernel keeps
+// its own copy of what it uses. The next time these need a change, factor the
+// IQ1 and IQ2 logic out into shared code instead of editing each copy.
+template<typename Transform>
+static void append_iq1_grid(std::string& shader, const char* const type, const char* const name, Transform transform)
+{
+	shader += "constant ";
+	shader += type;
+	shader += " ";
+	shader += name;
+	shader += "[2048] = {";
+	for (uint32_t i = 0; i < 2048; ++i) {
+		if (i != 0)
+			shader += ",";
+		if ((i % 4) == 0)
+			shader += "\n  ";
+		shader += transform(ccv_nnc_8i_rowwise_packed_iq1_grid[i]);
+	}
+	shader += "\n};\n";
+}
+
+// decode_group(source, group_index, q8) writing the group's int8 values.
+static std::string create_iq1_decode_group_source(const uint32_t format)
+{
+	std::string shader;
+	append_iq1_grid(shader, "ushort", "iq1_grid", [](const uint16_t value) { return std::to_string(value); });
+	shader += R"(
+// The 64 bits starting `shift` (0...7) bits into p.
+inline uint2 iq1_payload_bytes(device const uchar* p, const uint shift)
+{
+  const uint lo = (uint)p[0] | ((uint)p[1] << 8) | ((uint)p[2] << 16) | ((uint)p[3] << 24);
+  const uint hi = (uint)p[4] | ((uint)p[5] << 8) | ((uint)p[6] << 16) | ((uint)p[7] << 24);
+  // Shifting by 1 and then 31 - shift keeps every shift below 32, also for shift == 0.
+  return uint2((lo >> shift) | ((hi << 1) << (31u - shift)), hi >> shift);
+}
+
+inline uint2 iq1_payload(device const uchar* data, const ulong bit)
+{
+  return iq1_payload_bytes(data + (bit >> 3), (uint)bit & 7u);
+}
+)";
+	if ((format & CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK) == CCV_NNC_QX_8I_ROWWISE_IQ1_S)
+		shader += R"(
+struct iq1_unit {
+  uint4 index;
+  uint shifts;
+  uint2 m;
+};
+
+constant uint iq1s_multipliers[8] = {1, 2, 3, 5, 7, 9, 12, 16};
+
+// Four 11-bit indices, three shift bits and a 3-bit multiplier code. The
+// fourth shift is the parity of the first three (0x96 is the parity table).
+inline iq1_unit iq1s_unit(const uint2 payload)
+{
+  const uint shifts = (payload.y >> 12) & 7u;
+  iq1_unit unit;
+  unit.index = uint4(payload.x & 2047u, (payload.x >> 11) & 2047u, (payload.x >> 22) | ((payload.y & 1u) << 10), (payload.y >> 1) & 2047u);
+  unit.shifts = shifts | (((0x96u >> shifts) & 1u) << 3);
+  unit.m = uint2(iq1s_multipliers[(payload.y >> 15) & 7u]);
+  return unit;
+}
+)";
+	shader += R"(
+inline void iq1_decode_subgroup(const uint index, const bool negative, const int m, thread int* q8)
+{
+  const uint packed = iq1_grid[index];
+  const int shift = negative ? -1 : 1;
+  for (uint j = 0; j < 8; ++j)
+    q8[j] = clamp(m * (8 * ((int)((packed >> (j * 2u)) & 3u) - 1) + shift), -127, 127);
+}
+)";
+	shader += (format & CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK) == CCV_NNC_QX_8I_ROWWISE_IQ1_S ? R"(
+inline void decode_group(device const uchar* source, const ulong group_index, thread int* q8)
+{
+  const iq1_unit unit = iq1s_unit(iq1_payload(source, group_index * 50ul));
+  for (uint sg = 0; sg < 4; ++sg)
+    iq1_decode_subgroup(unit.index[sg], (unit.shifts >> sg) & 1u, (int)unit.m.x, q8 + sg * 8);
+}
+)" : R"(
+inline void decode_group(device const uchar* source, const ulong group_index, thread int* q8)
+{
+  const uint payload = iq1_payload(source, group_index * 28ul).x;
+  const int m = (int)((payload >> 24) & 15u) + 1;
+  iq1_decode_subgroup(payload & 2047u, (payload >> 11) & 1u, m, q8);
+  iq1_decode_subgroup((payload >> 12) & 2047u, (payload >> 23) & 1u, m, q8 + 8);
+}
+)";
+	return shader;
+}
+
+// decode_store_group's helpers: iq1_store_unit_bytes for an IQ1_S group,
+// iq1_pair_bytes for an IQ1_M group.
+static std::string create_iq1_byte_source(const uint32_t format)
+{
+	std::string shader;
+	// The trits of lanes 0-3 sit at bits 0, 8, 4, 12 and those of lanes 4-7 at
+	// bits 2, 10, 6, 14, so two shift-ors spread them into the bytes of two words.
+	append_iq1_grid(shader, "ushort", "iq1_grid_spread", [](const uint16_t value) {
+		static constexpr uint32_t positions[8] = {0, 8, 4, 12, 2, 10, 6, 14};
+		uint32_t spread = 0;
+		for (uint32_t j = 0; j < 8; ++j)
+			spread |= ((value >> (j * 2)) & 3u) << positions[j];
+		return std::to_string(spread);
+	});
+	shader += R"(
+inline uint2 iq1_grid_bytes(const uint index)
+{
+  const uint packed = iq1_grid_spread[index];
+  return uint2((packed | (packed << 12)) & 0x03030303u, ((packed >> 2) | (packed << 10)) & 0x03030303u);
+}
+
+// Each byte of t holds a trit in 0...2, and the levels offset by 128 lie in
+// 1...255. Below saturation (m <= 14) they are (s - 8) m + 8 m t, so one
+// multiply-add per 16-bit half (whose two bytes sum below 2^16) expands two
+// trits; flipping the top bits removes the offset. `base` is the offset lowest
+// level in both bytes.
+inline uint2 iq1_unsaturated_bytes(const uint2 t, const ushort base, const ushort step)
+{
+  return uint2(
+    as_type<uint>(ushort2(base) + as_type<ushort2>(t.x) * step),
+    as_type<uint>(ushort2(base) + as_type<ushort2>(t.y) * step)) ^ 0x80808080u;
+}
+
+// With saturation the levels L0, L1, L2 are no longer evenly spaced, so the
+// t == 2 bytes add E = (L2 - L0) - 2 (L1 - L0). Every byte's final value is in
+// range, so wrapping intermediate sums still pack exactly.
+inline uint2 iq1_saturated_bytes(const uint2 t, const bool negative, const int m)
+{
+  const int shift = negative ? -1 : 1;
+  const int low = clamp(m * (shift - 8), -127, 127);
+  const int step = m * shift - low;
+  const int extra = clamp(m * (shift + 8), -127, 127) - low - 2 * step;
+  return (uint2((uint)(low + 128) * 0x01010101u) + t * (uint)step + ((t >> 1) & 0x01010101u) * (uint)extra) ^ 0x80808080u;
+}
+)";
+	if (format == CCV_NNC_QX_8I_ROWWISE_IQ1_S)
+		shader += R"(
+// Writes a unit's 32 int8 weights as eight-byte codewords to destination[0...3],
+// one at a time, which keeps few values live next to a matmul's accumulators.
+template<typename Destination>
+inline void iq1_store_unit_bytes(const iq1_unit unit, Destination destination)
+{
+  const uint2 low = 128u - 7u * unit.m;
+  const uint2 low_negative = low - 2u * unit.m;
+  const ushort2 step = ushort2(unit.m * 8u);
+  uint2 t[4];
+  #pragma clang loop unroll(full)
+  for (uint sg = 0; sg < 4; ++sg) {
+    const uint pair = sg >> 1;
+    const uint base = ((unit.shifts >> sg) & 1u) ? low_negative[pair] : low[pair];
+    t[sg] = iq1_grid_bytes(unit.index[sg]);
+    destination[sg] = iq1_unsaturated_bytes(t[sg], (ushort)(base * 0x0101u), step[pair]);
+  }
+  // Rewrite only the codeword pairs whose multiplier saturates; they are rare,
+  // so diverging SIMD lanes seldom wait on this.
+  #pragma clang loop unroll(full)
+  for (uint pair = 0; pair < 2; ++pair)
+    if (unit.m[pair] > 14u) {
+      destination[pair * 2u] = iq1_saturated_bytes(t[pair * 2u], (unit.shifts >> (pair * 2u)) & 1u, (int)unit.m[pair]);
+      destination[pair * 2u + 1u] = iq1_saturated_bytes(t[pair * 2u + 1u], (unit.shifts >> (pair * 2u + 1u)) & 1u, (int)unit.m[pair]);
+    }
+}
+)";
+	else
+		shader += R"(
+// Sixteen int8 weights of two codewords sharing multiplier m.
+inline uint4 iq1_pair_bytes(const uint index0, const uint index1, const uint shifts, const uint m)
+{
+  const uint2 t0 = iq1_grid_bytes(index0);
+  const uint2 t1 = iq1_grid_bytes(index1);
+  if (m <= 14u) {
+    // s = -1 lowers every level by 2 m.
+    const uint low = 128u - 7u * m;
+    const ushort step = (ushort)(m * 8u);
+    return uint4(
+      iq1_unsaturated_bytes(t0, (ushort)(((shifts & 1u) ? low - 2u * m : low) * 0x0101u), step),
+      iq1_unsaturated_bytes(t1, (ushort)(((shifts & 2u) ? low - 2u * m : low) * 0x0101u), step));
+  }
+  return uint4(iq1_saturated_bytes(t0, shifts & 1u, (int)m), iq1_saturated_bytes(t1, shifts & 2u, (int)m));
+}
+)";
+	return shader;
+}
 }
 
 Dequantize8iRowwiseXKernel::Dequantize8iRowwiseXKernel(Dequantize8iRowwiseXKernelDescriptor descriptor, MTL::Device* const device)
@@ -76,6 +261,8 @@ MTL::Size Dequantize8iRowwiseXKernel::gridSize(uint32_t dispatchItems) const noe
 
 std::string Dequantize8iRowwiseXKernel::createDecodeGroupSource(const uint32_t format) noexcept
 {
+	if (format == CCV_NNC_QX_8I_ROWWISE_IQ1_S || format == CCV_NNC_QX_8I_ROWWISE_IQ1_M)
+		return create_iq1_decode_group_source(format);
 	std::string shader;
 	if (format == CCV_NNC_QX_8I_ROWWISE_IQ2_XXS) {
 		append_compact_grid(shader, "iq2xxs_grid", ccv_nnc_8i_rowwise_packed_iq2xxs_grid, 256, [](const uint16_t value) { return (uint32_t)value; });
@@ -762,6 +949,47 @@ inline void decode_store_group(device const uchar* source, const ulong group_ind
     device char4* destination4 = reinterpret_cast<device char4*>(destination + destination_offset);
     destination4[0] = q8_char4(signed_iq3xxs_values_i4(grid0, signs, 0, scale));
     destination4[1] = q8_char4(signed_iq3xxs_values_i4(grid1, signs, 4, scale));
+  } else {
+    int q8[16] = {0};
+    decode_group(source, group_index, q8);
+    store_q8_scalar(destination, destination_offset, col_base, q8);
+  }
+}
+
+)";
+	} else if (format == CCV_NNC_QX_8I_ROWWISE_IQ1_S) {
+		shader += create_iq1_byte_source(format);
+		shader += R"(
+inline void decode_store_group(device const uchar* source, const ulong group_index, device uchar* destination, const uint destination_offset, const uint col_base)
+{
+  if (((row_length & 3u) == 0u) && col_base + 32u <= row_length) {
+    uint2 words[4];
+    iq1_store_unit_bytes(iq1s_unit(iq1_payload(source, group_index * 50ul)), words);
+    device uint* destination4 = reinterpret_cast<device uint*>(destination + destination_offset);
+    for (uint j = 0; j < 4; ++j) {
+      destination4[j * 2u] = words[j].x;
+      destination4[j * 2u + 1u] = words[j].y;
+    }
+  } else {
+    int q8[32] = {0};
+    decode_group(source, group_index, q8);
+    store_q8_scalar(destination, destination_offset, col_base, q8);
+  }
+}
+
+)";
+	} else if (format == CCV_NNC_QX_8I_ROWWISE_IQ1_M) {
+		shader += create_iq1_byte_source(format);
+		shader += R"(
+inline void decode_store_group(device const uchar* source, const ulong group_index, device uchar* destination, const uint destination_offset, const uint col_base)
+{
+  if (((row_length & 3u) == 0u) && col_base + 16u <= row_length) {
+    const uint payload = iq1_payload(source, group_index * 28ul).x;
+    const uint4 words = iq1_pair_bytes(payload & 2047u, (payload >> 12) & 2047u,
+      ((payload >> 11) & 1u) | ((payload >> 22) & 2u), ((payload >> 24) & 15u) + 1u);
+    device uint* destination4 = reinterpret_cast<device uint*>(destination + destination_offset);
+    for (uint j = 0; j < 4; ++j)
+      destination4[j] = words[j];
   } else {
     int q8[16] = {0};
     decode_group(source, group_index, q8);

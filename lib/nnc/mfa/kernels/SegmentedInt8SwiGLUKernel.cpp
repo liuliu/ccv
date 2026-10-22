@@ -262,6 +262,154 @@ inline float2 dot_pair(
 )";
 }
 
+// IQ1_S / IQ1_M helpers. Like the IQ2 helpers, every packed-format kernel keeps
+// its own copy of what it uses. The next time these need a change, factor the
+// IQ1 and IQ2 logic out into shared code instead of editing each copy.
+// iq1_unit_dot(unit, y0, ..., y7): the dot of a unit's 32 int8 values with 32
+// activations, for one IQ1_S group or two IQ1_M groups.
+static std::string createIQ1DotSource(const uint32_t format)
+{
+  std::string shader;
+  shader += R"(
+// The 64 bits starting `shift` (0...7) bits into p.
+inline uint2 iq1_payload_bytes(device const uchar* p, const uint shift)
+{
+  const uint lo = (uint)p[0] | ((uint)p[1] << 8) | ((uint)p[2] << 16) | ((uint)p[3] << 24);
+  const uint hi = (uint)p[4] | ((uint)p[5] << 8) | ((uint)p[6] << 16) | ((uint)p[7] << 24);
+  // Shifting by 1 and then 31 - shift keeps every shift below 32, also for shift == 0.
+  return uint2((lo >> shift) | ((hi << 1) << (31u - shift)), hi >> shift);
+}
+
+struct iq1_unit {
+  uint4 index;
+  uint shifts;
+  uint2 m;
+};
+)";
+  shader += (format & CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK) == CCV_NNC_QX_8I_ROWWISE_IQ1_S ? R"(
+constant uint iq1s_multipliers[8] = {1, 2, 3, 5, 7, 9, 12, 16};
+
+// Four 11-bit indices, three shift bits and a 3-bit multiplier code. The
+// fourth shift is the parity of the first three (0x96 is the parity table).
+inline iq1_unit iq1s_unit(const uint2 payload)
+{
+  const uint shifts = (payload.y >> 12) & 7u;
+  iq1_unit unit;
+  unit.index = uint4(payload.x & 2047u, (payload.x >> 11) & 2047u, (payload.x >> 22) | ((payload.y & 1u) << 10), (payload.y >> 1) & 2047u);
+  unit.shifts = shifts | (((0x96u >> shifts) & 1u) << 3);
+  unit.m = uint2(iq1s_multipliers[(payload.y >> 15) & 7u]);
+  return unit;
+}
+)" : R"(
+// Two 28-bit groups: per group two 12-bit (index, shift) codes and a 4-bit
+// multiplier code m - 1.
+inline iq1_unit iq1m_unit(const uint2 payload)
+{
+  iq1_unit unit;
+  unit.index = uint4(payload.x & 2047u, (payload.x >> 12) & 2047u, (payload.x >> 28) | ((payload.y & 127u) << 4), (payload.y >> 8) & 2047u);
+  unit.shifts = ((payload.x >> 11) & 1u) | ((payload.x >> 22) & 2u) | ((payload.y >> 5) & 4u) | ((payload.y >> 16) & 8u);
+  unit.m = uint2(((payload.x >> 24) & 15u) + 1u, ((payload.y >> 20) & 15u) + 1u);
+  return unit;
+}
+)";
+  // Entry 2 * index + negative holds the eight half lanes v = 8 g + s, with
+  // s = -1 for negative: v is one of -9, -7, -1, 1, 7, 9.
+  shader += "constant uint4 iq1_grid_levels[4096] = {";
+  for (uint32_t i = 0; i < 4096; ++i) {
+    const uint16_t value = ccv_nnc_8i_rowwise_packed_iq1_grid[i >> 1];
+    const int shift = (i & 1) ? -1 : 1;
+    uint32_t words[4] = {0, 0, 0, 0};
+    for (uint32_t j = 0; j < 8; ++j) {
+      const int v = 8 * ((int)((value >> (j * 2)) & 3u) - 1) + shift;
+      // Half bit patterns of the six levels.
+      const uint32_t bits = v == -9 ? 0xc880u : v == -7 ? 0xc700u : v == -1 ? 0xbc00u : v == 1 ? 0x3c00u : v == 7 ? 0x4700u : 0x4880u;
+      words[j / 2] |= bits << ((j % 2) * 16);
+    }
+    if (i != 0)
+      shader += ",";
+    if ((i % 4) == 0)
+      shader += "\n  ";
+    shader += "uint4(" + std::to_string(words[0]) + "u, " + std::to_string(words[1]) + "u, " + std::to_string(words[2]) + "u, " + std::to_string(words[3]) + "u)";
+  }
+  shader += "\n};\n";
+  shader += R"(
+inline float iq1_subgroup_dot(const uint index, const uint negative, const float4 y0, const float4 y1)
+{
+  const uint4 lanes = iq1_grid_levels[(index << 1) | negative];
+  return dot(float4(as_type<half4>(lanes.xy)), y0) + dot(float4(as_type<half4>(lanes.zw)), y1);
+}
+
+// The sum of sign(v) * y over the lanes whose level is +/-9.
+inline float iq1_subgroup_saturation_dot(const uint index, const uint negative, const float4 y0, const float4 y1)
+{
+  const uint4 lanes = iq1_grid_levels[(index << 1) | negative];
+  const float4 v0 = float4(as_type<half4>(lanes.xy));
+  const float4 v1 = float4(as_type<half4>(lanes.zw));
+  return dot(select(float4(0.0f), sign(v0), abs(v0) > 8.0f), y0) + dot(select(float4(0.0f), sign(v1), abs(v1) > 8.0f), y1);
+}
+)";
+  shader += R"(
+// A codeword contributes m * sum(v * y) with v = 8 g + s. Where 9 m > 127
+// the +/-9 levels saturate to +/-127, removing c = 9 m - 127 times
+// sign(v) * y on those lanes. Saturating multipliers are rare.
+inline float iq1_unit_dot(const iq1_unit unit,
+  const float4 y0, const float4 y1, const float4 y2, const float4 y3,
+  const float4 y4, const float4 y5, const float4 y6, const float4 y7)
+{
+  const uint4 negative = (uint4(unit.shifts) >> uint4(0, 1, 2, 3)) & 1u;
+  const float4 d = float4(
+    iq1_subgroup_dot(unit.index.x, negative.x, y0, y1),
+    iq1_subgroup_dot(unit.index.y, negative.y, y2, y3),
+    iq1_subgroup_dot(unit.index.z, negative.z, y4, y5),
+    iq1_subgroup_dot(unit.index.w, negative.w, y6, y7));
+  const float2 m = float2(unit.m);
+  float result = m.x * (d.x + d.y) + m.y * (d.z + d.w);
+  if (max(unit.m.x, unit.m.y) > 14u) {
+    const float4 e = float4(
+      iq1_subgroup_saturation_dot(unit.index.x, negative.x, y0, y1),
+      iq1_subgroup_saturation_dot(unit.index.y, negative.y, y2, y3),
+      iq1_subgroup_saturation_dot(unit.index.z, negative.z, y4, y5),
+      iq1_subgroup_saturation_dot(unit.index.w, negative.w, y6, y7));
+    const float2 c = max(9.0f * m - 127.0f, float2(0.0f));
+    result -= c.x * (e.x + e.y) + c.y * (e.z + e.w);
+  }
+  return result;
+}
+)";
+  return shader;
+}
+
+static void appendIQ1Decoder(std::string& shader, const uint32_t format)
+{
+  shader += createIQ1DotSource(format);
+  const bool iq1s = format == CCV_NNC_QX_8I_ROWWISE_IQ1_S;
+  shader += iq1s ? "constant uint unit_bits = 50;\n" : "constant uint unit_bits = 56;\n";
+  shader += iq1s ? "#define IQ1_UNIT iq1s_unit\n" : "#define IQ1_UNIT iq1m_unit\n";
+  shader += R"(
+inline float2 dot_pair(
+  device const uchar* gate_row, device const uchar* up_row,
+  const uint bit_offset,
+  device const real4* activation, const uint activation_base)
+{
+  const float4 y0 = float4(activation[activation_base + 0]);
+  const float4 y1 = float4(activation[activation_base + 1]);
+  const float4 y2 = float4(activation[activation_base + 2]);
+  const float4 y3 = float4(activation[activation_base + 3]);
+  const float4 y4 = float4(activation[activation_base + 4]);
+  const float4 y5 = float4(activation[activation_base + 5]);
+  const float4 y6 = float4(activation[activation_base + 6]);
+  const float4 y7 = float4(activation[activation_base + 7]);
+  const uint byte_offset = bit_offset >> 3;
+  const uint shift = bit_offset & 7u;
+  return float2(
+    iq1_unit_dot(IQ1_UNIT(iq1_payload_bytes(gate_row + byte_offset, shift)),
+      y0, y1, y2, y3, y4, y5, y6, y7),
+    iq1_unit_dot(IQ1_UNIT(iq1_payload_bytes(up_row + byte_offset, shift)),
+      y0, y1, y2, y3, y4, y5, y6, y7));
+}
+)";
+}
+
 static void appendQ2KDecoder(std::string& shader)
 {
   shader += R"(
@@ -439,6 +587,142 @@ kernel void segmented_int8_swiglu(
     up_sum0 += projected0.y;
     activation_base += activation_stride;
     bit_offset += bit_stride;
+  }
+
+  const float gate_row_sum0 = simd_sum(gate_sum0);
+  const float up_row_sum0 = simd_sum(up_sum0);
+  if (lane == 0) {
+    float gate0 = gate_row_sum0 * (float)gate_scales[row_base + 0];
+    float up0 = up_row_sum0 * (float)up_scales[row_base + 0];
+)";
+  if (descriptor.clamp)
+    shader += R"(
+    gate0 = min(gate0, clamp_limit);
+    up0 = clamp(up0, -clamp_limit, clamp_limit);
+)";
+  shader += R"(
+    destination[row_base + 0] = (real)(
+      route_weight * up0 * gate0 * stable_sigmoid(gate0));
+  }
+}
+)";
+  return shader;
+}
+
+static std::string buildIQ1Shader(
+  const SegmentedInt8SwiGLUKernelDescriptor& descriptor)
+{
+  std::string shader;
+  if (descriptor.memoryPrecision == GEMMOperandPrecision::FP32)
+    shader = "typedef float real; typedef float4 real4;\n";
+  else if (descriptor.memoryPrecision == GEMMOperandPrecision::BF16)
+    shader = "typedef bfloat real; typedef bfloat4 real4;\n";
+  else
+    shader = "typedef half real; typedef half4 real4;\n";
+  shader += R"(
+constant uint ncols [[function_constant(0)]];
+constant uint nrows [[function_constant(1)]];
+constant uint segment_count [[function_constant(2)]];
+constant uint group_size [[function_constant(3)]];
+constant uint groups_per_row [[function_constant(4)]];
+constant uint expert_count [[function_constant(5)]];
+constant uint broadcast_input [[function_constant(6)]];
+constant ulong weight_expert_stride [[function_constant(7)]];
+)";
+  if (descriptor.clamp)
+    shader += "constant float clamp_limit [[function_constant(8)]];\n";
+  shader += R"(
+#include <metal_stdlib>
+using namespace metal;
+)";
+  appendIQ1Decoder(shader, descriptor.format);
+  shader += R"(
+
+inline float stable_sigmoid(const float value)
+{
+  const float tail = 1.0f / (1.0f + exp(abs(value)));
+  return tail + step(0.0f, value) * (1.0f - 2.0f * tail);
+}
+
+kernel void segmented_int8_swiglu(
+  device const uchar* gate_weights [[buffer(0)]],
+  device const uchar* up_weights [[buffer(1)]],
+  device const real* activation [[buffer(2)]],
+  device real* destination [[buffer(3)]],
+  device const real* gate_scales [[buffer(4)]],
+  device const real* up_scales [[buffer(5)]],
+  device const int* indices [[buffer(6)]],
+  device const int* counts [[buffer(7)]],
+  device const real* route_weights [[buffer(8)]],
+  uint threadgroup_position [[threadgroup_position_in_grid]],
+  uint simdgroup_index [[simdgroup_index_in_threadgroup]],
+  uint lane [[thread_index_in_simdgroup]])
+{
+  constexpr uint rows_per_simdgroup = 1;
+  constexpr uint row_simdgroups = 4;
+  constexpr uint rows_per_threadgroup = rows_per_simdgroup * row_simdgroups;
+  const uint threadgroups_per_route =
+    (nrows + rows_per_threadgroup - 1u) / rows_per_threadgroup;
+  const uint route = threadgroup_position / threadgroups_per_route;
+  threadgroup int route_expert;
+  if (simdgroup_index == 0 && lane == 0) {
+    route_expert = -1;
+    uint row_offset = 0;
+    for (uint segment = 0; segment < segment_count; ++segment) {
+      const int count = counts[segment];
+      if (count <= 0)
+        continue;
+      const uint next_row_offset = row_offset + (uint)count;
+      if (route < next_row_offset) {
+        route_expert = indices[segment];
+        break;
+      }
+      row_offset = next_row_offset;
+    }
+  }
+  threadgroup_barrier(mem_flags::mem_threadgroup);
+  const int expert = route_expert;
+  if (expert < 0 || expert >= (int)expert_count)
+    return;
+
+  // Keep this load before the projections: loading after the SIMD reductions
+  // produced intermittent zero outputs with Metal shader validation in the
+  // IQ2_XXS 257-expert case. Preserve this workaround across packed formats;
+  // see "MPS segmented SwiGLU preserves route weights with 257 experts" in
+  // test/int/nnc/segmented_swiglu.tests.c.
+  const float route_weight = (float)route_weights[route];
+
+  gate_weights += (ulong)expert * weight_expert_stride;
+  up_weights += (ulong)expert * weight_expert_stride;
+  gate_scales += (ulong)expert * nrows;
+  up_scales += (ulong)expert * nrows;
+  activation += broadcast_input ? 0 : (ulong)route * ncols;
+  destination += (ulong)route * nrows;
+  const uint local_threadgroup =
+    threadgroup_position - route * threadgroups_per_route;
+  const uint row_simdgroup = simdgroup_index;
+  const uint row_base =
+    (local_threadgroup * row_simdgroups + row_simdgroup) *
+    rows_per_simdgroup;
+  device const real4* activation4 = (device const real4*)activation;
+
+  float gate_sum0 = 0;
+  float up_sum0 = 0;
+  // Each lane decodes 32 weights per step: one IQ1_S group or two IQ1_M groups.
+  // K is a multiple of 256, so every packed row starts on a byte boundary.
+  const uint units_per_row = ncols >> 5;
+  const ulong row_offset = (ulong)row_base * (units_per_row * unit_bits / 8u);
+  device const uchar* gate_row = gate_weights + row_offset;
+  device const uchar* up_row = up_weights + row_offset;
+  uint activation_base = lane * 8u;
+  uint bit_offset = lane * unit_bits;
+  for (uint unit = lane; unit < units_per_row; unit += 32u) {
+    const float2 projected0 = dot_pair(
+      gate_row, up_row, bit_offset, activation4, activation_base);
+    gate_sum0 += projected0.x;
+    up_sum0 += projected0.y;
+    activation_base += 256u;
+    bit_offset += 32u * unit_bits;
   }
 
   const float gate_row_sum0 = simd_sum(gate_sum0);
@@ -742,6 +1026,15 @@ SegmentedInt8SwiGLUKernel::SegmentedInt8SwiGLUKernel(
   }
   if (descriptor.format == CCV_NNC_QX_8I_ROWWISE_IQ3_XXS) {
     source = buildIQ3XXSShader(descriptor);
+    auto string = NS::String::string(source.c_str(), NS::UTF8StringEncoding);
+    NS::Error* error = nil;
+    library = NS::TransferPtr(device->newLibrary(string, nil, &error));
+    CCV_NNC_MFA_CHECK_ERROR(error);
+    return;
+  }
+  if (descriptor.format == CCV_NNC_QX_8I_ROWWISE_IQ1_S ||
+      descriptor.format == CCV_NNC_QX_8I_ROWWISE_IQ1_M) {
+    source = buildIQ1Shader(descriptor);
     auto string = NS::String::string(source.c_str(), NS::UTF8StringEncoding);
     NS::Error* error = nil;
     library = NS::TransferPtr(device->newLibrary(string, nil, &error));

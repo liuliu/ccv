@@ -41,8 +41,10 @@ uint32_t Int8GemvDescriptor::groupSize() const noexcept {
     case CCV_NNC_QX_8I_ROWWISE_Q2_K:
     case CCV_NNC_QX_8I_ROWWISE_IQ2_S:
     case CCV_NNC_QX_8I_ROWWISE_IQ3_S:
+    case CCV_NNC_QX_8I_ROWWISE_IQ1_M:
       return 16;
     case CCV_NNC_QX_8I_ROWWISE_IQ2_XXS:
+    case CCV_NNC_QX_8I_ROWWISE_IQ1_S:
       return 32;
     case CCV_NNC_QX_8I_ROWWISE_Q6_K:
     case CCV_NNC_QX_8I_ROWWISE_IQ2_XS:
@@ -76,7 +78,10 @@ uint32_t Int8GemvDescriptor::groupBits() const noexcept {
     case CCV_NNC_QX_8I_ROWWISE_IQ2_XS:
       return 21;
     case CCV_NNC_QX_8I_ROWWISE_IQ3_XXS:
+    case CCV_NNC_QX_8I_ROWWISE_IQ1_M:
       return 28;
+    case CCV_NNC_QX_8I_ROWWISE_IQ1_S:
+      return 50;
     case CCV_NNC_QX_8I_ROWWISE_IQ2_XXS:
       return 64;
     case CCV_NNC_QX_8I_ROWWISE_Q6_K:

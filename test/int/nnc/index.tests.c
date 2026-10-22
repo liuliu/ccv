@@ -787,6 +787,8 @@ TEST_CASE("mps index select packed row-wise 8i-x half precision all formats")
 		CCV_NNC_QX_8I_ROWWISE_IQ3_S,
 		CCV_NNC_QX_8I_ROWWISE_IQ3_XXS,
 		CCV_NNC_QX_8I_ROWWISE_IQ2_XXS,
+		CCV_NNC_QX_8I_ROWWISE_IQ1_S,
+		CCV_NNC_QX_8I_ROWWISE_IQ1_M,
 	};
 	int i;
 	for (i = 0; i < (int)(sizeof(formats) / sizeof(formats[0])); i++)
@@ -804,6 +806,8 @@ TEST_CASE("mps index select packed row-wise 8i-x float and bfloat precision")
 		CCV_NNC_QX_8I_ROWWISE_Q4_K,
 		CCV_NNC_QX_8I_ROWWISE_Q6_K,
 		CCV_NNC_QX_8I_ROWWISE_IQ2_XXS,
+		CCV_NNC_QX_8I_ROWWISE_IQ1_S,
+		CCV_NNC_QX_8I_ROWWISE_IQ1_M,
 	};
 	int i;
 	for (i = 0; i < (int)(sizeof(formats) / sizeof(formats[0])); i++)

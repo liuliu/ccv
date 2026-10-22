@@ -1114,6 +1114,8 @@ enum {
 	CCV_NNC_QX_8I_ROWWISE_IQ2_XXS,
 	CCV_NNC_QX_8I_ROWWISE_Q5_K,
 	CCV_NNC_QX_8I_ROWWISE_Q6_K,
+	CCV_NNC_QX_8I_ROWWISE_IQ1_S,
+	CCV_NNC_QX_8I_ROWWISE_IQ1_M,
 };
 
 /* Modifiers for the format argument / tensor reserved field of ROWWISE_X. */

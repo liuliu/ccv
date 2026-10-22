@@ -55,6 +55,97 @@ static void append_compact_grid(std::string& shader, const char* const name, con
 	shader += "\n};\n";
 }
 
+
+// IQ1_S / IQ1_M helpers. Like the IQ2 helpers, every packed-format kernel keeps
+// its own copy of what it uses. The next time these need a change, factor the
+// IQ1 and IQ2 logic out into shared code instead of editing each copy.
+template<typename Transform>
+static void append_iq1_grid(std::string& shader, const char* const type, const char* const name, Transform transform)
+{
+	shader += "constant ";
+	shader += type;
+	shader += " ";
+	shader += name;
+	shader += "[2048] = {";
+	for (uint32_t i = 0; i < 2048; ++i) {
+		if (i != 0)
+			shader += ",";
+		if ((i % 4) == 0)
+			shader += "\n  ";
+		shader += transform(ccv_nnc_8i_rowwise_packed_iq1_grid[i]);
+	}
+	shader += "\n};\n";
+}
+
+// decode_group(source, group_index, q8) writing the group's int8 values.
+static std::string create_iq1_decode_group_source(const uint32_t format)
+{
+	std::string shader;
+	append_iq1_grid(shader, "ushort", "iq1_grid", [](const uint16_t value) { return std::to_string(value); });
+	shader += R"(
+// The 64 bits starting `shift` (0...7) bits into p.
+inline uint2 iq1_payload_bytes(device const uchar* p, const uint shift)
+{
+  const uint lo = (uint)p[0] | ((uint)p[1] << 8) | ((uint)p[2] << 16) | ((uint)p[3] << 24);
+  const uint hi = (uint)p[4] | ((uint)p[5] << 8) | ((uint)p[6] << 16) | ((uint)p[7] << 24);
+  // Shifting by 1 and then 31 - shift keeps every shift below 32, also for shift == 0.
+  return uint2((lo >> shift) | ((hi << 1) << (31u - shift)), hi >> shift);
+}
+
+inline uint2 iq1_payload(device const uchar* data, const ulong bit)
+{
+  return iq1_payload_bytes(data + (bit >> 3), (uint)bit & 7u);
+}
+)";
+	if ((format & CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK) == CCV_NNC_QX_8I_ROWWISE_IQ1_S)
+		shader += R"(
+struct iq1_unit {
+  uint4 index;
+  uint shifts;
+  uint2 m;
+};
+
+constant uint iq1s_multipliers[8] = {1, 2, 3, 5, 7, 9, 12, 16};
+
+// Four 11-bit indices, three shift bits and a 3-bit multiplier code. The
+// fourth shift is the parity of the first three (0x96 is the parity table).
+inline iq1_unit iq1s_unit(const uint2 payload)
+{
+  const uint shifts = (payload.y >> 12) & 7u;
+  iq1_unit unit;
+  unit.index = uint4(payload.x & 2047u, (payload.x >> 11) & 2047u, (payload.x >> 22) | ((payload.y & 1u) << 10), (payload.y >> 1) & 2047u);
+  unit.shifts = shifts | (((0x96u >> shifts) & 1u) << 3);
+  unit.m = uint2(iq1s_multipliers[(payload.y >> 15) & 7u]);
+  return unit;
+}
+)";
+	shader += R"(
+inline void iq1_decode_subgroup(const uint index, const bool negative, const int m, thread int* q8)
+{
+  const uint packed = iq1_grid[index];
+  const int shift = negative ? -1 : 1;
+  for (uint j = 0; j < 8; ++j)
+    q8[j] = clamp(m * (8 * ((int)((packed >> (j * 2u)) & 3u) - 1) + shift), -127, 127);
+}
+)";
+	shader += (format & CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK) == CCV_NNC_QX_8I_ROWWISE_IQ1_S ? R"(
+inline void decode_group(device const uchar* source, const ulong group_index, thread int* q8)
+{
+  const iq1_unit unit = iq1s_unit(iq1_payload(source, group_index * 50ul));
+  for (uint sg = 0; sg < 4; ++sg)
+    iq1_decode_subgroup(unit.index[sg], (unit.shifts >> sg) & 1u, (int)unit.m.x, q8 + sg * 8);
+}
+)" : R"(
+inline void decode_group(device const uchar* source, const ulong group_index, thread int* q8)
+{
+  const uint payload = iq1_payload(source, group_index * 28ul).x;
+  const int m = (int)((payload >> 24) & 15u) + 1;
+  iq1_decode_subgroup(payload & 2047u, (payload >> 11) & 1u, m, q8);
+  iq1_decode_subgroup((payload >> 12) & 2047u, (payload >> 23) & 1u, m, q8 + 8);
+}
+)";
+	return shader;
+}
 }
 
 IndexSelect8iRowwiseXKernel::IndexSelect8iRowwiseXKernel(IndexSelect8iRowwiseXKernelDescriptor descriptor, MTL::Device* const device)
@@ -97,6 +188,8 @@ std::string IndexSelect8iRowwiseXKernel::createSource() const noexcept
 #include <metal_stdlib>
 using namespace metal;
 )";
+	if (format == CCV_NNC_QX_8I_ROWWISE_IQ1_S || format == CCV_NNC_QX_8I_ROWWISE_IQ1_M)
+		shader += create_iq1_decode_group_source(format);
 
 	if (format == CCV_NNC_QX_8I_ROWWISE_Q6_K) {
 		shader += R"(
@@ -418,7 +511,7 @@ inline void store_q8_scalar(device const real* scales, device uchar* destination
 inline void decode_store_group(device const uchar* source, const ulong group_index, device const real* scales, device uchar* destination, const ulong destination_offset, const uint col_base, const uint source_row)
 {
 )";
-	if (format == CCV_NNC_QX_8I_ROWWISE_IQ2_XXS)
+	if (format == CCV_NNC_QX_8I_ROWWISE_IQ2_XXS || format == CCV_NNC_QX_8I_ROWWISE_IQ1_S)
 		shader += "  int q8[32] = {0};\n";
 	else
 		shader += "  int q8[16] = {0};\n";

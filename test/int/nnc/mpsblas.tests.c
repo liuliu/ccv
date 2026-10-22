@@ -1320,10 +1320,9 @@ static int _mps_forward_scaled_gemm_validate_batched(const int datatype, const i
 	return 0;
 }
 
-static int _mps_forward_scaled_gemm_validate_interleaved_batched(const int token_dim, const int n_dim, double* const max_abs_ref, double* const max_rel_ref)
+static int _mps_forward_scaled_gemm_validate_interleaved_batched(const int format, const int token_dim, const int n_dim, double* const max_abs_ref, double* const max_rel_ref)
 {
 	const int datatype = CCV_16F;
-	const int format = CCV_NNC_QX_8I_ROWWISE_IQ2_XXS;
 	const int group_dim = 3;
 	const int k_dim = 256;
 	const ccv_nnc_tensor_param_t ha_params = CPU_TENSOR_NHWC(16F, token_dim, group_dim, 1, k_dim);
@@ -2144,7 +2143,7 @@ TEST_CASE("mps H256 rowwise-x GEMM dense fallback preserves logical weights")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_MPS));
 	const int datatypes[] = {CCV_32F, CCV_16F, CCV_16BF};
-	const int codecs[] = {CCV_NNC_QX_8I_ROWWISE_Q6_K, CCV_NNC_QX_8I_ROWWISE_Q4_K, CCV_NNC_QX_8I_ROWWISE_IQ2_XXS};
+	const int codecs[] = {CCV_NNC_QX_8I_ROWWISE_Q6_K, CCV_NNC_QX_8I_ROWWISE_Q4_K, CCV_NNC_QX_8I_ROWWISE_IQ2_XXS, CCV_NNC_QX_8I_ROWWISE_IQ1_S, CCV_NNC_QX_8I_ROWWISE_IQ1_M};
 	dsfmt_t dsfmt;
 	dsfmt_init_gen_rand(&dsfmt, 257);
 	int d, shape, path;
@@ -2174,7 +2173,7 @@ TEST_CASE("mps H256 rowwise-x GEMM dense fallback preserves logical weights")
 			ccv_nnc_tensor_param_t bias_params = hbias->info;
 			bias_params.datatype = datatype;
 			ccv_nnc_tensor_t* const input_bias = ccv_nnc_tensor_new(0, bias_params, 0);
-			const int format = codecs[shape == 5 ? 0 : shape % 3] | CCV_NNC_QX_8I_ROWWISE_HADAMARD_256;
+			const int format = codecs[shape == 5 ? 0 : (shape + d * 3) % 5] | CCV_NNC_QX_8I_ROWWISE_HADAMARD_256;
 			ccv_nnc_tensor_t* const hq = ccv_nnc_tensor_new(0, ccv_nnc_tensor_8i_rowwise_x(w_params, format), 0);
 			ccv_nnc_tensor_param_t q_params = hq->info;
 			q_params.type = a_params.type = bias_params.type = CCV_TENSOR_GPU_MEMORY;
@@ -2309,7 +2308,7 @@ TEST_CASE("mps H256 rowwise-x GEMM uses rotated activations and ordinary output"
 	const uint64_t entry_flags = ccv_nnc_flags();
 	ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA_ANE);
 	enum { n = 73, k = 512 };
-	const int codecs[] = {CCV_NNC_QX_8I_ROWWISE_IQ2_XXS, CCV_NNC_QX_8I_ROWWISE_Q6_K};
+	const int codecs[] = {CCV_NNC_QX_8I_ROWWISE_IQ2_XXS, CCV_NNC_QX_8I_ROWWISE_Q6_K, CCV_NNC_QX_8I_ROWWISE_IQ1_S, CCV_NNC_QX_8I_ROWWISE_IQ1_M};
 	dsfmt_t dsfmt;
 	dsfmt_init_gen_rand(&dsfmt, 256);
 	int f, shape;
@@ -2405,7 +2404,7 @@ TEST_CASE("mps H256 rowwise-x GEMM ANE fused activation quantization")
 	ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS);
 	enum { n = 256 };
 	const int datatypes[] = {CCV_32F, CCV_16F, CCV_16BF};
-	const int codecs[] = {CCV_NNC_QX_8I_ROWWISE_IQ2_XXS, CCV_NNC_QX_8I_ROWWISE_Q6_K};
+	const int codecs[] = {CCV_NNC_QX_8I_ROWWISE_IQ2_XXS, CCV_NNC_QX_8I_ROWWISE_Q6_K, CCV_NNC_QX_8I_ROWWISE_IQ1_S, CCV_NNC_QX_8I_ROWWISE_IQ1_M};
 	dsfmt_t dsfmt;
 	dsfmt_init_gen_rand(&dsfmt, 256);
 	int f, shape, d;
@@ -2865,6 +2864,8 @@ TEST_CASE("mps segmented int8 gemv with packed row-wise 8i-x weights")
 		CCV_NNC_QX_8I_ROWWISE_IQ2_XS,
 		CCV_NNC_QX_8I_ROWWISE_IQ3_S,
 		CCV_NNC_QX_8I_ROWWISE_IQ3_XXS,
+		CCV_NNC_QX_8I_ROWWISE_IQ1_S,
+		CCV_NNC_QX_8I_ROWWISE_IQ1_M,
 	};
 	int i;
 	for (i = 0; i < sizeof(formats) / sizeof(formats[0]); i++)
@@ -2927,6 +2928,8 @@ TEST_CASE("mps segmented gemm with row-wise 8i-x weight NA")
 		CCV_NNC_QX_8I_ROWWISE_IQ2_XS,
 		CCV_NNC_QX_8I_ROWWISE_IQ3_S,
 		CCV_NNC_QX_8I_ROWWISE_IQ3_XXS,
+		CCV_NNC_QX_8I_ROWWISE_IQ1_S,
+		CCV_NNC_QX_8I_ROWWISE_IQ1_M,
 	};
 	int i;
 	for (i = 0; i < sizeof(formats) / sizeof(formats[0]); i++)
@@ -2963,6 +2966,8 @@ TEST_CASE("mps segmented gemm with row-wise 8i-x weight fallback dequantize")
 		CCV_NNC_QX_8I_ROWWISE_IQ2_XS,
 		CCV_NNC_QX_8I_ROWWISE_IQ3_S,
 		CCV_NNC_QX_8I_ROWWISE_IQ3_XXS,
+		CCV_NNC_QX_8I_ROWWISE_IQ1_S,
+		CCV_NNC_QX_8I_ROWWISE_IQ1_M,
 	};
 	int i;
 	for (i = 0; i < sizeof(formats) / sizeof(formats[0]); i++)
@@ -3023,6 +3028,7 @@ TEST_CASE("mps segmented gemm uses Int8MatMul for packed weights and float scale
 		CCV_NNC_QX_8I_ROWWISE_Q2_K, CCV_NNC_QX_8I_ROWWISE_IQ2_S,
 		CCV_NNC_QX_8I_ROWWISE_IQ2_XS, CCV_NNC_QX_8I_ROWWISE_IQ3_S,
 		CCV_NNC_QX_8I_ROWWISE_IQ3_XXS, CCV_NNC_QX_8I_ROWWISE_IQ2_XXS,
+		CCV_NNC_QX_8I_ROWWISE_IQ1_S, CCV_NNC_QX_8I_ROWWISE_IQ1_M,
 		CCV_NNC_QX_8I_ROWWISE_Q5_K, CCV_NNC_QX_8I_ROWWISE_Q6_K,
 	};
 	int i, shape;
@@ -3442,6 +3448,8 @@ TEST_CASE("mps forward gemm with packed row-wise 8i-x weight fallback fp dequant
 		CCV_NNC_QX_8I_ROWWISE_IQ3_S,
 		CCV_NNC_QX_8I_ROWWISE_IQ3_XXS,
 		CCV_NNC_QX_8I_ROWWISE_IQ2_XXS,
+		CCV_NNC_QX_8I_ROWWISE_IQ1_S,
+		CCV_NNC_QX_8I_ROWWISE_IQ1_M,
 	};
 	int status[sizeof(formats) / sizeof(formats[0])];
 	double max_abs[sizeof(formats) / sizeof(formats[0])];
@@ -3603,6 +3611,8 @@ TEST_CASE("mps forward gemv with packed row-wise 8i weight scaled gemv")
 		CCV_NNC_QX_8I_ROWWISE_IQ2_XS,
 		CCV_NNC_QX_8I_ROWWISE_IQ3_S,
 		CCV_NNC_QX_8I_ROWWISE_IQ3_XXS,
+		CCV_NNC_QX_8I_ROWWISE_IQ1_S,
+		CCV_NNC_QX_8I_ROWWISE_IQ1_M,
 	};
 	int i;
 	for (i = 0; i < sizeof(formats) / sizeof(formats[0]); i++)
@@ -3712,25 +3722,35 @@ TEST_CASE("mps forward batched gemm with batched row-wise 8i weight and bias NA"
 TEST_CASE("mps forward interleaved batched gemm with row-wise 8i-x weight NAInt8MatMul")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_MPS));
-	double max_abs = 0;
-	double max_rel = 0;
-	REQUIRE_EQ(_mps_forward_scaled_gemm_validate_interleaved_batched(17, 64, &max_abs, &max_rel), 0, "multi-token interleaved batched scaled GEMM validation should run");
-	REQUIRE(max_rel < 2e-3, "multi-token interleaved batched NAInt8MatMul should match the fp16 reference, max_abs=%g max_rel=%g", max_abs, max_rel);
+	const int formats[] = { CCV_NNC_QX_8I_ROWWISE_IQ2_XXS, CCV_NNC_QX_8I_ROWWISE_IQ1_S, CCV_NNC_QX_8I_ROWWISE_IQ1_M };
+	int i;
+	for (i = 0; i < sizeof(formats) / sizeof(formats[0]); i++)
+	{
+		double max_abs = 0;
+		double max_rel = 0;
+		REQUIRE_EQ(_mps_forward_scaled_gemm_validate_interleaved_batched(formats[i], 17, 64, &max_abs, &max_rel), 0, "multi-token interleaved batched scaled GEMM validation should run for format=%d", formats[i]);
+		REQUIRE(max_rel < 2e-3, "multi-token interleaved batched NAInt8MatMul should match the fp16 reference for format=%d, max_abs=%g max_rel=%g", formats[i], max_abs, max_rel);
+	}
 }
 
 TEST_CASE("mps forward interleaved batched gemv with row-wise 8i-x weight Int8Gemv")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_MPS));
-	const uint64_t old_flags = ccv_nnc_flags();
-	ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA_GEMM);
-	double max_abs = 0;
-	double max_rel = 0;
-	const int status = _mps_forward_scaled_gemm_validate_interleaved_batched(1, 256, &max_abs, &max_rel);
-	if (!(old_flags & CCV_NNC_DISABLE_MFA_GEMM)) {
-		ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA_GEMM);
+	const int formats[] = { CCV_NNC_QX_8I_ROWWISE_IQ2_XXS, CCV_NNC_QX_8I_ROWWISE_IQ1_S, CCV_NNC_QX_8I_ROWWISE_IQ1_M };
+	int i;
+	for (i = 0; i < sizeof(formats) / sizeof(formats[0]); i++)
+	{
+		const uint64_t old_flags = ccv_nnc_flags();
+		ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA_GEMM);
+		double max_abs = 0;
+		double max_rel = 0;
+		const int status = _mps_forward_scaled_gemm_validate_interleaved_batched(formats[i], 1, 256, &max_abs, &max_rel);
+		if (!(old_flags & CCV_NNC_DISABLE_MFA_GEMM)) {
+			ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA_GEMM);
+		}
+		REQUIRE_EQ(status, 0, "single-token interleaved batched scaled GEMV validation should run for format=%d", formats[i]);
+		REQUIRE(max_rel < 2e-3, "single-token interleaved batched Int8Gemv should match the fp16 reference for format=%d, max_abs=%g max_rel=%g", formats[i], max_abs, max_rel);
 	}
-	REQUIRE_EQ(status, 0, "single-token interleaved batched scaled GEMV validation should run");
-	REQUIRE(max_rel < 2e-3, "single-token interleaved batched Int8Gemv should match the fp16 reference, max_abs=%g max_rel=%g", max_abs, max_rel);
 }
 
 TEST_CASE("mps forward batched gemm with padded A view and broadcast row-wise 8i weight NA")
@@ -4847,6 +4867,8 @@ TEST_CASE("mps dequantize packed row-wise 8i-x half precision all formats")
 		CCV_NNC_QX_8I_ROWWISE_IQ3_S,
 		CCV_NNC_QX_8I_ROWWISE_IQ3_XXS,
 		CCV_NNC_QX_8I_ROWWISE_IQ2_XXS,
+		CCV_NNC_QX_8I_ROWWISE_IQ1_S,
+		CCV_NNC_QX_8I_ROWWISE_IQ1_M,
 	};
 	int i;
 	for (i = 0; i < (int)(sizeof(formats) / sizeof(formats[0])); i++)
@@ -4864,6 +4886,8 @@ TEST_CASE("mps dequantize packed row-wise 8i-x float and bfloat precision")
 		CCV_NNC_QX_8I_ROWWISE_Q4_K,
 		CCV_NNC_QX_8I_ROWWISE_Q6_K,
 		CCV_NNC_QX_8I_ROWWISE_IQ2_XXS,
+		CCV_NNC_QX_8I_ROWWISE_IQ1_S,
+		CCV_NNC_QX_8I_ROWWISE_IQ1_M,
 	};
 	int i;
 	for (i = 0; i < (int)(sizeof(formats) / sizeof(formats[0])); i++)
@@ -4874,6 +4898,152 @@ TEST_CASE("mps dequantize packed row-wise 8i-x float and bfloat precision")
 		max_abs = 0;
 		status = _mps_dequantize_8i_rowwise_x_compare(CCV_16BF, formats[i], 13, 131, 1e-2, &max_abs);
 		REQUIRE_EQ(status, 0, "GPU packed row-wise 8i-x bf16 dequantize should match CPU for format=%d, max_abs=%g", formats[i], max_abs);
+	}
+}
+
+TEST_CASE("mps IQ1 GEMV and GEMM decode saturating multipliers exactly")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_MPS));
+	// Quantized weights rarely use the multipliers whose +/-9 level saturates
+	// (m = 16 for IQ1_S, m = 15 and 16 for IQ1_M), so set them on half the
+	// groups of random payloads. Each GPU path must match the CPU decoder.
+	const int formats[] = { CCV_NNC_QX_8I_ROWWISE_IQ1_S, CCV_NNC_QX_8I_ROWWISE_IQ1_M };
+	const int experts = 4, n = 256, k = 512;
+	const int row_counts[] = { 1, 2, 3, 37 };
+	dsfmt_t dsfmt;
+	dsfmt_init_gen_rand(&dsfmt, 11);
+	int f, i, j;
+	for (f = 0; f < 2; f++)
+	{
+		const int format = formats[f];
+		const ccv_nnc_tensor_param_t dense_info = CPU_TENSOR_NHWC(32F, experts, n, k);
+		const ccv_nnc_tensor_param_t packed_info = ccv_nnc_tensor_8i_rowwise_x(dense_info, format);
+		const size_t packed_size = ccv_nnc_tensor_data_size_without_padding(packed_info);
+		const size_t group_bits = ccv_nnc_8i_rowwise_x_group_bits(format);
+		const size_t groups = (size_t)experts * n * k / ccv_nnc_8i_rowwise_x_group_size(format);
+		const size_t scale_offset = packed_size - (size_t)experts * n * sizeof(float);
+		ccv_nnc_tensor_t* const hw = ccv_nnc_tensor_new(0, packed_info, 0);
+		ccv_nnc_tensor_t* const hwd = ccv_nnc_tensor_new(0, dense_info, 0);
+		for (i = 0; i < (int)scale_offset; i++)
+			hw->data.u8[i] = dsfmt_genrand_uint32(&dsfmt) & 255;
+		const size_t multiplier_bit = format == CCV_NNC_QX_8I_ROWWISE_IQ1_S ? 47 : 24;
+		const int multiplier_width = format == CCV_NNC_QX_8I_ROWWISE_IQ1_S ? 3 : 4;
+		size_t g;
+		for (g = 0; g < groups; g++)
+		{
+			if (dsfmt_genrand_uint32(&dsfmt) & 1)
+				continue;
+			const uint32_t code = format == CCV_NNC_QX_8I_ROWWISE_IQ1_S ? 7 : 14 + (dsfmt_genrand_uint32(&dsfmt) & 1);
+			for (j = 0; j < multiplier_width; j++)
+			{
+				const size_t bit = g * group_bits + multiplier_bit + j;
+				hw->data.u8[bit / 8] = (hw->data.u8[bit / 8] & ~(1 << (bit % 8))) | (((code >> j) & 1) << (bit % 8));
+			}
+		}
+		for (i = 0; i < experts * n; i++)
+			((float*)(hw->data.u8 + scale_offset))[i] = (1 + dsfmt_genrand_open_close(&dsfmt)) / 512;
+		ccv_nnc_dequantize_8i_rowwise_x(hw->data.u8, CCV_32F, CCV_TENSOR_CPU_MEMORY, packed_size, k, format, hwd->data.f32, (size_t)experts * n * k);
+		ccv_nnc_tensor_param_t gpu_packed_info = packed_info;
+		gpu_packed_info.type = CCV_TENSOR_GPU_MEMORY;
+		ccv_nnc_tensor_t* const w = ccv_nnc_tensor_new(0, gpu_packed_info, 0);
+		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(hw), TENSOR_LIST(w), 0);
+		// The first expert alone is a dense [n, k] weight.
+		ccv_nnc_tensor_t* const w0 = ccv_nnc_tensor_new(0, ccv_nnc_tensor_8i_rowwise_x(GPU_TENSOR_NHWC(000, 32F, n, k), format), 0);
+		ccv_nnc_tensor_t* const hw0 = ccv_nnc_tensor_new(0, ccv_nnc_tensor_8i_rowwise_x(CPU_TENSOR_NHWC(32F, n, k), format), 0);
+		const size_t packed_size0 = ccv_nnc_tensor_data_size_without_padding(hw0->info);
+		const size_t payload0 = (size_t)n * k / ccv_nnc_8i_rowwise_x_group_size(format) * group_bits / 8;
+		memcpy(hw0->data.u8, hw->data.u8, payload0);
+		memcpy(hw0->data.u8 + packed_size0 - n * sizeof(float), hw->data.u8 + scale_offset, n * sizeof(float));
+		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(hw0), TENSOR_LIST(w0), 0);
+		ccv_nnc_tensor_t* const hwd0 = ccv_nnc_tensor_new(hwd->data.f32, CPU_TENSOR_NHWC(32F, n, k), 0);
+		int step;
+		for (step = 0; step < 4; step++)
+		{
+			const int rows = row_counts[step];
+			ccv_nnc_tensor_t* const ha = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, k), 0);
+			ccv_nnc_tensor_t* const ha_ref = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, k), 0);
+			for (i = 0; i < rows * k; i++)
+				ha->data.f32[i] = (float)(dsfmt_genrand_open_close(&dsfmt) - 0.5);
+			memcpy(ha_ref->data.f32, ha->data.f32, sizeof(float) * rows * k);
+			// More than three rows use the neural-accelerator path, which quantizes activations per row.
+			if (rows > 3)
+				for (i = 0; i < rows; i++)
+				{
+					float max_abs = 0;
+					for (j = 0; j < k; j++)
+						max_abs = ccv_max(max_abs, fabsf(ha->data.f32[i * k + j]));
+					const float scale = max_abs / 127.f;
+					const float inv_scale = 127.f / max_abs;
+					for (j = 0; j < k; j++)
+						ha_ref->data.f32[i * k + j] = scale * ccv_clamp((int)lrintf(ha->data.f32[i * k + j] * inv_scale), -127, 127);
+				}
+			ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, rows, k), 0);
+			ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha), TENSOR_LIST(a), 0);
+			// Dense GEMV / GEMM against the first expert.
+			ccv_nnc_tensor_t* const expected = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, n), 0);
+			ccv_nnc_tensor_t* const actual = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, n), 0);
+			ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, rows, n), 0);
+			ccv_nnc_cmd_exec(CMD_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(0, 1)), ccv_nnc_no_hint, 0, TENSOR_LIST(ha_ref, hwd0), TENSOR_LIST(expected), 0);
+			REQUIRE_EQ(ccv_nnc_cmd_exec(CMD_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(0, 1)), ccv_nnc_no_hint, 0, TENSOR_LIST(a, w0), TENSOR_LIST(b), 0),
+				CCV_NNC_EXEC_SUCCESS, "dense packed GEMM should run for format=%d rows=%d", format, rows);
+			ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(b), TENSOR_LIST(actual), 0);
+			for (i = 0; i < rows; i++)
+			{
+				double error = 0, norm = 0;
+				for (j = 0; j < n; j++)
+				{
+					const double d = actual->data.f32[i * n + j] - expected->data.f32[i * n + j];
+					error += d * d;
+					norm += (double)expected->data.f32[i * n + j] * expected->data.f32[i * n + j];
+				}
+				REQUIRE(sqrt(error / norm) < 1e-4, "dense packed GEMM should match the CPU decoder for format=%d rows=%d row=%d relative L2=%g", format, rows, i, sqrt(error / norm));
+			}
+			// Segmented decode (one row per bin) and prefill against all experts.
+			const int bins = rows == 37 ? experts : rows;
+			int selected[4] = { 2, 0, 3, 1 };
+			int counts[4] = { 1, 1, 1, 1 };
+			if (rows == 37)
+				counts[0] = 9, counts[1] = 0, counts[2] = 17, counts[3] = 11;
+			ccv_nnc_tensor_t* const hi = ccv_nnc_tensor_new(selected, CPU_TENSOR_NHWC(32S, bins), 0);
+			ccv_nnc_tensor_t* const hc = ccv_nnc_tensor_new(counts, CPU_TENSOR_NHWC(32S, bins), 0);
+			ccv_nnc_tensor_t* const indices = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32S, bins), 0);
+			ccv_nnc_tensor_t* const counts_gpu = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32S, bins), 0);
+			ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(hi, hc), TENSOR_LIST(indices, counts_gpu), 0);
+			ccv_nnc_cmd_t segmented = CMD_SEGMENTED_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(1, 2));
+			segmented.backend = CCV_NNC_BACKEND_CPU_REF;
+			ccv_nnc_cmd_exec(segmented, ccv_nnc_no_hint, 0, TENSOR_LIST(ha_ref, hi, hc, hwd), TENSOR_LIST(expected), 0);
+			segmented.backend = CCV_NNC_BACKEND_MPS;
+			REQUIRE_EQ(ccv_nnc_cmd_exec(segmented, ccv_nnc_no_hint, 0, TENSOR_LIST(a, indices, counts_gpu, w), TENSOR_LIST(b), 0),
+				CCV_NNC_EXEC_SUCCESS, "segmented packed GEMM should run for format=%d rows=%d", format, rows);
+			ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(b), TENSOR_LIST(actual), 0);
+			for (i = 0; i < rows; i++)
+			{
+				double error = 0, norm = 0;
+				for (j = 0; j < n; j++)
+				{
+					const double d = actual->data.f32[i * n + j] - expected->data.f32[i * n + j];
+					error += d * d;
+					norm += (double)expected->data.f32[i * n + j] * expected->data.f32[i * n + j];
+				}
+				REQUIRE(sqrt(error / norm) < 1e-4, "segmented packed GEMM should match the CPU decoder for format=%d rows=%d row=%d relative L2=%g", format, rows, i, sqrt(error / norm));
+			}
+			ccv_nnc_tensor_free(counts_gpu);
+			ccv_nnc_tensor_free(indices);
+			ccv_nnc_tensor_free(hc);
+			ccv_nnc_tensor_free(hi);
+			ccv_nnc_tensor_free(b);
+			ccv_nnc_tensor_free(actual);
+			ccv_nnc_tensor_free(expected);
+			ccv_nnc_tensor_free(a);
+			ccv_nnc_tensor_free(ha_ref);
+			ccv_nnc_tensor_free(ha);
+		}
+		ccv_nnc_tensor_free(hwd0);
+		ccv_nnc_tensor_free(hw0);
+		ccv_nnc_tensor_free(w0);
+		ccv_nnc_tensor_free(w);
+		ccv_nnc_tensor_free(hwd);
+		ccv_nnc_tensor_free(hw);
 	}
 }
 
@@ -14296,6 +14466,7 @@ TEST_CASE("mps segmented gemm with packed tile tails and guard rows")
 		CCV_NNC_QX_8I_ROWWISE_Q2_K, CCV_NNC_QX_8I_ROWWISE_IQ2_S,
 		CCV_NNC_QX_8I_ROWWISE_IQ2_XS, CCV_NNC_QX_8I_ROWWISE_IQ3_S,
 		CCV_NNC_QX_8I_ROWWISE_IQ3_XXS, CCV_NNC_QX_8I_ROWWISE_IQ2_XXS,
+		CCV_NNC_QX_8I_ROWWISE_IQ1_S, CCV_NNC_QX_8I_ROWWISE_IQ1_M,
 		CCV_NNC_QX_8I_ROWWISE_Q5_K, CCV_NNC_QX_8I_ROWWISE_Q6_K,
 	};
 	int f, dtype, shape;
@@ -14332,6 +14503,7 @@ TEST_CASE("mps segmented packed fusion matches randomized CPU reference across c
 		CCV_NNC_QX_8I_ROWWISE_Q2_K, CCV_NNC_QX_8I_ROWWISE_IQ2_S,
 		CCV_NNC_QX_8I_ROWWISE_IQ2_XS, CCV_NNC_QX_8I_ROWWISE_IQ3_S,
 		CCV_NNC_QX_8I_ROWWISE_IQ3_XXS, CCV_NNC_QX_8I_ROWWISE_IQ2_XXS,
+		CCV_NNC_QX_8I_ROWWISE_IQ1_S, CCV_NNC_QX_8I_ROWWISE_IQ1_M,
 		CCV_NNC_QX_8I_ROWWISE_Q5_K, CCV_NNC_QX_8I_ROWWISE_Q6_K,
 	};
 	int cases = 0;

@@ -435,6 +435,15 @@ TEST_CASE("MPS segmented SwiGLU fuses IQ2_XS, IQ3_XXS, and Q2_K decode")
 	_segmented_swiglu_mps_rowwise_case(CCV_NNC_QX_8I_ROWWISE_Q2_K, 0, 0, 10, "Q2_K decode", __case_result__);
 }
 
+TEST_CASE("MPS segmented SwiGLU fuses IQ1_S and IQ1_M decode")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SEGMENTED_SWIGLU_FORWARD, CCV_NNC_BACKEND_MPS));
+	_segmented_swiglu_mps_rowwise_case(CCV_NNC_QX_8I_ROWWISE_IQ1_S, 0, 0, 10, "IQ1_S decode", __case_result__);
+	_segmented_swiglu_mps_rowwise_case(CCV_NNC_QX_8I_ROWWISE_IQ1_M, 0, 0, 10, "IQ1_M decode", __case_result__);
+	_segmented_swiglu_mps_rowwise_case(CCV_NNC_QX_8I_ROWWISE_IQ1_S, 1, 0, 0, "broadcast IQ1_S decode without clamp", __case_result__);
+	_segmented_swiglu_mps_rowwise_case(CCV_NNC_QX_8I_ROWWISE_IQ1_M, 1, 0, 0, "broadcast IQ1_M decode without clamp", __case_result__);
+}
+
 TEST_CASE("MPS segmented SwiGLU broadcasts one activation row for rowwise int8 decode")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SEGMENTED_SWIGLU_FORWARD, CCV_NNC_BACKEND_MPS));
@@ -692,6 +701,7 @@ TEST_CASE("MPS segmented SwiGLU uses Int8MatMul for packed weights and float sca
 		CCV_NNC_QX_8I_ROWWISE_Q2_K, CCV_NNC_QX_8I_ROWWISE_IQ2_S,
 		CCV_NNC_QX_8I_ROWWISE_IQ2_XS, CCV_NNC_QX_8I_ROWWISE_IQ3_S,
 		CCV_NNC_QX_8I_ROWWISE_IQ3_XXS, CCV_NNC_QX_8I_ROWWISE_IQ2_XXS,
+		CCV_NNC_QX_8I_ROWWISE_IQ1_S, CCV_NNC_QX_8I_ROWWISE_IQ1_M,
 		CCV_NNC_QX_8I_ROWWISE_Q5_K, CCV_NNC_QX_8I_ROWWISE_Q6_K,
 	};
 	int i;
@@ -718,6 +728,7 @@ TEST_CASE("MPS segmented SwiGLU handles small rowwise batches across formats")
 		CCV_NNC_QX_8I_ROWWISE_Q3_K, CCV_NNC_QX_8I_ROWWISE_Q4_K,
 		CCV_NNC_QX_8I_ROWWISE_Q5_K, CCV_NNC_QX_8I_ROWWISE_Q6_K,
 		CCV_NNC_QX_8I_ROWWISE_IQ2_S, CCV_NNC_QX_8I_ROWWISE_IQ3_S,
+		CCV_NNC_QX_8I_ROWWISE_IQ1_S, CCV_NNC_QX_8I_ROWWISE_IQ1_M,
 	};
 	const int row_counts[] = { 3, 17, 18, 19 };
 	const int segments = 6, experts = 8, n = 256, k = 256;
@@ -974,6 +985,7 @@ TEST_CASE("MPS segmented SwiGLU packed prefill with neural accelerators")
 		CCV_NNC_QX_8I_ROWWISE_Q2_K, CCV_NNC_QX_8I_ROWWISE_IQ2_S,
 		CCV_NNC_QX_8I_ROWWISE_IQ2_XS, CCV_NNC_QX_8I_ROWWISE_IQ3_S,
 		CCV_NNC_QX_8I_ROWWISE_IQ3_XXS, CCV_NNC_QX_8I_ROWWISE_IQ2_XXS,
+		CCV_NNC_QX_8I_ROWWISE_IQ1_S, CCV_NNC_QX_8I_ROWWISE_IQ1_M,
 		CCV_NNC_QX_8I_ROWWISE_Q5_K, CCV_NNC_QX_8I_ROWWISE_Q6_K,
 	};
 	int i;
@@ -999,6 +1011,7 @@ TEST_CASE("MPS segmented SwiGLU packed matrix selection preserves small batch bo
 		CCV_NNC_QX_8I_ROWWISE_Q2_K, CCV_NNC_QX_8I_ROWWISE_IQ2_S,
 		CCV_NNC_QX_8I_ROWWISE_IQ2_XS, CCV_NNC_QX_8I_ROWWISE_IQ3_S,
 		CCV_NNC_QX_8I_ROWWISE_IQ3_XXS, CCV_NNC_QX_8I_ROWWISE_IQ2_XXS,
+		CCV_NNC_QX_8I_ROWWISE_IQ1_S, CCV_NNC_QX_8I_ROWWISE_IQ1_M,
 		CCV_NNC_QX_8I_ROWWISE_Q5_K, CCV_NNC_QX_8I_ROWWISE_Q6_K,
 	};
 	dsfmt_t dsfmt;
@@ -1129,6 +1142,7 @@ TEST_CASE("MPS segmented SwiGLU packed 16-row tiles reserve records for many par
 		CCV_NNC_QX_8I_ROWWISE_Q2_K, CCV_NNC_QX_8I_ROWWISE_IQ2_S,
 		CCV_NNC_QX_8I_ROWWISE_IQ2_XS, CCV_NNC_QX_8I_ROWWISE_IQ3_S,
 		CCV_NNC_QX_8I_ROWWISE_IQ3_XXS, CCV_NNC_QX_8I_ROWWISE_IQ2_XXS,
+		CCV_NNC_QX_8I_ROWWISE_IQ1_S, CCV_NNC_QX_8I_ROWWISE_IQ1_M,
 		CCV_NNC_QX_8I_ROWWISE_Q5_K, CCV_NNC_QX_8I_ROWWISE_Q6_K,
 	};
 	dsfmt_t dsfmt;
@@ -1234,6 +1248,7 @@ TEST_CASE("MPS segmented SwiGLU packed broadcast input keeps the vector path")
 		CCV_NNC_QX_8I_ROWWISE_Q2_K, CCV_NNC_QX_8I_ROWWISE_IQ2_S,
 		CCV_NNC_QX_8I_ROWWISE_IQ2_XS, CCV_NNC_QX_8I_ROWWISE_IQ3_S,
 		CCV_NNC_QX_8I_ROWWISE_IQ3_XXS, CCV_NNC_QX_8I_ROWWISE_IQ2_XXS,
+		CCV_NNC_QX_8I_ROWWISE_IQ1_S, CCV_NNC_QX_8I_ROWWISE_IQ1_M,
 		CCV_NNC_QX_8I_ROWWISE_Q5_K, CCV_NNC_QX_8I_ROWWISE_Q6_K,
 	};
 	dsfmt_t dsfmt;

@@ -120,7 +120,9 @@ static int _ccv_nnc_segmented_swiglu_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc
 		if (gate_format == CCV_NNC_QX_8I_ROWWISE_IQ2_XXS ||
 			gate_format == CCV_NNC_QX_8I_ROWWISE_IQ2_XS ||
 			gate_format == CCV_NNC_QX_8I_ROWWISE_IQ3_XXS ||
-			gate_format == CCV_NNC_QX_8I_ROWWISE_Q2_K)
+			gate_format == CCV_NNC_QX_8I_ROWWISE_Q2_K ||
+			gate_format == CCV_NNC_QX_8I_ROWWISE_IQ1_S ||
+			gate_format == CCV_NNC_QX_8I_ROWWISE_IQ1_M)
 		{
 			const ccv_nnc_mfa_segmented_int8_swiglu_params_t params = {
 				.data_type = mtl_datatype,
