@@ -1750,6 +1750,7 @@ static void _ccv_nnc_8i_rowwise_hadamard_256(double* const row, const size_t row
 
 typedef struct {
 	const float* hessian; // row_length x row_length Hessian of the current slice, e.g. input second moments.
+	double* hessian64; // Double copy of hessian for BLAS products; 0 without BLAS.
 	double ridge; // Added to the Hessian diagonal to keep it positive definite.
 	double* u; // Feedback coefficients U[j][k] for lane j and lanes k in later groups.
 	double* rbb; // Upper-triangular diagonal blocks R_bb of H = R R^T, one group_size^2 block per group.
@@ -1898,6 +1899,9 @@ static void _ccv_nnc_8i_rowwise_x_feedback_init(ccv_nnc_8i_rowwise_x_feedback_t*
 	}
 	feedback->hessian = hessian;
 	feedback->ridge = ridge;
+	if (feedback->hessian64)
+		for (i = 0; i < row_length * row_length; i++)
+			feedback->hessian64[i] = hessian[i];
 	const size_t groups = n / group_size;
 	size_t g;
 	for (g = 0; g < groups; g++)
@@ -2147,6 +2151,20 @@ static void _ccv_nnc_8i_rowwise_x_quantize_rows_feedback(const ccv_nnc_8i_rowwis
 		scale[r] = _ccv_nnc_8i_rowwise_x_start_scale(max_abs[r], 0, ctx->starts, ctx->datatype);
 	}
 	// hx = (hessian + ridge I) x, reading each Hessian row once for the chunk.
+#if (defined HAVE_CBLAS || defined HAVE_ACCELERATE_FRAMEWORK)
+	// hx[r][j] = sum_l hessian[j][l] x[r][l] for the whole chunk in one product.
+	cblas_dgemm(CblasRowMajor, CblasNoTrans, CblasTrans, (int)rows, (int)row_length, (int)row_length, 1, x, (int)n, fb->hessian64, (int)row_length, 0, hx, (int)row_length);
+	for (r = 0; r < rows; r++)
+	{
+		const double* const xr = x + r * n;
+		for (j = 0; j < row_length; j++)
+		{
+			const double v = hx[r * row_length + j] + fb->ridge * xr[j];
+			hx[r * row_length + j] = v;
+			xhx[r] += xr[j] * v;
+		}
+	}
+#else
 	for (j = 0; j < row_length; j++)
 	{
 		const float* const cj = fb->hessian + j * row_length;
@@ -2160,6 +2178,7 @@ static void _ccv_nnc_8i_rowwise_x_quantize_rows_feedback(const ccv_nnc_8i_rowwis
 			xhx[r] += xr[j] * v;
 		}
 	}
+#endif
 	for (;;)
 	{
 		int any = 0;
@@ -2229,6 +2248,11 @@ static void _ccv_nnc_8i_rowwise_x_quantize_rows_feedback(const ccv_nnc_8i_rowwis
 					sse[r] += v * v;
 				}
 			}
+#if (defined HAVE_CBLAS || defined HAVE_ACCELERATE_FRAMEWORK)
+			// target[l][r] += sum_j U[group_start + j][l] e[j][r] for every later lane l, as one product.
+			if (next_group < n)
+				cblas_dgemm(CblasRowMajor, CblasTrans, CblasNoTrans, (int)(n - next_group), R, (int)(group_end - group_start), 1, fb->u + group_start * n + next_group, (int)n, &e[0][0], R, 1, target + next_group * R, R);
+#else
 			// Later lanes in tiles that stay in cache across this group's feedback rows.
 			size_t l0;
 			for (l0 = next_group; l0 < n; l0 += 64)
@@ -2247,6 +2271,7 @@ static void _ccv_nnc_8i_rowwise_x_quantize_rows_feedback(const ccv_nnc_8i_rowwis
 					}
 				}
 			}
+#endif
 		}
 		for (r = 0; r < rows; r++)
 		{
@@ -2390,6 +2415,9 @@ static size_t _ccv_nnc_quantize_8i_rowwise_x(const void* input, const int dataty
 		feedback.u = (double*)ccmalloc(sizeof(double) * padded_row_length * padded_row_length);
 		feedback.rbb = (double*)ccmalloc(sizeof(double) * padded_row_length * group_size);
 		feedback.weights = (double*)ccmalloc(sizeof(double) * padded_row_length);
+#if (defined HAVE_CBLAS || defined HAVE_ACCELERATE_FRAMEWORK)
+		feedback.hessian64 = (double*)ccmalloc(sizeof(double) * row_length * row_length);
+#endif
 	}
 	size_t slice;
 	for (slice = 0; slice < slices; slice++)
@@ -2423,6 +2451,8 @@ static size_t _ccv_nnc_quantize_8i_rowwise_x(const void* input, const int dataty
 		ccfree(feedback.weights);
 		ccfree(feedback.rbb);
 		ccfree(feedback.u);
+		if (feedback.hessian64)
+			ccfree(feedback.hessian64);
 	}
 	ccfree(iq1_map);
 	return output_size;
