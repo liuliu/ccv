@@ -36,7 +36,7 @@ TEST_CASE("MPS grouped IQ2_XXS SwiGLU addresses selected expert above 2^32 eleme
 	ccv_nnc_tensor_t* const packed = ccv_nnc_tensor_new(0, packed_info, 0);
 	const size_t packed_size = ccv_nnc_tensor_data_size_without_padding(packed_info);
 	REQUIRE_EQ(ccv_nnc_quantize_8i_rowwise_x(weights->data.u8, CCV_32F, CCV_TENSOR_CPU_MEMORY,
-		matrix_count, k, format, 0, 0, packed->data.u8, packed_size), packed_size,
+		matrix_count, k, format, 0, 0, 0, 0, packed->data.u8, packed_size), packed_size,
 		"the selected expert must quantize successfully");
 	ccv_nnc_dequantize_8i_rowwise_x(packed->data.u8, CCV_32F, CCV_TENSOR_CPU_MEMORY,
 		packed_size, k, format, weights->data.u8, matrix_count);
@@ -144,7 +144,7 @@ TEST_CASE("MPS grouped Q2_K GEMM addresses selected expert above 2^32 elements")
 	ccv_nnc_tensor_t* const packed = ccv_nnc_tensor_new(0, packed_info, 0);
 	const size_t packed_size = ccv_nnc_tensor_data_size_without_padding(packed_info);
 	REQUIRE_EQ(ccv_nnc_quantize_8i_rowwise_x(weights->data.u8, CCV_32F, CCV_TENSOR_CPU_MEMORY,
-		matrix_count, k, format, 0, 0, packed->data.u8, packed_size), packed_size,
+		matrix_count, k, format, 0, 0, 0, 0, packed->data.u8, packed_size), packed_size,
 		"the selected expert must quantize successfully");
 	ccv_nnc_dequantize_8i_rowwise_x(packed->data.u8, CCV_32F, CCV_TENSOR_CPU_MEMORY,
 		packed_size, k, format, weights->data.u8, matrix_count);
@@ -245,7 +245,7 @@ TEST_CASE("MPS generic IQ2_XXS SwiGLU addresses selected expert above 2^32 eleme
 	ccv_nnc_tensor_t* const packed = ccv_nnc_tensor_new(0, packed_info, 0);
 	const size_t packed_size = ccv_nnc_tensor_data_size_without_padding(packed_info);
 	REQUIRE_EQ(ccv_nnc_quantize_8i_rowwise_x(weights->data.u8, CCV_32F, CCV_TENSOR_CPU_MEMORY,
-		matrix_count, k, format, 0, 0, packed->data.u8, packed_size), packed_size,
+		matrix_count, k, format, 0, 0, 0, 0, packed->data.u8, packed_size), packed_size,
 		"the selected expert must quantize successfully");
 	ccv_nnc_dequantize_8i_rowwise_x(packed->data.u8, CCV_32F, CCV_TENSOR_CPU_MEMORY,
 		packed_size, k, format, weights->data.u8, matrix_count);
@@ -358,7 +358,7 @@ TEST_CASE("MPS generic Q2_K GEMM addresses selected expert above 2^32 elements")
 	ccv_nnc_tensor_t* const packed = ccv_nnc_tensor_new(0, packed_info, 0);
 	const size_t packed_size = ccv_nnc_tensor_data_size_without_padding(packed_info);
 	REQUIRE_EQ(ccv_nnc_quantize_8i_rowwise_x(weights->data.u8, CCV_32F, CCV_TENSOR_CPU_MEMORY,
-		matrix_count, k, format, 0, 0, packed->data.u8, packed_size), packed_size,
+		matrix_count, k, format, 0, 0, 0, 0, packed->data.u8, packed_size), packed_size,
 		"the selected expert must quantize successfully");
 	ccv_nnc_dequantize_8i_rowwise_x(packed->data.u8, CCV_32F, CCV_TENSOR_CPU_MEMORY,
 		packed_size, k, format, weights->data.u8, matrix_count);
@@ -466,7 +466,7 @@ TEST_CASE("MPS grouped IQ2_XXS SwiGLU handles V4.1 dimensions and 4096 tokens")
 	ccv_nnc_tensor_t* const packed_row = ccv_nnc_tensor_new(0, row_info, 0);
 	const size_t row_size = ccv_nnc_tensor_data_size_without_padding(row_info);
 	REQUIRE_EQ(ccv_nnc_quantize_8i_rowwise_x(weight_row->data.u8, CCV_32F, CCV_TENSOR_CPU_MEMORY,
-		k, k, format, 0, 0, packed_row->data.u8, row_size), row_size, "weight row should quantize");
+		k, k, format, 0, 0, 0, 0, packed_row->data.u8, row_size), row_size, "weight row should quantize");
 	ccv_nnc_dequantize_8i_rowwise_x(packed_row->data.u8, CCV_32F, CCV_TENSOR_CPU_MEMORY,
 		row_size, k, format, weight_row->data.u8, k);
 	const size_t row_payload = (size_t)k / ccv_nnc_8i_rowwise_x_group_size(format) * ccv_nnc_8i_rowwise_x_group_bits(format) / 8;
@@ -600,7 +600,7 @@ TEST_CASE("MPS grouped Q2_K GEMM handles V4.1 dimensions and 4096 tokens")
 	ccv_nnc_tensor_t* const packed_row = ccv_nnc_tensor_new(0, row_info, 0);
 	const size_t row_size = ccv_nnc_tensor_data_size_without_padding(row_info);
 	REQUIRE_EQ(ccv_nnc_quantize_8i_rowwise_x(weight_row->data.u8, CCV_32F, CCV_TENSOR_CPU_MEMORY,
-		k, k, format, 0, 0, packed_row->data.u8, row_size), row_size, "weight row should quantize");
+		k, k, format, 0, 0, 0, 0, packed_row->data.u8, row_size), row_size, "weight row should quantize");
 	ccv_nnc_dequantize_8i_rowwise_x(packed_row->data.u8, CCV_32F, CCV_TENSOR_CPU_MEMORY,
 		row_size, k, format, weight_row->data.u8, k);
 	const size_t row_payload = (size_t)k / ccv_nnc_8i_rowwise_x_group_size(format) * ccv_nnc_8i_rowwise_x_group_bits(format) / 8;

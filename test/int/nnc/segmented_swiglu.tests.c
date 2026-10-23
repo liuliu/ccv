@@ -313,11 +313,15 @@ static void _segmented_swiglu_mps_rowwise_case(const int format, const int broad
 	ccv_nnc_tensor_t* const hup_q = ccv_nnc_tensor_new(0, q_params, 0);
 	const size_t gate_qsize = format ?
 		ccv_nnc_quantize_8i_rowwise_x(hgate->data.u8, CCV_16F, CCV_TENSOR_CPU_MEMORY, weight_count, k, format, 0, 0,
+			0,
+			0,
 			hgate_q->data.u8, ccv_nnc_tensor_data_size_without_padding(hgate_q->info)) :
 		ccv_nnc_quantize_8i_rowwise(hgate->data.u8, CCV_16F, CCV_TENSOR_CPU_MEMORY, weight_count, k, 0, 0,
 			hgate_q->data.u8, ccv_nnc_tensor_data_size_without_padding(hgate_q->info));
 	const size_t up_qsize = format ?
 		ccv_nnc_quantize_8i_rowwise_x(hup->data.u8, CCV_16F, CCV_TENSOR_CPU_MEMORY, weight_count, k, format, 0, 0,
+			0,
+			0,
 			hup_q->data.u8, ccv_nnc_tensor_data_size_without_padding(hup_q->info)) :
 		ccv_nnc_quantize_8i_rowwise(hup->data.u8, CCV_16F, CCV_TENSOR_CPU_MEMORY, weight_count, k, 0, 0,
 			hup_q->data.u8, ccv_nnc_tensor_data_size_without_padding(hup_q->info));
@@ -757,7 +761,7 @@ TEST_CASE("MPS segmented SwiGLU handles small rowwise batches across formats")
 		{
 			const size_t size = format ?
 				ccv_nnc_quantize_8i_rowwise_x(weights[projection]->data.u8, CCV_32F, CCV_TENSOR_CPU_MEMORY,
-					weight_count, k, format, 0, 0, packed[projection]->data.u8, packed_size) :
+					weight_count, k, format, 0, 0, 0, 0, packed[projection]->data.u8, packed_size) :
 				ccv_nnc_quantize_8i_rowwise(weights[projection]->data.u8, CCV_32F, CCV_TENSOR_CPU_MEMORY,
 					weight_count, k, 0, 0, packed[projection]->data.u8, packed_size);
 			REQUIRE_EQ(size, packed_size, "weights should quantize to the declared size");

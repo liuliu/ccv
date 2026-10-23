@@ -95,7 +95,7 @@ int main(int argc, char** argv)
 		const int format = CCV_NNC_QX_8I_ROWWISE_Q6_K | (v ? CCV_NNC_QX_8I_ROWWISE_HADAMARD_256 : 0);
 		ccv_nnc_tensor_t* const hq = ccv_nnc_tensor_new(0, ccv_nnc_tensor_8i_rowwise_x(wp, format), 0);
 		const size_t size = ccv_nnc_tensor_data_size_without_padding(hq->info);
-		const size_t written = ccv_nnc_quantize_8i_rowwise_x(hw->data.u8, datatype, CCV_TENSOR_CPU_MEMORY, (size_t)n * k, k, format, 0, 0, hq->data.u8, size);
+		const size_t written = ccv_nnc_quantize_8i_rowwise_x(hw->data.u8, datatype, CCV_TENSOR_CPU_MEMORY, (size_t)n * k, k, format, 0, 0, 0, 0, hq->data.u8, size);
 		assert(written == size);
 		ccv_nnc_tensor_param_t qp = hq->info;
 		qp.type = CCV_TENSOR_GPU_MEMORY;

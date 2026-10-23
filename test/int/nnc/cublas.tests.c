@@ -430,7 +430,7 @@ static double _cublas_scaled_gemm_max_rel_diff(const int datatype, const int for
 	if (use_bias)
 		_cublas_scaled_gemm_from_float(datatype, bias_f, n, hbias->data.u8);
 	const size_t qsize = format ?
-		ccv_nnc_quantize_8i_rowwise_x(hw->data.u8, datatype, CCV_TENSOR_CPU_MEMORY, n * k, k, format, 0, 0, hwq->data.u8, ccv_nnc_tensor_data_size_without_padding(hwq->info)) :
+		ccv_nnc_quantize_8i_rowwise_x(hw->data.u8, datatype, CCV_TENSOR_CPU_MEMORY, n * k, k, format, 0, 0, 0, 0, hwq->data.u8, ccv_nnc_tensor_data_size_without_padding(hwq->info)) :
 		ccv_nnc_quantize_8i_rowwise(hw->data.u8, datatype, CCV_TENSOR_CPU_MEMORY, n * k, k, 0, 0, hwq->data.u8, ccv_nnc_tensor_data_size_without_padding(hwq->info));
 	// The reference reads back what the GPU sees: rounded activations and bias, and the int8 weights times
 	// their row scales in float, which only the dequantizing fallback rounds into the datatype again.
@@ -666,7 +666,7 @@ TEST_CASE("gemm no transpose with packed row-wise int8-x weights in all formats"
 	{
 		const ccv_nnc_tensor_param_t q_params = ccv_nnc_tensor_8i_rowwise_x(CPU_TENSOR_NHWC(32F, k, n), formats[f]);
 		ccv_nnc_tensor_t* const qb = ccv_nnc_tensor_new(0, q_params, 0);
-		const size_t qsize = ccv_nnc_quantize_8i_rowwise_x(b->data.u8, CCV_32F, CCV_TENSOR_CPU_MEMORY, (size_t)k * n, n, formats[f], 0, 0, qb->data.u8, ccv_nnc_tensor_data_size_without_padding(qb->info));
+		const size_t qsize = ccv_nnc_quantize_8i_rowwise_x(b->data.u8, CCV_32F, CCV_TENSOR_CPU_MEMORY, (size_t)k * n, n, formats[f], 0, 0, 0, 0, qb->data.u8, ccv_nnc_tensor_data_size_without_padding(qb->info));
 		REQUIRE_EQ(qsize, ccv_nnc_tensor_data_size_without_padding(qb->info), "packed row-wise int8-x size should match");
 		ccv_nnc_tensor_t* const dq_b = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, k, n), 0);
 		ccv_nnc_dequantize_8i_rowwise_x(qb->data.u8, CCV_32F, CCV_TENSOR_CPU_MEMORY, qsize, n, formats[f], dq_b->data.u8, (size_t)k * n);
@@ -758,7 +758,7 @@ TEST_CASE("H256 row-wise int8-x dequantization matches CPU across codecs and pre
 				ccv_nnc_tensor_t* const gout = ccv_nnc_tensor_new(0, gpu_params, 0);
 				ccv_nnc_tensor_t* const actual = ccv_nnc_tensor_new(0, host_params, 0);
 				_ccv_nnc_h256_fill(datatypes[d], source->data.u8, count, &dsfmt);
-				const size_t qsize = ccv_nnc_quantize_8i_rowwise_x(source->data.u8, datatypes[d], CCV_TENSOR_CPU_MEMORY, count, cols[shape], format, 0, 0, q->data.u8, ccv_nnc_tensor_data_size_without_padding(q->info));
+				const size_t qsize = ccv_nnc_quantize_8i_rowwise_x(source->data.u8, datatypes[d], CCV_TENSOR_CPU_MEMORY, count, cols[shape], format, 0, 0, 0, 0, q->data.u8, ccv_nnc_tensor_data_size_without_padding(q->info));
 				REQUIRE_EQ(qsize, ccv_nnc_tensor_data_size_without_padding(q->info), "H256 quantization size should match");
 				ccv_nnc_dequantize_8i_rowwise_x(q->data.u8, datatypes[d], CCV_TENSOR_CPU_MEMORY, qsize, cols[shape], format, expected->data.u8, count);
 				ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(q), TENSOR_LIST(gq), 0);
@@ -817,7 +817,7 @@ TEST_CASE("gemm with H256 row-wise int8-x weights matches CPU on logical weights
 				_ccv_nnc_h256_fill(datatype, a->data.u8, m * k, &dsfmt);
 				_ccv_nnc_h256_fill(datatype, w->data.u8, n * k, &dsfmt);
 				_ccv_nnc_h256_fill(datatype, bias->data.u8, n, &dsfmt);
-				const size_t qsize = ccv_nnc_quantize_8i_rowwise_x(w->data.u8, datatype, CCV_TENSOR_CPU_MEMORY, (size_t)n * k, k, format, 0, 0, qw->data.u8, ccv_nnc_tensor_data_size_without_padding(qw->info));
+				const size_t qsize = ccv_nnc_quantize_8i_rowwise_x(w->data.u8, datatype, CCV_TENSOR_CPU_MEMORY, (size_t)n * k, k, format, 0, 0, 0, 0, qw->data.u8, ccv_nnc_tensor_data_size_without_padding(qw->info));
 				REQUIRE_EQ(qsize, ccv_nnc_tensor_data_size_without_padding(qw->info), "H256 quantization size should match");
 				// Reference on the logical (de-rotated) weights in 32F.
 				ccv_nnc_dequantize_8i_rowwise_x(qw->data.u8, datatype, CCV_TENSOR_CPU_MEMORY, qsize, k, format, w->data.u8, (size_t)n * k);
@@ -892,7 +892,7 @@ TEST_CASE("gemm with very tall H256 row-wise int8-x weights rotates activations 
 	ccv_nnc_tensor_t* const w = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, block_rows, k), 0);
 	_ccv_nnc_h256_fill(CCV_32F, w->data.u8, block_rows * k, &dsfmt);
 	ccv_nnc_tensor_t* const qs = ccv_nnc_tensor_new(0, ccv_nnc_tensor_8i_rowwise_x(CPU_TENSOR_NHWC(32F, block_rows, k), format), 0);
-	const size_t qs_size = ccv_nnc_quantize_8i_rowwise_x(w->data.u8, CCV_32F, CCV_TENSOR_CPU_MEMORY, block_rows * k, k, format, 0, 0, qs->data.u8, ccv_nnc_tensor_data_size_without_padding(qs->info));
+	const size_t qs_size = ccv_nnc_quantize_8i_rowwise_x(w->data.u8, CCV_32F, CCV_TENSOR_CPU_MEMORY, block_rows * k, k, format, 0, 0, 0, 0, qs->data.u8, ccv_nnc_tensor_data_size_without_padding(qs->info));
 	REQUIRE_EQ(qs_size, ccv_nnc_tensor_data_size_without_padding(qs->info), "H256 quantization size should match");
 	const ccv_nnc_tensor_param_t q_params = ccv_nnc_tensor_8i_rowwise_x(CPU_TENSOR_NHWC(32F, n, k), format);
 	ccv_nnc_tensor_t* const qw = ccv_nnc_tensor_new(0, q_params, 0);
@@ -962,7 +962,7 @@ TEST_CASE("gemm with H256 row-wise int8-x weights handles an unaligned activatio
 		_ccv_nnc_h256_fill(datatype, w->data.u8, n * k, &dsfmt);
 		const ccv_nnc_tensor_param_t q_params = ccv_nnc_tensor_8i_rowwise_x(w_params, format);
 		ccv_nnc_tensor_t* const qw = ccv_nnc_tensor_new(0, q_params, 0);
-		const size_t qsize = ccv_nnc_quantize_8i_rowwise_x(w->data.u8, datatype, CCV_TENSOR_CPU_MEMORY, n * k, k, format, 0, 0, qw->data.u8, ccv_nnc_tensor_data_size_without_padding(q_params));
+		const size_t qsize = ccv_nnc_quantize_8i_rowwise_x(w->data.u8, datatype, CCV_TENSOR_CPU_MEMORY, n * k, k, format, 0, 0, 0, 0, qw->data.u8, ccv_nnc_tensor_data_size_without_padding(q_params));
 		REQUIRE_EQ(qsize, ccv_nnc_tensor_data_size_without_padding(q_params), "H256 quantization size should match");
 		ccv_nnc_dequantize_8i_rowwise_x(qw->data.u8, datatype, CCV_TENSOR_CPU_MEMORY, qsize, k, format, w->data.u8, n * k);
 		// Reference on the logical (de-rotated) weights in 32F.
@@ -1030,7 +1030,7 @@ TEST_CASE("gemm with H256 row-wise IQ int8-x weights matches CPU on every GPU")
 	_ccv_nnc_h256_fill(CCV_32F, w->data.u8, n * k, &dsfmt);
 	const ccv_nnc_tensor_param_t q_params = ccv_nnc_tensor_8i_rowwise_x(CPU_TENSOR_NHWC(32F, n, k), format);
 	ccv_nnc_tensor_t* const qw = ccv_nnc_tensor_new(0, q_params, 0);
-	const size_t qsize = ccv_nnc_quantize_8i_rowwise_x(w->data.u8, CCV_32F, CCV_TENSOR_CPU_MEMORY, n * k, k, format, 0, 0, qw->data.u8, ccv_nnc_tensor_data_size_without_padding(q_params));
+	const size_t qsize = ccv_nnc_quantize_8i_rowwise_x(w->data.u8, CCV_32F, CCV_TENSOR_CPU_MEMORY, n * k, k, format, 0, 0, 0, 0, qw->data.u8, ccv_nnc_tensor_data_size_without_padding(q_params));
 	REQUIRE_EQ(qsize, ccv_nnc_tensor_data_size_without_padding(q_params), "H256 quantization size should match");
 	ccv_nnc_dequantize_8i_rowwise_x(qw->data.u8, CCV_32F, CCV_TENSOR_CPU_MEMORY, qsize, k, format, w->data.u8, n * k);
 	ccv_nnc_tensor_t* const expected = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, m, n), 0);
@@ -5662,7 +5662,7 @@ TEST_CASE("segmented gemm with packed row-wise int8-x weights in all formats")
 	{
 		const ccv_nnc_tensor_param_t q_params = ccv_nnc_tensor_8i_rowwise_x(CPU_TENSOR_NHWC(32F, segments, n, k), formats[f]);
 		ccv_nnc_tensor_t* const qw = ccv_nnc_tensor_new(0, q_params, 0);
-		const size_t qsize = ccv_nnc_quantize_8i_rowwise_x(w->data.u8, CCV_32F, CCV_TENSOR_CPU_MEMORY, (size_t)segments * n * k, k, formats[f], 0, 0, qw->data.u8, ccv_nnc_tensor_data_size_without_padding(qw->info));
+		const size_t qsize = ccv_nnc_quantize_8i_rowwise_x(w->data.u8, CCV_32F, CCV_TENSOR_CPU_MEMORY, (size_t)segments * n * k, k, formats[f], 0, 0, 0, 0, qw->data.u8, ccv_nnc_tensor_data_size_without_padding(qw->info));
 		REQUIRE_EQ(qsize, ccv_nnc_tensor_data_size_without_padding(qw->info), "packed row-wise int8-x size should match");
 		ccv_nnc_tensor_t* const dq_w = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, segments, n, k), 0);
 		ccv_nnc_dequantize_8i_rowwise_x(qw->data.u8, CCV_32F, CCV_TENSOR_CPU_MEMORY, qsize, k, formats[f], dq_w->data.u8, (size_t)segments * n * k);

@@ -589,7 +589,7 @@ static int _mps_index_select_8i_rowwise_x_compare(const int datatype, const int 
 	int j;
 	for (j = 0; j < selected; j++)
 		indices->data.i32[j] = (j * 17 + 11) % rows;
-	const size_t qsize = ccv_nnc_quantize_8i_rowwise_x(source->data.u8, datatype, CCV_TENSOR_CPU_MEMORY, count, cols, format, 0, 0, q->data.u8, ccv_nnc_tensor_data_size_without_padding(q->info));
+	const size_t qsize = ccv_nnc_quantize_8i_rowwise_x(source->data.u8, datatype, CCV_TENSOR_CPU_MEMORY, count, cols, format, 0, 0, 0, 0, q->data.u8, ccv_nnc_tensor_data_size_without_padding(q->info));
 	int status = 0;
 	if (qsize != ccv_nnc_tensor_data_size_without_padding(q->info))
 	{

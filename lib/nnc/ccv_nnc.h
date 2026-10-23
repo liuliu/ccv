@@ -1196,8 +1196,17 @@ CCV_WARN_UNUSED(size_t) ccv_nnc_8i_rowwise_x_data_size(const int format, const i
  * @param imatrix Optional per-column importance weights. Pass 0 for unweighted MSE.
  * @param imatrix_length The number of elements in @p imatrix. It must be a multiple of @p row_length.
  * If it contains multiple row-length slices, rows are evenly partitioned across these slices.
+ * @param hessian Optional row-major row_length x row_length Hessian of the row error, e.g. the
+ * input second moments E[x x^T] (the imatrix is its diagonal). Used instead of @p imatrix (passing
+ * both returns 0). The row error e is then fitted to minimize e H e^T: groups are rounded in order
+ * and each group's error is fed back into the targets of later groups (block LDLQ). A diagonal
+ * Hessian is the imatrix path. It is used as given apart from a tiny ridge for positive
+ * definiteness, so shrink / damp a sampled Hessian before passing it. Not supported with
+ * CCV_NNC_QX_8I_ROWWISE_HADAMARD_256 (returns 0).
+ * @param hessian_length The number of elements in @p hessian. It must be a multiple of
+ * row_length * row_length. Multiple slices partition rows evenly, as with imatrix.
  */
-CCV_WARN_UNUSED(size_t) ccv_nnc_quantize_8i_rowwise_x(const void* input, const int datatype, const int memory_type, const size_t input_length, const size_t row_length, const int format, const float* const imatrix, const size_t imatrix_length, void* output, const size_t output_length);
+CCV_WARN_UNUSED(size_t) ccv_nnc_quantize_8i_rowwise_x(const void* input, const int datatype, const int memory_type, const size_t input_length, const size_t row_length, const int format, const float* const imatrix, const size_t imatrix_length, const float* const hessian, const size_t hessian_length, void* output, const size_t output_length);
 /**
  * Dequantize a row-wise-x int8-compatible format back to @p datatype.
  * H256 logical-weight decoding is not supported yet.

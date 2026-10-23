@@ -10,7 +10,7 @@ const int format = CCV_NNC_QX_8I_ROWWISE_Q6_K |
 ccv_nnc_tensor_param_t quantized = ccv_nnc_tensor_8i_rowwise_x(params, format);
 size_t bytes = ccv_nnc_quantize_8i_rowwise_x(
   weights, datatype, CCV_TENSOR_CPU_MEMORY, count, K,
-  format, imatrix, imatrix_length, output, output_bytes);
+  format, imatrix, imatrix_length, 0, 0, output, output_bytes);
 // bytes == 0 means quantization failed; output remains untouched.
 ```
 

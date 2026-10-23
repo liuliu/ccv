@@ -644,7 +644,7 @@ static int _mps_dequantize_8i_rowwise_x_compare(const int datatype, const int fo
 	ccv_nnc_tensor_t* const gout = ccv_nnc_tensor_new(0, gpu_params, 0);
 	ccv_nnc_tensor_t* const actual = ccv_nnc_tensor_new(0, host_params, 0);
 	_mps_forward_na_gemm_fill_signed(datatype, source->data.u8, rows, cols, 1);
-	const size_t qsize = ccv_nnc_quantize_8i_rowwise_x(source->data.u8, datatype, CCV_TENSOR_CPU_MEMORY, (size_t)rows * cols, cols, format, 0, 0, q->data.u8, ccv_nnc_tensor_data_size_without_padding(q->info));
+	const size_t qsize = ccv_nnc_quantize_8i_rowwise_x(source->data.u8, datatype, CCV_TENSOR_CPU_MEMORY, (size_t)rows * cols, cols, format, 0, 0, 0, 0, q->data.u8, ccv_nnc_tensor_data_size_without_padding(q->info));
 	int status = 0;
 	if (qsize != ccv_nnc_tensor_data_size_without_padding(q->info))
 	{
@@ -1353,7 +1353,7 @@ static int _mps_forward_scaled_gemm_validate_interleaved_batched(const int forma
 	ccv_float_to_half_precision(w_values, (uint16_t*)hwd->data.u8, group_dim * n_dim * k_dim);
 	ccfree(w_values);
 	ccfree(a_values);
-	const size_t qsize = ccv_nnc_quantize_8i_rowwise_x(hwd->data.u8, datatype, CCV_TENSOR_CPU_MEMORY, (size_t)group_dim * n_dim * k_dim, k_dim, format, 0, 0, hwq->data.u8, ccv_nnc_tensor_data_size_without_padding(hwq->info));
+	const size_t qsize = ccv_nnc_quantize_8i_rowwise_x(hwd->data.u8, datatype, CCV_TENSOR_CPU_MEMORY, (size_t)group_dim * n_dim * k_dim, k_dim, format, 0, 0, 0, 0, hwq->data.u8, ccv_nnc_tensor_data_size_without_padding(hwq->info));
 	int status = qsize == ccv_nnc_tensor_data_size_without_padding(hwq->info) ? CCV_NNC_EXEC_SUCCESS : CCV_NNC_EXEC_INVALID;
 	if (status == CCV_NNC_EXEC_SUCCESS)
 		ccv_nnc_dequantize_8i_rowwise_x(hwq->data.u8, datatype, CCV_TENSOR_CPU_MEMORY, qsize, k_dim, format, hwd->data.u8, (size_t)group_dim * n_dim * k_dim);
@@ -1477,7 +1477,7 @@ static int _mps_forward_scaled_gemm_compare_dense_format(const int datatype, con
 	_mps_forward_scaled_gemm_fill_matrix(datatype, hwd->data.u8, n_dim, k_dim, 0);
 	if (use_bias)
 		_mps_forward_scaled_gemm_fill_bias(datatype, hbias->data.u8, n_dim);
-	const size_t qsize = format ? ccv_nnc_quantize_8i_rowwise_x(hwd->data.u8, datatype, CCV_TENSOR_CPU_MEMORY, n_dim * k_dim, k_dim, format, 0, 0, hwq->data.u8, ccv_nnc_tensor_data_size_without_padding(hwq->info)) : ccv_nnc_quantize_8i_rowwise(hwd->data.u8, datatype, CCV_TENSOR_CPU_MEMORY, n_dim * k_dim, k_dim, 0, 0, hwq->data.u8, ccv_nnc_tensor_data_size_without_padding(hwq->info));
+	const size_t qsize = format ? ccv_nnc_quantize_8i_rowwise_x(hwd->data.u8, datatype, CCV_TENSOR_CPU_MEMORY, n_dim * k_dim, k_dim, format, 0, 0, 0, 0, hwq->data.u8, ccv_nnc_tensor_data_size_without_padding(hwq->info)) : ccv_nnc_quantize_8i_rowwise(hwd->data.u8, datatype, CCV_TENSOR_CPU_MEMORY, n_dim * k_dim, k_dim, 0, 0, hwq->data.u8, ccv_nnc_tensor_data_size_without_padding(hwq->info));
 	if (qsize != ccv_nnc_tensor_data_size_without_padding(hwq->info))
 		return -1;
 	if (format)
@@ -2195,7 +2195,7 @@ TEST_CASE("mps H256 rowwise-x GEMM dense fallback preserves logical weights")
 			ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha, hw, hbias), TENSOR_LIST(input, weights, input_bias), 0);
 			const size_t size = ccv_nnc_tensor_data_size_without_padding(hq->info);
 			const int row_length = transpose_w ? k : n;
-			REQUIRE_EQ(ccv_nnc_quantize_8i_rowwise_x(weights->data.u8, datatype, CCV_TENSOR_CPU_MEMORY, batches * n * k, row_length, format, 0, 0, hq->data.u8, size), size, "H256 weights quantize");
+			REQUIRE_EQ(ccv_nnc_quantize_8i_rowwise_x(weights->data.u8, datatype, CCV_TENSOR_CPU_MEMORY, batches * n * k, row_length, format, 0, 0, 0, 0, hq->data.u8, size), size, "H256 weights quantize");
 			ccv_nnc_dequantize_8i_rowwise_x(hq->data.u8, datatype, CCV_TENSOR_CPU_MEMORY, size, row_length, format, weights->data.u8, batches * n * k);
 			ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(input, weights, input_bias), TENSOR_LIST(ha, hw, hbias), 0);
 			ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(input, hq, input_bias), TENSOR_LIST(a, q, bias), 0);
@@ -2338,7 +2338,7 @@ TEST_CASE("mps H256 rowwise-x GEMM uses rotated activations and ordinary output"
 			for (i = 0; i < n; i++)
 				hbias->data.f32[i] = (i % 11 - 5) / 128.f;
 			const size_t size = ccv_nnc_tensor_data_size_without_padding(hq->info);
-			REQUIRE_EQ(ccv_nnc_quantize_8i_rowwise_x(hw->data.f32, CCV_32F, CCV_TENSOR_CPU_MEMORY, n * k, k, format, 0, 0, hq->data.u8, size), size, "offline H256 quantization succeeds with N not divisible by 256");
+			REQUIRE_EQ(ccv_nnc_quantize_8i_rowwise_x(hw->data.f32, CCV_32F, CCV_TENSOR_CPU_MEMORY, n * k, k, format, 0, 0, 0, 0, hq->data.u8, size), size, "offline H256 quantization succeeds with N not divisible by 256");
 			// Explicit raw base-codec decode gives stored rotated weights.
 			ccv_nnc_dequantize_8i_rowwise_x(hq->data.u8, CCV_32F, CCV_TENSOR_CPU_MEMORY, size, k, codecs[f], hw->data.f32, n * k);
 			ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha, hq, hbias), TENSOR_LIST(a, q, bias), 0);
@@ -2460,7 +2460,7 @@ TEST_CASE("mps H256 rowwise-x GEMM ANE fused activation quantization")
 				ha->data.f32[k + 17] = 8;
 				ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha, hw, hbias), TENSOR_LIST(input, weights, input_bias), 0);
 				const size_t size = ccv_nnc_tensor_data_size_without_padding(hq->info);
-				REQUIRE_EQ(ccv_nnc_quantize_8i_rowwise_x(weights->data.u8, datatype, CCV_TENSOR_CPU_MEMORY, n * k, k, format, 0, 0, hq->data.u8, size), size, "offline H256 quantization succeeds");
+				REQUIRE_EQ(ccv_nnc_quantize_8i_rowwise_x(weights->data.u8, datatype, CCV_TENSOR_CPU_MEMORY, n * k, k, format, 0, 0, 0, 0, hq->data.u8, size), size, "offline H256 quantization succeeds");
 				// Explicit raw base-codec decode gives stored rotated weights.
 				ccv_nnc_dequantize_8i_rowwise_x(hq->data.u8, datatype, CCV_TENSOR_CPU_MEMORY, size, k, codecs[f], weights->data.u8, n * k);
 				ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(input, hq, input_bias), TENSOR_LIST(a, q, bias), 0);
@@ -2680,7 +2680,7 @@ TEST_CASE("mps forward gemm with row-wise 8i weight ANE surface row pitch")
 			for (i = 0; i < n_dim; i++)
 				hbias->data.f32[i] = (dsfmt_genrand_open_close(&dsfmt) - 0.5) * 0.25;
 			const size_t qsize = formats[f] ?
-				ccv_nnc_quantize_8i_rowwise_x(hw->data.f32, CCV_32F, CCV_TENSOR_CPU_MEMORY, n_dim * k_dim, k_dim, formats[f], 0, 0, hwq->data.u8, ccv_nnc_tensor_data_size_without_padding(hwq->info)) :
+				ccv_nnc_quantize_8i_rowwise_x(hw->data.f32, CCV_32F, CCV_TENSOR_CPU_MEMORY, n_dim * k_dim, k_dim, formats[f], 0, 0, 0, 0, hwq->data.u8, ccv_nnc_tensor_data_size_without_padding(hwq->info)) :
 				ccv_nnc_quantize_8i_rowwise(hw->data.f32, CCV_32F, CCV_TENSOR_CPU_MEMORY, n_dim * k_dim, k_dim, 0, 0, hwq->data.u8, ccv_nnc_tensor_data_size_without_padding(hwq->info));
 			REQUIRE_EQ(qsize, ccv_nnc_tensor_data_size_without_padding(hwq->info), "rowwise weights should quantize");
 			if (formats[f])
@@ -3294,7 +3294,7 @@ TEST_CASE("mps rowwise int8 gemm splits rows between ANE and GPU")
 				float* const w_ref = (float*)ccmalloc(sizeof(float) * n * k);
 				if (hadamard)
 				{
-					REQUIRE_EQ(ccv_nnc_quantize_8i_rowwise_x(hw->data.u8, datatype, CCV_TENSOR_CPU_MEMORY, (size_t)n * k, k, format, 0, 0, hwq->data.u8, qsize), qsize, "row-wise-x weights should encode completely");
+					REQUIRE_EQ(ccv_nnc_quantize_8i_rowwise_x(hw->data.u8, datatype, CCV_TENSOR_CPU_MEMORY, (size_t)n * k, k, format, 0, 0, 0, 0, hwq->data.u8, qsize), qsize, "row-wise-x weights should encode completely");
 					ccv_nnc_dequantize_8i_rowwise_x(hwq->data.u8, datatype, CCV_TENSOR_CPU_MEMORY, qsize, k, CCV_NNC_QX_8I_ROWWISE_Q6_K, hw->data.u8, (size_t)n * k);
 					ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(hw), TENSOR_LIST(hw32), 0);
 					memcpy(w_ref, hw32->data.f32, sizeof(float) * n * k);

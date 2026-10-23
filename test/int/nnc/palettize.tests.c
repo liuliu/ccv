@@ -114,10 +114,10 @@ TEST_CASE("CPU IQ1 rowwise-x supports every precision, partial groups and imatri
 			const size_t size = ccv_nnc_8i_rowwise_x_data_size(formats[f], datatypes[d], count, cols);
 			uint8_t* const packed = ccmalloc(size + 16);
 			memset(packed, 0xa5, size + 16);
-			REQUIRE_EQ(ccv_nnc_quantize_8i_rowwise_x(source->data.u8, datatypes[d], CCV_TENSOR_CPU_MEMORY, count, cols, formats[f], importance, cols * slice_count, packed, size - 1), 0, "short output is rejected");
+			REQUIRE_EQ(ccv_nnc_quantize_8i_rowwise_x(source->data.u8, datatypes[d], CCV_TENSOR_CPU_MEMORY, count, cols, formats[f], importance, cols * slice_count, 0, 0, packed, size - 1), 0, "short output is rejected");
 			for (i = 0; i < size + 16; i++)
 				REQUIRE_EQ(packed[i], 0xa5, "rejected output stays unchanged");
-			REQUIRE_EQ(ccv_nnc_quantize_8i_rowwise_x(source->data.u8, datatypes[d], CCV_TENSOR_CPU_MEMORY, count, cols, formats[f], importance, cols * slice_count, packed, size), size, "quantizer returns exact size");
+			REQUIRE_EQ(ccv_nnc_quantize_8i_rowwise_x(source->data.u8, datatypes[d], CCV_TENSOR_CPU_MEMORY, count, cols, formats[f], importance, cols * slice_count, 0, 0, packed, size), size, "quantizer returns exact size");
 			for (i = 0; i < 16; i++)
 				REQUIRE_EQ(packed[size + i], 0xa5, "quantizer preserves output guard bytes");
 			ccv_nnc_dequantize_8i_rowwise_x(packed, datatypes[d], CCV_TENSOR_CPU_MEMORY, size, cols, formats[f], decoded->data.u8, count);
@@ -127,7 +127,7 @@ TEST_CASE("CPU IQ1 rowwise-x supports every precision, partial groups and imatri
 				const size_t slice_size = ccv_nnc_8i_rowwise_x_data_size(formats[f], datatypes[d], rows_per_slice * cols, cols);
 				uint8_t* const slice_packed = ccmalloc(slice_size);
 				const size_t offset = (size_t)slice * rows_per_slice * cols * element_size;
-				REQUIRE_EQ(ccv_nnc_quantize_8i_rowwise_x(source->data.u8 + offset, datatypes[d], CCV_TENSOR_CPU_MEMORY, rows_per_slice * cols, cols, formats[f], importance + slice * cols, cols, slice_packed, slice_size), slice_size, "individual imatrix slice quantizes");
+				REQUIRE_EQ(ccv_nnc_quantize_8i_rowwise_x(source->data.u8 + offset, datatypes[d], CCV_TENSOR_CPU_MEMORY, rows_per_slice * cols, cols, formats[f], importance + slice * cols, cols, 0, 0, slice_packed, slice_size), slice_size, "individual imatrix slice quantizes");
 				ccv_nnc_dequantize_8i_rowwise_x(slice_packed, datatypes[d], CCV_TENSOR_CPU_MEMORY, slice_size, cols, formats[f], sliced->data.u8 + offset, rows_per_slice * cols);
 				ccfree(slice_packed);
 			}
@@ -167,7 +167,7 @@ TEST_CASE("CPU IQ1 rowwise-x metadata and payload survive tensor persistence")
 	{
 		ccv_nnc_tensor_t* const packed = ccv_nnc_tensor_new(0, ccv_nnc_tensor_8i_rowwise_x(source->info, formats[f]), 0);
 		const size_t size = ccv_nnc_tensor_data_size_without_padding(packed->info);
-		REQUIRE_EQ(ccv_nnc_quantize_8i_rowwise_x(source->data.f32, CCV_32F, CCV_TENSOR_CPU_MEMORY, 3 * 37, 37, formats[f], 0, 0, packed->data.u8, size), size, "allocated tensor quantizes");
+		REQUIRE_EQ(ccv_nnc_quantize_8i_rowwise_x(source->data.f32, CCV_32F, CCV_TENSOR_CPU_MEMORY, 3 * 37, 37, formats[f], 0, 0, 0, 0, packed->data.u8, size), size, "allocated tensor quantizes");
 		const char* const name = f == 0 ? "iq1_s" : "iq1_m";
 		REQUIRE_EQ(ccv_nnc_tensor_write(packed, db, name, 0), CCV_IO_FINAL, "IQ1 tensor writes");
 		ccv_nnc_tensor_t* restored = 0;
@@ -195,9 +195,9 @@ TEST_CASE("CPU IQ1 rowwise-x fits the imatrix-weighted objective")
 		const size_t size = ccv_nnc_8i_rowwise_x_data_size(formats[f], CCV_32F, 32, 32);
 		uint8_t* const packed = ccmalloc(size);
 		float weighted[32], plain[32];
-		REQUIRE_EQ(ccv_nnc_quantize_8i_rowwise_x(source, CCV_32F, CCV_TENSOR_CPU_MEMORY, 32, 32, formats[f], 0, 0, packed, size), size, "null imatrix is supported");
+		REQUIRE_EQ(ccv_nnc_quantize_8i_rowwise_x(source, CCV_32F, CCV_TENSOR_CPU_MEMORY, 32, 32, formats[f], 0, 0, 0, 0, packed, size), size, "null imatrix is supported");
 		ccv_nnc_dequantize_8i_rowwise_x(packed, CCV_32F, CCV_TENSOR_CPU_MEMORY, size, 32, formats[f], plain, 32);
-		REQUIRE_EQ(ccv_nnc_quantize_8i_rowwise_x(source, CCV_32F, CCV_TENSOR_CPU_MEMORY, 32, 32, formats[f], importance, 32, packed, size), size, "weighted quantization succeeds");
+		REQUIRE_EQ(ccv_nnc_quantize_8i_rowwise_x(source, CCV_32F, CCV_TENSOR_CPU_MEMORY, 32, 32, formats[f], importance, 32, 0, 0, packed, size), size, "weighted quantization succeeds");
 		ccv_nnc_dequantize_8i_rowwise_x(packed, CCV_32F, CCV_TENSOR_CPU_MEMORY, size, 32, formats[f], weighted, 32);
 		REQUIRE(fabsf(weighted[0] - source[0]) < 1e-6f, "important lane is fitted accurately");
 		REQUIRE(fabsf(weighted[0] - source[0]) < fabsf(plain[0] - source[0]), "imatrix changes the fitting objective");
@@ -221,7 +221,7 @@ static double _test_8i_rowwise_x_format(const int format, const ccv_nnc_tensor_p
 	const size_t data_size = ccv_nnc_8i_rowwise_x_data_size(format, CCV_32F, rows * cols, cols);
 	const size_t tensor_data_size = ccv_nnc_tensor_data_size_without_padding(params);
 	uint8_t* const compressed = (uint8_t*)ccmalloc(data_size);
-	const size_t output_size = ccv_nnc_quantize_8i_rowwise_x(values, CCV_32F, CCV_TENSOR_CPU_MEMORY, rows * cols, cols, format, imatrix, cols, compressed, data_size);
+	const size_t output_size = ccv_nnc_quantize_8i_rowwise_x(values, CCV_32F, CCV_TENSOR_CPU_MEMORY, rows * cols, cols, format, imatrix, cols, 0, 0, compressed, data_size);
 	*size_matches = (data_size == output_size && data_size == tensor_data_size);
 	float dequantized[rows * cols];
 	ccv_nnc_dequantize_8i_rowwise_x(compressed, CCV_32F, CCV_TENSOR_CPU_MEMORY, output_size, cols, format, dequantized, rows * cols);
@@ -301,8 +301,8 @@ TEST_CASE("H256 rowwise-x quantization and dequantization match independent dens
 			REQUIRE_EQ(size, ccv_nnc_8i_rowwise_x_data_size(format, datatypes[d], count, cols), "byte sizing accepts modifier");
 			const float* const importance = codec & 1 ? imatrix : 0;
 			const size_t importance_count = importance ? count : 0;
-			REQUIRE_EQ(ccv_nnc_quantize_8i_rowwise_x(source->data.u8, datatypes[d], CCV_TENSOR_CPU_MEMORY, count, cols, format, importance, importance_count, actual->data.u8, size), size, "flagged weights quantize");
-			REQUIRE_EQ(ccv_nnc_quantize_8i_rowwise_x(reference->data.u8, datatypes[d], CCV_TENSOR_CPU_MEMORY, count, cols, codec, importance, importance_count, expected->data.u8, size), size, "independently rotated weights quantize");
+			REQUIRE_EQ(ccv_nnc_quantize_8i_rowwise_x(source->data.u8, datatypes[d], CCV_TENSOR_CPU_MEMORY, count, cols, format, importance, importance_count, 0, 0, actual->data.u8, size), size, "flagged weights quantize");
+			REQUIRE_EQ(ccv_nnc_quantize_8i_rowwise_x(reference->data.u8, datatypes[d], CCV_TENSOR_CPU_MEMORY, count, cols, codec, importance, importance_count, 0, 0, expected->data.u8, size), size, "independently rotated weights quantize");
 			REQUIRE_EQ(memcmp(actual->data.u8, expected->data.u8, size), 0, "H256 must run before scale fitting and packing, codec=%d datatype=%d", codec, datatypes[d]);
 			// Decode the same payload to double with its stored row scales. This
 			// avoids an intermediate FP16/BF16 rounding in the independent inverse.
@@ -374,10 +374,10 @@ TEST_CASE("H256 rowwise-x rejects invalid K without modifying output")
 	for (i = 0; i < sizeof(invalid_k) / sizeof(invalid_k[0]); i++)
 	{
 		REQUIRE_EQ(ccv_nnc_8i_rowwise_x_data_size(format, CCV_32F, invalid_k[i], invalid_k[i]), 0, "invalid K has no encoded size");
-		REQUIRE_EQ(ccv_nnc_quantize_8i_rowwise_x(values, CCV_32F, CCV_TENSOR_CPU_MEMORY, invalid_k[i], invalid_k[i], format, 0, 0, output, sizeof(output)), 0, "invalid K must fail");
+		REQUIRE_EQ(ccv_nnc_quantize_8i_rowwise_x(values, CCV_32F, CCV_TENSOR_CPU_MEMORY, invalid_k[i], invalid_k[i], format, 0, 0, 0, 0, output, sizeof(output)), 0, "invalid K must fail");
 	}
-	REQUIRE_EQ(ccv_nnc_quantize_8i_rowwise_x(values, CCV_32F, CCV_TENSOR_CPU_MEMORY, 513, 256, format, 0, 0, output, sizeof(output)), 0, "partial rows must fail");
-	REQUIRE_EQ(ccv_nnc_quantize_8i_rowwise_x(values, CCV_32F, CCV_TENSOR_CPU_MEMORY, 512, 256, format, 0, 0, output, 1), 0, "short output must fail");
+	REQUIRE_EQ(ccv_nnc_quantize_8i_rowwise_x(values, CCV_32F, CCV_TENSOR_CPU_MEMORY, 513, 256, format, 0, 0, 0, 0, output, sizeof(output)), 0, "partial rows must fail");
+	REQUIRE_EQ(ccv_nnc_quantize_8i_rowwise_x(values, CCV_32F, CCV_TENSOR_CPU_MEMORY, 512, 256, format, 0, 0, 0, 0, output, 1), 0, "short output must fail");
 	REQUIRE_EQ(memcmp(output, untouched, sizeof(output)), 0, "failure must not write output");
 }
 
@@ -388,7 +388,7 @@ TEST_CASE("H256 rowwise-x metadata and payload survive tensor persistence")
 	ccv_nnc_tensor_zero(source);
 	ccv_nnc_tensor_t* const packed = ccv_nnc_tensor_new(0, ccv_nnc_tensor_8i_rowwise_x(source->info, format), 0);
 	const size_t size = ccv_nnc_tensor_data_size_without_padding(packed->info);
-	REQUIRE_EQ(ccv_nnc_quantize_8i_rowwise_x(source->data.f32, CCV_32F, CCV_TENSOR_CPU_MEMORY, 3 * 256, 256, format, 0, 0, packed->data.u8, size), size, "zero weights quantize");
+	REQUIRE_EQ(ccv_nnc_quantize_8i_rowwise_x(source->data.f32, CCV_32F, CCV_TENSOR_CPU_MEMORY, 3 * 256, 256, format, 0, 0, 0, 0, packed->data.u8, size), size, "zero weights quantize");
 	sqlite3* db = 0;
 	REQUIRE_EQ(sqlite3_open(":memory:", &db), SQLITE_OK, "in-memory database opens");
 	REQUIRE_EQ(ccv_nnc_tensor_write(packed, db, "h256", 0), CCV_IO_FINAL, "flagged tensor writes");
@@ -556,6 +556,212 @@ TEST_CASE("quantize float to row-wise-x int8 formats and dequantize on CPU")
 	}
 }
 
+static double _test_randn(dsfmt_t* const dsfmt)
+{
+	const double u1 = dsfmt_genrand_open_close(dsfmt);
+	const double u2 = dsfmt_genrand_open_close(dsfmt);
+	return sqrt(-2 * log(u1)) * cos(2 * M_PI * u2);
+}
+
+// AR(1) correlated inputs with per-column scales; returns E[x x^T] over samples.
+static void _test_correlated_hessian(dsfmt_t* const dsfmt, const int cols, const int samples, const double rho, float* const hessian)
+{
+	double* const sigma = (double*)ccmalloc(sizeof(double) * cols);
+	double* const x = (double*)ccmalloc(sizeof(double) * cols);
+	double* const sum = (double*)cccalloc(cols * cols, sizeof(double));
+	int i, a, b;
+	for (a = 0; a < cols; a++)
+		sigma[a] = exp(0.5 * _test_randn(dsfmt));
+	for (i = 0; i < samples; i++)
+	{
+		double v = _test_randn(dsfmt);
+		for (a = 0; a < cols; a++)
+		{
+			if (a > 0)
+				v = rho * v + sqrt(1 - rho * rho) * _test_randn(dsfmt);
+			x[a] = v * sigma[a];
+		}
+		for (a = 0; a < cols; a++)
+			for (b = 0; b < cols; b++)
+				sum[a * cols + b] += x[a] * x[b];
+	}
+	for (a = 0; a < cols * cols; a++)
+		hessian[a] = (float)(sum[a] / samples);
+	ccfree(sum);
+	ccfree(x);
+	ccfree(sigma);
+}
+
+static double _test_hessian_error(const float* const w, const float* const wq, const float* const hessian, const int rows, const int cols)
+{
+	double total = 0;
+	int i, a, b;
+	for (i = 0; i < rows; i++)
+		for (a = 0; a < cols; a++)
+		{
+			const double ea = (double)w[i * cols + a] - wq[i * cols + a];
+			double v = 0;
+			for (b = 0; b < cols; b++)
+				v += hessian[a * cols + b] * ((double)w[i * cols + b] - wq[i * cols + b]);
+			total += ea * v;
+		}
+	return total;
+}
+
+TEST_CASE("row-wise-x Hessian error feedback lowers the Hessian-weighted error for every codec")
+{
+	enum { rows = 8, cols = 256, count = rows * cols };
+	float* const hessian = (float*)ccmalloc(sizeof(float) * cols * cols);
+	float* const values = (float*)ccmalloc(sizeof(float) * count);
+	float* const decoded = (float*)ccmalloc(sizeof(float) * count);
+	float imatrix[cols];
+	dsfmt_t dsfmt;
+	dsfmt_init_gen_rand(&dsfmt, 3);
+	_test_correlated_hessian(&dsfmt, cols, 1024, 0.9, hessian);
+	int i;
+	for (i = 0; i < cols; i++)
+		imatrix[i] = hessian[i * cols + i];
+	for (i = 0; i < count; i++)
+	{
+		const double u = dsfmt_genrand_open_close(&dsfmt) * 2 - 1;
+		const double v = dsfmt_genrand_open_close(&dsfmt) * 2 - 1;
+		values[i] = (float)(u * v * v * 0.05);
+	}
+	int codec;
+	for (codec = CCV_NNC_QX_8I_ROWWISE_Q4_K; codec <= CCV_NNC_QX_8I_ROWWISE_IQ1_M; codec++)
+	{
+		const size_t size = ccv_nnc_8i_rowwise_x_data_size(codec, CCV_32F, count, cols);
+		uint8_t* const packed = (uint8_t*)ccmalloc(size);
+		REQUIRE_EQ(ccv_nnc_quantize_8i_rowwise_x(values, CCV_32F, CCV_TENSOR_CPU_MEMORY, count, cols, codec, imatrix, cols, 0, 0, packed, size), size, "imatrix quantization succeeds");
+		ccv_nnc_dequantize_8i_rowwise_x(packed, CCV_32F, CCV_TENSOR_CPU_MEMORY, size, cols, codec, decoded, count);
+		const double imatrix_error = _test_hessian_error(values, decoded, hessian, rows, cols);
+		REQUIRE_EQ(ccv_nnc_quantize_8i_rowwise_x(values, CCV_32F, CCV_TENSOR_CPU_MEMORY, count, cols, codec, 0, 0, hessian, cols * cols, packed, size), size, "Hessian quantization succeeds");
+		ccv_nnc_dequantize_8i_rowwise_x(packed, CCV_32F, CCV_TENSOR_CPU_MEMORY, size, cols, codec, decoded, count);
+		const double hessian_error = _test_hessian_error(values, decoded, hessian, rows, cols);
+		REQUIRE(hessian_error < imatrix_error * 0.9, "error feedback should lower e H e^T: codec=%d imatrix=%g hessian=%g", codec, imatrix_error, hessian_error);
+		ccfree(packed);
+	}
+	ccfree(decoded);
+	ccfree(values);
+	ccfree(hessian);
+}
+
+TEST_CASE("row-wise-x diagonal Hessian matches the imatrix path")
+{
+	enum { rows = 8, cols = 99, count = rows * cols };
+	float* const hessian = (float*)cccalloc(cols * cols, sizeof(float));
+	float values[count], decoded[count], imatrix[cols];
+	dsfmt_t dsfmt;
+	dsfmt_init_gen_rand(&dsfmt, 4);
+	int i;
+	double mean = 0;
+	for (i = 0; i < cols; i++)
+	{
+		hessian[i * cols + i] = (float)(0.05 + 4 * dsfmt_genrand_open_close(&dsfmt));
+		mean += hessian[i * cols + i];
+	}
+	mean /= cols;
+	// The Hessian path adds a 1e-6 ridge for positive definiteness.
+	for (i = 0; i < cols; i++)
+		imatrix[i] = (float)(hessian[i * cols + i] + mean * 1e-6);
+	for (i = 0; i < count; i++)
+		values[i] = (float)(_test_randn(&dsfmt) * 0.02);
+	int codec;
+	for (codec = CCV_NNC_QX_8I_ROWWISE_Q4_K; codec <= CCV_NNC_QX_8I_ROWWISE_IQ1_M; codec++)
+	{
+		const size_t size = ccv_nnc_8i_rowwise_x_data_size(codec, CCV_32F, count, cols);
+		uint8_t* const packed = (uint8_t*)ccmalloc(size);
+		REQUIRE_EQ(ccv_nnc_quantize_8i_rowwise_x(values, CCV_32F, CCV_TENSOR_CPU_MEMORY, count, cols, codec, imatrix, cols, 0, 0, packed, size), size, "imatrix quantization succeeds");
+		ccv_nnc_dequantize_8i_rowwise_x(packed, CCV_32F, CCV_TENSOR_CPU_MEMORY, size, cols, codec, decoded, count);
+		const double imatrix_error = _test_hessian_error(values, decoded, hessian, rows, cols);
+		REQUIRE_EQ(ccv_nnc_quantize_8i_rowwise_x(values, CCV_32F, CCV_TENSOR_CPU_MEMORY, count, cols, codec, 0, 0, hessian, cols * cols, packed, size), size, "Hessian quantization succeeds");
+		ccv_nnc_dequantize_8i_rowwise_x(packed, CCV_32F, CCV_TENSOR_CPU_MEMORY, size, cols, codec, decoded, count);
+		const double hessian_error = _test_hessian_error(values, decoded, hessian, rows, cols);
+		REQUIRE(fabs(hessian_error - imatrix_error) <= imatrix_error * 1e-6, "diagonal Hessian has no feedback: codec=%d imatrix=%g hessian=%g", codec, imatrix_error, hessian_error);
+		ccfree(packed);
+	}
+	ccfree(hessian);
+}
+
+TEST_CASE("row-wise-x Hessian slices quantize rows like independent calls")
+{
+	// 5 rows per slice so packing chunks straddle slices; 19 columns so the last group is padded.
+	enum { slice_rows = 5, rows = 2 * slice_rows, cols = 19, count = rows * cols };
+	float hessian[2 * cols * cols], values[count], whole[count], sliced[count];
+	dsfmt_t dsfmt;
+	dsfmt_init_gen_rand(&dsfmt, 5);
+	_test_correlated_hessian(&dsfmt, cols, 256, 0.8, hessian);
+	_test_correlated_hessian(&dsfmt, cols, 256, 0.5, hessian + cols * cols);
+	int i;
+	for (i = 0; i < count; i++)
+		values[i] = (float)(_test_randn(&dsfmt) * 0.02);
+	const int codecs[] = {CCV_NNC_QX_8I_ROWWISE_Q2_K, CCV_NNC_QX_8I_ROWWISE_IQ2_XXS, CCV_NNC_QX_8I_ROWWISE_IQ3_XXS};
+	int c;
+	for (c = 0; c < 3; c++)
+	{
+		const size_t size = ccv_nnc_8i_rowwise_x_data_size(codecs[c], CCV_32F, count, cols);
+		uint8_t* const packed = (uint8_t*)ccmalloc(size);
+		REQUIRE_EQ(ccv_nnc_quantize_8i_rowwise_x(values, CCV_32F, CCV_TENSOR_CPU_MEMORY, count, cols, codecs[c], 0, 0, hessian, 2 * cols * cols, packed, size), size, "sliced Hessian quantization succeeds");
+		ccv_nnc_dequantize_8i_rowwise_x(packed, CCV_32F, CCV_TENSOR_CPU_MEMORY, size, cols, codecs[c], whole, count);
+		ccfree(packed);
+		int s;
+		for (s = 0; s < 2; s++)
+		{
+			const size_t slice_size = ccv_nnc_8i_rowwise_x_data_size(codecs[c], CCV_32F, slice_rows * cols, cols);
+			uint8_t* const slice_packed = (uint8_t*)ccmalloc(slice_size);
+			REQUIRE_EQ(ccv_nnc_quantize_8i_rowwise_x(values + s * slice_rows * cols, CCV_32F, CCV_TENSOR_CPU_MEMORY, slice_rows * cols, cols, codecs[c], 0, 0, hessian + s * cols * cols, cols * cols, slice_packed, slice_size), slice_size, "independent slice quantization succeeds");
+			ccv_nnc_dequantize_8i_rowwise_x(slice_packed, CCV_32F, CCV_TENSOR_CPU_MEMORY, slice_size, cols, codecs[c], sliced + s * slice_rows * cols, slice_rows * cols);
+			ccfree(slice_packed);
+		}
+		REQUIRE_ARRAY_EQ(float, whole, sliced, count, "Hessian slices must match independent quantization: codec=%d", codecs[c]);
+	}
+}
+
+TEST_CASE("row-wise-x Hessian rejects unsupported input and survives a singular Hessian")
+{
+	enum { rows = 4, cols = 256, count = rows * cols };
+	float* const hessian = (float*)cccalloc(cols * cols, sizeof(float));
+	float values[count], decoded[count], imatrix[cols];
+	dsfmt_t dsfmt;
+	dsfmt_init_gen_rand(&dsfmt, 6);
+	int i, j;
+	for (i = 0; i < count; i++)
+		values[i] = (float)(_test_randn(&dsfmt) * 0.02);
+	for (i = 0; i < cols; i++)
+	{
+		hessian[i * cols + i] = 1;
+		imatrix[i] = 1;
+	}
+	const int codec = CCV_NNC_QX_8I_ROWWISE_IQ2_XXS;
+	const size_t size = ccv_nnc_8i_rowwise_x_data_size(codec, CCV_32F, count, cols);
+	uint8_t* const packed = (uint8_t*)ccmalloc(size + 16);
+	memset(packed, 0xa5, size + 16);
+	REQUIRE_EQ(ccv_nnc_quantize_8i_rowwise_x(values, CCV_32F, CCV_TENSOR_CPU_MEMORY, count, cols, codec | CCV_NNC_QX_8I_ROWWISE_HADAMARD_256, 0, 0, hessian, cols * cols, packed, size), 0, "H256 is not supported with a Hessian");
+	REQUIRE_EQ(ccv_nnc_quantize_8i_rowwise_x(values, CCV_32F, CCV_TENSOR_CPU_MEMORY, count, cols, codec, 0, 0, hessian, cols * cols - 1, packed, size), 0, "partial Hessian must fail");
+	REQUIRE_EQ(ccv_nnc_quantize_8i_rowwise_x(values, CCV_32F, CCV_TENSOR_CPU_MEMORY, 3 * cols, cols, codec, 0, 0, hessian, 2 * cols * cols, packed, size), 0, "rows must divide evenly into Hessian slices");
+	REQUIRE_EQ(ccv_nnc_quantize_8i_rowwise_x(values, CCV_32F, CCV_TENSOR_CPU_MEMORY, count, cols, codec, imatrix, cols, hessian, cols * cols, packed, size), 0, "imatrix and Hessian are exclusive");
+	REQUIRE_EQ(ccv_nnc_quantize_8i_rowwise_x(values, CCV_32F, CCV_TENSOR_CPU_MEMORY, count, cols, codec, 0, 0, hessian, cols * cols, packed, size - 1), 0, "short output must fail");
+	for (i = 0; i < size + 16; i++)
+		REQUIRE_EQ(packed[i], 0xa5, "rejected calls must not write output");
+	// Rank one, then all zero: the ridge keeps both factorizable.
+	for (i = 0; i < cols; i++)
+		for (j = 0; j < cols; j++)
+			hessian[i * cols + j] = (float)(sin(i * 0.37) * sin(j * 0.37));
+	int pass;
+	for (pass = 0; pass < 2; pass++)
+	{
+		if (pass == 1)
+			memset(hessian, 0, sizeof(float) * cols * cols);
+		REQUIRE_EQ(ccv_nnc_quantize_8i_rowwise_x(values, CCV_32F, CCV_TENSOR_CPU_MEMORY, count, cols, codec, 0, 0, hessian, cols * cols, packed, size), size, "singular Hessian quantizes");
+		REQUIRE_EQ(packed[size], 0xa5, "quantizer preserves output guard bytes");
+		ccv_nnc_dequantize_8i_rowwise_x(packed, CCV_32F, CCV_TENSOR_CPU_MEMORY, size, cols, codec, decoded, count);
+		for (i = 0; i < count; i++)
+			REQUIRE(isfinite(decoded[i]), "decoded values are finite");
+	}
+	ccfree(packed);
+	ccfree(hessian);
+}
+
 TEST_CASE("quantize bfloat16 to row-wise int8 and dequantize on CPU losslessly")
 {
 	float values_f32[32];
@@ -678,7 +884,7 @@ TEST_CASE("quantize and dequantize packed row-wise int8-x on CUDA for all format
 				ccv_nnc_tensor_param_t gpu_q_params = q_params;
 				gpu_q_params.type = CCV_TENSOR_GPU_MEMORY | 000;
 				ccv_nnc_tensor_t* const q = ccv_nnc_tensor_new(0, q_params, 0);
-				const size_t qsize = ccv_nnc_quantize_8i_rowwise_x(source->data.u8, datatypes[d], CCV_TENSOR_CPU_MEMORY, count, cols, formats[f], 0, 0, q->data.u8, ccv_nnc_tensor_data_size_without_padding(q->info));
+				const size_t qsize = ccv_nnc_quantize_8i_rowwise_x(source->data.u8, datatypes[d], CCV_TENSOR_CPU_MEMORY, count, cols, formats[f], 0, 0, 0, 0, q->data.u8, ccv_nnc_tensor_data_size_without_padding(q->info));
 				REQUIRE_EQ(qsize, ccv_nnc_tensor_data_size_without_padding(q->info), "packed row-wise int8-x size should match");
 				ccv_nnc_tensor_t* const expected = ccv_nnc_tensor_new(0, dense_params, 0);
 				ccv_nnc_dequantize_8i_rowwise_x(q->data.u8, datatypes[d], CCV_TENSOR_CPU_MEMORY, qsize, cols, formats[f], expected->data.u8, count);

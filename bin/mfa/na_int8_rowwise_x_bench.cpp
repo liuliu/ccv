@@ -881,6 +881,8 @@ int main(int argc, char** argv)
           format.value,
           nullptr,
           0,
+          nullptr,
+          0,
           b_x.data(),
           b_x.size());
       if (x_written > b_x.size()) {

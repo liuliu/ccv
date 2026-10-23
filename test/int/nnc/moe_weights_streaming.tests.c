@@ -253,7 +253,7 @@ TEST_CASE("MPS MoE weights streaming covers resident decode, eviction, and prefi
 		quantized_weights[i] = ccv_nnc_tensor_new(0, quantized_params, 0);
 		const size_t quantized_size = ccv_nnc_quantize_8i_rowwise_x(
 			host_weights[i]->data.u8, CCV_16F, CCV_TENSOR_CPU_MEMORY,
-			weight_count, host_weights[i]->info.dim[2], format, 0, 0, quantized_weights[i]->data.u8,
+			weight_count, host_weights[i]->info.dim[2], format, 0, 0, 0, 0, quantized_weights[i]->data.u8,
 			ccv_nnc_tensor_data_size_without_padding(quantized_params));
 		REQUIRE_EQ(quantized_size, ccv_nnc_tensor_data_size_without_padding(quantized_params),
 			"each source projection should quantize to its declared size");
