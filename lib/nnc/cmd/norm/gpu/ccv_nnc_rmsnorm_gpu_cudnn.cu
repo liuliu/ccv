@@ -22,13 +22,14 @@ static int _ccv_nnc_rmsnorm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t h
 {
 	assert(input_size == 2 || input_size == 1);
 	assert(output_size == 2);
-	if (cmd.info.rmsnorm.scale != 1)
-		return CCV_NNC_EXEC_INVALID;
+	if (outputs[0]->info.dim[0] == 0)
+		return CCV_NNC_EXEC_SUCCESS;
+	const float output_scale = cmd.info.rmsnorm.scale;
 	const int elementwise_affine = cmd.info.rmsnorm.elementwise_affine;
 #ifdef HAVE_CUDA_SM80
 	ccv_nnc_flash_norm_info_t flash_norm = {};
 	if (_ccv_nnc_flash_norm_check(cmd.info.rmsnorm.axis, cmd.info.rmsnorm.count, inputs[0], outputs[0], outputs[1], 0, elementwise_affine ? inputs[1] : 0, 0, elementwise_affine, &flash_norm) &&
-		_ccv_nnc_flash_norm_forw(stream_context, inputs[0], elementwise_affine ? inputs[1] : 0, 0, outputs[0], 0, outputs[1], flash_norm, cmd.info.rmsnorm.epsilon, 1))
+		_ccv_nnc_flash_norm_forw(stream_context, inputs[0], elementwise_affine ? inputs[1] : 0, 0, outputs[0], 0, outputs[1], flash_norm, cmd.info.rmsnorm.epsilon, 1, output_scale))
 		return CCV_NNC_EXEC_SUCCESS;
 #endif
 	cudnnHandle_t cudnn = ccv_nnc_stream_context_get_cudnn(stream_context);
@@ -109,7 +110,7 @@ static int _ccv_nnc_rmsnorm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t h
 		_ccv_nnc_inv_std_kernel<<<CUDA_GET_BLOCKS(rcount), CUDA_NUM_THREADS, 0, stream>>>(rcount, epsilon, saved_inv_std32.data.f32, saved_inv_std32.data.f32);
 		cudnnOpTensorDescriptor_t op = ccv_nnc_stream_context_get_op_tensor_descriptor(stream_context);
 		cudnnSetOpTensorDescriptor(op, CUDNN_OP_TENSOR_MUL, CUDNN_DATA_FLOAT, CUDNN_PROPAGATE_NAN);
-		CUDNN_ENFORCE(cudnnOpTensor(cudnn, op, &one, a32.descriptor, a32.data.u8, &one, saved_inv_std32.descriptor, saved_inv_std32.data.u8, &zero, b32.descriptor, b32.data.u8));
+		CUDNN_ENFORCE(cudnnOpTensor(cudnn, op, &output_scale, a32.descriptor, a32.data.u8, &one, saved_inv_std32.descriptor, saved_inv_std32.data.u8, &zero, b32.descriptor, b32.data.u8));
 		if (elementwise_affine)
 			{ CUDNN_ENFORCE(cudnnOpTensor(cudnn, op, &one, b32.descriptor, b32.data.u8, &one, scale32.descriptor, scale32.data.u8, &zero, b32.descriptor, b32.data.u8)); }
 		CUDNN_ENFORCE(cudnnTransformTensor(cudnn, &one, b32.descriptor, b32.data.u8, &zero, b.descriptor, b.data.u8));
@@ -144,7 +145,7 @@ static int _ccv_nnc_rmsnorm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t h
 		_ccv_nnc_inv_std_kernel<<<CUDA_GET_BLOCKS(rcount), CUDA_NUM_THREADS, 0, stream>>>(rcount, epsilon, (__nv_bfloat16*)saved_inv_std.data.f16, (__nv_bfloat16*)saved_inv_std.data.f16);
 	cudnnOpTensorDescriptor_t op = ccv_nnc_stream_context_get_op_tensor_descriptor(stream_context);
 	cudnnSetOpTensorDescriptor(op, CUDNN_OP_TENSOR_MUL, CUDNN_DATA_FLOAT, CUDNN_PROPAGATE_NAN);
-	CUDNN_ENFORCE(cudnnOpTensor(cudnn, op, &one, a.descriptor, a.data.u8, &one, saved_inv_std.descriptor, saved_inv_std.data.u8, &zero, b.descriptor, b.data.u8));
+	CUDNN_ENFORCE(cudnnOpTensor(cudnn, op, &output_scale, a.descriptor, a.data.u8, &one, saved_inv_std.descriptor, saved_inv_std.data.u8, &zero, b.descriptor, b.data.u8));
 	if (elementwise_affine)
 		{ CUDNN_ENFORCE(cudnnOpTensor(cudnn, op, &one, b.descriptor, b.data.u8, &one, scale.descriptor, scale.data.u8, &zero, b.descriptor, b.data.u8)); }
 	ccv_nnc_stream_context_return_reduce_tensor_descriptor(stream_context, reduce);

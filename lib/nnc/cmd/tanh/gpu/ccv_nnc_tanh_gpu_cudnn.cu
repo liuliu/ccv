@@ -107,6 +107,8 @@ static int _ccv_nnc_tanh_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 {
 	assert(input_size == 1);
 	assert(output_size == 1);
+	if (outputs[0]->info.dim[0] == 0)
+		return CCV_NNC_EXEC_SUCCESS;
 	if (cmd.info.tanh.soft_cap > 0 && cmd.info.tanh.soft_cap != 1)
 		return _ccv_nnc_tanh_soft_cap_forw(cmd.info.tanh.soft_cap, inputs[0], outputs[0], stream_context);
 	cudnnHandle_t cudnn = ccv_nnc_stream_context_get_cudnn(stream_context);

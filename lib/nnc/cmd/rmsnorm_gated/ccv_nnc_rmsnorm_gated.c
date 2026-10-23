@@ -30,7 +30,7 @@ static int _ccv_nnc_rmsnorm_gated_back_bitmask(const ccv_nnc_cmd_param_t cmd, co
 }
 
 REGISTER_COMMAND(CCV_NNC_RMSNORM_GATED_FORWARD)(ccv_nnc_cmd_registry_t* const registry)
-	FIND_BACKEND(ccv_nnc_rmsnorm_gated_cpu_ref.c, mps/ccv_nnc_rmsnorm_gated_mps.m)
+	FIND_BACKEND(ccv_nnc_rmsnorm_gated_cpu_ref.c, gpu/ccv_nnc_rmsnorm_gated_gpu_ref.cu, mps/ccv_nnc_rmsnorm_gated_mps.m)
 {
 	registry->bitmask = _ccv_nnc_rmsnorm_gated_forw_bitmask;
 	registry->tensor_auto = ccv_nnc_hint_tensor_auto_forward_from_inputs;

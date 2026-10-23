@@ -56,9 +56,9 @@ static void _gated_delta_reference(const float* const q, const float* const k, c
 		}
 }
 
-TEST_CASE("compare gated delta with mps")
+TEST_CASE("compare gated delta with gpu")
 {
-	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GATED_DELTA_FORWARD, CCV_NNC_BACKEND_MPS));
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GATED_DELTA_FORWARD, CCV_NNC_BACKEND_MPS) || ccv_nnc_cmd_ok(CCV_NNC_GATED_DELTA_FORWARD, CCV_NNC_BACKEND_GPU_REF));
 	const int B = 2;
 	const int T = 5;
 	const int Hk = 2;
@@ -118,12 +118,12 @@ TEST_CASE("compare gated delta with mps")
 	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(hstate_in), TENSOR_LIST(state_inplace), 0);
 	ccv_nnc_cmd_exec(CMD_GATED_DELTA_FORWARD(1, 0), ccv_nnc_no_hint, 0, TENSOR_LIST(q, k, v, log_decay, beta, state_inplace), TENSOR_LIST(y_inplace, state_inplace), 0);
 	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(y_inplace, state_inplace), TENSOR_LIST(hy_inplace, hstate_inplace), 0);
-	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, expected_y->data.f32, hy->data.f32, B * T * Hv * Dv, 1e-4, "MPS gated delta output should match CPU reference implementation");
-	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, expected_state->data.f32, hstate_out->data.f32, B * Hv * Dv * Dk, 1e-4, "MPS gated delta state should match CPU reference implementation");
-	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, expected_y->data.f32, hy_decay->data.f32, B * T * Hv * Dv, 1e-4, "MPS gated delta output with precomputed decay should match CPU reference implementation");
-	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, expected_state->data.f32, hstate_decay->data.f32, B * Hv * Dv * Dk, 1e-4, "MPS gated delta state with precomputed decay should match CPU reference implementation");
-	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, expected_y->data.f32, hy_inplace->data.f32, B * T * Hv * Dv, 1e-4, "in-place MPS gated delta output should match CPU reference implementation");
-	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, expected_state->data.f32, hstate_inplace->data.f32, B * Hv * Dv * Dk, 1e-4, "in-place MPS gated delta state should match CPU reference implementation");
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, expected_y->data.f32, hy->data.f32, B * T * Hv * Dv, 1e-4, "GPU gated delta output should match CPU reference implementation");
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, expected_state->data.f32, hstate_out->data.f32, B * Hv * Dv * Dk, 1e-4, "GPU gated delta state should match CPU reference implementation");
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, expected_y->data.f32, hy_decay->data.f32, B * T * Hv * Dv, 1e-4, "GPU gated delta output with precomputed decay should match CPU reference implementation");
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, expected_state->data.f32, hstate_decay->data.f32, B * Hv * Dv * Dk, 1e-4, "GPU gated delta state with precomputed decay should match CPU reference implementation");
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, expected_y->data.f32, hy_inplace->data.f32, B * T * Hv * Dv, 1e-4, "in-place GPU gated delta output should match CPU reference implementation");
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, expected_state->data.f32, hstate_inplace->data.f32, B * Hv * Dv * Dk, 1e-4, "in-place GPU gated delta state should match CPU reference implementation");
 	ccv_nnc_tensor_free(hq);
 	ccv_nnc_tensor_free(hk);
 	ccv_nnc_tensor_free(hv);
@@ -154,9 +154,9 @@ TEST_CASE("compare gated delta with mps")
 	ccv_nnc_tensor_free(hstate_inplace);
 }
 
-TEST_CASE("compare gated delta state checkpoints with mps")
+TEST_CASE("compare gated delta state checkpoints with gpu")
 {
-	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GATED_DELTA_FORWARD, CCV_NNC_BACKEND_MPS));
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GATED_DELTA_FORWARD, CCV_NNC_BACKEND_MPS) || ccv_nnc_cmd_ok(CCV_NNC_GATED_DELTA_FORWARD, CCV_NNC_BACKEND_GPU_REF));
 	const int B = 1;
 	const int T = 3;
 	const int Hk = 2;
@@ -204,8 +204,8 @@ TEST_CASE("compare gated delta state checkpoints with mps")
 	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(hq, hk, hv, hlog_decay, hbeta, hstate_in), TENSOR_LIST(q, k, v, log_decay, beta, state_in), 0);
 	ccv_nnc_cmd_exec(CMD_GATED_DELTA_FORWARD(1, state_checkpoint_count), ccv_nnc_no_hint, 0, TENSOR_LIST(q, k, v, log_decay, beta, state_in), TENSOR_LIST(y, state_history), 0);
 	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(y, state_history), TENSOR_LIST(hy, hstate_history), 0);
-	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, expected_y->data.f32, hy->data.f32, B * T * Hv * Dv, 1e-4, "MPS checkpointed gated delta output should match CPU reference implementation");
-	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, expected_state_history->data.f32, hstate_history->data.f32, state_history_len, 1e-4, "MPS checkpointed gated delta state history should match CPU reference implementation");
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, expected_y->data.f32, hy->data.f32, B * T * Hv * Dv, 1e-4, "GPU checkpointed gated delta output should match CPU reference implementation");
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, expected_state_history->data.f32, hstate_history->data.f32, state_history_len, 1e-4, "GPU checkpointed gated delta state history should match CPU reference implementation");
 	ccv_nnc_tensor_free(hq);
 	ccv_nnc_tensor_free(hk);
 	ccv_nnc_tensor_free(hv);
@@ -226,9 +226,9 @@ TEST_CASE("compare gated delta state checkpoints with mps")
 	ccv_nnc_tensor_free(hstate_history);
 }
 
-TEST_CASE("compare bfloat gated delta with mps")
+TEST_CASE("compare bfloat gated delta with gpu")
 {
-	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GATED_DELTA_FORWARD, CCV_NNC_BACKEND_MPS));
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GATED_DELTA_FORWARD, CCV_NNC_BACKEND_MPS) || ccv_nnc_cmd_ok(CCV_NNC_GATED_DELTA_FORWARD, CCV_NNC_BACKEND_GPU_REF));
 	const int B = 1;
 	const int T = 4;
 	const int Hk = 2;
@@ -290,8 +290,8 @@ TEST_CASE("compare bfloat gated delta with mps")
 	ccv_nnc_cmd_exec(CMD_GATED_DELTA_FORWARD(1, 0), ccv_nnc_no_hint, 0, TENSOR_LIST(q, k, v, log_decay, beta, state_in), TENSOR_LIST(y, state_out), 0);
 	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(y, state_out), TENSOR_LIST(hy, hstate_out), 0);
 	ccv_bfloat_to_float((uint16_t*)hy->data.f16, hy32->data.f32, v_len);
-	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, expected_y->data.f32, hy32->data.f32, v_len, 2e-2, "MPS bfloat gated delta output should match scalar reference after output rounding");
-	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, expected_state->data.f32, hstate_out->data.f32, state_len, 5e-4, "MPS bfloat gated delta state should match scalar reference implementation");
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, expected_y->data.f32, hy32->data.f32, v_len, 2e-2, "GPU bfloat gated delta output should match scalar reference after output rounding");
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, expected_state->data.f32, hstate_out->data.f32, state_len, 5e-4, "GPU bfloat gated delta state should match scalar reference implementation");
 	ccv_nnc_tensor_free(hq32);
 	ccv_nnc_tensor_free(hk32);
 	ccv_nnc_tensor_free(hv32);
@@ -319,9 +319,9 @@ TEST_CASE("compare bfloat gated delta with mps")
 	ccv_nnc_tensor_free(hstate_out);
 }
 
-TEST_CASE("compare half gated delta with mps")
+TEST_CASE("compare half gated delta with gpu")
 {
-	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GATED_DELTA_FORWARD, CCV_NNC_BACKEND_MPS));
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GATED_DELTA_FORWARD, CCV_NNC_BACKEND_MPS) || ccv_nnc_cmd_ok(CCV_NNC_GATED_DELTA_FORWARD, CCV_NNC_BACKEND_GPU_REF));
 	const int B = 1;
 	const int T = 4;
 	const int Hk = 2;
@@ -383,8 +383,8 @@ TEST_CASE("compare half gated delta with mps")
 	ccv_nnc_cmd_exec(CMD_GATED_DELTA_FORWARD(1, 0), ccv_nnc_no_hint, 0, TENSOR_LIST(q, k, v, log_decay, beta, state_in), TENSOR_LIST(y, state_out), 0);
 	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(y, state_out), TENSOR_LIST(hy, hstate_out), 0);
 	ccv_half_precision_to_float((uint16_t*)hy->data.f16, hy32->data.f32, v_len);
-	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, expected_y->data.f32, hy32->data.f32, v_len, 5e-3, "MPS half gated delta output should match scalar reference after output rounding");
-	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, expected_state->data.f32, hstate_out->data.f32, state_len, 5e-4, "MPS half gated delta state should match scalar reference implementation");
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, expected_y->data.f32, hy32->data.f32, v_len, 5e-3, "GPU half gated delta output should match scalar reference after output rounding");
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, expected_state->data.f32, hstate_out->data.f32, state_len, 5e-4, "GPU half gated delta state should match scalar reference implementation");
 	ccv_nnc_tensor_free(hq32);
 	ccv_nnc_tensor_free(hk32);
 	ccv_nnc_tensor_free(hv32);
@@ -412,9 +412,9 @@ TEST_CASE("compare half gated delta with mps")
 	ccv_nnc_tensor_free(hstate_out);
 }
 
-TEST_CASE("compare aligned gated delta with mps")
+TEST_CASE("compare aligned gated delta with gpu")
 {
-	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GATED_DELTA_FORWARD, CCV_NNC_BACKEND_MPS));
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GATED_DELTA_FORWARD, CCV_NNC_BACKEND_MPS) || ccv_nnc_cmd_ok(CCV_NNC_GATED_DELTA_FORWARD, CCV_NNC_BACKEND_GPU_REF));
 	const int B = 1;
 	const int T = 4;
 	const int Hk = 2;
@@ -460,8 +460,8 @@ TEST_CASE("compare aligned gated delta with mps")
 	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(hq, hk, hv, hdecay, hbeta, hstate_in), TENSOR_LIST(q, k, v, decay, beta, state_in), 0);
 	ccv_nnc_cmd_exec(CMD_GATED_DELTA_FORWARD(0, 0), ccv_nnc_no_hint, 0, TENSOR_LIST(q, k, v, decay, beta, state_in), TENSOR_LIST(y, state_out), 0);
 	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(y, state_out), TENSOR_LIST(hy, hstate_out), 0);
-	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, expected_y->data.f32, hy->data.f32, B * T * Hv * Dv, 1e-4, "aligned MPS gated delta output with precomputed decay should match CPU reference implementation");
-	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, expected_state->data.f32, hstate_out->data.f32, B * Hv * Dv * Dk, 1e-4, "aligned MPS gated delta state with precomputed decay should match CPU reference implementation");
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, expected_y->data.f32, hy->data.f32, B * T * Hv * Dv, 1e-4, "aligned GPU gated delta output with precomputed decay should match CPU reference implementation");
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, expected_state->data.f32, hstate_out->data.f32, B * Hv * Dv * Dk, 1e-4, "aligned GPU gated delta state with precomputed decay should match CPU reference implementation");
 	ccv_nnc_tensor_free(hq);
 	ccv_nnc_tensor_free(hk);
 	ccv_nnc_tensor_free(hv);
@@ -483,10 +483,157 @@ TEST_CASE("compare aligned gated delta with mps")
 	ccv_nnc_tensor_free(hstate_out);
 }
 
-TEST_CASE("compare gated delta per key channel decay with mps")
+TEST_CASE("compare large aligned gated delta with gpu")
 {
-	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GATED_DELTA_FORWARD, CCV_NNC_BACKEND_MPS));
-	// Same shape as "compare gated delta with mps", so the per head and per channel pipelines differ only by the decay layout.
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GATED_DELTA_FORWARD, CCV_NNC_BACKEND_MPS) || ccv_nnc_cmd_ok(CCV_NNC_GATED_DELTA_FORWARD, CCV_NNC_BACKEND_GPU_REF));
+	const int B = 1;
+	const int T = 31;
+	const int Hk = 16;
+	const int Dk = 128;
+	const int Hv = 32;
+	const int Dv = 128;
+	ccv_nnc_tensor_t* const hq = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, B, T, Hk, Dk), 0);
+	ccv_nnc_tensor_t* const hk = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, B, T, Hk, Dk), 0);
+	ccv_nnc_tensor_t* const hv = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, B, T, Hv, Dv), 0);
+	ccv_nnc_tensor_t* const hlog_decay = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, B, T, Hv), 0);
+	ccv_nnc_tensor_t* const hdecay = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, B, T, Hv), 0);
+	ccv_nnc_tensor_t* const hbeta = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, B, T, Hv), 0);
+	ccv_nnc_tensor_t* const hstate_in = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, B, Hv, Dv, Dk), 0);
+	ccv_nnc_tensor_t* const expected_y = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, B, T, Hv, Dv), 0);
+	ccv_nnc_tensor_t* const expected_state = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, B, Hv, Dv, Dk), 0);
+	int i;
+	for (i = 0; i < B * T * Hk * Dk; i++)
+	{
+		hq->data.f32[i] = _gated_delta_int_value(i, 11, 43, 0.02f);
+		hk->data.f32[i] = _gated_delta_int_value(i, 17, 47, 0.018f);
+	}
+	for (i = 0; i < B * T * Hv * Dv; i++)
+		hv->data.f32[i] = _gated_delta_int_value(i, 19, 53, 0.015f);
+	for (i = 0; i < B * T * Hv; i++)
+	{
+		hlog_decay->data.f32[i] = -0.012f * (float)((i % 5) + 1);
+		hdecay->data.f32[i] = expf(hlog_decay->data.f32[i]);
+		hbeta->data.f32[i] = 0.16f + 0.03f * (float)(i % 7);
+	}
+	for (i = 0; i < B * Hv * Dv * Dk; i++)
+		hstate_in->data.f32[i] = _gated_delta_int_value(i, 23, 59, 0.006f);
+	ccv_nnc_cmd_exec(CMD_GATED_DELTA_FORWARD(1, 0), ccv_nnc_no_hint, 0, TENSOR_LIST(hq, hk, hv, hlog_decay, hbeta, hstate_in), TENSOR_LIST(expected_y, expected_state), 0);
+	ccv_nnc_tensor_t* const q = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, B, T, Hk, Dk), 0);
+	ccv_nnc_tensor_t* const k = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, B, T, Hk, Dk), 0);
+	ccv_nnc_tensor_t* const v = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, B, T, Hv, Dv), 0);
+	ccv_nnc_tensor_t* const decay = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, B, T, Hv), 0);
+	ccv_nnc_tensor_t* const beta = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, B, T, Hv), 0);
+	ccv_nnc_tensor_t* const state_in = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, B, Hv, Dv, Dk), 0);
+	ccv_nnc_tensor_t* const y = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, B, T, Hv, Dv), 0);
+	ccv_nnc_tensor_t* const state_out = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, B, Hv, Dv, Dk), 0);
+	ccv_nnc_tensor_t* const hy = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, B, T, Hv, Dv), 0);
+	ccv_nnc_tensor_t* const hstate_out = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, B, Hv, Dv, Dk), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(hq, hk, hv, hdecay, hbeta, hstate_in), TENSOR_LIST(q, k, v, decay, beta, state_in), 0);
+	ccv_nnc_cmd_exec(CMD_GATED_DELTA_FORWARD(0, 0), ccv_nnc_no_hint, 0, TENSOR_LIST(q, k, v, decay, beta, state_in), TENSOR_LIST(y, state_out), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(y, state_out), TENSOR_LIST(hy, hstate_out), 0);
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, expected_y->data.f32, hy->data.f32, B * T * Hv * Dv, 1e-4, "large aligned GPU gated delta output with precomputed decay should match CPU reference implementation");
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, expected_state->data.f32, hstate_out->data.f32, B * Hv * Dv * Dk, 1e-4, "large aligned GPU gated delta state with precomputed decay should match CPU reference implementation");
+	ccv_nnc_tensor_free(hq);
+	ccv_nnc_tensor_free(hk);
+	ccv_nnc_tensor_free(hv);
+	ccv_nnc_tensor_free(hlog_decay);
+	ccv_nnc_tensor_free(hdecay);
+	ccv_nnc_tensor_free(hbeta);
+	ccv_nnc_tensor_free(hstate_in);
+	ccv_nnc_tensor_free(expected_y);
+	ccv_nnc_tensor_free(expected_state);
+	ccv_nnc_tensor_free(q);
+	ccv_nnc_tensor_free(k);
+	ccv_nnc_tensor_free(v);
+	ccv_nnc_tensor_free(decay);
+	ccv_nnc_tensor_free(beta);
+	ccv_nnc_tensor_free(state_in);
+	ccv_nnc_tensor_free(y);
+	ccv_nnc_tensor_free(state_out);
+	ccv_nnc_tensor_free(hy);
+	ccv_nnc_tensor_free(hstate_out);
+}
+
+TEST_CASE("compare gated delta key widths and state checkpoints with gpu")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GATED_DELTA_FORWARD, CCV_NNC_BACKEND_MPS) || ccv_nnc_cmd_ok(CCV_NNC_GATED_DELTA_FORWARD, CCV_NNC_BACKEND_GPU_REF));
+	// Key widths below one warp, between 128 and 256, and above 256, with per head and per channel decay.
+	const int B = 2;
+	const int T = 6;
+	const int Hk = 2;
+	const int Hv = 4;
+	const int Dv = 6;
+	const int state_checkpoint_count = 2;
+	const int key_widths[] = {24, 200, 300};
+	int i, j, channel_decay;
+	for (j = 0; j < sizeof(key_widths) / sizeof(key_widths[0]); j++)
+		for (channel_decay = 0; channel_decay < 2; channel_decay++)
+		{
+			const int Dk = key_widths[j];
+			const int decay_len = B * T * Hv * (channel_decay ? Dk : 1);
+			const int state_history_len = B * Hv * (state_checkpoint_count + 1) * Dv * Dk;
+			ccv_nnc_tensor_t* const hq = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, B, T, Hk, Dk), 0);
+			ccv_nnc_tensor_t* const hk = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, B, T, Hk, Dk), 0);
+			ccv_nnc_tensor_t* const hv = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, B, T, Hv, Dv), 0);
+			ccv_nnc_tensor_t* const hlog_decay = ccv_nnc_tensor_new(0, channel_decay ? CPU_TENSOR_NHWC(32F, B, T, Hv, Dk) : CPU_TENSOR_NHWC(32F, B, T, Hv), 0);
+			ccv_nnc_tensor_t* const hbeta = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, B, T, Hv), 0);
+			ccv_nnc_tensor_t* const hstate_in = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, B, Hv, Dv, Dk), 0);
+			ccv_nnc_tensor_t* const expected_y = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, B, T, Hv, Dv), 0);
+			ccv_nnc_tensor_t* const expected_state_history = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, B, Hv * (state_checkpoint_count + 1), Dv, Dk), 0);
+			for (i = 0; i < B * T * Hk * Dk; i++)
+			{
+				hq->data.f32[i] = _gated_delta_int_value(i, 13, 31, 0.012f);
+				hk->data.f32[i] = _gated_delta_int_value(i, 17, 29, 0.01f);
+			}
+			for (i = 0; i < B * T * Hv * Dv; i++)
+				hv->data.f32[i] = _gated_delta_int_value(i, 19, 37, 0.015f);
+			for (i = 0; i < decay_len; i++)
+				hlog_decay->data.f32[i] = -0.01f * (float)((i % 9) + 1);
+			for (i = 0; i < B * T * Hv; i++)
+				hbeta->data.f32[i] = 0.18f + 0.04f * (float)(i % 6);
+			for (i = 0; i < B * Hv * Dv * Dk; i++)
+				hstate_in->data.f32[i] = _gated_delta_int_value(i, 23, 41, 0.008f);
+			ccv_nnc_cmd_exec(CMD_GATED_DELTA_FORWARD(1, state_checkpoint_count), ccv_nnc_no_hint, 0, TENSOR_LIST(hq, hk, hv, hlog_decay, hbeta, hstate_in), TENSOR_LIST(expected_y, expected_state_history), 0);
+			ccv_nnc_tensor_t* const q = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, B, T, Hk, Dk), 0);
+			ccv_nnc_tensor_t* const k = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, B, T, Hk, Dk), 0);
+			ccv_nnc_tensor_t* const v = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, B, T, Hv, Dv), 0);
+			ccv_nnc_tensor_t* const log_decay = ccv_nnc_tensor_new(0, channel_decay ? GPU_TENSOR_NHWC(000, 32F, B, T, Hv, Dk) : GPU_TENSOR_NHWC(000, 32F, B, T, Hv), 0);
+			ccv_nnc_tensor_t* const beta = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, B, T, Hv), 0);
+			ccv_nnc_tensor_t* const state_in = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, B, Hv, Dv, Dk), 0);
+			ccv_nnc_tensor_t* const y = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, B, T, Hv, Dv), 0);
+			ccv_nnc_tensor_t* const state_history = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, B, Hv * (state_checkpoint_count + 1), Dv, Dk), 0);
+			ccv_nnc_tensor_t* const hy = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, B, T, Hv, Dv), 0);
+			ccv_nnc_tensor_t* const hstate_history = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, B, Hv * (state_checkpoint_count + 1), Dv, Dk), 0);
+			ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(hq, hk, hv, hlog_decay, hbeta, hstate_in), TENSOR_LIST(q, k, v, log_decay, beta, state_in), 0);
+			REQUIRE_EQ(ccv_nnc_cmd_exec(CMD_GATED_DELTA_FORWARD(1, state_checkpoint_count), ccv_nnc_no_hint, 0, TENSOR_LIST(q, k, v, log_decay, beta, state_in), TENSOR_LIST(y, state_history), 0), CCV_NNC_EXEC_SUCCESS, "GPU gated delta should execute for Dk=%d", Dk);
+			ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(y, state_history), TENSOR_LIST(hy, hstate_history), 0);
+			REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, expected_y->data.f32, hy->data.f32, B * T * Hv * Dv, 1e-4, "GPU gated delta output should match CPU reference implementation for Dk=%d channel_decay=%d", Dk, channel_decay);
+			REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, expected_state_history->data.f32, hstate_history->data.f32, state_history_len, 1e-4, "GPU gated delta state history should match CPU reference implementation for Dk=%d channel_decay=%d", Dk, channel_decay);
+			ccv_nnc_tensor_free(hq);
+			ccv_nnc_tensor_free(hk);
+			ccv_nnc_tensor_free(hv);
+			ccv_nnc_tensor_free(hlog_decay);
+			ccv_nnc_tensor_free(hbeta);
+			ccv_nnc_tensor_free(hstate_in);
+			ccv_nnc_tensor_free(expected_y);
+			ccv_nnc_tensor_free(expected_state_history);
+			ccv_nnc_tensor_free(q);
+			ccv_nnc_tensor_free(k);
+			ccv_nnc_tensor_free(v);
+			ccv_nnc_tensor_free(log_decay);
+			ccv_nnc_tensor_free(beta);
+			ccv_nnc_tensor_free(state_in);
+			ccv_nnc_tensor_free(y);
+			ccv_nnc_tensor_free(state_history);
+			ccv_nnc_tensor_free(hy);
+			ccv_nnc_tensor_free(hstate_history);
+		}
+}
+
+TEST_CASE("compare gated delta per key channel decay with gpu")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GATED_DELTA_FORWARD, CCV_NNC_BACKEND_MPS) || ccv_nnc_cmd_ok(CCV_NNC_GATED_DELTA_FORWARD, CCV_NNC_BACKEND_GPU_REF));
+	// Same shape as "compare gated delta with gpu", so the per head and per channel pipelines differ only by the decay layout.
 	const int B = 2;
 	const int T = 5;
 	const int Hk = 2;
@@ -548,12 +695,12 @@ TEST_CASE("compare gated delta per key channel decay with mps")
 	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(hstate_in), TENSOR_LIST(state_inplace), 0);
 	ccv_nnc_cmd_exec(CMD_GATED_DELTA_FORWARD(1, 0), ccv_nnc_no_hint, 0, TENSOR_LIST(q, k, v, log_decay, beta, state_inplace), TENSOR_LIST(y_inplace, state_inplace), 0);
 	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(y_inplace, state_inplace), TENSOR_LIST(hy_inplace, hstate_inplace), 0);
-	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, expected_y->data.f32, hy->data.f32, B * T * Hv * Dv, 1e-4, "MPS gated delta output with per channel log decay should match CPU reference implementation");
-	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, expected_state->data.f32, hstate_out->data.f32, B * Hv * Dv * Dk, 1e-4, "MPS gated delta state with per channel log decay should match CPU reference implementation");
-	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, expected_y->data.f32, hy_decay->data.f32, B * T * Hv * Dv, 1e-4, "MPS gated delta output with per channel decay should match CPU reference implementation");
-	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, expected_state->data.f32, hstate_decay->data.f32, B * Hv * Dv * Dk, 1e-4, "MPS gated delta state with per channel decay should match CPU reference implementation");
-	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, expected_y->data.f32, hy_inplace->data.f32, B * T * Hv * Dv, 1e-4, "in-place MPS gated delta output with per channel log decay should match CPU reference implementation");
-	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, expected_state->data.f32, hstate_inplace->data.f32, B * Hv * Dv * Dk, 1e-4, "in-place MPS gated delta state with per channel log decay should match CPU reference implementation");
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, expected_y->data.f32, hy->data.f32, B * T * Hv * Dv, 1e-4, "GPU gated delta output with per channel log decay should match CPU reference implementation");
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, expected_state->data.f32, hstate_out->data.f32, B * Hv * Dv * Dk, 1e-4, "GPU gated delta state with per channel log decay should match CPU reference implementation");
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, expected_y->data.f32, hy_decay->data.f32, B * T * Hv * Dv, 1e-4, "GPU gated delta output with per channel decay should match CPU reference implementation");
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, expected_state->data.f32, hstate_decay->data.f32, B * Hv * Dv * Dk, 1e-4, "GPU gated delta state with per channel decay should match CPU reference implementation");
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, expected_y->data.f32, hy_inplace->data.f32, B * T * Hv * Dv, 1e-4, "in-place GPU gated delta output with per channel log decay should match CPU reference implementation");
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, expected_state->data.f32, hstate_inplace->data.f32, B * Hv * Dv * Dk, 1e-4, "in-place GPU gated delta state with per channel log decay should match CPU reference implementation");
 	ccv_nnc_tensor_free(hq);
 	ccv_nnc_tensor_free(hk);
 	ccv_nnc_tensor_free(hv);
@@ -584,9 +731,9 @@ TEST_CASE("compare gated delta per key channel decay with mps")
 	ccv_nnc_tensor_free(hstate_inplace);
 }
 
-TEST_CASE("compare bfloat gated delta per key channel decay with mps")
+TEST_CASE("compare bfloat gated delta per key channel decay with gpu")
 {
-	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GATED_DELTA_FORWARD, CCV_NNC_BACKEND_MPS));
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GATED_DELTA_FORWARD, CCV_NNC_BACKEND_MPS) || ccv_nnc_cmd_ok(CCV_NNC_GATED_DELTA_FORWARD, CCV_NNC_BACKEND_GPU_REF));
 	const int B = 2;
 	const int T = 4;
 	const int Hk = 2;
@@ -647,8 +794,8 @@ TEST_CASE("compare bfloat gated delta per key channel decay with mps")
 	ccv_nnc_cmd_exec(CMD_GATED_DELTA_FORWARD(1, 0), ccv_nnc_no_hint, 0, TENSOR_LIST(q, k, v, log_decay, beta, state_in), TENSOR_LIST(y, state_out), 0);
 	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(y, state_out), TENSOR_LIST(hy, hstate_out), 0);
 	ccv_bfloat_to_float((uint16_t*)hy->data.f16, hy32->data.f32, v_len);
-	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, expected_y->data.f32, hy32->data.f32, v_len, 2e-2, "MPS bfloat gated delta output with per channel log decay should match CPU reference after output rounding");
-	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, expected_state->data.f32, hstate_out->data.f32, state_len, 5e-4, "MPS bfloat gated delta state with per channel log decay should match CPU reference implementation");
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, expected_y->data.f32, hy32->data.f32, v_len, 2e-2, "GPU bfloat gated delta output with per channel log decay should match CPU reference after output rounding");
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, expected_state->data.f32, hstate_out->data.f32, state_len, 5e-4, "GPU bfloat gated delta state with per channel log decay should match CPU reference implementation");
 	ccv_nnc_tensor_free(hq32);
 	ccv_nnc_tensor_free(hk32);
 	ccv_nnc_tensor_free(hv32);

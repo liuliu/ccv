@@ -167,6 +167,8 @@ static int _ccv_nnc_cmul_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	const ccv_nnc_tensor_t* const b = inputs[1];
 	assert(CCV_IS_TENSOR_CONTIGUOUS(b));
 	assert(output_size == 1);
+	if (outputs[0]->info.dim[0] == 0)
+		return CCV_NNC_EXEC_SUCCESS;
 	ccv_nnc_tensor_t* const c = outputs[0];
 	assert(CCV_IS_TENSOR_CONTIGUOUS(c));
 	const size_t count = ccv_nnc_tensor_count(c->info) / 2;

@@ -113,6 +113,8 @@ static int _ccv_nnc_datatype_conversion(const ccv_nnc_cmd_t cmd, const ccv_nnc_h
 	int i;
 	for (i = 0; i < output_size; i++)
 	{
+		if (outputs[i]->info.dim[0] == 0)
+			continue;
 		const ccv_nnc_tensor_view_t* a = (ccv_nnc_tensor_view_t*)inputs[i];
 		ccv_nnc_tensor_view_t* b = (ccv_nnc_tensor_view_t*)outputs[i];
 		assert(a != b); // Cannot do inplace transform.

@@ -190,8 +190,27 @@ static void _ccv_nnc_flash_norm_transform_stats(ccv_nnc_stream_context_t* const 
 	ccv_nnc_cudnn_deinit_tensor_view_descriptor(dst_desc);
 }
 
-static int _ccv_nnc_flash_norm_forw(ccv_nnc_stream_context_t* const stream_context, ccv_nnc_tensor_t* const input, ccv_nnc_tensor_t* const scale, ccv_nnc_tensor_t* const bias, ccv_nnc_tensor_t* const output, ccv_nnc_tensor_t* const saved_mean, ccv_nnc_tensor_t* const saved_inv_std, const ccv_nnc_flash_norm_info_t info, const float epsilon, const int is_rms_norm)
+template<typename NUM>
+__global__ void _ccv_nnc_flash_norm_scale_gamma_kernel(const int cols, const float output_scale, const NUM* const gamma, float* const scaled_gamma)
 {
+	CUDA_1D_KERNEL_LOOP(i, cols) {
+		scaled_gamma[i] = gamma ? (float)gamma[i] * output_scale : output_scale;
+	}
+}
+
+static int _ccv_nnc_flash_norm_forw(ccv_nnc_stream_context_t* const stream_context, ccv_nnc_tensor_t* const input, ccv_nnc_tensor_t* const scale, ccv_nnc_tensor_t* const bias, ccv_nnc_tensor_t* const output, ccv_nnc_tensor_t* const saved_mean, ccv_nnc_tensor_t* const saved_inv_std, ccv_nnc_flash_norm_info_t info, const float epsilon, const int is_rms_norm, const float output_scale)
+{
+	// The kernel has no output scale. Fold it into a FP32 gamma, which keeps the scale exact for FP16 / BF16 inputs.
+	// A bias would need scaling as well, there is no caller for that.
+	const int scale_gamma = output_scale != 1;
+	if (scale_gamma && bias)
+		return 0;
+	const int gamma_datatype = info.weight_datatype;
+	if (scale_gamma)
+	{
+		info.weight_datatype = CCV_32F;
+		info.weight_type = layer_norm::DATA_TYPE_FP32;
+	}
 	cudaStream_t stream = ccv_nnc_stream_context_get_stream(stream_context);
 	layer_norm::LaunchParams<layer_norm::FwdParams> launch_params = {};
 	launch_params.stream = stream;
@@ -234,8 +253,23 @@ static int _ccv_nnc_flash_norm_forw(ccv_nnc_stream_context_t* const stream_conte
 	if (!_ccv_nnc_flash_norm_configure(launch_params, info))
 		return 0;
 	const size_t barrier_size = launch_params.barrier_size * sizeof(int);
-	const size_t total_workspace_size = stats_workspace_size + launch_params.workspace_bytes + barrier_size;
+	// Keep the scaled gamma 128-byte aligned at the front, the kernel loads it vectorized.
+	const size_t gamma_workspace_size = scale_gamma ? ((sizeof(float) * info.cols + 127) & ~(size_t)127) : 0;
+	const size_t total_workspace_size = gamma_workspace_size + stats_workspace_size + launch_params.workspace_bytes + barrier_size;
 	uint8_t* workspace = total_workspace_size > 0 ? (uint8_t*)ccv_nnc_stream_context_get_workspace(stream_context, total_workspace_size, CCV_TENSOR_GPU_MEMORY) : 0;
+	if (scale_gamma)
+	{
+		float* const scaled_gamma = (float*)workspace;
+		const void* const gamma = scale ? _ccv_nnc_flash_norm_data(scale) : 0;
+		if (gamma_datatype == CCV_16F)
+			_ccv_nnc_flash_norm_scale_gamma_kernel<<<CUDA_GET_BLOCKS(info.cols), CUDA_NUM_THREADS, 0, stream>>>(info.cols, output_scale, (const __half*)gamma, scaled_gamma);
+		else if (gamma_datatype == CCV_16BF)
+			_ccv_nnc_flash_norm_scale_gamma_kernel<<<CUDA_GET_BLOCKS(info.cols), CUDA_NUM_THREADS, 0, stream>>>(info.cols, output_scale, (const __nv_bfloat16*)gamma, scaled_gamma);
+		else
+			_ccv_nnc_flash_norm_scale_gamma_kernel<<<CUDA_GET_BLOCKS(info.cols), CUDA_NUM_THREADS, 0, stream>>>(info.cols, output_scale, (const float*)gamma, scaled_gamma);
+		launch_params.params.gamma = scaled_gamma;
+		workspace += gamma_workspace_size;
+	}
 	float* stats_workspace = (float*)workspace;
 	float* mean = 0;
 	if (is_rms_norm)

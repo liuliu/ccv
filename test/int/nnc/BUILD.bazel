@@ -336,3 +336,10 @@ cc_binary(
 		"//conditions:default": [],
 	}),
 )
+
+cc_binary(
+    name = "rmsnorm_gated.tests",
+    srcs = ["rmsnorm_gated.tests.c"],
+    copts = ccv_default_copts(),
+    deps = ["//test:case", "//lib:nnc"],
+)

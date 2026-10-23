@@ -13,6 +13,8 @@ static int _ccv_nnc_sigmoid_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t h
 {
 	assert(input_size == 1);
 	assert(output_size == 1);
+	if (outputs[0]->info.dim[0] == 0)
+		return CCV_NNC_EXEC_SUCCESS;
 	cudnnHandle_t cudnn = ccv_nnc_stream_context_get_cudnn(stream_context);
 	cudnnActivationDescriptor_t sigmoid = ccv_nnc_stream_context_get_activation_descriptor(stream_context);
 	CUDNN_ENFORCE(cudnnSetActivationDescriptor(sigmoid, CUDNN_ACTIVATION_SIGMOID, CUDNN_PROPAGATE_NAN, 0));

@@ -28,7 +28,7 @@ static int _ccv_nnc_layer_norm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 #ifdef HAVE_CUDA_SM80
 	ccv_nnc_flash_norm_info_t flash_norm = {};
 	if (_ccv_nnc_flash_norm_check(cmd.info.lnorm.axis, cmd.info.lnorm.count, inputs[0], outputs[0], outputs[1], outputs[2], elementwise_affine ? inputs[1] : 0, elementwise_affine ? inputs[2] : 0, elementwise_affine, &flash_norm) &&
-		_ccv_nnc_flash_norm_forw(stream_context, inputs[0], elementwise_affine ? inputs[1] : 0, elementwise_affine ? inputs[2] : 0, outputs[0], outputs[1], outputs[2], flash_norm, cmd.info.lnorm.epsilon, 0))
+		_ccv_nnc_flash_norm_forw(stream_context, inputs[0], elementwise_affine ? inputs[1] : 0, elementwise_affine ? inputs[2] : 0, outputs[0], outputs[1], outputs[2], flash_norm, cmd.info.lnorm.epsilon, 0, 1))
 		return CCV_NNC_EXEC_SUCCESS;
 #endif
 	cudnnHandle_t cudnn = ccv_nnc_stream_context_get_cudnn(stream_context);

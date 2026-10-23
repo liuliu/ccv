@@ -66,7 +66,7 @@ static void _ccv_nnc_gated_delta_tensor_auto_forw(const ccv_nnc_cmd_param_t cmd,
 }
 
 REGISTER_COMMAND(CCV_NNC_GATED_DELTA_FORWARD)(ccv_nnc_cmd_registry_t* const registry)
-	FIND_BACKEND(ccv_nnc_gated_delta_cpu_ref.c, mps/ccv_nnc_gated_delta_mps.m)
+	FIND_BACKEND(ccv_nnc_gated_delta_cpu_ref.c, gpu/ccv_nnc_gated_delta_gpu_ref.cu, mps/ccv_nnc_gated_delta_mps.m)
 {
 	registry->bitmask = _ccv_nnc_gated_delta_forw_bitmask;
 	registry->tensor_auto = _ccv_nnc_gated_delta_tensor_auto_forw;

@@ -411,6 +411,7 @@ cuda_library(
 	deps = [
 		":cutlass_headers",
 		":nnc_headers",
+		":ccv_output",
 		":SFMT_hdrs",
 		"@local_config_ccv//config:cuda_deps"
 	]

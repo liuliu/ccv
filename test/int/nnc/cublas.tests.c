@@ -5963,4 +5963,67 @@ TEST_CASE("segmented gemm, large k")
 	ccv_nnc_tensor_free(bt);
 }
 
+TEST_CASE("cublas empty quantized gemm leaves backing storage untouched")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_GPU_CUBLAS));
+	ccv_nnc_tensor_t* const expected = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, 128), 0);
+	ccv_nnc_tensor_t* const actual = ccv_nnc_tensor_new(0, expected->info, 0);
+	int i;
+	for (i = 0; i < 128; i++)
+		((uint16_t*)expected->data.f16)[i] = 0x3800;
+	ccv_nnc_tensor_t* const storage = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, 128), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(expected), TENSOR_LIST(storage), 0);
+	ccv_nnc_tensor_t a = ccv_nnc_tensor(storage->data.u8, GPU_TENSOR_NHWC(000, 16F, 0), 0);
+	ccv_nnc_tensor_t w = ccv_nnc_tensor(storage->data.u8, ccv_nnc_tensor_8i_rowwise(GPU_TENSOR_NHWC(000, 16F, 0)), 0);
+	ccv_nnc_tensor_t b = ccv_nnc_tensor(storage->data.u8, GPU_TENSOR_NHWC(000, 16F, 0), 0);
+	ccv_nnc_cmd_t cmd = CMD_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(0, 1));
+	cmd.backend = CCV_NNC_BACKEND_GPU_CUBLAS;
+	REQUIRE_EQ(ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(&a, &w), TENSOR_LIST(&b), 0), CCV_NNC_EXEC_SUCCESS, "empty quantized GEMM must be a no-op");
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(storage), TENSOR_LIST(actual), 0);
+	REQUIRE_ARRAY_EQ(uint16_t, (uint16_t*)expected->data.f16, (uint16_t*)actual->data.f16, 128, "empty GEMM must leave storage untouched");
+	ccv_nnc_tensor_free(expected);
+	ccv_nnc_tensor_free(actual);
+	ccv_nnc_tensor_free(storage);
+}
+
+TEST_CASE("cuda MOSS skipped block operators leave empty tensor storage untouched")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_DATA_TRANSFER_FORWARD, CCV_NNC_BACKEND_GPU_REF));
+	ccv_nnc_cmd_t commands[] = {
+		CMD_ADD_FORWARD(1, 1), CMD_MUL_FORWARD(1), CMD_SCALAR_MUL_FORWARD(0.5),
+		CMD_CMUL_FORWARD(), CMD_RMSNORM_FORWARD(1e-6, 0, 1),
+		CMD_SCALED_DOT_PRODUCT_ATTENTION_FORWARD(1, 0), CMD_TANH_FORWARD(4),
+		CMD_SIGMOID_FORWARD(), CMD_EWSUM_FORWARD(), CMD_DATATYPE_CONVERSION_FORWARD(),
+		CMD_TRANSPOSE_FORWARD(0, 1),
+	};
+	const int input_sizes[] = {2, 2, 1, 2, 1, 3, 1, 1, 2, 1, 1};
+	const int output_sizes[] = {1, 1, 1, 1, 2, 1, 1, 1, 1, 1, 1};
+	const uint32_t backends[] = {CCV_NNC_BACKEND_GPU_CUBLAS, CCV_NNC_BACKEND_GPU_CUDNN, CCV_NNC_BACKEND_GPU_REF};
+	ccv_nnc_tensor_t* const expected = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 128), 0);
+	ccv_nnc_tensor_t* const actual = ccv_nnc_tensor_new(0, expected->info, 0);
+	ccv_nnc_tensor_t* const storage = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 128), 0);
+	int i, j;
+	for (i = 0; i < 128; i++)
+		expected->data.f32[i] = i * 0.25f;
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(expected), TENSOR_LIST(storage), 0);
+	ccv_nnc_tensor_t input = {.info = GPU_TENSOR_NHWC(000, 16F, 0)};
+	ccv_nnc_tensor_t output = *storage;
+	memset(output.info.dim, 0, sizeof(output.info.dim));
+	ccv_nnc_tensor_t* inputs[] = {&input, &input, &input};
+	ccv_nnc_tensor_t* outputs[] = {&output, &output};
+	for (i = 0; i < sizeof(commands) / sizeof(commands[0]); i++)
+		for (j = 0; j < sizeof(backends) / sizeof(backends[0]); j++)
+		{
+			if (!ccv_nnc_cmd_ok(commands[i].cmd, backends[j]))
+				continue;
+			commands[i].backend = backends[j];
+			REQUIRE_EQ(ccv_nnc_cmd_exec(commands[i], ccv_nnc_no_hint, 0, inputs, input_sizes[i], outputs, output_sizes[i], 0), CCV_NNC_EXEC_SUCCESS, "empty MOSS op must not access activations or launch an empty kernel");
+			ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(storage), TENSOR_LIST(actual), 0);
+			REQUIRE_TENSOR_EQ(actual, expected, "empty MOSS op must leave storage unchanged");
+		}
+	ccv_nnc_tensor_free(expected);
+	ccv_nnc_tensor_free(actual);
+	ccv_nnc_tensor_free(storage);
+}
+
 #include "case_main.h"

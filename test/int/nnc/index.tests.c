@@ -24,7 +24,7 @@ TEST_CASE("index select empty indices leaves storage untouched")
 			{
 				ccv_nnc_cmd_t cmd = CMD_INDEX_SELECT_FORWARD();
 				cmd.backend = backends[backend];
-				if (!ccv_nnc_cmd_ok(cmd.cmd, cmd.backend) || (kind >= 3 && cmd.backend != CCV_NNC_BACKEND_MPS))
+				if (!ccv_nnc_cmd_ok(cmd.cmd, cmd.backend) || (kind >= 3 && cmd.backend == CCV_NNC_BACKEND_CPU_REF))
 					continue;
 				ccv_nnc_tensor_param_t input_params[] = {
 					backend ? GPU_TENSOR_NHWC(000, 32F, 23, 130) : CPU_TENSOR_NHWC(32F, 23, 130),
@@ -552,7 +552,7 @@ TEST_CASE("gpu index select forward with 32s tensor")
 	ccv_nnc_tensor_free(a);
 }
 
-static int _mps_index_select_8i_rowwise_x_compare(const int datatype, const int format, const int rows, const int cols, const int selected, const double tolerance, double* const max_abs_ref)
+static int _index_select_8i_rowwise_x_compare(const int datatype, const int format, const int rows, const int cols, const int selected, const double tolerance, double* const max_relative_ref)
 {
 	ccv_nnc_tensor_param_t host_params = {
 		.type = CCV_TENSOR_CPU_MEMORY,
@@ -601,7 +601,12 @@ static int _mps_index_select_8i_rowwise_x_compare(const int datatype, const int 
 	for (j = 0; j < selected; j++)
 		memcpy(expected->data.u8 + (size_t)j * row_bytes, dequantized->data.u8 + (size_t)indices->data.i32[j] * row_bytes, row_bytes);
 	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(q, indices), TENSOR_LIST(gq, gindices), 0);
-	ccv_nnc_cmd_exec(CMD_INDEX_SELECT_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(gq, gindices), TENSOR_LIST(gout), 0);
+	// An unsupported layout would leave gout uninitialized, report it instead of comparing garbage.
+	if (ccv_nnc_cmd_exec(CMD_INDEX_SELECT_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(gq, gindices), TENSOR_LIST(gout), 0) != CCV_NNC_EXEC_SUCCESS)
+	{
+		status = -2;
+		goto cleanup;
+	}
 	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(gout), TENSOR_LIST(actual), 0);
 	const size_t output_count = (size_t)selected * cols;
 	float* const expected_f32 = ccmalloc(sizeof(float) * output_count);
@@ -617,13 +622,15 @@ static int _mps_index_select_8i_rowwise_x_compare(const int datatype, const int 
 		memcpy(expected_f32, expected->data.f32, sizeof(float) * output_count);
 		memcpy(actual_f32, actual->data.f32, sizeof(float) * output_count);
 	}
-	double max_abs = 0;
+	// CPU and GPU decoders can round to neighboring values, one ULP of the output type, which grows with the
+	// magnitude (decoded Q3_K values reach |2|), so the error is relative to max(1, |expected|).
+	double max_relative = 0;
 	for (i = 0; i < output_count; i++)
-		max_abs = ccv_max(max_abs, fabs((double)expected_f32[i] - (double)actual_f32[i]));
-	if (max_abs > tolerance)
+		max_relative = ccv_max(max_relative, fabs((double)expected_f32[i] - (double)actual_f32[i]) / ccv_max(1., fabs((double)expected_f32[i])));
+	if (max_relative > tolerance)
 		status = 1;
-	if (max_abs_ref)
-		*max_abs_ref = max_abs;
+	if (max_relative_ref)
+		*max_relative_ref = max_relative;
 	ccfree(actual_f32);
 	ccfree(expected_f32);
 cleanup:
@@ -640,9 +647,9 @@ cleanup:
 	return status;
 }
 
-TEST_CASE("mps index select row-wise 8i quantized tensor with float output")
+TEST_CASE("gpu index select row-wise 8i quantized tensor with float output")
 {
-	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_INDEX_SELECT_FORWARD, CCV_NNC_BACKEND_MPS));
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_INDEX_SELECT_FORWARD, CCV_NNC_BACKEND_MPS) || ccv_nnc_cmd_ok(CCV_NNC_INDEX_SELECT_FORWARD, CCV_NNC_BACKEND_GPU_REF));
 	const int rows = 23;
 	const int cols = 33;
 	const int selected = 9;
@@ -666,7 +673,7 @@ TEST_CASE("mps index select row-wise 8i quantized tensor with float output")
 	ccv_nnc_cmd_exec(CMD_INDEX_SELECT_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(gq, gindices), TENSOR_LIST(gout), 0);
 	ccv_nnc_tensor_t* const actual = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, selected, cols), 0);
 	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(gout), TENSOR_LIST(actual), 0);
-	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, expected->data.f32, actual->data.f32, selected * cols, 1e-5, "MPS index select should dequantize only selected row-wise 8i rows");
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, expected->data.f32, actual->data.f32, selected * cols, 1e-5, "GPU index select should dequantize only selected row-wise 8i rows");
 	ccv_nnc_tensor_free(actual);
 	ccv_nnc_tensor_free(gout);
 	ccv_nnc_tensor_free(gindices);
@@ -678,9 +685,9 @@ TEST_CASE("mps index select row-wise 8i quantized tensor with float output")
 	ccv_nnc_tensor_free(source);
 }
 
-TEST_CASE("mps index select row-wise 8i quantized tensor with half output")
+TEST_CASE("gpu index select row-wise 8i quantized tensor with half output")
 {
-	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_INDEX_SELECT_FORWARD, CCV_NNC_BACKEND_MPS));
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_INDEX_SELECT_FORWARD, CCV_NNC_BACKEND_MPS) || ccv_nnc_cmd_ok(CCV_NNC_INDEX_SELECT_FORWARD, CCV_NNC_BACKEND_GPU_REF));
 	const int rows = 17;
 	const int cols = 32;
 	const int selected = 8;
@@ -710,7 +717,7 @@ TEST_CASE("mps index select row-wise 8i quantized tensor with half output")
 	float* const actual_f32 = ccmalloc(sizeof(float) * selected * cols);
 	ccv_half_precision_to_float((uint16_t*)expected->data.f16, expected_f32, selected * cols);
 	ccv_half_precision_to_float((uint16_t*)actual->data.f16, actual_f32, selected * cols);
-	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, expected_f32, actual_f32, selected * cols, 1e-3, "MPS index select should dequantize only selected half row-wise 8i rows");
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, expected_f32, actual_f32, selected * cols, 1e-3, "GPU index select should dequantize only selected half row-wise 8i rows");
 	ccfree(actual_f32);
 	ccfree(expected_f32);
 	ccv_nnc_tensor_free(actual);
@@ -725,9 +732,9 @@ TEST_CASE("mps index select row-wise 8i quantized tensor with half output")
 	ccfree(values);
 }
 
-TEST_CASE("mps index select row-wise 8i quantized tensor with bfloat output")
+TEST_CASE("gpu index select row-wise 8i quantized tensor with bfloat output")
 {
-	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_INDEX_SELECT_FORWARD, CCV_NNC_BACKEND_MPS));
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_INDEX_SELECT_FORWARD, CCV_NNC_BACKEND_MPS) || ccv_nnc_cmd_ok(CCV_NNC_INDEX_SELECT_FORWARD, CCV_NNC_BACKEND_GPU_REF));
 	const int rows = 19;
 	const int cols = 36;
 	const int selected = 7;
@@ -758,7 +765,7 @@ TEST_CASE("mps index select row-wise 8i quantized tensor with bfloat output")
 	float* const actual_f32 = ccmalloc(sizeof(float) * selected * cols);
 	ccv_bfloat_to_float((uint16_t*)expected->data.f16, expected_f32, selected * cols);
 	ccv_bfloat_to_float((uint16_t*)actual->data.f16, actual_f32, selected * cols);
-	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, expected_f32, actual_f32, selected * cols, 2e-2, "MPS index select should dequantize only selected bfloat row-wise 8i rows");
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, expected_f32, actual_f32, selected * cols, 2e-2, "GPU index select should dequantize only selected bfloat row-wise 8i rows");
 	ccfree(actual_f32);
 	ccfree(expected_f32);
 	ccv_nnc_tensor_free(actual);
@@ -793,9 +800,9 @@ TEST_CASE("mps index select packed row-wise 8i-x half precision all formats")
 	int i;
 	for (i = 0; i < (int)(sizeof(formats) / sizeof(formats[0])); i++)
 	{
-		double max_abs = 0;
-		const int status = _mps_index_select_8i_rowwise_x_compare(CCV_16F, formats[i], 17, 130, 11, 1e-3, &max_abs);
-		REQUIRE_EQ(status, 0, "MPS packed row-wise 8i-x fp16 index select should match CPU for format=%d, max_abs=%g", formats[i], max_abs);
+		double max_relative = 0;
+		const int status = _index_select_8i_rowwise_x_compare(CCV_16F, formats[i], 17, 130, 11, 1e-3, &max_relative);
+		REQUIRE_EQ(status, 0, "MPS packed row-wise 8i-x fp16 index select should match CPU for format=%d, max_relative=%g", formats[i], max_relative);
 	}
 }
 
@@ -812,12 +819,12 @@ TEST_CASE("mps index select packed row-wise 8i-x float and bfloat precision")
 	int i;
 	for (i = 0; i < (int)(sizeof(formats) / sizeof(formats[0])); i++)
 	{
-		double max_abs = 0;
-		int status = _mps_index_select_8i_rowwise_x_compare(CCV_32F, formats[i], 13, 131, 7, 1e-5, &max_abs);
-		REQUIRE_EQ(status, 0, "MPS packed row-wise 8i-x fp32 index select should match CPU for format=%d, max_abs=%g", formats[i], max_abs);
-		max_abs = 0;
-		status = _mps_index_select_8i_rowwise_x_compare(CCV_16BF, formats[i], 13, 131, 7, 1e-2, &max_abs);
-		REQUIRE_EQ(status, 0, "MPS packed row-wise 8i-x bf16 index select should match CPU for format=%d, max_abs=%g", formats[i], max_abs);
+		double max_relative = 0;
+		int status = _index_select_8i_rowwise_x_compare(CCV_32F, formats[i], 13, 131, 7, 1e-5, &max_relative);
+		REQUIRE_EQ(status, 0, "MPS packed row-wise 8i-x fp32 index select should match CPU for format=%d, max_relative=%g", formats[i], max_relative);
+		max_relative = 0;
+		status = _index_select_8i_rowwise_x_compare(CCV_16BF, formats[i], 13, 131, 7, 1e-2, &max_relative);
+		REQUIRE_EQ(status, 0, "MPS packed row-wise 8i-x bf16 index select should match CPU for format=%d, max_relative=%g", formats[i], max_relative);
 	}
 }
 
@@ -858,6 +865,24 @@ TEST_CASE("index select backward with half precision")
 	ccv_nnc_tensor_free(bt);
 	ccv_nnc_tensor_free(b32);
 	ccv_nnc_tensor_free(bt32);
+}
+
+TEST_CASE("cuda index select packed row-wise quantized embeddings")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_INDEX_SELECT_FORWARD, CCV_NNC_BACKEND_GPU_REF));
+	const int formats[] = {CCV_NNC_QX_8I_ROWWISE_Q4_K, CCV_NNC_QX_8I_ROWWISE_Q3_K, CCV_NNC_QX_8I_ROWWISE_Q2_K, CCV_NNC_QX_8I_ROWWISE_IQ2_S, CCV_NNC_QX_8I_ROWWISE_IQ2_XS, CCV_NNC_QX_8I_ROWWISE_IQ3_S, CCV_NNC_QX_8I_ROWWISE_IQ3_XXS, CCV_NNC_QX_8I_ROWWISE_IQ2_XXS, CCV_NNC_QX_8I_ROWWISE_Q5_K, CCV_NNC_QX_8I_ROWWISE_Q6_K};
+	const int datatypes[] = {CCV_32F, CCV_16F, CCV_16BF};
+	int i, j;
+	for (i = 0; i < sizeof(formats) / sizeof(formats[0]); i++)
+		for (j = 0; j < sizeof(datatypes) / sizeof(datatypes[0]); j++)
+		{
+			double max_relative = 0;
+			const int status = _index_select_8i_rowwise_x_compare(datatypes[j], formats[i], 37, 131, 19, datatypes[j] == CCV_32F ? 1e-5 : datatypes[j] == CCV_16F ? 1e-3 : 1e-2, &max_relative);
+			REQUIRE_EQ(status, 0, "CUDA packed gather must match CPU dequantization for format=%d datatype=%d max_relative=%g", formats[i], datatypes[j], max_relative);
+		}
+	double max_relative = 0;
+	REQUIRE_EQ(_index_select_8i_rowwise_x_compare(CCV_16F, CCV_NNC_QX_8I_ROWWISE_Q5_K, 47, 4096, 23, 1e-3, &max_relative), 0, "Qwen embedding gather must match CPU dequantization, max_relative=%g", max_relative);
+	REQUIRE_EQ(_index_select_8i_rowwise_x_compare(CCV_16F, CCV_NNC_QX_8I_ROWWISE_Q5_K | CCV_NNC_QX_8I_ROWWISE_HADAMARD_256, 47, 512, 23, 1e-2, &max_relative), 0, "H256 embedding gather must match CPU dequantization, max_relative=%g", max_relative);
 }
 
 #include "case_main.h"
