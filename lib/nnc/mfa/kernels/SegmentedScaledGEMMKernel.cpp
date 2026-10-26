@@ -269,8 +269,9 @@ kernel void segmented_scaled_gemm_plan(
   dispatch_args[2] = 1;
 }
 )";
-  // Packed projections expand only the current weight tile. IQ2_XXS, IQ3_XXS, Q2_K, IQ1_S
-  // and IQ1_M have dedicated tile decoders; other formats fall back to the dequantizer's group decoder.
+  // IQ2_XXS, Q2_K and IQ3_XXS expand their weights in registers. Other packed projections
+  // expand only the current weight tile: IQ1_S and IQ1_M have dedicated tile decoders, and
+  // other formats fall back to the dequantizer's group decoder.
   if (format == CCV_NNC_QX_8I_ROWWISE_IQ2_XXS) {
     source += "constant uint iq2_grid[512] = {";
     for (uint32_t code = 0; code < 256; ++code)
@@ -289,7 +290,6 @@ kernel void segmented_scaled_gemm_plan(
             packed |= 255u << (j * 8);
         source += std::to_string(packed) + (code == 127 && word == 1 ? "u};" : "u,");
       }
-    source += "constant uint iq2_scales[16] = {1, 2, 3, 4, 5, 6, 7, 8, 10, 12, 14, 16, 20, 24, 28, 32};";
   } else if (format == CCV_NNC_QX_8I_ROWWISE_IQ3_XXS) {
     source += "constant uint iq3_grid[256] = {";
     for (uint32_t code = 0; code < 256; ++code) {
@@ -302,6 +302,337 @@ kernel void segmented_scaled_gemm_plan(
     source += create_iq1_tile_source(format);
   } else if (format && format != CCV_NNC_QX_8I_ROWWISE_Q2_K)
     source += Dequantize8iRowwiseXKernel::createDecodeGroupSource(format);
+  if (blockDimensions[2] == 64) {
+    // Register operands: each SIMD group owns 32 rows x 32 columns of the output and the
+    // SIMD groups sit side by side along N. A SIMD group loads its activation fragments and
+    // expands its own weight fragments straight into registers, so no tile goes through
+    // threadgroup memory or waits on a threadgroup barrier per K step. Fragment layout and
+    // MPP register assembly follow NAInt8MatMulKernel's register path.
+    CCV_NNC_MFA_PRECONDITION(format == CCV_NNC_QX_8I_ROWWISE_IQ2_XXS || format == CCV_NNC_QX_8I_ROWWISE_Q2_K || format == CCV_NNC_QX_8I_ROWWISE_IQ3_XXS);
+    CCV_NNC_MFA_PRECONDITION(blockDimensions[0] == 32 && blockDimensions[1] == 32 * executionSIMDGroups);
+    source += R"(
+// A 16x16 fragment has eight values per lane: four adjacent columns in each of
+// two rows eight apart. A SIMD group owns a 2x2 array of fragments, where
+// fragment m * 2 + k covers rows m * 16 and columns k * 16.
+__attribute__((always_inline)) inline short2 register_fragment_coordinate(ushort lane) {
+  const short quad = lane >> 2;
+  return short2(((quad & 2) | (lane & 1)) * 4, (quad & 4) | ((lane >> 1) & 3));
+}
+
+struct register_tile {
+  vec<int8_t, 8> fragments[4];
+};
+
+struct accumulator_tile {
+  vec<int32_t, 8> fragments[4];
+};
+
+// Both operands step through K64 at a time, permuted identically, which leaves
+// the product unchanged: in K32 step kk, a lane's fragment columns origin.x...+3
+// and origin.x + 16...+19 read K offsets 4 * origin.x + 8 * kk...+7. A lane
+// therefore holds 16 consecutive K values per row: one 16-byte activation load,
+// half an IQ2_XXS group, a whole Q2_K group, or a pair of IQ3_XXS groups.
+__attribute__((always_inline)) inline void set_fragments(thread register_tile (&tiles)[2], short m, short r, uint4 words) {
+  #pragma clang loop unroll(full)
+  for (short kk = 0; kk < 2; ++kk) {
+    #pragma clang loop unroll(full)
+    for (short h = 0; h < 2; ++h) {
+      const char4 values = as_type<char4>(words[kk * 2 + h]);
+      #pragma clang loop unroll(full)
+      for (short c = 0; c < 4; ++c)
+        tiles[kk].fragments[m * 2 + h][r * 4 + c] = values[c];
+    }
+  }
+}
+
+template<bool full_rows>
+__attribute__((always_inline)) inline void load_activation_tiles(thread register_tile (&tiles)[2],
+    const device int8_t* src, short rows, short2 origin) {
+  #pragma clang loop unroll(full)
+  for (short m = 0; m < 2; ++m) {
+    #pragma clang loop unroll(full)
+    for (short r = 0; r < 2; ++r) {
+      const short row = m * 16 + r * 8;
+      set_fragments(tiles, m, r, full_rows || row < rows - origin.y ? *(const device uint4*)(src + row * K) : uint4(0));
+    }
+  }
+}
+)";
+    if (format == CCV_NNC_QX_8I_ROWWISE_IQ2_XXS) {
+      source += R"(
+// Lanes index the grid and the sign masks divergently, so both are read from
+// threadgroup copies.
+struct decode_tables {
+  threadgroup const uint2* grid;
+  threadgroup const uint2* signs;
+};
+
+__attribute__((always_inline)) inline void decode_weight_tiles(thread register_tile (&tiles)[2],
+    const device uchar* B, decode_tables tables, uint k, short2 origin) {
+  // Half of one 32-value group: sub-blocks first_sg and first_sg + 1.
+  const uint offset = (k + uint(origin.x) * 4u) / 32u * 8u;
+  const uint first_sg = (uint(origin.x) >> 1) & 2u;
+  #pragma clang loop unroll(full)
+  for (short n = 0; n < 2; ++n) {
+    #pragma clang loop unroll(full)
+    for (short r = 0; r < 2; ++r) {
+      const short row = n * 16 + r * 8;
+      const uint2 payload = *(const device uint2*)(B + uint(row) * (K / 4u) + offset);
+      // iq2_scales: 1...8, then steps of 2 to 16, then steps of 4 to 32.
+      const uint code = payload.y >> 28;
+      const uint scale = code < 8u ? code + 1u : code < 12u ? (code - 3u) * 2u : (code - 7u) * 4u;
+      uint4 words;
+      #pragma clang loop unroll(full)
+      for (uint kk = 0; kk < 2; ++kk) {
+        const uint sg = first_sg + kk;
+        const uint2 levels = tables.grid[(payload.x >> (sg * 8u)) & 255u];
+        const uint2 masks = tables.signs[(payload.y >> (sg * 7u)) & 127u];
+        #pragma clang loop unroll(full)
+        for (uint h = 0; h < 2; ++h) {
+          // Each byte is at most 7 * 32, so multiplying the packed word has no byte carries.
+          const uint raw = levels[h] * scale;
+          const uint high = raw & 0x80808080u;
+          const uint magnitude = (raw & 0x7f7f7f7fu) | (high - (high >> 7));
+          // Magnitudes are in 1...127, so the byte-wise negation cannot carry into another byte.
+          words[kk * 2 + h] = (magnitude ^ masks[h]) + (masks[h] & 0x01010101u);
+        }
+      }
+      set_fragments(tiles, n, r, words);
+    }
+  }
+}
+)";
+    } else if (format == CCV_NNC_QX_8I_ROWWISE_IQ3_XXS) {
+      source += R"(
+// Lanes index the grid divergently, so it is read from a threadgroup copy.
+struct decode_tables {
+  threadgroup const uint* grid;
+};
+
+// Two 28-bit groups of eight values: two grid indices, eight sign bits and a 4-bit scale each.
+__attribute__((always_inline)) inline void decode_weight_tiles(thread register_tile (&tiles)[2],
+    const device uchar* B, decode_tables tables, uint k, short2 origin) {
+  const uint bit = (k / 16u + (uint(origin.x) >> 2)) * 56u;
+  const uint word = bit >> 5, shift = bit & 31u;
+  #pragma clang loop unroll(full)
+  for (short n = 0; n < 2; ++n) {
+    #pragma clang loop unroll(full)
+    for (short r = 0; r < 2; ++r) {
+      const short row = n * 16 + r * 8;
+      const device uint* p = (const device uint*)(B + uint(row) * {{PACKED_ROW_BYTES}}) + word;
+      const uint p0 = p[0], p1 = p[1];
+      // The pair reaches a third word only when it starts past the first byte.
+      const uint p2 = shift > 8u ? p[2] : 0u;
+      const uint first = (p0 >> shift) | ((p1 << 1) << (31u - shift));
+      const uint second = (p1 >> shift) | ((p2 << 1) << (31u - shift));
+      const uint payloads[2] = { first, (first >> 28) | (second << 4) };
+      uint4 words;
+      #pragma clang loop unroll(full)
+      for (uint group = 0; group < 2; ++group) {
+        const uint payload = payloads[group];
+        const uint scale = ((payload >> 24) & 15u) + 1u;
+        #pragma clang loop unroll(full)
+        for (uint w = 0; w < 2; ++w) {
+          // Grid bytes are at most 15 and scales at most 16, so multiplying the packed word has no byte carries.
+          const uint raw = tables.grid[(payload >> (w * 8u)) & 255u] * scale;
+          const uint high = raw & 0x80808080u;
+          const uint magnitude = (raw & 0x7f7f7f7fu) | (high - (high >> 7));
+          // Spread four sign bits to the low bit of each byte, then widen them to byte masks.
+          const uint mask = ((((payload >> (16u + w * 4u)) & 15u) * 0x00204081u) & 0x01010101u) * 255u;
+          // Magnitudes are in 1...127, so the byte-wise negation cannot carry into another byte.
+          words[group * 2u + w] = (magnitude ^ mask) + (mask & 0x01010101u);
+        }
+      }
+      set_fragments(tiles, n, r, words);
+    }
+  }
+}
+)";
+    } else {
+      CCV_NNC_MFA_PRECONDITION(format == CCV_NNC_QX_8I_ROWWISE_Q2_K);
+      source += R"(
+struct decode_tables {
+};
+
+// A Q2_K group packs sixteen 2-bit codes, a 6-bit scale and a 4-bit zero point into 42 bits.
+__attribute__((always_inline)) inline void decode_weight_tiles(thread register_tile (&tiles)[2],
+    const device uchar* B, decode_tables tables, uint k, short2 origin) {
+  const uint bit = (k / 16u + (uint(origin.x) >> 2)) * 42u;
+  const uint word = bit >> 5, shift = bit & 31u;
+  #pragma clang loop unroll(full)
+  for (short n = 0; n < 2; ++n) {
+    #pragma clang loop unroll(full)
+    for (short r = 0; r < 2; ++r) {
+      const short row = n * 16 + r * 8;
+      const device uint* p = (const device uint*)(B + uint(row) * {{PACKED_ROW_BYTES}}) + word;
+      const uint p0 = p[0], p1 = p[1];
+      // The group reaches a third word only when it starts late in the first.
+      const uint p2 = shift > 22u ? p[2] : 0u;
+      const uint codes = (p0 >> shift) | ((p1 << 1) << (31u - shift));
+      const uint header = (p1 >> shift) | ((p2 << 1) << (31u - shift));
+      const uint scale = (header & 63u) + 1u;
+      const uint zero = ((header >> 6) & 15u) * 8u * 0x01010101u;
+      uint4 words;
+      #pragma clang loop unroll(full)
+      for (uint i = 0; i < 4; ++i) {
+        // Spread four 2-bit codes into bytes; a code times the scale is at most 192, so no byte carries.
+        const uint q = (codes >> (i * 8u)) & 255u;
+        const uint x = ((q | (q << 6) | (q << 12) | (q << 18)) & 0x03030303u) * scale;
+        // Byte-wise x - zero modulo 256: the zero point is below 128, so setting each top bit prevents borrows.
+        words[i] = ((x | 0x80808080u) - zero) ^ (~x & 0x80808080u);
+      }
+      set_fragments(tiles, n, r, words);
+    }
+  }
+}
+)";
+    }
+    source += R"(
+// Four M16/N32/K16 operations form a SIMD group's M32/N32/K32 update.
+__attribute__((always_inline)) inline void multiply_register_tiles(thread accumulator_tile& accum,
+    thread const register_tile& a, thread const register_tile& b) {
+  constexpr auto descriptor = matmul2d_descriptor(
+      16, 32, 16, false, true, true,
+      matmul2d_descriptor::mode::multiply_accumulate);
+  matmul2d<descriptor, execution_simdgroup> op;
+  #pragma clang loop unroll(full)
+  for (short m = 0; m < 2; ++m) {
+    #pragma clang loop unroll(full)
+    for (short k = 0; k < 2; ++k) {
+      auto aT = op.get_left_input_cooperative_tensor<int8_t, int8_t, int32_t>();
+      auto bT = op.get_right_input_cooperative_tensor<int8_t, int8_t, int32_t>();
+      auto cT = op.get_destination_cooperative_tensor<
+          metal::remove_addrspace_t<decltype(aT)>,
+          metal::remove_addrspace_t<decltype(bT)>, int32_t>();
+      #pragma clang loop unroll(full)
+      for (short i = 0; i < 8; ++i) {
+        aT[i] = a.fragments[m * 2 + k][i];
+        bT[i] = b.fragments[k][i];
+        bT[8 + i] = b.fragments[2 + k][i];
+        cT[i] = accum.fragments[m * 2][i];
+        cT[8 + i] = accum.fragments[m * 2 + 1][i];
+      }
+      op.run(aT, bT, cT);
+      #pragma clang loop unroll(full)
+      for (short i = 0; i < 8; ++i) {
+        accum.fragments[m * 2][i] = cT[i];
+        accum.fragments[m * 2 + 1][i] = cT[8 + i];
+      }
+    }
+  }
+}
+
+template<bool full_rows>
+inline void multiply_register(const device int8_t* A, const device uchar* B, decode_tables tables,
+    device {{IO_TYPE}}* C, const device {{IO_TYPE}}* A_scale, const device {{IO_TYPE}}* B_scale,
+    short rows, ushort lane) {
+  const short2 origin = register_fragment_coordinate(lane);
+  A += origin.y * K + origin.x * 4;
+  B += uint(origin.y) * {{PACKED_ROW_BYTES}};
+  accumulator_tile accum;
+  #pragma clang loop unroll(full)
+  for (short i = 0; i < 4; ++i)
+    accum.fragments[i] = vec<int32_t, 8>(0);
+  // Keep the SIMD groups in step every K512 so they share activation lines in cache.
+  #pragma clang loop unroll(disable)
+  for (uint block = 0; block < K / 512u; ++block) {
+    threadgroup_barrier(mem_flags::mem_none);
+    for (uint k = block * 512u; k < block * 512u + 512u; k += 64u) {
+      register_tile a[2], b[2];
+      load_activation_tiles<full_rows>(a, A + k, rows, origin);
+      decode_weight_tiles(b, B, tables, k, origin);
+      multiply_register_tiles(accum, a[0], b[0]);
+      multiply_register_tiles(accum, a[1], b[1]);
+    }
+  }
+  // K is a multiple of 256.
+  #pragma clang loop unroll(disable)
+  for (uint k = K / 512u * 512u; k < K; k += 64u) {
+    register_tile a[2], b[2];
+    load_activation_tiles<full_rows>(a, A + k, rows, origin);
+    decode_weight_tiles(b, B, tables, k, origin);
+    multiply_register_tiles(accum, a[0], b[0]);
+    multiply_register_tiles(accum, a[1], b[1]);
+  }
+  C += size_t(origin.y) * N + origin.x;
+  #pragma clang loop unroll(full)
+  for (short m = 0; m < 2; ++m) {
+    #pragma clang loop unroll(full)
+    for (short n = 0; n < 2; ++n) {
+      #pragma clang loop unroll(full)
+      for (short i = 0; i < 8; ++i) {
+        const short row = m * 16 + (i / 4) * 8;
+        const short col = n * 16 + i % 4;
+        if (full_rows || row < rows - origin.y)
+          C[size_t(row) * N + col] = ({{IO_TYPE}})(float(accum.fragments[m * 2 + n][i]) *
+            float(A_scale[origin.y + row]) * float(B_scale[origin.x + col]));
+      }
+    }
+  }
+}
+
+[[kernel, max_total_threads_per_threadgroup({{SIMDGROUPS}} * 32)]] void segmented_scaled_gemm(
+    device int8_t* A_buf [[buffer(0)]],
+    device const uchar* B_buf [[buffer(1)]],
+    device {{IO_TYPE}}* C_buf [[buffer(2)]],
+    device const {{IO_TYPE}}* A_scale_buf [[buffer(3)]],
+    device const {{IO_TYPE}}* B_scale_buf [[buffer(4)]],
+    device const TileRecord* records [[buffer(5)]],
+    uint3 tgid [[threadgroup_position_in_grid]],
+    ushort sgid [[simdgroup_index_in_threadgroup]],
+    ushort lane [[thread_index_in_simdgroup]])
+{
+  const TileRecord record = records[tgid.x];
+  const uint n_start = tgid.y * N_block;
+  const uint local_row = record.local_row;
+  if (n_start >= N || local_row >= record.count)
+    return;
+  // Packed formats need N % 256 == 0, so every column tile is full.
+  const uint m_count = min(M_block, record.count - local_row);
+  const uint col = sgid * 32u;
+  const short rows = m_count;
+  const uint global_row = record.row_offset + local_row;
+  A_buf += (ulong)global_row * K;
+  B_buf += ((ulong)record.expert * N + n_start + col) * {{PACKED_ROW_BYTES}};
+  C_buf += (ulong)global_row * N + n_start + col;
+  A_scale_buf += global_row;
+  B_scale_buf += (ulong)record.expert * N + n_start + col;
+)";
+    if (format == CCV_NNC_QX_8I_ROWWISE_IQ2_XXS) {
+      source += R"(
+  threadgroup uint2 grid[256];
+  threadgroup uint2 signs[128];
+  for (uint i = sgid * 32u + lane; i < 256u; i += {{SIMDGROUPS}}u * 32u)
+    grid[i] = uint2(iq2_grid[i * 2u], iq2_grid[i * 2u + 1u]);
+  for (uint i = sgid * 32u + lane; i < 128u; i += {{SIMDGROUPS}}u * 32u)
+    signs[i] = uint2(iq2_signs[i * 2u], iq2_signs[i * 2u + 1u]);
+  threadgroup_barrier(mem_flags::mem_threadgroup);
+  const decode_tables tables = { grid, signs };
+)";
+    } else if (format == CCV_NNC_QX_8I_ROWWISE_IQ3_XXS) {
+      source += R"(
+  threadgroup uint grid[256];
+  for (uint i = sgid * 32u + lane; i < 256u; i += {{SIMDGROUPS}}u * 32u)
+    grid[i] = iq3_grid[i];
+  threadgroup_barrier(mem_flags::mem_threadgroup);
+  const decode_tables tables = { grid };
+)";
+    } else {
+      source += R"(
+  const decode_tables tables = {};
+)";
+    }
+    source += R"(
+  // The row check uses the whole threadgroup tile, because multiply_register
+  // contains threadgroup barriers.
+  if (m_count == M_block)
+    multiply_register<true>(A_buf, B_buf, tables, C_buf, A_scale_buf, B_scale_buf, rows, lane);
+  else
+    multiply_register<false>(A_buf, B_buf, tables, C_buf, A_scale_buf, B_scale_buf, rows, lane);
+}
+)";
+    return source.ToString();
+  }
   if (format) {
     source += R"(
 kernel void segmented_scaled_gemm(
@@ -361,83 +692,7 @@ kernel void segmented_scaled_gemm(
     source += R"(
   for (uint k = 0; k < K; k += {{BLOCK_K}}u) {
 )";
-    if (format == CCV_NNC_QX_8I_ROWWISE_Q2_K) {
-      source += R"(
-    for (uint g = tid; g < {{BLOCK_N}}u * {{BLOCK_K}}u / 16u; g += {{SIMDGROUPS}}u * 32u) {
-      const uint row = g / ({{BLOCK_K}}u / 16u);
-      const uint group = g % ({{BLOCK_K}}u / 16u);
-      // Q2_K stores sixteen 2-bit codes, a 6-bit scale and a 4-bit zero point.
-      const uint bit_offset = (k / 16u + group) * 42u;
-      const uint byte_offset = bit_offset / 8u;
-      const uint shift = bit_offset % 8u;
-      device const uchar* p = B_buf + (ulong)row * {{PACKED_ROW_BYTES}} + byte_offset;
-      const ulong payload = (ulong(p[0]) | (ulong(p[1]) << 8) | (ulong(p[2]) << 16) |
-        (ulong(p[3]) << 24) | (ulong(p[4]) << 32) | (ulong(p[5]) << 40)) >> shift;
-      const uint q = uint(payload);
-      const int scale = int((payload >> 32) & 63u) + 1;
-      const int zero = int((payload >> 38) & 15u) * 8;
-      #pragma clang loop unroll(full)
-      for (uint j = 0; j < 4; ++j) {
-        const uint bits = q >> (j * 8u);
-        const int4 values = int4(int(bits & 3u), int((bits >> 2) & 3u),
-          int((bits >> 4) & 3u), int((bits >> 6) & 3u)) * scale - zero;
-        ((threadgroup char4*)weights)[row * ({{BLOCK_K}}u / 4u) + group * 4u + j] = char4(values);
-      }
-    }
-)";
-    } else if (format == CCV_NNC_QX_8I_ROWWISE_IQ2_XXS) {
-      source += R"(
-    for (uint g = tid; g < {{BLOCK_N}}u * {{BLOCK_K}}u / 32u; g += {{SIMDGROUPS}}u * 32u) {
-      const uint row = g / ({{BLOCK_K}}u / 32u);
-      const uint group = g % ({{BLOCK_K}}u / 32u);
-      device const uchar* p = B_buf + (ulong)row * (K / 4u) + k / 4u + group * 8u;
-      const uint codes = ((device const uint*)p)[1];
-      const uint scale = iq2_scales[codes >> 28];
-      #pragma clang loop unroll(full)
-      for (uint sg = 0; sg < 4; ++sg) {
-        const uint grid = uint(p[sg]) * 2u;
-        const uint signs = ((codes >> (sg * 7u)) & 127u) * 2u;
-        #pragma clang loop unroll(full)
-        for (uint word = 0; word < 2; ++word) {
-          // Each byte is at most 7 * 32, so multiplying the packed word has no byte carries.
-          const uint raw = iq2_grid[grid + word] * scale;
-          const uint high = raw & 0x80808080u;
-          const uint magnitude = (raw & 0x7f7f7f7fu) | (high - (high >> 7));
-          const uint mask = iq2_signs[signs + word];
-          // Magnitudes are in 1...127, so the byte-wise negation cannot carry into another byte.
-          weight_words[row * ({{BLOCK_K}}u / 4u) + group * 8u + sg * 2u + word] = (magnitude ^ mask) + (mask & 0x01010101u);
-        }
-      }
-    }
-)";
-    } else if (format == CCV_NNC_QX_8I_ROWWISE_IQ3_XXS) {
-      source += R"(
-    for (uint g = tid; g < {{BLOCK_N}}u * {{BLOCK_K}}u / 16u; g += {{SIMDGROUPS}}u * 32u) {
-      const uint row = g / ({{BLOCK_K}}u / 16u);
-      const uint pair = g % ({{BLOCK_K}}u / 16u);
-      // Two 28-bit IQ3_XXS groups of eight values occupy seven bytes.
-      device const uchar* p = B_buf + (ulong)row * {{PACKED_ROW_BYTES}} + (k / 16u + pair) * 7u;
-      const ulong payloads = ulong(p[0]) | (ulong(p[1]) << 8) | (ulong(p[2]) << 16) |
-        (ulong(p[3]) << 24) | (ulong(p[4]) << 32) | (ulong(p[5]) << 40) | (ulong(p[6]) << 48);
-      #pragma clang loop unroll(full)
-      for (uint group = 0; group < 2; ++group) {
-        const uint payload = uint(payloads >> (group * 28u));
-        const uint scale = ((payload >> 24) & 15u) + 1u;
-        #pragma clang loop unroll(full)
-        for (uint word = 0; word < 2; ++word) {
-          // Grid bytes are at most 15 and scales at most 16, so multiplying the packed word has no byte carries.
-          const uint raw = iq3_grid[(payload >> (word * 8u)) & 255u] * scale;
-          const uint high = raw & 0x80808080u;
-          const uint magnitude = (raw & 0x7f7f7f7fu) | (high - (high >> 7));
-          // Spread four sign bits to the low bit of each byte, then widen them to byte masks.
-          const uint mask = ((((payload >> (16u + word * 4u)) & 15u) * 0x00204081u) & 0x01010101u) * 255u;
-          // Magnitudes are in 1...127, so the byte-wise negation cannot carry into another byte.
-          weight_words[row * ({{BLOCK_K}}u / 4u) + pair * 4u + group * 2u + word] = (magnitude ^ mask) + (mask & 0x01010101u);
-        }
-      }
-    }
-)";
-    } else if (format == CCV_NNC_QX_8I_ROWWISE_IQ1_S || format == CCV_NNC_QX_8I_ROWWISE_IQ1_M) {
+    if (format == CCV_NNC_QX_8I_ROWWISE_IQ1_S || format == CCV_NNC_QX_8I_ROWWISE_IQ1_M) {
       source += R"(
     #pragma clang loop unroll(full)
     for (uint i = 0; i < units_per_thread; ++i) {

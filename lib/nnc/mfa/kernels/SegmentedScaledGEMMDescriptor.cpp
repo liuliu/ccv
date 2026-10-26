@@ -3,6 +3,7 @@
 #include "SegmentedScaledGEMMKernel.hpp"
 #include "../ccv_nnc_mfa_hash.hpp"
 #include "../ccv_nnc_mfa_error.hpp"
+#include "../ccv_nnc_mfa.hpp"
 
 namespace {
 
@@ -10,6 +11,21 @@ static void serializeBinaries(MTL::BinaryArchive* const binaryArchive, const std
 {
   NS::Error* error = nil;
   binaryArchive->serializeToURL(NS::URL::fileURLWithPath(NS::String::string(pathToWrite.c_str(), NS::UTF8StringEncoding)), &error);
+}
+
+// IQ2_XXS, Q2_K and IQ3_XXS expand weight fragments in registers for 32-row tiles at every M.
+static bool usesRegisterTiles(const uint32_t format) noexcept
+{
+  return format == CCV_NNC_QX_8I_ROWWISE_IQ2_XXS || format == CCV_NNC_QX_8I_ROWWISE_Q2_K || format == CCV_NNC_QX_8I_ROWWISE_IQ3_XXS;
+}
+
+// The selected tile's rows. Other packed formats waste most of a 64-row tile on sparse
+// batches, so they use 16 rows for short prefill.
+static uint16_t tileRows(const uint32_t format, const uint64_t M, const uint32_t binCount) noexcept
+{
+  if (!format || usesRegisterTiles(format))
+    return 32;
+  return M <= (uint64_t)binCount * 4 ? 16 : 64;
 }
 
 }
@@ -20,7 +36,7 @@ bool SegmentedScaledGEMMDescriptor::operator==(const SegmentedScaledGEMMDescript
     ioPrecision == rhs.ioPrecision &&
     loadM == rhs.loadM &&
     // Runtime M can reuse a pipeline only while its selected tile stays the same.
-    kernelDescriptor().blockDimensions[0] == rhs.kernelDescriptor().blockDimensions[0] &&
+    tileRows(format, matrixDimensions[0], binCount) == tileRows(rhs.format, rhs.matrixDimensions[0], rhs.binCount) &&
     format == rhs.format &&
     (loadM || matrixDimensions[0] == rhs.matrixDimensions[0]) &&
     matrixDimensions[1] == rhs.matrixDimensions[1] &&
@@ -43,16 +59,17 @@ std::size_t std::hash<SegmentedScaledGEMMDescriptor>::operator()(const Segmented
   seed = combine_32(seed, hash.useBias ? 1 : 0);
   seed = combine_32(seed, hash.loadM ? 1 : 0);
   seed = combine_32(seed, hash.format);
-  // Keep the small packed tile class from kernelDescriptor() in the runtime-M key.
-  seed = combine_32(seed, hash.format && (uint64_t)hash.matrixDimensions[0] <= (uint64_t)hash.binCount * 4);
+  // Keep the selected tile in the runtime-M key, as operator== does.
+  seed = combine_32(seed, tileRows(hash.format, hash.matrixDimensions[0], hash.binCount));
   return seed;
 }
 
 SegmentedScaledGEMMKernelDescriptor SegmentedScaledGEMMDescriptor::kernelDescriptor() const noexcept
 {
-  // Sparse packed batches waste most of a 64-row tile; use 16 rows for short prefill.
+  if (usesRegisterTiles(format))
+    return SegmentedScaledGEMMKernelDescriptor(simd::ushort3 { 32, 64, 64 }, 2, ioPrecision, useBias, loadM, format);
   return SegmentedScaledGEMMKernelDescriptor(
-      simd::ushort3 { (uint16_t)(format ? ((uint64_t)matrixDimensions[0] <= (uint64_t)binCount * 4 ? 16 : 64) : 32), 128, 128 },
+      simd::ushort3 { tileRows(format, matrixDimensions[0], binCount), 128, 128 },
       4,
       ioPrecision,
       useBias,

@@ -2048,7 +2048,7 @@ static int _mps_segmented_scaled_gemm_validate_format_shape_experts_dims(const i
 	if (guard_output)
 	{
 		float* const guarded = (float*)ccmalloc(sizeof(float) * (output_storage_rows - total_m) * n_dim);
-		_mps_forward_scaled_gemm_to_float(datatype, hb_storage->data.u8 + ccv_nnc_tensor_data_size(hb_params), (output_storage_rows - total_m) * n_dim, guarded);
+		_mps_forward_scaled_gemm_to_float(datatype, hb_storage->data.u8 + ccv_nnc_tensor_data_size_without_padding(hb_params), (output_storage_rows - total_m) * n_dim, guarded);
 		for (i = 0; i < (output_storage_rows - total_m) * n_dim; i++)
 			if (guarded[i] != guard_value)
 			{
