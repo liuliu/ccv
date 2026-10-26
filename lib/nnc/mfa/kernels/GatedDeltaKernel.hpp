@@ -24,11 +24,23 @@ struct GatedDeltaKernel {
 
   bool loadM;
 
+  bool blocked;
+
+  bool channelDecay;
+
+  uint8_t timeBlock;
+
+  uint8_t simdGroups;
+
+  /// Value columns per threadgroup; the grid's y dimension covers the value dim with these.
+  unsigned short columnsPerThreadgroup;
+
   GatedDeltaKernel(GatedDeltaKernelDescriptor descriptor, MTL::Device* const device);
 
 private:
   unsigned short createThreadgroupMemoryAllocation() const noexcept;
   std::string createSource() const noexcept;
+  std::string createBlockedSource() const noexcept;
 };
 
 #endif

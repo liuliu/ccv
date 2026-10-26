@@ -35,6 +35,9 @@ void ccv_nnc_mfa_encode_gated_delta(ccv_nnc_mfa_context_t* context, ccv_nnc_mfa_
   descriptor.logDecay = params.log_decay != 0;
   descriptor.channelDecay = params.channel_decay != 0;
   descriptor.loadM = params.loadM != 0;
+  // Short sequences (decode, speculative verification) keep the per-column kernel, whose
+  // launch is lighter; from 256 steps the blocked kernel is about twice as fast.
+  descriptor.blocked = params.key_dim % 32 == 0 && params.key_dim <= 256 && params.sequence_length >= 256;
 
   auto pool = NS::AutoreleasePool::alloc()->init();
   auto& shaderCache = context->kernel_cache;
@@ -60,7 +63,7 @@ void ccv_nnc_mfa_encode_gated_delta(ccv_nnc_mfa_context_t* context, ccv_nnc_mfa_
     encoder->useResource(tensors[7], MTL::ResourceUsageWrite);
   }
 
-  const uint32_t value_dim_threadgroups = (params.value_dim + 3) / 4;
+  const uint32_t value_dim_threadgroups = (params.value_dim + kernel->columnsPerThreadgroup - 1) / kernel->columnsPerThreadgroup;
   MTL::Size gridSize = MTL::Size(1, value_dim_threadgroups, params.batch_size * params.value_head_count);
   CCV_NNC_MFA_PRECONDITION(gridSize.width > 0);
   encoder->dispatchThreadgroups(gridSize, kernel->threadgroupSize);

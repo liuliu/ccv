@@ -16,7 +16,8 @@ bool GatedDeltaDescriptor::operator==(const GatedDeltaDescriptor& rhs) const {
   inputMemoryPrecision == rhs.inputMemoryPrecision &&
   betaMemoryPrecision == rhs.betaMemoryPrecision &&
   logDecay == rhs.logDecay &&
-  channelDecay == rhs.channelDecay;
+  channelDecay == rhs.channelDecay &&
+  blocked == rhs.blocked;
 }
 
 std::size_t std::hash<GatedDeltaDescriptor>::operator()(const GatedDeltaDescriptor& hash) const noexcept {
@@ -31,6 +32,7 @@ std::size_t std::hash<GatedDeltaDescriptor>::operator()(const GatedDeltaDescript
   seed = combine_64(seed, hash.logDecay ? 1 : 0);
   seed = combine_64(seed, hash.channelDecay ? 1 : 0);
   seed = combine_64(seed, hash.loadM ? 1 : 0);
+  seed = combine_64(seed, hash.blocked ? 1 : 0);
   return seed;
 }
 
@@ -48,11 +50,26 @@ std::pair<GatedDeltaKernelDescriptor, PipelineValue<GatedDeltaKernel> *> GatedDe
   };
 
   GatedDeltaKernelDescriptor kernelDesc;
-  kernelDesc.stateElementsPerLane = (uint8_t)((keyDim + 31) / 32);
+  kernelDesc.blocked = blocked;
+  kernelDesc.stateElementsPerLane = (uint8_t)(blocked ? keyDim / 8 : (keyDim + 31) / 32);
   kernelDesc.stateCheckpointing = stateCheckpointCount > 0;
   kernelDesc.inputMemoryPrecision = inputMemoryPrecision;
   kernelDesc.betaMemoryPrecision = betaMemoryPrecision;
   kernelDesc.loadM = loadM;
+  kernelDesc.channelDecay = blocked && channelDecay;
+  // Four value columns per SIMD group. Wider threadgroups share each staged timestep with
+  // more columns (Dv = 128: 16 SIMD groups and 16-step blocks were fastest on M5 Ultra);
+  // narrower ones keep partial threadgroups small for other value dims.
+  kernelDesc.simdGroups = blocked ? (valueDim % 64 == 0 ? 16 : (valueDim % 32 == 0 ? 8 : 4)) : 0;
+  kernelDesc.timeBlock = blocked ? (kernelDesc.simdGroups >= 8 ? 16 : 8) : 0;
+  if (blocked) {
+    // Each staged step holds q, k, the decay, v, y and beta (see createBlockedSource). FP32
+    // inputs, or 256-wide keys with per key channel decay, exceed 32 KB at 16 steps.
+    const unsigned inputBytes = (unsigned)inputMemoryPrecision.size();
+    const unsigned stepBytes = 2 * keyDim * inputBytes + (channelDecay ? keyDim : 1) * 4 + 2 * 4 * kernelDesc.simdGroups * inputBytes + 4;
+    while (kernelDesc.timeBlock > 4 && kernelDesc.timeBlock * stepBytes > device->maxThreadgroupMemoryLength())
+      kernelDesc.timeBlock /= 2;
+  }
 
   auto createPipeline =
   [=](MTL::Library* library) -> MTL::ComputePipelineState* {

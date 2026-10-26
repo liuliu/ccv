@@ -144,6 +144,8 @@ GatedDeltaDescriptor create_descriptor(const GatedDeltaCase& bench, const Benchm
   descriptor.logDecay = config.log_decay_input;
   descriptor.channelDecay = config.channel_decay;
   descriptor.loadM = false;
+  // Same selection as ccv_nnc_mfa_encode_gated_delta.
+  descriptor.blocked = bench.Dk % 32 == 0 && bench.Dk <= 256 && bench.T >= 256;
   return descriptor;
 }
 
@@ -192,7 +194,8 @@ double run_once(
   encoder->setBuffer(buffers.state_in.get(), 0, 5);
   encoder->setBuffer(buffers.y.get(), 0, 6);
   encoder->setBuffer(buffers.state_out.get(), 0, 7);
-  const MTL::Size grid_size(1, (bench.Dv + 3) / 4, bench.B * bench.Hv);
+  const uint32_t columns = pipeline_value->kernel->columnsPerThreadgroup;
+  const MTL::Size grid_size(1, (bench.Dv + columns - 1) / columns, bench.B * bench.Hv);
   for (int i = 0; i < config.duplicated_dispatches; ++i)
     encoder->dispatchThreadgroups(grid_size, pipeline_value->kernel->threadgroupSize);
   encoder->endEncoding();
