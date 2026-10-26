@@ -8,6 +8,7 @@ typedef struct {
   uint64_t scale_data_type;
   uint32_t row_count;
   uint32_t column_count;
+  uint8_t sigmoid_gate;
 } ccv_nnc_mfa_rmsnorm_gated_params_t;
 
 #ifdef __cplusplus

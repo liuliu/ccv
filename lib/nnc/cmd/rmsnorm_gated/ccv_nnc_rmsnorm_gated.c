@@ -44,3 +44,5 @@ REGISTER_COMMAND(CCV_NNC_RMSNORM_GATED_BACKWARD)(ccv_nnc_cmd_registry_t* const r
 
 //@REGISTER_EASY_COMMAND_MACRO(CCV_NNC_RMSNORM_GATED_FORWARD)
 #define CMD_RMSNORM_GATED_FORWARD(_epsilon, _elementwise_affine, ...) ccv_nnc_cmd(CCV_NNC_RMSNORM_GATED_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.rmsnorm_gated={.epsilon=_epsilon,.elementwise_affine=_elementwise_affine,.count=LIST_COUNT(__VA_ARGS__),.axis={__VA_ARGS__}}}), 0)
+//@REGISTER_EASY_COMMAND_MACRO(CCV_NNC_RMSNORM_GATED_FORWARD)
+#define CMD_RMSNORM_SIGMOID_GATED_FORWARD(_epsilon, _elementwise_affine, ...) ccv_nnc_cmd(CCV_NNC_RMSNORM_GATED_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.rmsnorm_gated={.epsilon=_epsilon,.elementwise_affine=_elementwise_affine,.sigmoid_gate=1,.count=LIST_COUNT(__VA_ARGS__),.axis={__VA_ARGS__}}}), 0)

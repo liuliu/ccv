@@ -15,6 +15,8 @@ struct RMSNormGatedKernelDescriptor {
   GEMMOperandPrecision scalePrecision;
   uint32_t columnCount;
 
+  bool sigmoidGate;
+
   bool operator==(const RMSNormGatedKernelDescriptor& rhs) const;
 };
 
@@ -36,6 +38,8 @@ struct RMSNormGatedDescriptor {
   GEMMOperandPrecision scalePrecision;
 
   uint32_t columnCount;
+
+  bool sigmoidGate;
 
   bool operator==(const RMSNormGatedDescriptor& rhs) const;
 

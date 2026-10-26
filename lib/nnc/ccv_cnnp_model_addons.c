@@ -3416,7 +3416,7 @@ static const ccv_cnnp_model_vtab_t ccv_cnnp_rmsnorm_gated_isa = {
 	.copy = _ccv_cnnp_rmsnorm_gated_copy,
 };
 
-ccv_cnnp_model_t* ccv_cnnp_rmsnorm_gated(const float epsilon, const int axis[CCV_NNC_MAX_DIM_ALLOC], const int axis_count, const int elementwise_affine, const int is_trainable, const char* const name)
+ccv_cnnp_model_t* ccv_cnnp_rmsnorm_gated(const float epsilon, const int axis[CCV_NNC_MAX_DIM_ALLOC], const int axis_count, const int elementwise_affine, const int sigmoid_gate, const int is_trainable, const char* const name)
 {
 	ccv_cnnp_model_rmsnorm_gated_t* const model_rmsnorm_gated = (ccv_cnnp_model_rmsnorm_gated_t*)cccalloc(1, sizeof(ccv_cnnp_model_rmsnorm_gated_t));
 	model_rmsnorm_gated->super.isa = &ccv_cnnp_rmsnorm_gated_isa;
@@ -3430,6 +3430,7 @@ ccv_cnnp_model_t* ccv_cnnp_rmsnorm_gated(const float epsilon, const int axis[CCV
 	model_rmsnorm_gated->params.rmsnorm_gated.epsilon = epsilon;
 	model_rmsnorm_gated->params.rmsnorm_gated.count = axis_count;
 	model_rmsnorm_gated->params.rmsnorm_gated.elementwise_affine = elementwise_affine;
+	model_rmsnorm_gated->params.rmsnorm_gated.sigmoid_gate = sigmoid_gate;
 	memcpy(model_rmsnorm_gated->params.rmsnorm_gated.axis, axis, sizeof(int) * axis_count);
 	return (ccv_cnnp_model_t*)model_rmsnorm_gated;
 }
@@ -3437,7 +3438,7 @@ ccv_cnnp_model_t* ccv_cnnp_rmsnorm_gated(const float epsilon, const int axis[CCV
 static ccv_cnnp_model_t* _ccv_cnnp_rmsnorm_gated_copy(const ccv_cnnp_model_t* const super, void* const context)
 {
 	const ccv_cnnp_model_rmsnorm_gated_t* const self = (const ccv_cnnp_model_rmsnorm_gated_t*)super;
-	return ccv_cnnp_rmsnorm_gated(self->params.rmsnorm_gated.epsilon, self->params.rmsnorm_gated.axis, self->params.rmsnorm_gated.count, self->params.rmsnorm_gated.elementwise_affine, self->super.is_trainable, self->super.name);
+	return ccv_cnnp_rmsnorm_gated(self->params.rmsnorm_gated.epsilon, self->params.rmsnorm_gated.axis, self->params.rmsnorm_gated.count, self->params.rmsnorm_gated.elementwise_affine, self->params.rmsnorm_gated.sigmoid_gate, self->super.is_trainable, self->super.name);
 }
 
 // MARK - Batched Matrix Mul Layer

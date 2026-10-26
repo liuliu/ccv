@@ -2807,7 +2807,7 @@ TEST_CASE("evaluate cnnp rmsnorm gated")
 {
 	const ccv_cnnp_model_io_t x = ccv_cnnp_input();
 	const ccv_cnnp_model_io_t gate = ccv_cnnp_input();
-	ccv_cnnp_model_io_t y = ccv_cnnp_model_apply(ccv_cnnp_rmsnorm_gated(1e-6, DIM_ALLOC(1), 1, 1, 1, "rmsnorm_gated"), MODEL_IO_LIST(x, gate));
+	ccv_cnnp_model_io_t y = ccv_cnnp_model_apply(ccv_cnnp_rmsnorm_gated(1e-6, DIM_ALLOC(1), 1, 1, 0, 1, "rmsnorm_gated"), MODEL_IO_LIST(x, gate));
 	ccv_cnnp_model_t* const final = ccv_cnnp_model_new(MODEL_IO_LIST(x, gate), MODEL_IO_LIST(y), 1, "rmsnorm_gated");
 	const ccv_nnc_tensor_param_t params = CPU_TENSOR_NHWC(32F, 4, 17);
 	ccv_cnnp_model_compile(final, TENSOR_PARAM_LIST(params, params), CMD_NOOP(), CMD_NOOP());

@@ -40,6 +40,7 @@ void ccv_nnc_mfa_encode_rmsnorm_gated(ccv_nnc_mfa_context_t* context, ccv_nnc_mf
   descriptor.gatePrecision = precision_from_mtl_data_type(params.gate_data_type);
   descriptor.scalePrecision = precision_from_mtl_data_type(params.scale_data_type);
   descriptor.columnCount = params.column_count;
+  descriptor.sigmoidGate = params.sigmoid_gate != 0;
 
   auto pool = NS::AutoreleasePool::alloc()->init();
   auto& shaderCache = context->kernel_cache;

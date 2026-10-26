@@ -107,6 +107,7 @@ static int _ccv_nnc_rmsnorm_gated_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hi
 		}
 	}
 	const float epsilon = cmd.info.rmsnorm_gated.epsilon;
+	const int sigmoid_gate = cmd.info.rmsnorm_gated.sigmoid_gate;
 	for (i = 0; i < rcount; i++)
 		varp[i] = 1. / sqrtf(varp[i] * inv_n + epsilon);
 	for (idx[0] = 0; idx[0] < adim[0]; idx[0]++)
@@ -137,7 +138,7 @@ static int _ccv_nnc_rmsnorm_gated_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hi
 					const float sigmoid = z >= 0 ? 1.f / (1.f + ez) : ez / (1.f + ez);
 					const float inv_std = rdim[3] == 1 ? varp2[0] : varp2[x * rstride[3]];
 					const float scale_v = scale ? scalep2[sdim[3] == 1 ? 0 : x * scale_stride[3]] : 1;
-					bp2[x * bstride[3]] = ap2[x * astride[3]] * inv_std * scale_v * z * sigmoid;
+					bp2[x * bstride[3]] = ap2[x * astride[3]] * inv_std * scale_v * (sigmoid_gate ? sigmoid : z * sigmoid);
 				}
 			}
 		}

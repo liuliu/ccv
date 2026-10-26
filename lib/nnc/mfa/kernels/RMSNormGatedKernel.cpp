@@ -23,6 +23,7 @@ RMSNormGatedKernel::RMSNormGatedKernel(RMSNormGatedKernelDescriptor descriptor, 
   gatePrecision = descriptor.gatePrecision;
   scalePrecision = descriptor.scalePrecision;
   columnCount = descriptor.columnCount;
+  sigmoidGate = descriptor.sigmoidGate;
 
   threadgroupMemoryAllocation = createThreadgroupMemoryAllocation();
   groupSize = MTL::Size(columnCount <= 384 ? 128 : 256, 1, 1);
@@ -96,7 +97,7 @@ kernel void rmsnorm_gated(
   for (uint i = lid; i < column_count; i += threadgroup_size) {
     const float x = float(source[i]);
     const float z = float(gate[i]);
-    const float gated = z * stable_sigmoid(z);
+    const float gated = sigmoid_gate ? stable_sigmoid(z) : z * stable_sigmoid(z);
     const float result = x * inv_std * float(scale[i]) * gated;
     destination[i] = realA(result);
   }
@@ -136,6 +137,9 @@ std::string RMSNormGatedKernel::createConstants() const noexcept {
   defines += "\n";
   defines += "constant float epsilon = ";
   defines += high_precision_to_string(epsilon) + ";";
+  defines += "\n";
+  defines += "constant bool sigmoid_gate = ";
+  defines += sigmoidGate ? "true;" : "false;";
   defines += "\n";
   defines += "constant ushort threadgroup_size = ";
   defines += std::to_string(groupSize.width) + ";";

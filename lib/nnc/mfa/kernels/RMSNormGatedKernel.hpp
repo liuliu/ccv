@@ -24,6 +24,8 @@ struct RMSNormGatedKernel {
 
   uint32_t columnCount;
 
+  bool sigmoidGate;
+
   RMSNormGatedKernel(RMSNormGatedKernelDescriptor descriptor, MTL::Device* const device);
 
 private:

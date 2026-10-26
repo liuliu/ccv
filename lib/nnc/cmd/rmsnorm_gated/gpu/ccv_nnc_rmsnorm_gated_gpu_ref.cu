@@ -39,7 +39,7 @@ static __device__ int _ccv_nnc_rmsnorm_gated_offset(int index, const int dim[4],
 }
 
 template<typename NUM>
-static __global__ void _ccv_nnc_rmsnorm_gated_forw_kernel(const int groups, const int n, const float epsilon, const ccv_nnc_rmsnorm_gated_info_t info, const NUM* const a, const void* const gate, const int gate_datatype, const void* const scale, const int scale_datatype, NUM* const b)
+static __global__ void _ccv_nnc_rmsnorm_gated_forw_kernel(const int groups, const int n, const float epsilon, const int sigmoid_gate, const ccv_nnc_rmsnorm_gated_info_t info, const NUM* const a, const void* const gate, const int gate_datatype, const void* const scale, const int scale_datatype, NUM* const b)
 {
 	__shared__ float sums[256];
 	for (int group = blockIdx.x; group < groups; group += gridDim.x)
@@ -70,7 +70,7 @@ static __global__ void _ccv_nnc_rmsnorm_gated_forw_kernel(const int groups, cons
 			const float sigmoid = z >= 0 ? 1.f / (1.f + ez) : ez / (1.f + ez);
 			const float gamma = scale ? _ccv_nnc_rmsnorm_gated_load(scale, scale_datatype, scale_base + _ccv_nnc_rmsnorm_gated_offset(i, info.ndim, info.sstride)) : 1;
 			const float value = (float)a[a_base + _ccv_nnc_rmsnorm_gated_offset(i, info.ndim, info.astride)];
-			b[b_base + _ccv_nnc_rmsnorm_gated_offset(i, info.ndim, info.bstride)] = (NUM)(value * inv_std * gamma * z * sigmoid);
+			b[b_base + _ccv_nnc_rmsnorm_gated_offset(i, info.ndim, info.bstride)] = (NUM)(value * inv_std * gamma * (sigmoid_gate ? sigmoid : z * sigmoid));
 		}
 		__syncthreads();
 	}
@@ -79,7 +79,7 @@ static __global__ void _ccv_nnc_rmsnorm_gated_forw_kernel(const int groups, cons
 // Contiguous tensors normalized over trailing axes: group rows are [group * n, (group + 1) * n). One warp owns a
 // row and keeps its values in registers between the reduction and the output pass.
 template<typename NUM, int VALUES_PER_LANE>
-static __global__ void _ccv_nnc_rmsnorm_gated_contiguous_forw_kernel(const int groups, const int n, const float epsilon, const NUM* const a, const void* const gate, const int gate_datatype, const void* const scale, const int scale_datatype, NUM* const b)
+static __global__ void _ccv_nnc_rmsnorm_gated_contiguous_forw_kernel(const int groups, const int n, const float epsilon, const int sigmoid_gate, const NUM* const a, const void* const gate, const int gate_datatype, const void* const scale, const int scale_datatype, NUM* const b)
 {
 	const int warps = blockDim.x / 32;
 	const int lane = threadIdx.x % 32;
@@ -108,25 +108,25 @@ static __global__ void _ccv_nnc_rmsnorm_gated_contiguous_forw_kernel(const int g
 				const float ez = expf(-fabsf(z));
 				const float sigmoid = z >= 0 ? 1.f / (1.f + ez) : ez / (1.f + ez);
 				const float gamma = scale ? _ccv_nnc_rmsnorm_gated_load(scale, scale_datatype, i) : 1;
-				b[base + i] = (NUM)(values[j] * inv_std * gamma * z * sigmoid);
+				b[base + i] = (NUM)(values[j] * inv_std * gamma * (sigmoid_gate ? sigmoid : z * sigmoid));
 			}
 		}
 	}
 }
 
 template<typename NUM>
-static void _ccv_nnc_rmsnorm_gated_contiguous_forw_launch(cudaStream_t stream, const int groups, const int n, const float epsilon, const NUM* const a, const void* const gate, const int gate_datatype, const void* const scale, const int scale_datatype, NUM* const b)
+static void _ccv_nnc_rmsnorm_gated_contiguous_forw_launch(cudaStream_t stream, const int groups, const int n, const float epsilon, const int sigmoid_gate, const NUM* const a, const void* const gate, const int gate_datatype, const void* const scale, const int scale_datatype, NUM* const b)
 {
 	// 8 warps per block, one row per warp.
 	const int blocks = ccv_min((groups + 7) / 8, 4096);
 	if (n <= 128)
-		_ccv_nnc_rmsnorm_gated_contiguous_forw_kernel<NUM, 4><<<blocks, 256, 0, stream>>>(groups, n, epsilon, a, gate, gate_datatype, scale, scale_datatype, b);
+		_ccv_nnc_rmsnorm_gated_contiguous_forw_kernel<NUM, 4><<<blocks, 256, 0, stream>>>(groups, n, epsilon, sigmoid_gate, a, gate, gate_datatype, scale, scale_datatype, b);
 	else if (n <= 256)
-		_ccv_nnc_rmsnorm_gated_contiguous_forw_kernel<NUM, 8><<<blocks, 256, 0, stream>>>(groups, n, epsilon, a, gate, gate_datatype, scale, scale_datatype, b);
+		_ccv_nnc_rmsnorm_gated_contiguous_forw_kernel<NUM, 8><<<blocks, 256, 0, stream>>>(groups, n, epsilon, sigmoid_gate, a, gate, gate_datatype, scale, scale_datatype, b);
 	else if (n <= 512)
-		_ccv_nnc_rmsnorm_gated_contiguous_forw_kernel<NUM, 16><<<blocks, 256, 0, stream>>>(groups, n, epsilon, a, gate, gate_datatype, scale, scale_datatype, b);
+		_ccv_nnc_rmsnorm_gated_contiguous_forw_kernel<NUM, 16><<<blocks, 256, 0, stream>>>(groups, n, epsilon, sigmoid_gate, a, gate, gate_datatype, scale, scale_datatype, b);
 	else
-		_ccv_nnc_rmsnorm_gated_contiguous_forw_kernel<NUM, 32><<<blocks, 256, 0, stream>>>(groups, n, epsilon, a, gate, gate_datatype, scale, scale_datatype, b);
+		_ccv_nnc_rmsnorm_gated_contiguous_forw_kernel<NUM, 32><<<blocks, 256, 0, stream>>>(groups, n, epsilon, sigmoid_gate, a, gate, gate_datatype, scale, scale_datatype, b);
 }
 
 static int _ccv_nnc_rmsnorm_gated_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
@@ -203,16 +203,17 @@ static int _ccv_nnc_rmsnorm_gated_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hi
 	if (contiguous)
 	{
 		const float epsilon = cmd.info.rmsnorm_gated.epsilon;
+		const int sigmoid_gate = cmd.info.rmsnorm_gated.sigmoid_gate;
 		if (datatype == CCV_32F)
-			_ccv_nnc_rmsnorm_gated_contiguous_forw_launch(stream, groups, n, epsilon, a->data.f32, gate->data.u8, gate->info.datatype, gamma, scale_datatype, b->data.f32);
+			_ccv_nnc_rmsnorm_gated_contiguous_forw_launch(stream, groups, n, epsilon, sigmoid_gate, a->data.f32, gate->data.u8, gate->info.datatype, gamma, scale_datatype, b->data.f32);
 		else if (datatype == CCV_16F)
-			_ccv_nnc_rmsnorm_gated_contiguous_forw_launch(stream, groups, n, epsilon, (const __half*)a->data.f16, gate->data.u8, gate->info.datatype, gamma, scale_datatype, (__half*)b->data.f16);
+			_ccv_nnc_rmsnorm_gated_contiguous_forw_launch(stream, groups, n, epsilon, sigmoid_gate, (const __half*)a->data.f16, gate->data.u8, gate->info.datatype, gamma, scale_datatype, (__half*)b->data.f16);
 		else
-			_ccv_nnc_rmsnorm_gated_contiguous_forw_launch(stream, groups, n, epsilon, (const __nv_bfloat16*)a->data.f16, gate->data.u8, gate->info.datatype, gamma, scale_datatype, (__nv_bfloat16*)b->data.f16);
+			_ccv_nnc_rmsnorm_gated_contiguous_forw_launch(stream, groups, n, epsilon, sigmoid_gate, (const __nv_bfloat16*)a->data.f16, gate->data.u8, gate->info.datatype, gamma, scale_datatype, (__nv_bfloat16*)b->data.f16);
 		return CCV_NNC_EXEC_SUCCESS;
 	}
 #define RMSNORM_GATED_LAUNCH(NUM, a_data, b_data) \
-	_ccv_nnc_rmsnorm_gated_forw_kernel<NUM><<<ccv_min(groups, 4096), 256, 0, stream>>>(groups, n, cmd.info.rmsnorm_gated.epsilon, info, a_data, gate->data.u8, gate->info.datatype, gamma, scale_datatype, b_data)
+	_ccv_nnc_rmsnorm_gated_forw_kernel<NUM><<<ccv_min(groups, 4096), 256, 0, stream>>>(groups, n, cmd.info.rmsnorm_gated.epsilon, cmd.info.rmsnorm_gated.sigmoid_gate, info, a_data, gate->data.u8, gate->info.datatype, gamma, scale_datatype, b_data)
 	if (datatype == CCV_32F)
 		RMSNORM_GATED_LAUNCH(float, a->data.f32, b->data.f32);
 	else if (datatype == CCV_16F)

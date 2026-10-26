@@ -68,7 +68,8 @@ static int _ccv_nnc_rmsnorm_gated_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hi
 				.gate_data_type = (uint64_t)gate_data_type,
 				.scale_data_type = (uint64_t)scale_data_type,
 				.row_count = (uint32_t)row_count,
-				.column_count = (uint32_t)column_count
+				.column_count = (uint32_t)column_count,
+				.sigmoid_gate = (uint8_t)(cmd.info.rmsnorm_gated.sigmoid_gate != 0)
 			};
 			ccv_nnc_mfa_prepare_rmsnorm_gated(context, params);
 
@@ -135,8 +136,8 @@ static int _ccv_nnc_rmsnorm_gated_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hi
 				MPSGraphTensor* mps_one = [graph constantWithScalar:1.0 dataType:MPSDataTypeFloat32];
 				MPSGraphTensor* mps_denom = [graph additionWithPrimaryTensor:mps_exp secondaryTensor:mps_one name:nil];
 				MPSGraphTensor* mps_sigmoid = [graph divisionWithPrimaryTensor:mps_one secondaryTensor:mps_denom name:nil];
-				MPSGraphTensor* mps_swish = [graph multiplicationWithPrimaryTensor:mps_gate_f32 secondaryTensor:mps_sigmoid name:nil];
-				MPSGraphTensor* mps_b = [graph multiplicationWithPrimaryTensor:mps_norm secondaryTensor:mps_swish name:nil];
+				MPSGraphTensor* mps_gated = cmd.info.rmsnorm_gated.sigmoid_gate ? mps_sigmoid : [graph multiplicationWithPrimaryTensor:mps_gate_f32 secondaryTensor:mps_sigmoid name:nil];
+				MPSGraphTensor* mps_b = [graph multiplicationWithPrimaryTensor:mps_norm secondaryTensor:mps_gated name:nil];
 				if (b->info.datatype != CCV_32F)
 					mps_b = [graph castTensor:mps_b toType:ccv_nnc_mps_datatype(b->info.datatype) name:@"mps_b"];
 				[resultTensors addObject:mps_b];

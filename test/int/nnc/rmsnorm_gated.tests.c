@@ -164,6 +164,94 @@ TEST_CASE("gpu rmsnorm gated contiguous rows match CPU")
 		}
 }
 
+TEST_CASE("gpu rmsnorm sigmoid gated matches CPU across precision and axes")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_RMSNORM_GATED_FORWARD, CCV_NNC_BACKEND_GPU_REF) || ccv_nnc_cmd_ok(CCV_NNC_RMSNORM_GATED_FORWARD, CCV_NNC_BACKEND_MPS));
+	const int datatypes[] = {CCV_32F, CCV_16F, CCV_16BF};
+	dsfmt_t dsfmt;
+	dsfmt_init_gen_rand(&dsfmt, 11);
+	int dtype, last_axis, i;
+	for (dtype = 0; dtype < 3; dtype++)
+		for (last_axis = 0; last_axis < 2; last_axis++)
+		{
+			// The last axis (GLM-5.3's 128-wide KDA heads) takes the MFA / contiguous CUDA kernel; a middle axis takes MPSGraph / the strided CUDA kernel.
+			const ccv_nnc_tensor_param_t params = last_axis ? CPU_TENSOR_NHWC(32F, 7, 5, 128) : CPU_TENSOR_NHWC(32F, 7, 33, 6);
+			const int axis = last_axis ? 2 : 1;
+			const int count = ccv_nnc_tensor_count(params);
+			ccv_nnc_tensor_param_t scale_params = params;
+			scale_params.dim[0] = 1;
+			scale_params.dim[last_axis ? 1 : 2] = 1;
+			ccv_nnc_tensor_t* const source = ccv_nnc_tensor_new(0, params, 0);
+			ccv_nnc_tensor_t* const gate = ccv_nnc_tensor_new(0, params, 0);
+			ccv_nnc_tensor_t* const expected = ccv_nnc_tensor_new(0, params, 0);
+			ccv_nnc_tensor_t* const actual = ccv_nnc_tensor_new(0, params, 0);
+			ccv_nnc_tensor_t* const scale = ccv_nnc_tensor_new(0, scale_params, 0);
+			ccv_nnc_tensor_param_t gpu_params = params;
+			gpu_params.type = CCV_TENSOR_GPU_MEMORY;
+			ccv_nnc_tensor_param_t gpu_scale_params = scale_params;
+			gpu_scale_params.type = CCV_TENSOR_GPU_MEMORY;
+			ccv_nnc_tensor_t* const gpu_f32 = ccv_nnc_tensor_new(0, gpu_params, 0);
+			ccv_nnc_tensor_t* const gpu_gate_f32 = ccv_nnc_tensor_new(0, gpu_params, 0);
+			ccv_nnc_tensor_t* const gpu_scale_f32 = ccv_nnc_tensor_new(0, gpu_scale_params, 0);
+			gpu_params.datatype = datatypes[dtype];
+			gpu_scale_params.datatype = datatypes[dtype];
+			ccv_nnc_tensor_t* const gpu_source = ccv_nnc_tensor_new(0, gpu_params, 0);
+			ccv_nnc_tensor_t* const gpu_gate = ccv_nnc_tensor_new(0, gpu_params, 0);
+			ccv_nnc_tensor_t* const gpu_scale = ccv_nnc_tensor_new(0, gpu_scale_params, 0);
+			ccv_nnc_tensor_t* const gpu_output = ccv_nnc_tensor_new(0, gpu_params, 0);
+			for (i = 0; i < count; i++)
+			{
+				source->data.f32[i] = (dsfmt_genrand_open_close(&dsfmt) - 0.5) * 4;
+				gate->data.f32[i] = (dsfmt_genrand_open_close(&dsfmt) - 0.5) * 12;
+			}
+			for (i = 0; i < ccv_nnc_tensor_count(scale_params); i++)
+				scale->data.f32[i] = 0.5 + dsfmt_genrand_open_close(&dsfmt);
+			// Round the inputs to the GPU datatype so the CPU reference sees the same values.
+			ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(source, gate, scale), TENSOR_LIST(gpu_f32, gpu_gate_f32, gpu_scale_f32), 0);
+			ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(gpu_f32, gpu_gate_f32, gpu_scale_f32), TENSOR_LIST(gpu_source, gpu_gate, gpu_scale), 0);
+			ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(gpu_source, gpu_gate, gpu_scale), TENSOR_LIST(gpu_f32, gpu_gate_f32, gpu_scale_f32), 0);
+			ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(gpu_f32, gpu_gate_f32, gpu_scale_f32), TENSOR_LIST(source, gate, scale), 0);
+			const ccv_nnc_cmd_t cmd = CMD_RMSNORM_SIGMOID_GATED_FORWARD(1e-5, 1, axis);
+			REQUIRE_EQ(ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(source, gate, scale), TENSOR_LIST(expected), 0), CCV_NNC_EXEC_SUCCESS, "CPU sigmoid gated norm should execute");
+			if (last_axis)
+			{
+				// The reference itself: x * rsqrt(mean(x^2) + epsilon) * scale * sigmoid(gate).
+				int row;
+				for (row = 0; row < 7 * 5; row++)
+				{
+					double sum = 0;
+					for (i = 0; i < 128; i++)
+						sum += (double)source->data.f32[row * 128 + i] * source->data.f32[row * 128 + i];
+					const double inv_std = 1 / sqrt(sum / 128 + 1e-5);
+					for (i = 0; i < 128; i++)
+					{
+						const double z = gate->data.f32[row * 128 + i];
+						const double value = source->data.f32[row * 128 + i] * inv_std * scale->data.f32[i] / (1 + exp(-z));
+						REQUIRE_EQ_WITH_TOLERANCE(expected->data.f32[row * 128 + i], value, 1e-5 * fmax(1, fabs(value)), "CPU sigmoid gated norm must gate with sigmoid(gate)");
+					}
+				}
+			}
+			REQUIRE_EQ(ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(gpu_source, gpu_gate, gpu_scale), TENSOR_LIST(gpu_output), 0), CCV_NNC_EXEC_SUCCESS, "GPU sigmoid gated norm should execute");
+			ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(gpu_output), TENSOR_LIST(gpu_f32), 0);
+			ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(gpu_f32), TENSOR_LIST(actual), 0);
+			const float tolerance = datatypes[dtype] == CCV_32F ? 2e-5 : datatypes[dtype] == CCV_16F ? 1e-3 : 5e-3;
+			for (i = 0; i < count; i++)
+				REQUIRE_EQ_WITH_TOLERANCE(actual->data.f32[i], expected->data.f32[i], tolerance * fmaxf(1, fabsf(expected->data.f32[i])), "GPU sigmoid gated norm must match CPU for datatype=%d last_axis=%d", datatypes[dtype], last_axis);
+			ccv_nnc_tensor_free(source);
+			ccv_nnc_tensor_free(gate);
+			ccv_nnc_tensor_free(expected);
+			ccv_nnc_tensor_free(actual);
+			ccv_nnc_tensor_free(scale);
+			ccv_nnc_tensor_free(gpu_f32);
+			ccv_nnc_tensor_free(gpu_gate_f32);
+			ccv_nnc_tensor_free(gpu_scale_f32);
+			ccv_nnc_tensor_free(gpu_source);
+			ccv_nnc_tensor_free(gpu_gate);
+			ccv_nnc_tensor_free(gpu_scale);
+			ccv_nnc_tensor_free(gpu_output);
+		}
+}
+
 TEST_CASE("cuda rmsnorm preserves output scaling used by Qwen query and key normalization")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_RMSNORM_FORWARD, CCV_NNC_BACKEND_GPU_CUDNN));
