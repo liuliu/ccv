@@ -18,12 +18,18 @@ struct NASparseIndexedAttentionKernel {
   static constexpr uint16_t threadgroupRowBlockD128 = 64;
   static constexpr uint16_t dimBlock = 128;
   // Threadgroup64TwoPass: both passes multiply groups of 64 heads, which must tile
-  // H, with 4 cooperating SIMD groups. A token chunk's probabilities are capped at
-  // twoPassScratchBytes, and a chunk should give every GPU core this many
-  // workgroups in the first pass.
+  // H, with 4 cooperating SIMD groups. A token chunk's probabilities take about
+  // 1/twoPassScratchWorkingSetFraction of the device's working set, between
+  // twoPassMinimumScratchBytes and twoPassMaximumScratchBytes, with the chunk rounded
+  // to the nearest twoPassChunkTokensPerCore tokens per GPU core (at least that many).
+  // A chunk should give every GPU core twoPassMinimumTokensPerCore workgroups in the
+  // first pass.
   static constexpr uint16_t twoPassHeadGroup = 64;
   static constexpr uint16_t twoPassSIMDGroups = 4;
-  static constexpr uint64_t twoPassScratchBytes = 256ull << 20;
+  static constexpr uint64_t twoPassMinimumScratchBytes = 256ull << 20;
+  static constexpr uint64_t twoPassMaximumScratchBytes = 512ull << 20;
+  static constexpr uint64_t twoPassScratchWorkingSetFraction = 64;
+  static constexpr uint32_t twoPassChunkTokensPerCore = 16;
   static constexpr uint32_t twoPassMinimumTokensPerCore = 12;
 
   GEMMOperandPrecision memoryPrecision;

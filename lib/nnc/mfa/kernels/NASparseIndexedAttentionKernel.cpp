@@ -1223,10 +1223,14 @@ kernel void sparse_indexed_attention_probabilities(
     }
     maximum = simd_max(maximum) - log2_probability_peak;
     float denominator = 0;
+    // Store the rounded probabilities in place at memory precision for the values pass.
+    // The element written for column c covers FP32 scores below c, which this SIMD group
+    // has already loaded (earlier iterations, or this iteration's lockstep load).
+    device real* head_rounded = (device real*)head_probabilities;
     for (uint column = lane; column < columns; column += 32u) {
-      const float p = float(real(fast::exp2(head_probabilities[column] - maximum)));
-      denominator += p;
-      head_probabilities[column] = p;
+      const real p = real(fast::exp2(head_probabilities[column] - maximum));
+      denominator += float(p);
+      head_rounded[column] = p;
     }
     denominator = simd_sum(denominator);
 )";
@@ -1285,7 +1289,7 @@ kernel void sparse_indexed_attention_values(
     for (uint i = tid; i < {{HEAD_GROUP}}u * {{ROW_BLOCK}}u; i += {{THREADS}}u) {
       const uint head = head_base + i / {{ROW_BLOCK}}u;
       const uint column = column_base + i % {{ROW_BLOCK}}u;
-      P_buf[i] = column < columns ? (real)token_probabilities[head * chunk.columns + column] : (real)0;
+      P_buf[i] = column < columns ? ((device const real*)(token_probabilities + head * chunk.columns))[column] : (real)0;
     }
     for (uint i = tid; i < {{ROW_BLOCK}}u * {{DIM_BLOCK}}u; i += {{THREADS}}u) {
       const uint column = column_base + i / {{DIM_BLOCK}}u;

@@ -26,9 +26,21 @@ static uint64_t two_pass_token_bytes(const ccv_nnc_mfa_sparse_indexed_attention_
   return uint64_t(params.H) * (two_pass_columns(params) + 1) * sizeof(float) + sizeof(uint32_t);
 }
 
-static uint32_t two_pass_chunk_tokens(const ccv_nnc_mfa_sparse_indexed_attention_params_t& params)
+// Every chunk serializes its probabilities pass before its values pass, so fewer, larger
+// chunks keep the GPU busier: the scratch budget scales with the device's working set.
+static uint64_t two_pass_scratch_bytes(mfa::context* context)
 {
-  return (uint32_t)std::min<uint64_t>(params.T, NASparseIndexedAttentionKernel::twoPassScratchBytes / two_pass_token_bytes(params));
+  const uint64_t budget = context->device->recommendedMaxWorkingSetSize() / NASparseIndexedAttentionKernel::twoPassScratchWorkingSetFraction;
+  return std::min(std::max(budget, NASparseIndexedAttentionKernel::twoPassMinimumScratchBytes), NASparseIndexedAttentionKernel::twoPassMaximumScratchBytes);
+}
+
+// The budget's tokens, rounded to the nearest whole step of tokens per core, and at
+// least one step.
+static uint32_t two_pass_chunk_tokens(mfa::context* context, const ccv_nnc_mfa_sparse_indexed_attention_params_t& params)
+{
+  const uint64_t tokens = two_pass_scratch_bytes(context) / two_pass_token_bytes(params);
+  const uint64_t step = uint64_t(context->device_properties.coreCount) * NASparseIndexedAttentionKernel::twoPassChunkTokensPerCore;
+  return (uint32_t)std::min<uint64_t>(params.T, std::max<uint64_t>((tokens + step / 2) / step, 1) * step);
 }
 
 // Matches two_pass_chunk in the two-pass kernels.
@@ -135,7 +147,7 @@ void ccv_nnc_mfa_encode_sparse_indexed_attention(ccv_nnc_mfa_context_t* context,
     auto kernel = pipelineValue->kernel;
     const uint64_t columns = two_pass_columns(params);
     CCV_NNC_MFA_PRECONDITION(columns <= UINT32_MAX);
-    const uint32_t chunkTokens = two_pass_chunk_tokens(params);
+    const uint32_t chunkTokens = two_pass_chunk_tokens(context, params);
     CCV_NNC_MFA_PRECONDITION(chunkTokens > 0);
     // Scratch holds the chunk's probabilities, its normalizers, then its column counts.
     const uint64_t normalizersOffset = uint64_t(chunkTokens) * params.H * columns * sizeof(float);
@@ -347,7 +359,7 @@ void ccv_nnc_mfa_encode_sparse_indexed_attention(ccv_nnc_mfa_context_t* context,
     const uint64_t twoPassMinimumTokens = uint64_t(context->device_properties.coreCount) * NASparseIndexedAttentionKernel::twoPassMinimumTokensPerCore;
     if (descriptor.variant == NASparseIndexedAttentionVariant::Threadgroup64 && params.K > 0 &&
         params.H % NASparseIndexedAttentionKernel::twoPassHeadGroup == 0 &&
-        two_pass_chunk_tokens(params) >= std::min<uint64_t>(params.T, twoPassMinimumTokens))
+        two_pass_chunk_tokens(context, params) >= std::min<uint64_t>(params.T, twoPassMinimumTokens))
       descriptor.variant = NASparseIndexedAttentionVariant::Threadgroup64TwoPass;
     auto pipelineValue = shaderCache.findKernel<NASparseIndexedAttentionKernel, NASparseIndexedAttentionDescriptor, NASparseIndexedAttentionKernelDescriptor>(descriptor, context->device.get(), dprops);
     pool->drain();

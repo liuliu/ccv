@@ -14805,12 +14805,13 @@ TEST_CASE("sparse indexed attention prefill randomized row boundaries and softma
 TEST_CASE("sparse indexed attention prefill bounds two-pass scratch across token chunks")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SPARSE_INDEXED_ATTENTION_FORWARD, CCV_NNC_BACKEND_MPS));
-	// 1108 probability columns over 1100 tokens exceed the 256 MiB scratch, so two
-	// passes run over two token chunks. 3008 columns leave 348-token chunks, under
-	// 12 tokens per core from 30 cores up, so 600 tokens stay in one pass there.
-	// Early terminators keep the CPU reference short.
+	// 1108 probability columns over 2100 tokens need about 569 MiB, more than the largest
+	// two-pass scratch (512 MiB). Rounded to 16 tokens per core, no GPU from 10 to 80 cores
+	// takes more than 2048 tokens in a chunk, so this covers at least two token chunks.
+	// 3008 columns over 600 tokens (about 441 MiB) take one chunk from 40 cores up;
+	// smaller GPUs may split them. Early terminators keep the CPU reference short.
 	const struct { int T, dense_rows, sparse_rows, K, window; } cases[] = {
-		{1100, 1100, 64, 1100, 8},
+		{2100, 2100, 64, 1100, 8},
 		{600, 600, 64, 3000, 8},
 	};
 	const int H = 64, D = 512;
