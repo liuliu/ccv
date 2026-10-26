@@ -387,11 +387,43 @@ static int _ccv_nnc_conv_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 		if (size_nd == 3 && fallback_reason_conv3d)
 			fallback_reason = fallback_reason_conv3d;
 
+		// Depthwise convolution (one input channel per group, as many groups as channels) on
+		// NHWC has a direct MFA kernel. Other grouped convolutions still go through MPSGraph.
+		int use_mfa_depthwise = 0;
+		int depthwise_batch_size = 0;
+		int depthwise_channels = 0;
+		if (!use_mfa_gemm && !use_mfa_conv3d && size_nd == 2 && cmd.info.convolution.groups > 1 &&
+			ccv_nnc_mfa_context_supported(context) && !(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA) &&
+			a->info.format == CCV_TENSOR_FORMAT_NHWC && b->info.format == CCV_TENSOR_FORMAT_NHWC &&
+			CCV_GET_DATA_TYPE(w->info.datatype) != CCV_QX &&
+			(a->info.datatype == CCV_16F || a->info.datatype == CCV_16BF || a->info.datatype == CCV_32F) &&
+			a->info.datatype == w->info.datatype && a->info.datatype == b->info.datatype &&
+			(!bias || bias->info.datatype == a->info.datatype))
+		{
+			// adim and bdim are padded to at least 4 dimensions, so [H, W, C] tensors have batch 1.
+			depthwise_channels = adim[a_nd - 1];
+			depthwise_batch_size = adim[0];
+			// The kernel indexes elements with 32-bit integers; larger tensors stay on MPSGraph.
+			use_mfa_depthwise =
+				a_nd == 4 && ccv_nnc_tensor_nd(bdim) == a_nd && w_nd == 4 &&
+				depthwise_channels == cmd.info.convolution.groups && bdim[a_nd - 1] == depthwise_channels &&
+				wdim[0] == depthwise_channels && wdim[1] == 1 &&
+				bdim[0] == depthwise_batch_size &&
+				adim[a_nd - 3] > 0 && adim[a_nd - 2] > 0 && bdim[a_nd - 3] > 0 && bdim[a_nd - 2] > 0 &&
+				ccv_nnc_tensor_count(a->info) <= UINT32_MAX && ccv_nnc_tensor_count(b->info) <= UINT32_MAX &&
+				(!CCV_IS_TENSOR_VIEW(a) || ccv_nnc_tensor_view_is_contiguous(adim, astride)) &&
+				(!CCV_IS_TENSOR_VIEW(w) || ccv_nnc_tensor_view_is_contiguous(w->info.dim, w->stride)) &&
+				(!CCV_IS_TENSOR_VIEW(b) || ccv_nnc_tensor_view_is_contiguous(bdim, bstride)) &&
+				(!bias || !CCV_IS_TENSOR_VIEW(bias) || ccv_nnc_tensor_view_is_contiguous(bias->info.dim, bias->stride));
+		}
+
 		if (METAL_LOG_LEVEL(context) >= 3) {
 			if (use_mfa_gemm) {
 				ccv_nnc_mfa_log_message("Compatible convolution found via MFA GEMM.");
 			} else if (use_mfa_conv3d) {
 				ccv_nnc_mfa_log_message("Compatible convolution found via MFA Conv3D.");
+			} else if (use_mfa_depthwise) {
+				ccv_nnc_mfa_log_message("Compatible convolution found via MFA depthwise convolution.");
 			} else {
 				ccv_nnc_mfa_log_message("Incompatible convolution found. Incompatible because:");
 				ccv_nnc_mfa_log_message(fallback_reason);
@@ -554,6 +586,41 @@ static int _ccv_nnc_conv_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 				bias ? bias->dataof : 0,
 			};
 			ccv_nnc_mfa_encode_conv3d(context, params, command_batch, tensors, tensor_offsets);
+			ccv_nnc_stream_context_finish_command_batch(stream_context, command_batch);
+		} else if (use_mfa_depthwise) {
+			uint32_t data_type = CCV_NNC_MFA_MTL_DATA_TYPE_FLOAT;
+			if (a->info.datatype == CCV_16F)
+				data_type = CCV_NNC_MFA_MTL_DATA_TYPE_HALF;
+			else if (a->info.datatype == CCV_16BF)
+				data_type = CCV_NNC_MFA_MTL_DATA_TYPE_BFLOAT;
+			const ccv_nnc_mfa_depthwise_conv_params_t params = {
+				.data_type = data_type,
+				.batch_size = (uint32_t)depthwise_batch_size,
+				.channels = (uint32_t)depthwise_channels,
+				.input_dimensions = { (uint32_t)adim[a_nd - 3], (uint32_t)adim[a_nd - 2] },
+				.output_dimensions = { (uint32_t)bdim[a_nd - 3], (uint32_t)bdim[a_nd - 2] },
+				.filter_dimensions = { (uint32_t)kernel_h, (uint32_t)kernel_w },
+				.stride_dimensions = { (uint32_t)ccv_max(hint.stride.dim[0], 1), (uint32_t)ccv_max(hint.stride.dim[1], 1) },
+				.dilation_dimensions = { (uint32_t)ccv_max(cmd.info.convolution.dilation[0], 1), (uint32_t)ccv_max(cmd.info.convolution.dilation[1], 1) },
+				.padding_top = (uint32_t)hint.border.begin[0],
+				.padding_left = (uint32_t)hint.border.begin[1],
+				.fused_bias = bias ? 1 : 0,
+			};
+			mtl_command_batch_t* command_batch = ccv_nnc_stream_context_start_command_batch(stream_context);
+			mtl_buffer_t* tensors[5] = {
+				mpgetbuffer((ccv_nnc_tensor_t*)a),
+				mpgetbuffer((ccv_nnc_tensor_t*)w),
+				mpgetbuffer((ccv_nnc_tensor_t*)b),
+				bias ? mpgetbuffer((ccv_nnc_tensor_t*)bias) : NULL,
+				NULL,
+			};
+			size_t tensor_offsets[4] = {
+				a->dataof,
+				w->dataof,
+				b->dataof,
+				bias ? bias->dataof : 0,
+			};
+			ccv_nnc_mfa_encode_depthwise_conv(context, params, command_batch, tensors, tensor_offsets);
 			ccv_nnc_stream_context_finish_command_batch(stream_context, command_batch);
 		} else {
 			mtl_buffer_t* w_data = mpgetbuffer((ccv_nnc_tensor_t*)w);

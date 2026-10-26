@@ -194,6 +194,341 @@ TEST_CASE("mps forward grouped convolution falls back with mfa enabled")
 	ccv_nnc_tensor_free(a);
 }
 
+TEST_CASE("mps forward depthwise causal 1d convolution at the GLM-5.3 KDA shapes")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_CONVOLUTION_FORWARD, CCV_NNC_BACKEND_MPS));
+	// Kernel [4, 1] over [1, kernel - 1 + T, 1, 3 * 8192]: decode (T = 1) and a prefill chunk.
+	const struct { int datatype, nd, batch, h, w, c, kh, kw, sh, sw, dh, dw, pt, pl, pb, pr, with_bias; float tolerance; } cases[] = {
+		{CCV_16F, 4, 1, 4, 1, 24576, 4, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 2e-3},
+		{CCV_16F, 4, 1, 131, 1, 24576, 4, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 2e-3},
+		{CCV_32F, 4, 1, 37, 1, 2048, 4, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 1e-5},
+	};
+	int trial;
+	for (trial = 0; trial < sizeof(cases) / sizeof(cases[0]); trial++)
+	{
+		const int datatype = cases[trial].datatype, batch = cases[trial].batch, h = cases[trial].h, w = cases[trial].w, c = cases[trial].c, kh = cases[trial].kh, kw = cases[trial].kw;
+		const int oh = (h + cases[trial].pt + cases[trial].pb - ((kh - 1) * cases[trial].dh + 1)) / cases[trial].sh + 1;
+		const int ow = (w + cases[trial].pl + cases[trial].pr - ((kw - 1) * cases[trial].dw + 1)) / cases[trial].sw + 1;
+		ccv_nnc_tensor_param_t a_params = cases[trial].nd == 4 ? CPU_TENSOR_NHWC(32F, batch, h, w, c) : CPU_TENSOR_NHWC(32F, h, w, c);
+		ccv_nnc_tensor_param_t b_params = cases[trial].nd == 4 ? CPU_TENSOR_NHWC(32F, batch, oh, ow, c) : CPU_TENSOR_NHWC(32F, oh, ow, c);
+		ccv_nnc_tensor_param_t w_params = CPU_TENSOR_NCHW(32F, c, 1, kh, kw);
+		ccv_nnc_tensor_param_t bias_params = CPU_TENSOR_NHWC(32F, c);
+		ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, a_params, 0);
+		ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, b_params, 0);
+		// One input channel per group, so NHWC [C, kH, kW, 1] weights (CPU) and NCHW
+		// [C, 1, kH, kW] weights (MPS) share one memory layout.
+		ccv_nnc_tensor_t* const wt = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, c, kh, kw, 1), 0);
+		ccv_nnc_tensor_t* const wn = ccv_nnc_tensor_new(wt->data.u8, w_params, 0);
+		ccv_nnc_tensor_t* const bias = ccv_nnc_tensor_new(0, bias_params, 0);
+		dsfmt_t dsfmt;
+		dsfmt_init_gen_rand(&dsfmt, 1);
+		const int input_count = ccv_nnc_tensor_count(a_params);
+		int i;
+		for (i = 0; i < input_count; i++)
+			a->data.f32[i] = dsfmt_genrand_open_close(&dsfmt) * 2 - 1;
+		for (i = 0; i < c * kh * kw; i++)
+			wt->data.f32[i] = (dsfmt_genrand_open_close(&dsfmt) * 2 - 1) / (kh * kw);
+		for (i = 0; i < c; i++)
+			bias->data.f32[i] = (float)i / c - 0.5;
+		// Round the inputs through the tested datatype, so the CPU reference sees the same values.
+		a_params.datatype = b_params.datatype = w_params.datatype = bias_params.datatype = datatype;
+		ccv_nnc_tensor_t* const ha = ccv_nnc_tensor_new(0, a_params, 0);
+		ccv_nnc_tensor_t* const hw = ccv_nnc_tensor_new(0, w_params, 0);
+		ccv_nnc_tensor_t* const hbias = ccv_nnc_tensor_new(0, bias_params, 0);
+		ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(a, wn, bias), TENSOR_LIST(ha, hw, hbias), 0);
+		ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha, hw, hbias), TENSOR_LIST(a, wn, bias), 0);
+		ccv_nnc_tensor_t* const hb = ccv_nnc_tensor_new(0, b_params, 0);
+		a_params.type = b_params.type = w_params.type = bias_params.type = CCV_TENSOR_GPU_MEMORY;
+		ccv_nnc_tensor_t* const ga = ccv_nnc_tensor_new(0, a_params, 0);
+		ccv_nnc_tensor_t* const gw = ccv_nnc_tensor_new(0, w_params, 0);
+		ccv_nnc_tensor_t* const gbias = ccv_nnc_tensor_new(0, bias_params, 0);
+		ccv_nnc_tensor_t* const gb = ccv_nnc_tensor_new(0, b_params, 0);
+		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha, hw, hbias), TENSOR_LIST(ga, gw, gbias), 0);
+		ccv_nnc_cmd_t cmd = CMD_CONVOLUTION_FORWARD(c, c, kh, kw, 1);
+		cmd.info.convolution.dilation[0] = cases[trial].dh;
+		cmd.info.convolution.dilation[1] = cases[trial].dw;
+		const ccv_nnc_hint_t hint = HINT((cases[trial].sh, cases[trial].sw), (cases[trial].pt, cases[trial].pl), (cases[trial].pb, cases[trial].pr));
+		cmd.backend = CCV_NNC_BACKEND_CPU_REF;
+		if (cases[trial].with_bias)
+			ccv_nnc_cmd_exec(cmd, hint, 0, TENSOR_LIST(a, wt, bias), TENSOR_LIST(b), 0);
+		else
+			ccv_nnc_cmd_exec(cmd, hint, 0, TENSOR_LIST(a, wt), TENSOR_LIST(b), 0);
+		cmd.backend = CCV_NNC_BACKEND_MPS;
+		const int status = cases[trial].with_bias
+			? ccv_nnc_cmd_exec(cmd, hint, 0, TENSOR_LIST(ga, gw, gbias), TENSOR_LIST(gb), 0)
+			: ccv_nnc_cmd_exec(cmd, hint, 0, TENSOR_LIST(ga, gw), TENSOR_LIST(gb), 0);
+		REQUIRE_EQ(CCV_NNC_EXEC_SUCCESS, status, "mps depthwise convolution should succeed (trial=%d)", trial);
+		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(gb), TENSOR_LIST(hb), 0);
+		ccv_nnc_tensor_t* const out = ccv_nnc_tensor_new(0, b->info, 0);
+		ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(hb), TENSOR_LIST(out), 0);
+		REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, b->data.f32, out->data.f32, ccv_nnc_tensor_count(b->info), cases[trial].tolerance, "depthwise convolution output from mps should match from CPU (trial=%d)", trial);
+		ccv_nnc_tensor_free(out);
+		ccv_nnc_tensor_free(gb);
+		ccv_nnc_tensor_free(gbias);
+		ccv_nnc_tensor_free(gw);
+		ccv_nnc_tensor_free(ga);
+		ccv_nnc_tensor_free(hb);
+		ccv_nnc_tensor_free(hbias);
+		ccv_nnc_tensor_free(hw);
+		ccv_nnc_tensor_free(ha);
+		ccv_nnc_tensor_free(bias);
+		ccv_nnc_tensor_free(wn);
+		ccv_nnc_tensor_free(wt);
+		ccv_nnc_tensor_free(b);
+		ccv_nnc_tensor_free(a);
+	}
+}
+
+TEST_CASE("mps forward depthwise convolution with stride, dilation, padding and bias")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_CONVOLUTION_FORWARD, CCV_NNC_BACKEND_MPS));
+	const struct { int datatype, nd, batch, h, w, c, kh, kw, sh, sw, dh, dw, pt, pl, pb, pr, with_bias; float tolerance; } cases[] = {
+		{CCV_32F, 4, 2, 13, 11, 8, 3, 3, 2, 1, 2, 1, 2, 1, 1, 2, 1, 1e-5},
+		{CCV_32F, 4, 3, 9, 9, 12, 3, 5, 1, 2, 1, 1, 1, 2, 1, 2, 0, 1e-5},
+	};
+	int trial;
+	for (trial = 0; trial < sizeof(cases) / sizeof(cases[0]); trial++)
+	{
+		const int datatype = cases[trial].datatype, batch = cases[trial].batch, h = cases[trial].h, w = cases[trial].w, c = cases[trial].c, kh = cases[trial].kh, kw = cases[trial].kw;
+		const int oh = (h + cases[trial].pt + cases[trial].pb - ((kh - 1) * cases[trial].dh + 1)) / cases[trial].sh + 1;
+		const int ow = (w + cases[trial].pl + cases[trial].pr - ((kw - 1) * cases[trial].dw + 1)) / cases[trial].sw + 1;
+		ccv_nnc_tensor_param_t a_params = cases[trial].nd == 4 ? CPU_TENSOR_NHWC(32F, batch, h, w, c) : CPU_TENSOR_NHWC(32F, h, w, c);
+		ccv_nnc_tensor_param_t b_params = cases[trial].nd == 4 ? CPU_TENSOR_NHWC(32F, batch, oh, ow, c) : CPU_TENSOR_NHWC(32F, oh, ow, c);
+		ccv_nnc_tensor_param_t w_params = CPU_TENSOR_NCHW(32F, c, 1, kh, kw);
+		ccv_nnc_tensor_param_t bias_params = CPU_TENSOR_NHWC(32F, c);
+		ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, a_params, 0);
+		ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, b_params, 0);
+		// One input channel per group, so NHWC [C, kH, kW, 1] weights (CPU) and NCHW
+		// [C, 1, kH, kW] weights (MPS) share one memory layout.
+		ccv_nnc_tensor_t* const wt = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, c, kh, kw, 1), 0);
+		ccv_nnc_tensor_t* const wn = ccv_nnc_tensor_new(wt->data.u8, w_params, 0);
+		ccv_nnc_tensor_t* const bias = ccv_nnc_tensor_new(0, bias_params, 0);
+		dsfmt_t dsfmt;
+		dsfmt_init_gen_rand(&dsfmt, 1);
+		const int input_count = ccv_nnc_tensor_count(a_params);
+		int i;
+		for (i = 0; i < input_count; i++)
+			a->data.f32[i] = dsfmt_genrand_open_close(&dsfmt) * 2 - 1;
+		for (i = 0; i < c * kh * kw; i++)
+			wt->data.f32[i] = (dsfmt_genrand_open_close(&dsfmt) * 2 - 1) / (kh * kw);
+		for (i = 0; i < c; i++)
+			bias->data.f32[i] = (float)i / c - 0.5;
+		// Round the inputs through the tested datatype, so the CPU reference sees the same values.
+		a_params.datatype = b_params.datatype = w_params.datatype = bias_params.datatype = datatype;
+		ccv_nnc_tensor_t* const ha = ccv_nnc_tensor_new(0, a_params, 0);
+		ccv_nnc_tensor_t* const hw = ccv_nnc_tensor_new(0, w_params, 0);
+		ccv_nnc_tensor_t* const hbias = ccv_nnc_tensor_new(0, bias_params, 0);
+		ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(a, wn, bias), TENSOR_LIST(ha, hw, hbias), 0);
+		ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha, hw, hbias), TENSOR_LIST(a, wn, bias), 0);
+		ccv_nnc_tensor_t* const hb = ccv_nnc_tensor_new(0, b_params, 0);
+		a_params.type = b_params.type = w_params.type = bias_params.type = CCV_TENSOR_GPU_MEMORY;
+		ccv_nnc_tensor_t* const ga = ccv_nnc_tensor_new(0, a_params, 0);
+		ccv_nnc_tensor_t* const gw = ccv_nnc_tensor_new(0, w_params, 0);
+		ccv_nnc_tensor_t* const gbias = ccv_nnc_tensor_new(0, bias_params, 0);
+		ccv_nnc_tensor_t* const gb = ccv_nnc_tensor_new(0, b_params, 0);
+		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha, hw, hbias), TENSOR_LIST(ga, gw, gbias), 0);
+		ccv_nnc_cmd_t cmd = CMD_CONVOLUTION_FORWARD(c, c, kh, kw, 1);
+		cmd.info.convolution.dilation[0] = cases[trial].dh;
+		cmd.info.convolution.dilation[1] = cases[trial].dw;
+		const ccv_nnc_hint_t hint = HINT((cases[trial].sh, cases[trial].sw), (cases[trial].pt, cases[trial].pl), (cases[trial].pb, cases[trial].pr));
+		cmd.backend = CCV_NNC_BACKEND_CPU_REF;
+		if (cases[trial].with_bias)
+			ccv_nnc_cmd_exec(cmd, hint, 0, TENSOR_LIST(a, wt, bias), TENSOR_LIST(b), 0);
+		else
+			ccv_nnc_cmd_exec(cmd, hint, 0, TENSOR_LIST(a, wt), TENSOR_LIST(b), 0);
+		cmd.backend = CCV_NNC_BACKEND_MPS;
+		const int status = cases[trial].with_bias
+			? ccv_nnc_cmd_exec(cmd, hint, 0, TENSOR_LIST(ga, gw, gbias), TENSOR_LIST(gb), 0)
+			: ccv_nnc_cmd_exec(cmd, hint, 0, TENSOR_LIST(ga, gw), TENSOR_LIST(gb), 0);
+		REQUIRE_EQ(CCV_NNC_EXEC_SUCCESS, status, "mps depthwise convolution should succeed (trial=%d)", trial);
+		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(gb), TENSOR_LIST(hb), 0);
+		ccv_nnc_tensor_t* const out = ccv_nnc_tensor_new(0, b->info, 0);
+		ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(hb), TENSOR_LIST(out), 0);
+		REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, b->data.f32, out->data.f32, ccv_nnc_tensor_count(b->info), cases[trial].tolerance, "depthwise convolution output from mps should match from CPU (trial=%d)", trial);
+		ccv_nnc_tensor_free(out);
+		ccv_nnc_tensor_free(gb);
+		ccv_nnc_tensor_free(gbias);
+		ccv_nnc_tensor_free(gw);
+		ccv_nnc_tensor_free(ga);
+		ccv_nnc_tensor_free(hb);
+		ccv_nnc_tensor_free(hbias);
+		ccv_nnc_tensor_free(hw);
+		ccv_nnc_tensor_free(ha);
+		ccv_nnc_tensor_free(bias);
+		ccv_nnc_tensor_free(wn);
+		ccv_nnc_tensor_free(wt);
+		ccv_nnc_tensor_free(b);
+		ccv_nnc_tensor_free(a);
+	}
+}
+
+TEST_CASE("mps forward depthwise convolution with odd channels and no batch dimension")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_CONVOLUTION_FORWARD, CCV_NNC_BACKEND_MPS));
+	// Six channels are not a multiple of four, so this runs the scalar (unvectorized) kernel.
+	const struct { int datatype, nd, batch, h, w, c, kh, kw, sh, sw, dh, dw, pt, pl, pb, pr, with_bias; float tolerance; } cases[] = {
+		{CCV_32F, 3, 1, 10, 7, 6, 5, 3, 1, 1, 1, 1, 2, 1, 2, 1, 1, 1e-5},
+		{CCV_16F, 3, 1, 10, 7, 6, 5, 3, 1, 1, 1, 1, 2, 1, 2, 1, 1, 2e-3},
+	};
+	int trial;
+	for (trial = 0; trial < sizeof(cases) / sizeof(cases[0]); trial++)
+	{
+		const int datatype = cases[trial].datatype, batch = cases[trial].batch, h = cases[trial].h, w = cases[trial].w, c = cases[trial].c, kh = cases[trial].kh, kw = cases[trial].kw;
+		const int oh = (h + cases[trial].pt + cases[trial].pb - ((kh - 1) * cases[trial].dh + 1)) / cases[trial].sh + 1;
+		const int ow = (w + cases[trial].pl + cases[trial].pr - ((kw - 1) * cases[trial].dw + 1)) / cases[trial].sw + 1;
+		ccv_nnc_tensor_param_t a_params = cases[trial].nd == 4 ? CPU_TENSOR_NHWC(32F, batch, h, w, c) : CPU_TENSOR_NHWC(32F, h, w, c);
+		ccv_nnc_tensor_param_t b_params = cases[trial].nd == 4 ? CPU_TENSOR_NHWC(32F, batch, oh, ow, c) : CPU_TENSOR_NHWC(32F, oh, ow, c);
+		ccv_nnc_tensor_param_t w_params = CPU_TENSOR_NCHW(32F, c, 1, kh, kw);
+		ccv_nnc_tensor_param_t bias_params = CPU_TENSOR_NHWC(32F, c);
+		ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, a_params, 0);
+		ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, b_params, 0);
+		// One input channel per group, so NHWC [C, kH, kW, 1] weights (CPU) and NCHW
+		// [C, 1, kH, kW] weights (MPS) share one memory layout.
+		ccv_nnc_tensor_t* const wt = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, c, kh, kw, 1), 0);
+		ccv_nnc_tensor_t* const wn = ccv_nnc_tensor_new(wt->data.u8, w_params, 0);
+		ccv_nnc_tensor_t* const bias = ccv_nnc_tensor_new(0, bias_params, 0);
+		dsfmt_t dsfmt;
+		dsfmt_init_gen_rand(&dsfmt, 1);
+		const int input_count = ccv_nnc_tensor_count(a_params);
+		int i;
+		for (i = 0; i < input_count; i++)
+			a->data.f32[i] = dsfmt_genrand_open_close(&dsfmt) * 2 - 1;
+		for (i = 0; i < c * kh * kw; i++)
+			wt->data.f32[i] = (dsfmt_genrand_open_close(&dsfmt) * 2 - 1) / (kh * kw);
+		for (i = 0; i < c; i++)
+			bias->data.f32[i] = (float)i / c - 0.5;
+		// Round the inputs through the tested datatype, so the CPU reference sees the same values.
+		a_params.datatype = b_params.datatype = w_params.datatype = bias_params.datatype = datatype;
+		ccv_nnc_tensor_t* const ha = ccv_nnc_tensor_new(0, a_params, 0);
+		ccv_nnc_tensor_t* const hw = ccv_nnc_tensor_new(0, w_params, 0);
+		ccv_nnc_tensor_t* const hbias = ccv_nnc_tensor_new(0, bias_params, 0);
+		ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(a, wn, bias), TENSOR_LIST(ha, hw, hbias), 0);
+		ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha, hw, hbias), TENSOR_LIST(a, wn, bias), 0);
+		ccv_nnc_tensor_t* const hb = ccv_nnc_tensor_new(0, b_params, 0);
+		a_params.type = b_params.type = w_params.type = bias_params.type = CCV_TENSOR_GPU_MEMORY;
+		ccv_nnc_tensor_t* const ga = ccv_nnc_tensor_new(0, a_params, 0);
+		ccv_nnc_tensor_t* const gw = ccv_nnc_tensor_new(0, w_params, 0);
+		ccv_nnc_tensor_t* const gbias = ccv_nnc_tensor_new(0, bias_params, 0);
+		ccv_nnc_tensor_t* const gb = ccv_nnc_tensor_new(0, b_params, 0);
+		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha, hw, hbias), TENSOR_LIST(ga, gw, gbias), 0);
+		ccv_nnc_cmd_t cmd = CMD_CONVOLUTION_FORWARD(c, c, kh, kw, 1);
+		cmd.info.convolution.dilation[0] = cases[trial].dh;
+		cmd.info.convolution.dilation[1] = cases[trial].dw;
+		const ccv_nnc_hint_t hint = HINT((cases[trial].sh, cases[trial].sw), (cases[trial].pt, cases[trial].pl), (cases[trial].pb, cases[trial].pr));
+		cmd.backend = CCV_NNC_BACKEND_CPU_REF;
+		if (cases[trial].with_bias)
+			ccv_nnc_cmd_exec(cmd, hint, 0, TENSOR_LIST(a, wt, bias), TENSOR_LIST(b), 0);
+		else
+			ccv_nnc_cmd_exec(cmd, hint, 0, TENSOR_LIST(a, wt), TENSOR_LIST(b), 0);
+		cmd.backend = CCV_NNC_BACKEND_MPS;
+		const int status = cases[trial].with_bias
+			? ccv_nnc_cmd_exec(cmd, hint, 0, TENSOR_LIST(ga, gw, gbias), TENSOR_LIST(gb), 0)
+			: ccv_nnc_cmd_exec(cmd, hint, 0, TENSOR_LIST(ga, gw), TENSOR_LIST(gb), 0);
+		REQUIRE_EQ(CCV_NNC_EXEC_SUCCESS, status, "mps depthwise convolution should succeed (trial=%d)", trial);
+		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(gb), TENSOR_LIST(hb), 0);
+		ccv_nnc_tensor_t* const out = ccv_nnc_tensor_new(0, b->info, 0);
+		ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(hb), TENSOR_LIST(out), 0);
+		REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, b->data.f32, out->data.f32, ccv_nnc_tensor_count(b->info), cases[trial].tolerance, "depthwise convolution output from mps should match from CPU (trial=%d)", trial);
+		ccv_nnc_tensor_free(out);
+		ccv_nnc_tensor_free(gb);
+		ccv_nnc_tensor_free(gbias);
+		ccv_nnc_tensor_free(gw);
+		ccv_nnc_tensor_free(ga);
+		ccv_nnc_tensor_free(hb);
+		ccv_nnc_tensor_free(hbias);
+		ccv_nnc_tensor_free(hw);
+		ccv_nnc_tensor_free(ha);
+		ccv_nnc_tensor_free(bias);
+		ccv_nnc_tensor_free(wn);
+		ccv_nnc_tensor_free(wt);
+		ccv_nnc_tensor_free(b);
+		ccv_nnc_tensor_free(a);
+	}
+}
+
+TEST_CASE("mps forward depthwise convolution in bfloat precision")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_CONVOLUTION_FORWARD, CCV_NNC_BACKEND_MPS));
+	const struct { int datatype, nd, batch, h, w, c, kh, kw, sh, sw, dh, dw, pt, pl, pb, pr, with_bias; float tolerance; } cases[] = {
+		{CCV_16BF, 4, 2, 12, 12, 16, 3, 3, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1.5e-2},
+		{CCV_16BF, 4, 1, 35, 1, 768, 4, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 1.5e-2},
+	};
+	int trial;
+	for (trial = 0; trial < sizeof(cases) / sizeof(cases[0]); trial++)
+	{
+		const int datatype = cases[trial].datatype, batch = cases[trial].batch, h = cases[trial].h, w = cases[trial].w, c = cases[trial].c, kh = cases[trial].kh, kw = cases[trial].kw;
+		const int oh = (h + cases[trial].pt + cases[trial].pb - ((kh - 1) * cases[trial].dh + 1)) / cases[trial].sh + 1;
+		const int ow = (w + cases[trial].pl + cases[trial].pr - ((kw - 1) * cases[trial].dw + 1)) / cases[trial].sw + 1;
+		ccv_nnc_tensor_param_t a_params = cases[trial].nd == 4 ? CPU_TENSOR_NHWC(32F, batch, h, w, c) : CPU_TENSOR_NHWC(32F, h, w, c);
+		ccv_nnc_tensor_param_t b_params = cases[trial].nd == 4 ? CPU_TENSOR_NHWC(32F, batch, oh, ow, c) : CPU_TENSOR_NHWC(32F, oh, ow, c);
+		ccv_nnc_tensor_param_t w_params = CPU_TENSOR_NCHW(32F, c, 1, kh, kw);
+		ccv_nnc_tensor_param_t bias_params = CPU_TENSOR_NHWC(32F, c);
+		ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, a_params, 0);
+		ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, b_params, 0);
+		// One input channel per group, so NHWC [C, kH, kW, 1] weights (CPU) and NCHW
+		// [C, 1, kH, kW] weights (MPS) share one memory layout.
+		ccv_nnc_tensor_t* const wt = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, c, kh, kw, 1), 0);
+		ccv_nnc_tensor_t* const wn = ccv_nnc_tensor_new(wt->data.u8, w_params, 0);
+		ccv_nnc_tensor_t* const bias = ccv_nnc_tensor_new(0, bias_params, 0);
+		dsfmt_t dsfmt;
+		dsfmt_init_gen_rand(&dsfmt, 1);
+		const int input_count = ccv_nnc_tensor_count(a_params);
+		int i;
+		for (i = 0; i < input_count; i++)
+			a->data.f32[i] = dsfmt_genrand_open_close(&dsfmt) * 2 - 1;
+		for (i = 0; i < c * kh * kw; i++)
+			wt->data.f32[i] = (dsfmt_genrand_open_close(&dsfmt) * 2 - 1) / (kh * kw);
+		for (i = 0; i < c; i++)
+			bias->data.f32[i] = (float)i / c - 0.5;
+		// Round the inputs through the tested datatype, so the CPU reference sees the same values.
+		a_params.datatype = b_params.datatype = w_params.datatype = bias_params.datatype = datatype;
+		ccv_nnc_tensor_t* const ha = ccv_nnc_tensor_new(0, a_params, 0);
+		ccv_nnc_tensor_t* const hw = ccv_nnc_tensor_new(0, w_params, 0);
+		ccv_nnc_tensor_t* const hbias = ccv_nnc_tensor_new(0, bias_params, 0);
+		ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(a, wn, bias), TENSOR_LIST(ha, hw, hbias), 0);
+		ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha, hw, hbias), TENSOR_LIST(a, wn, bias), 0);
+		ccv_nnc_tensor_t* const hb = ccv_nnc_tensor_new(0, b_params, 0);
+		a_params.type = b_params.type = w_params.type = bias_params.type = CCV_TENSOR_GPU_MEMORY;
+		ccv_nnc_tensor_t* const ga = ccv_nnc_tensor_new(0, a_params, 0);
+		ccv_nnc_tensor_t* const gw = ccv_nnc_tensor_new(0, w_params, 0);
+		ccv_nnc_tensor_t* const gbias = ccv_nnc_tensor_new(0, bias_params, 0);
+		ccv_nnc_tensor_t* const gb = ccv_nnc_tensor_new(0, b_params, 0);
+		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha, hw, hbias), TENSOR_LIST(ga, gw, gbias), 0);
+		ccv_nnc_cmd_t cmd = CMD_CONVOLUTION_FORWARD(c, c, kh, kw, 1);
+		cmd.info.convolution.dilation[0] = cases[trial].dh;
+		cmd.info.convolution.dilation[1] = cases[trial].dw;
+		const ccv_nnc_hint_t hint = HINT((cases[trial].sh, cases[trial].sw), (cases[trial].pt, cases[trial].pl), (cases[trial].pb, cases[trial].pr));
+		cmd.backend = CCV_NNC_BACKEND_CPU_REF;
+		if (cases[trial].with_bias)
+			ccv_nnc_cmd_exec(cmd, hint, 0, TENSOR_LIST(a, wt, bias), TENSOR_LIST(b), 0);
+		else
+			ccv_nnc_cmd_exec(cmd, hint, 0, TENSOR_LIST(a, wt), TENSOR_LIST(b), 0);
+		cmd.backend = CCV_NNC_BACKEND_MPS;
+		const int status = cases[trial].with_bias
+			? ccv_nnc_cmd_exec(cmd, hint, 0, TENSOR_LIST(ga, gw, gbias), TENSOR_LIST(gb), 0)
+			: ccv_nnc_cmd_exec(cmd, hint, 0, TENSOR_LIST(ga, gw), TENSOR_LIST(gb), 0);
+		REQUIRE_EQ(CCV_NNC_EXEC_SUCCESS, status, "mps depthwise convolution should succeed (trial=%d)", trial);
+		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(gb), TENSOR_LIST(hb), 0);
+		ccv_nnc_tensor_t* const out = ccv_nnc_tensor_new(0, b->info, 0);
+		ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(hb), TENSOR_LIST(out), 0);
+		REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, b->data.f32, out->data.f32, ccv_nnc_tensor_count(b->info), cases[trial].tolerance, "depthwise convolution output from mps should match from CPU (trial=%d)", trial);
+		ccv_nnc_tensor_free(out);
+		ccv_nnc_tensor_free(gb);
+		ccv_nnc_tensor_free(gbias);
+		ccv_nnc_tensor_free(gw);
+		ccv_nnc_tensor_free(ga);
+		ccv_nnc_tensor_free(hb);
+		ccv_nnc_tensor_free(hbias);
+		ccv_nnc_tensor_free(hw);
+		ccv_nnc_tensor_free(ha);
+		ccv_nnc_tensor_free(bias);
+		ccv_nnc_tensor_free(wn);
+		ccv_nnc_tensor_free(wt);
+		ccv_nnc_tensor_free(b);
+		ccv_nnc_tensor_free(a);
+	}
+}
+
 TEST_CASE("mps forward convolution with 1x1 kernel")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_CONVOLUTION_FORWARD, CCV_NNC_BACKEND_MPS));
