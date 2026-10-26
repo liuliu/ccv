@@ -1076,7 +1076,9 @@ kernel void sparse_indexed_attention(
 }
 
 // Scores of one block of rows for the head group, staged one dimension slice at
-// a time; `row` reads element d of staged row `row`.
+// a time; `row` is the address of staged row `row`. Each thread copies the same
+// rows of every slice as 16-byte vectors, so a row's address (for sparse rows, an
+// index lookup) is resolved once per block rather than once per element.
 std::string NASparseIndexedAttentionKernel::twoPassScores(const char* row) noexcept {
   return std::string(R"(
     #pragma clang loop unroll(full)
@@ -1085,13 +1087,19 @@ std::string NASparseIndexedAttentionKernel::twoPassScores(const char* row) noexc
         cS[i] = 0;
       }
     }
+    device const uint4* row_vectors[{{SLICE_VECTORS_PER_THREAD}}];
+    #pragma clang loop unroll(full)
+    for (ushort j = 0; j < {{SLICE_VECTORS_PER_THREAD}}u; j++) {
+      const uint row = (uint(tid) + {{THREADS}}u * j) / {{SLICE_ROW_VECTORS}}u;
+      row_vectors[j] = row < block_rows ? (device const uint4*)()") + row + R"() : nullptr;
+    }
+    const uint vector_column = uint(tid) % {{SLICE_ROW_VECTORS}}u;
     #pragma clang loop unroll(full)
     for (ushort k = 0; k < {{HEAD_DIMENSION}}u; k += {{DIM_BLOCK}}u) {
       threadgroup_barrier(mem_flags::mem_threadgroup);
-      for (uint load_idx = uint(tid); load_idx < {{DIM_BLOCK}}u * {{ROW_BLOCK}}u; load_idx += {{THREADS}}u) {
-        const uint d = uint(k) + load_idx % {{DIM_BLOCK}}u;
-        const uint row = load_idx / {{DIM_BLOCK}}u;
-        KV_buf[load_idx] = row < block_rows ? )") + row + R"( : (real)0;
+      #pragma clang loop unroll(full)
+      for (ushort j = 0; j < {{SLICE_VECTORS_PER_THREAD}}u; j++) {
+        ((threadgroup uint4*)KV_buf)[uint(tid) + {{THREADS}}u * j] = row_vectors[j] ? row_vectors[j][k / 8u + vector_column] : uint4(0);
       }
       threadgroup_barrier(mem_flags::mem_threadgroup);
       auto mQ_k = Q.slice<{{DIM_BLOCK}}, {{HEAD_GROUP}}>(k, token * H + head_base);
@@ -1179,7 +1187,7 @@ kernel void sparse_indexed_attention_probabilities(
 )" + causalDenseRange() + R"(  const uint dense_count = dense_end - dense_start;
   for (uint dense_base = dense_start; dense_base < dense_end; dense_base += {{ROW_BLOCK}}u) {
     const uint block_rows = min({{ROW_BLOCK}}u, dense_end - dense_base);
-    const uint column = dense_base - dense_start;)" + twoPassScores("dense_k[(ulong(dense_base) + row) * {{HEAD_DIMENSION}}u + d]") + R"(  }
+    const uint column = dense_base - dense_start;)" + twoPassScores("dense_k + (ulong(dense_base) + row) * {{HEAD_DIMENSION}}u") + R"(  }
   device const int* row_indices = indices + token * K;
   const uint sparse_capacity = K * block_size;
   uint sparse_count = 0;
@@ -1203,7 +1211,7 @@ kernel void sparse_indexed_attention_probabilities(
       break;
     }
     const uint column = dense_count + sparse_base;
-    sparse_count += block_rows;)" + twoPassScores("sparse_k[ulong(uint(sparse_row(row_indices, sparse_base + row))) * {{HEAD_DIMENSION}}u + d]") + R"(  }
+    sparse_count += block_rows;)" + twoPassScores("sparse_k + ulong(uint(sparse_row(row_indices, sparse_base + row))) * {{HEAD_DIMENSION}}u") + R"(  }
   // The cooperative matmul and the SIMD softmax map elements to lanes differently.
   threadgroup_barrier(mem_flags::mem_device);
   const uint columns = dense_count + sparse_count;
@@ -1284,23 +1292,36 @@ kernel void sparse_indexed_attention_values(
       cO[i] = 0;
     }
   }
+  // Probability rows start on 32-byte boundaries (the column stride is a multiple of 8),
+  // so whole blocks copy as 16-byte vectors; the partial last block copies elements.
+  const uint vector_column = uint(tid) % {{SLICE_ROW_VECTORS}}u;
   for (uint column_base = 0; column_base < columns; column_base += {{ROW_BLOCK}}u) {
     threadgroup_barrier(mem_flags::mem_threadgroup);
-    for (uint i = tid; i < {{HEAD_GROUP}}u * {{ROW_BLOCK}}u; i += {{THREADS}}u) {
-      const uint head = head_base + i / {{ROW_BLOCK}}u;
-      const uint column = column_base + i % {{ROW_BLOCK}}u;
-      P_buf[i] = column < columns ? ((device const real*)(token_probabilities + head * chunk.columns))[column] : (real)0;
-    }
-    for (uint i = tid; i < {{ROW_BLOCK}}u * {{DIM_BLOCK}}u; i += {{THREADS}}u) {
-      const uint column = column_base + i / {{DIM_BLOCK}}u;
-      const uint d = dimension_base + i % {{DIM_BLOCK}}u;
-      real value = 0;
-      if (column < dense_count) {
-        value = dense_k[(ulong(dense_start) + column) * {{HEAD_DIMENSION}}u + d];
-      } else if (column < columns) {
-        value = sparse_k[ulong(uint(sparse_row(row_indices, column - dense_count))) * {{HEAD_DIMENSION}}u + d];
+    if (column_base + {{ROW_BLOCK}}u <= columns) {
+      #pragma clang loop unroll(full)
+      for (ushort j = 0; j < {{P_VECTORS_PER_THREAD}}u; j++) {
+        const uint v = uint(tid) + {{THREADS}}u * j;
+        const uint head = head_base + v / {{P_ROW_VECTORS}}u;
+        ((threadgroup uint4*)P_buf)[v] = ((device const uint4*)((device const real*)(token_probabilities + head * chunk.columns) + column_base))[v % {{P_ROW_VECTORS}}u];
       }
-      V_buf[i] = value;
+    } else {
+      for (uint i = tid; i < {{HEAD_GROUP}}u * {{ROW_BLOCK}}u; i += {{THREADS}}u) {
+        const uint head = head_base + i / {{ROW_BLOCK}}u;
+        const uint column = column_base + i % {{ROW_BLOCK}}u;
+        P_buf[i] = column < columns ? ((device const real*)(token_probabilities + head * chunk.columns))[column] : (real)0;
+      }
+    }
+    // Each thread copies the same rows of this output slice, resolving each address once.
+    #pragma clang loop unroll(full)
+    for (ushort j = 0; j < {{SLICE_VECTORS_PER_THREAD}}u; j++) {
+      const uint column = column_base + (uint(tid) + {{THREADS}}u * j) / {{SLICE_ROW_VECTORS}}u;
+      device const real* row = nullptr;
+      if (column < dense_count) {
+        row = dense_k + (ulong(dense_start) + column) * {{HEAD_DIMENSION}}u;
+      } else if (column < columns) {
+        row = sparse_k + ulong(uint(sparse_row(row_indices, column - dense_count))) * {{HEAD_DIMENSION}}u;
+      }
+      ((threadgroup uint4*)V_buf)[uint(tid) + {{THREADS}}u * j] = row ? ((device const uint4*)(row + dimension_base))[vector_column] : uint4(0);
     }
     threadgroup_barrier(mem_flags::mem_threadgroup);
     pv_op.run(mP, mV, cO);
@@ -1327,6 +1348,12 @@ kernel void sparse_indexed_attention_values(
   source.SetValue("THREADS", std::to_string(simdGroupSize * twoPassSIMDGroups));
   source.SetValue("ROW_BLOCK", std::to_string(threadgroupRowBlock));
   source.SetValue("DIM_BLOCK", std::to_string(dimBlock));
+  // 16-byte vectors: per row of a dimension slice, per thread for one slice of a row
+  // block, and the same for the head group's probability tile.
+  source.SetValue("SLICE_ROW_VECTORS", std::to_string(dimBlock / 8));
+  source.SetValue("SLICE_VECTORS_PER_THREAD", std::to_string(dimBlock * threadgroupRowBlock / 8 / (simdGroupSize * twoPassSIMDGroups)));
+  source.SetValue("P_ROW_VECTORS", std::to_string(threadgroupRowBlock / 8));
+  source.SetValue("P_VECTORS_PER_THREAD", std::to_string(twoPassHeadGroup * threadgroupRowBlock / 8 / (simdGroupSize * twoPassSIMDGroups)));
   source += text;
   return source.ToString();
 }

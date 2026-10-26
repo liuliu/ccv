@@ -137,7 +137,8 @@ static int _ccv_nnc_sparse_indexed_attention_forw(const ccv_nnc_cmd_t cmd, const
 		if (!kv_is_shared)
 			return CCV_NNC_EXEC_INVALID;
 		const int use_r1 = T == 1 && D > 0 && D <= 512 && mtl_data_type != 3;
-		const int na_shape = H == 64 && (D == 512 || (D == 128 && K > 0));
+		// The D=512 two-pass neural accelerator kernels stage rows as 16-byte vectors.
+		const int na_shape = H == 64 && ((D == 512 && dense_k->dataof % 16 == 0 && sparse_k->dataof % 16 == 0) || (D == 128 && K > 0));
 		const int use_neural_accelerators = !use_r1 && mtl_data_type != 3 && na_shape && !(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS) && ccv_nnc_mfa_has_neural_accelerators(context);
 		if (!use_neural_accelerators && D > 512)
 			return CCV_NNC_EXEC_INVALID;

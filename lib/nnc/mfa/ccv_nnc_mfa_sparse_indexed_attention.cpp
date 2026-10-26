@@ -11,13 +11,15 @@ using namespace ccv::nnc;
 
 // Two-pass prefill keeps a probability column for every visible dense row and
 // virtual sparse row, for every head of a chunk of tokens.
+// The per-head probability stride. It is a multiple of 8 so the values pass can copy each
+// head's probabilities as 16-byte vectors; only the first columns of a token are valid.
 static uint64_t two_pass_columns(const ccv_nnc_mfa_sparse_indexed_attention_params_t& params)
 {
   const uint32_t block_size = std::max(params.block_size, 1u);
   const uint32_t dense_columns = !params.is_causal ? params.dense_rows :
     block_size > 1 ? std::min(params.dense_rows, block_size - 1) :
     params.sliding_window > 0 ? std::min(params.dense_rows, params.sliding_window) : params.dense_rows;
-  return uint64_t(dense_columns) + uint64_t(params.K) * block_size;
+  return (uint64_t(dense_columns) + uint64_t(params.K) * block_size + 7) / 8 * 8;
 }
 
 // Every head's probabilities and normalizer, then the token's valid column count.
@@ -65,6 +67,8 @@ void ccv_nnc_mfa_encode_sparse_indexed_attention(ccv_nnc_mfa_context_t* context,
     CCV_NNC_MFA_PRECONDITION(params.H == 64);
     CCV_NNC_MFA_PRECONDITION((params.D == NASparseIndexedAttentionKernel::headDimension && params.variant <= 3) || (params.D == 128 && params.K > 0 && params.variant == 4));
     CCV_NNC_MFA_PRECONDITION(params.variant != 2 && params.variant <= 4);
+    // The D=512 two-pass kernels copy K/V rows as 16-byte vectors.
+    CCV_NNC_MFA_PRECONDITION(params.D != NASparseIndexedAttentionKernel::headDimension || (tensor_offsets[1] % 16 == 0 && tensor_offsets[3] % 16 == 0));
   } else {
     CCV_NNC_MFA_PRECONDITION(params.D <= SparseIndexedAttentionKernel::maxHeadDimension);
   }
