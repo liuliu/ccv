@@ -64,7 +64,7 @@ static int _moe_weights_streaming_run_case(
 	ccv_nnc_tensor_t* const up_reference, ccv_nnc_tensor_t* const down_reference,
 	const int* const selected, const int* const segment_counts, const int segment_count,
 	const int row_count, const int case_seed, const int resident_slots,
-	const int expected_full, double* const max_difference)
+	const int expected_full, const int with_shared, double* const max_difference)
 {
 	const int n = gate_source->info.dim[1];
 	const int k = gate_source->info.dim[2];
@@ -92,6 +92,31 @@ static int _moe_weights_streaming_run_case(
 		route_values[i] = (float)(i + 1) / (row_count + 1);
 	ccv_float_to_half_precision(route_values, (uint16_t*)host_route_weights->data.f16, row_count);
 	ccfree(route_values);
+	// With a shared expert, the streamed command also evaluates one on the same activation, encoded
+	// ahead of the routed experts' readiness wait. It must match SWIGLU_FORWARD exactly.
+	ccv_nnc_tensor_t* shared_weights[2] = {};
+	ccv_nnc_tensor_t* const reference_shared = with_shared ? ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, row_count, n), 0) : 0;
+	ccv_nnc_tensor_t* const streamed_shared = with_shared ? ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, row_count, n), 0) : 0;
+	ccv_nnc_tensor_t* const host_shared = with_shared ? ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, 2, row_count, n), 0) : 0;
+	if (with_shared)
+	{
+		ccv_nnc_tensor_t* const host_shared_weights = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, n, k), 0);
+		const ccv_nnc_tensor_param_t shared_params = ccv_nnc_tensor_8i_rowwise(host_shared_weights->info);
+		ccv_nnc_tensor_t* const host_quantized = ccv_nnc_tensor_new(0, shared_params, 0);
+		ccv_nnc_tensor_param_t gpu_shared_params = shared_params;
+		gpu_shared_params.type = CCV_TENSOR_GPU_MEMORY | 000;
+		for (i = 0; i < 2; i++)
+		{
+			_moe_weights_streaming_fill_half(host_shared_weights->data.f16, (size_t)n * k, case_seed + 41 + i);
+			if (ccv_nnc_quantize_8i_rowwise(host_shared_weights->data.u8, CCV_16F, CCV_TENSOR_CPU_MEMORY, (size_t)n * k, k, 0, 0,
+				host_quantized->data.u8, ccv_nnc_tensor_data_size_without_padding(shared_params)) != ccv_nnc_tensor_data_size_without_padding(shared_params))
+				status = CCV_NNC_EXEC_INVALID;
+			shared_weights[i] = ccv_nnc_tensor_new(0, gpu_shared_params, 0);
+			ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(host_quantized), TENSOR_LIST(shared_weights[i]), 0);
+		}
+		ccv_nnc_tensor_free(host_quantized);
+		ccv_nnc_tensor_free(host_shared_weights);
+	}
 	ccv_nnc_stream_context_t* const stream = ccv_nnc_stream_context_new(CCV_STREAM_CONTEXT_GPU);
 	status = ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0,
 		TENSOR_LIST(host_activation, host_indices, host_counts, host_route_weights),
@@ -108,6 +133,13 @@ static int _moe_weights_streaming_run_case(
 		status = ccv_nnc_cmd_exec(gemm, ccv_nnc_no_hint, 0,
 			TENSOR_LIST(reference_hidden, indices, counts, down_reference),
 			TENSOR_LIST(reference_output), stream);
+	if (status == CCV_NNC_EXEC_SUCCESS && with_shared)
+	{
+		ccv_nnc_cmd_t shared_swiglu = CMD_SWIGLU_FORWARD(10);
+		shared_swiglu.backend = CCV_NNC_BACKEND_MPS;
+		status = ccv_nnc_cmd_exec(shared_swiglu, ccv_nnc_no_hint, 0,
+			TENSOR_LIST(activation, shared_weights[0], shared_weights[1]), TENSOR_LIST(reference_shared), stream);
+	}
 	ccv_nnc_cmd_t streaming = CMD_MOE_WEIGHTS_STREAMING_FORWARD(resident_slots, 1);
 	streaming.backend = CCV_NNC_BACKEND_MPS;
 	ccv_nnc_tensor_param_t streamed_params[6] = {};
@@ -133,9 +165,13 @@ static int _moe_weights_streaming_run_case(
 			TENSOR_LIST(indices, counts, route_weights, gate_source, up_source, down_source),
 			TENSOR_LIST(streamed[0], streamed[1], streamed[2], streamed[3], streamed[4], streamed[5]), stream);
 	if (status == CCV_NNC_EXEC_SUCCESS)
-		status = ccv_nnc_cmd_exec(swiglu, ccv_nnc_no_hint, 0,
-			TENSOR_LIST(activation, streamed[0], streamed[1], streamed[3], streamed[4], streamed[2]),
-			TENSOR_LIST(streamed_hidden), stream);
+		status = with_shared ?
+			ccv_nnc_cmd_exec(swiglu, ccv_nnc_no_hint, 0,
+				TENSOR_LIST(activation, streamed[0], streamed[1], streamed[3], streamed[4], streamed[2], activation, shared_weights[0], shared_weights[1]),
+				TENSOR_LIST(streamed_hidden, streamed_shared), stream) :
+			ccv_nnc_cmd_exec(swiglu, ccv_nnc_no_hint, 0,
+				TENSOR_LIST(activation, streamed[0], streamed[1], streamed[3], streamed[4], streamed[2]),
+				TENSOR_LIST(streamed_hidden), stream);
 	if (status == CCV_NNC_EXEC_SUCCESS)
 		status = ccv_nnc_cmd_exec(gemm, ccv_nnc_no_hint, 0,
 			TENSOR_LIST(streamed_hidden, streamed[0], streamed[1], streamed[5]),
@@ -144,7 +180,17 @@ static int _moe_weights_streaming_run_case(
 		status = ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0,
 			TENSOR_LIST(reference_output, streamed_output, streamed[0]),
 			TENSOR_LIST(host_reference, host_streamed, host_indices), stream);
+	if (status == CCV_NNC_EXEC_SUCCESS && with_shared)
+	{
+		ccv_nnc_tensor_t reference_view = ccv_nnc_tensor(host_shared->data.f16, CPU_TENSOR_NHWC(16F, row_count, n), 0);
+		ccv_nnc_tensor_t streamed_view = ccv_nnc_tensor(host_shared->data.f16 + (size_t)row_count * n, CPU_TENSOR_NHWC(16F, row_count, n), 0);
+		status = ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0,
+			TENSOR_LIST(reference_shared, streamed_shared), TENSOR_LIST(&reference_view, &streamed_view), stream);
+	}
 	ccv_nnc_stream_context_wait(stream);
+	if (status == CCV_NNC_EXEC_SUCCESS && with_shared &&
+		memcmp(host_shared->data.f16, host_shared->data.f16 + (size_t)row_count * n, sizeof(ccv_float16_t) * row_count * n) != 0)
+		status = CCV_NNC_EXEC_INVALID;
 	if (status == CCV_NNC_EXEC_SUCCESS && row_count > 1)
 	{
 		// Full load keeps logical expert IDs; selective staging compacts them.
@@ -169,6 +215,14 @@ static int _moe_weights_streaming_run_case(
 	for (i = 0; i < 6; i++)
 		ccv_nnc_tensor_free(streamed[i]);
 	ccv_nnc_stream_context_free(stream);
+	if (with_shared)
+	{
+		ccv_nnc_tensor_free(shared_weights[0]);
+		ccv_nnc_tensor_free(shared_weights[1]);
+		ccv_nnc_tensor_free(reference_shared);
+		ccv_nnc_tensor_free(streamed_shared);
+		ccv_nnc_tensor_free(host_shared);
+	}
 	ccv_nnc_tensor_free(host_streamed);
 	ccv_nnc_tensor_free(host_reference);
 	ccv_nnc_tensor_free(streamed_output);
@@ -307,7 +361,7 @@ TEST_CASE("MPS MoE weights streaming covers resident decode, eviction, and prefi
 		REQUIRE_EQ(_moe_weights_streaming_run_case(
 			streamed_weights[0], streamed_weights[1], streamed_weights[2],
 			reference_weights[0], reference_weights[1], reference_weights[2],
-			cold_indices, cold_counts, 4, 3072, 23 + repeat, 2, 1, &max_difference), CCV_NNC_EXEC_SUCCESS,
+			cold_indices, cold_counts, 4, 3072, 23 + repeat, 2, 1, repeat, &max_difference), CCV_NNC_EXEC_SUCCESS,
 			"full prefill should work before the GPU slot map is initialized");
 		REQUIRE(max_difference < 1e-3, "cold full prefill should preserve original expert IDs and scales");
 	}
@@ -318,7 +372,7 @@ TEST_CASE("MPS MoE weights streaming covers resident decode, eviction, and prefi
 		REQUIRE_EQ(_moe_weights_streaming_run_case(
 			streamed_weights[0], streamed_weights[1], streamed_weights[2],
 			reference_weights[0], reference_weights[1], reference_weights[2],
-			decode_indices, decode_counts, 4, 1, 31 + i, 2, 0, &max_difference),
+			decode_indices, decode_counts, 4, 1, 31 + i, 2, 0, i % 2, &max_difference),
 			CCV_NNC_EXEC_SUCCESS,
 			"decode should execute across cold misses, a resident hit, and eviction");
 		REQUIRE(max_difference < 1e-3,
@@ -334,7 +388,7 @@ TEST_CASE("MPS MoE weights streaming covers resident decode, eviction, and prefi
 		REQUIRE_EQ(_moe_weights_streaming_run_case(
 			streamed_weights[0], streamed_weights[1], streamed_weights[2],
 			reference_weights[0], reference_weights[1], reference_weights[2],
-			prefill_indices, prefill_counts, 4, m, 47 + step, 2, step % 2, &max_difference),
+			prefill_indices, prefill_counts, 4, m, 47 + step, 2, step % 2, 1, &max_difference),
 			CCV_NNC_EXEC_SUCCESS,
 			"prefill should switch between selective staging and full loading");
 		REQUIRE(max_difference < 1e-3,
@@ -344,7 +398,7 @@ TEST_CASE("MPS MoE weights streaming covers resident decode, eviction, and prefi
 		REQUIRE_EQ(_moe_weights_streaming_run_case(
 			streamed_weights[0], streamed_weights[1], streamed_weights[2],
 			reference_weights[0], reference_weights[1], reference_weights[2],
-			decode_indices, resident_counts, 4, 1, 55 + step, 2, 0, &max_difference), CCV_NNC_EXEC_SUCCESS,
+			decode_indices, resident_counts, 4, 1, 55 + step, 2, 0, 0, &max_difference), CCV_NNC_EXEC_SUCCESS,
 			"decode should retain resident weights after switching prefill paths");
 		REQUIRE(max_difference < 1e-3, "post-prefill resident decode should match reference");
 	}
@@ -356,14 +410,14 @@ TEST_CASE("MPS MoE weights streaming covers resident decode, eviction, and prefi
 		REQUIRE_EQ(_moe_weights_streaming_run_case(
 			streamed_weights[0], streamed_weights[1], streamed_weights[2],
 			reference_weights[0], reference_weights[1], reference_weights[2],
-			prefill_indices, boundary_counts, 4, m, 71 + boundary, 2, boundary > 0, &max_difference), CCV_NNC_EXEC_SUCCESS,
+			prefill_indices, boundary_counts, 4, m, 71 + boundary, 2, boundary > 0, 0, &max_difference), CCV_NNC_EXEC_SUCCESS,
 			"the default policy should switch metadata layout at the M threshold");
 		REQUIRE(max_difference < 1e-3, "adaptive prefill boundary should match reference");
 		const int resident_counts[] = { 0, 1, 0, 0 };
 		REQUIRE_EQ(_moe_weights_streaming_run_case(
 			streamed_weights[0], streamed_weights[1], streamed_weights[2],
 			reference_weights[0], reference_weights[1], reference_weights[2],
-			decode_indices, resident_counts, 4, 1, 77 + boundary, 2, 0, &max_difference), CCV_NNC_EXEC_SUCCESS,
+			decode_indices, resident_counts, 4, 1, 77 + boundary, 2, 0, 0, &max_difference), CCV_NNC_EXEC_SUCCESS,
 			"default decode should retain the resident cache across adaptive prefill");
 		REQUIRE(max_difference < 1e-3, "post-adaptive decode should match reference");
 	}
@@ -382,7 +436,7 @@ TEST_CASE("MPS MoE weights streaming covers resident decode, eviction, and prefi
 			REQUIRE_EQ(_moe_weights_streaming_run_case(
 				streamed_weights[0], streamed_weights[1], streamed_weights[2],
 				reference_weights[0], reference_weights[1], reference_weights[2],
-				high_indices, cold_counts, 4, 3072, 91 + cold, slots, boundary < 2, &max_difference), CCV_NNC_EXEC_SUCCESS,
+				high_indices, cold_counts, 4, 3072, 91 + cold, slots, boundary < 2, 0, &max_difference), CCV_NNC_EXEC_SUCCESS,
 				"repeated cold prefill should use the configured resident-capacity cutoff");
 			REQUIRE(max_difference < 1e-3, "cold combo prefill should match reference");
 		}
@@ -392,7 +446,7 @@ TEST_CASE("MPS MoE weights streaming covers resident decode, eviction, and prefi
 			REQUIRE_EQ(_moe_weights_streaming_run_case(
 				streamed_weights[0], streamed_weights[1], streamed_weights[2],
 				reference_weights[0], reference_weights[1], reference_weights[2],
-				high_indices, high_decode_counts, 4, 1, 95 + step, slots, 0, &max_difference), CCV_NNC_EXEC_SUCCESS,
+				high_indices, high_decode_counts, 4, 1, 95 + step, slots, 0, 0, &max_difference), CCV_NNC_EXEC_SUCCESS,
 				"resident decode should survive a combo prefill transition");
 			REQUIRE(max_difference < 1e-3, "combo decode should match reference");
 			const int m = warm_lengths[step];
@@ -400,7 +454,7 @@ TEST_CASE("MPS MoE weights streaming covers resident decode, eviction, and prefi
 			REQUIRE_EQ(_moe_weights_streaming_run_case(
 				streamed_weights[0], streamed_weights[1], streamed_weights[2],
 				reference_weights[0], reference_weights[1], reference_weights[2],
-				high_indices, counts, 4, m, 101 + step, slots, step >= 4 || (step > 0 && boundary < 2), &max_difference), CCV_NNC_EXEC_SUCCESS,
+				high_indices, counts, 4, m, 101 + step, slots, step >= 4 || (step > 0 && boundary < 2), 0, &max_difference), CCV_NNC_EXEC_SUCCESS,
 				"warm prefill should honor both slot and M boundaries");
 			REQUIRE(max_difference < 1e-3, "warm combo prefill should match reference");
 		}
@@ -409,7 +463,7 @@ TEST_CASE("MPS MoE weights streaming covers resident decode, eviction, and prefi
 	REQUIRE_EQ(_moe_weights_streaming_run_case(
 		streamed_weights[0], streamed_weights[0], streamed_weights[2],
 		reference_weights[0], reference_weights[0], reference_weights[2],
-		high_indices, high_decode_counts, 4, 1, 113, experts / 2, 0, &max_difference), CCV_NNC_EXEC_SUCCESS,
+		high_indices, high_decode_counts, 4, 1, 113, experts / 2, 0, 0, &max_difference), CCV_NNC_EXEC_SUCCESS,
 		"streaming should support shared gate and up sources");
 	REQUIRE(max_difference < 1e-3, "shared-source decode should match reference");
 	for (i = 0; i < 3; i++)
