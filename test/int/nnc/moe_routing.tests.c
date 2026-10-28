@@ -874,6 +874,23 @@ TEST_CASE("moe routing with FP16 logits and FP32 bias matches FP32 logits exactl
 	REQUIRE_EQ(_moe_routing_mixed_bias_case(7, 0), 1, "multi-token MPSGraph routing should match");
 }
 
+TEST_CASE("moe routing infers outputs for FP16 logits with an FP32 bias")
+{
+	// Execution accepts a bias wider than the logits, so shape inference (as in model graphs) must too.
+	const ccv_nnc_cmd_t cmd = CMD_MOE_ROUTING_FORWARD_FLAGS(2, 1.5f, 0, CCV_NNC_MOE_ROUTING_SINGLE_INPUT_TOKEN);
+	ccv_nnc_tensor_param_t input_params[] = {
+		CPU_TENSOR_NHWC(16F, 1, 8),
+		CPU_TENSOR_NHWC(32F, 8),
+		CPU_TENSOR_NHWC(32F, 1, 5),
+	};
+	ccv_nnc_tensor_param_t output_params[5];
+	ccv_nnc_hint_tensor_auto(cmd, input_params, 3, ccv_nnc_no_hint, output_params, 5);
+	REQUIRE_EQ(output_params[0].datatype, CCV_32F, "gathered activations should preserve the activation datatype");
+	REQUIRE_EQ(output_params[0].dim[0], 1, "a single input token should gather one row");
+	REQUIRE_EQ(ccv_nnc_tensor_count(output_params[1]), 2, "weights should contain one value per route");
+	REQUIRE_EQ(output_params[3].dim[0], 2, "groups should be bounded by the routes");
+}
+
 static int _moe_routing_infinite_bias_case(const int expert_count, const int kth, const int finite_count, const int* const finite_experts)
 {
 	// Experts with a -INFINITY bias stay selectable: once the finite experts are taken, the

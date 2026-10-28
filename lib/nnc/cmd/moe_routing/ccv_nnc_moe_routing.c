@@ -51,8 +51,8 @@ static void _ccv_nnc_moe_routing_tensor_auto_forw(const ccv_nnc_cmd_param_t cmd,
 		assert(inputs[1].dim[0] == token_count && inputs[1].dim[1] == kth);
 	} else {
 		assert(route_nd == 1);
+		// The bias may be FP32 with FP16 logits; routing scores both in FP32.
 		assert(inputs[1].datatype == CCV_32F || inputs[1].datatype == CCV_16F);
-		assert(inputs[1].datatype == inputs[0].datatype);
 		assert(inputs[1].dim[0] == expert_count);
 	}
 	const int pair_count = token_count * kth;
