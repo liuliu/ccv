@@ -77,12 +77,81 @@ MPSGraphDevice* ccv_nnc_default_mps_device(void)
 	return device;
 }
 
+// A failed command buffer (for example, when the GPU runs out of memory) is aborted as a whole and
+// leaves every output it carried unwritten, while the commands that encoded it have already returned
+// success. Metal reports this only through the command buffer's status, so count it here for callers
+// that need to know whether their results can be trusted.
+static uint64_t command_buffer_error_count;
+static int command_buffer_last_error;
+
+static void _ccv_nnc_mps_check_command_buffer_status(id<MTLCommandBuffer> const command_buffer)
+{
+	if (command_buffer.status != MTLCommandBufferStatusError)
+		return;
+	__atomic_store_n(&command_buffer_last_error, (int)command_buffer.error.code, __ATOMIC_RELAXED);
+	__atomic_add_fetch(&command_buffer_error_count, 1, __ATOMIC_RELEASE);
+}
+
+uint64_t ccv_nnc_mps_command_buffer_error_count(int* const last_error)
+{
+	const uint64_t count = __atomic_load_n(&command_buffer_error_count, __ATOMIC_ACQUIRE);
+	if (last_error)
+		*last_error = __atomic_load_n(&command_buffer_last_error, __ATOMIC_RELAXED);
+	return count;
+}
+
 #define CCV_NNC_MPS_TENSOR_FAST_FENCE_SIG_MAGIC (0x43315657ULL << 32)
 #define CCV_NNC_MPS_TENSOR_FAST_FENCE_SIG_MASK (0xffffffffULL << 32)
 
 static inline uint32_t* _ccv_nnc_mps_tensor_fast_fence_token(ccv_nnc_tensor_t* const tensor)
 {
 	return (uint32_t*)&tensor->sig;
+}
+
+// Fast fences whose signal was in a command buffer that failed, keyed by token address with the
+// pending value. The completion handler cannot write the token itself: if the signal did run before
+// the failure, the waiter may already have freed the tensor that holds it.
+KHASH_MAP_INIT_INT64(fast_fence_failure, uint32_t)
+static os_unfair_lock fast_fence_failure_lock = OS_UNFAIR_LOCK_INIT;
+static khash_t(fast_fence_failure)* fast_fence_failures;
+// Bumped on every recorded failure, so a waiter looks the table up only when something new failed.
+static uint32_t fast_fence_failure_generation;
+// Fresh tokens start from this sequence rather than 1, so a failure recorded for a freed tensor
+// cannot match the pending value of a later tensor at the same address.
+static uint32_t fast_fence_sequence;
+
+static void _ccv_nnc_mps_fast_fence_record_failure(id<MTLCommandBuffer> const command_buffer, uint32_t* const token, const uint32_t pending)
+{
+	// Count the failure before the waiter can see it, so a caller that checks the error count right
+	// after its wait returns sees this failure.
+	_ccv_nnc_mps_check_command_buffer_status(command_buffer);
+	os_unfair_lock_lock(&fast_fence_failure_lock);
+	if (!fast_fence_failures)
+		fast_fence_failures = kh_init(fast_fence_failure);
+	int ret;
+	const khiter_t k = kh_put(fast_fence_failure, fast_fence_failures, (uint64_t)(uintptr_t)token, &ret);
+	kh_val(fast_fence_failures, k) = pending;
+	__atomic_add_fetch(&fast_fence_failure_generation, 1, __ATOMIC_RELEASE);
+	os_unfair_lock_unlock(&fast_fence_failure_lock);
+}
+
+// Remove the failure recorded for this token, if any, and return whether it was for this pending value.
+// A failure for an older pending value is stale and only removed.
+static int _ccv_nnc_mps_fast_fence_take_failure(uint32_t* const token, const uint32_t pending)
+{
+	int failed = 0;
+	os_unfair_lock_lock(&fast_fence_failure_lock);
+	if (fast_fence_failures)
+	{
+		const khiter_t k = kh_get(fast_fence_failure, fast_fence_failures, (uint64_t)(uintptr_t)token);
+		if (k != kh_end(fast_fence_failures))
+		{
+			failed = (kh_val(fast_fence_failures, k) == pending);
+			kh_del(fast_fence_failure, fast_fence_failures, k);
+		}
+	}
+	os_unfair_lock_unlock(&fast_fence_failure_lock);
+	return failed;
 }
 
 static int _ccv_nnc_mps_tensor_fast_fence_pending_value(const ccv_nnc_tensor_t* const tensor, uint32_t* const pending_ref)
@@ -104,15 +173,18 @@ int ccv_nnc_mps_tensor_fast_fence_mark_pending(ccv_nnc_tensor_t* const tensor)
 		return 0;
 	const uint64_t sig = __atomic_load_n(&tensor->sig, __ATOMIC_ACQUIRE);
 	uint32_t pending;
+	uint32_t* const token = _ccv_nnc_mps_tensor_fast_fence_token(tensor);
+	// Drop a stale failure left at this address, so the table does not grow with freed tensors.
+	if (__atomic_load_n(&fast_fence_failure_generation, __ATOMIC_ACQUIRE))
+		_ccv_nnc_mps_fast_fence_take_failure(token, 0);
 	if ((sig & CCV_NNC_MPS_TENSOR_FAST_FENCE_SIG_MASK) != CCV_NNC_MPS_TENSOR_FAST_FENCE_SIG_MAGIC)
 	{
 		if (sig != 0)
 			return 0;
-		pending = 1;
+		pending = __atomic_add_fetch(&fast_fence_sequence, 2, __ATOMIC_RELAXED) | 1;
 		__atomic_store_n(&tensor->sig, CCV_NNC_MPS_TENSOR_FAST_FENCE_SIG_MAGIC | pending, __ATOMIC_RELEASE);
 		return 1;
 	}
-	uint32_t* const token = _ccv_nnc_mps_tensor_fast_fence_token(tensor);
 	const uint32_t current = __atomic_load_n(token, __ATOMIC_ACQUIRE);
 	pending = (current >= 0xfffffffdU) ? 1 : current + ((current & 1) ? 2 : 1);
 	__atomic_store_n(token, pending, __ATOMIC_RELEASE);
@@ -140,12 +212,27 @@ void ccv_nnc_mps_tensor_fast_fence_clear(ccv_nnc_tensor_t* const tensor)
 	}
 }
 
-void ccv_nnc_mps_tensor_fast_fence_wait(ccv_nnc_tensor_t* const tensor)
+int ccv_nnc_mps_tensor_fast_fence_wait(ccv_nnc_tensor_t* const tensor)
 {
-	if (!_ccv_nnc_mps_tensor_fast_fence_pending_value(tensor, 0))
-		return;
+	uint32_t pending;
+	if (!_ccv_nnc_mps_tensor_fast_fence_pending_value(tensor, &pending))
+		return 0;
 	uint32_t* const token = _ccv_nnc_mps_tensor_fast_fence_token(tensor);
-	while (__atomic_load_n(token, __ATOMIC_ACQUIRE) & 1) {}
+	uint32_t seen_generation = 0;
+	while (__atomic_load_n(token, __ATOMIC_ACQUIRE) & 1)
+	{
+		const uint32_t generation = __atomic_load_n(&fast_fence_failure_generation, __ATOMIC_ACQUIRE);
+		if (generation == seen_generation)
+			continue;
+		seen_generation = generation;
+		if (_ccv_nnc_mps_fast_fence_take_failure(token, pending))
+		{
+			// The signal's command buffer failed, so the token never turns and the copy never landed.
+			ccv_nnc_mps_tensor_fast_fence_clear(tensor);
+			return -1;
+		}
+	}
+	return 0;
 }
 
 int ccv_nnc_mps_encode_fast_fence_signal_in_command_batch(MTLCommandBatch* const command_batch, id<MTLBuffer> const timestamp, const size_t timestamp_offset, const uint32_t expected, const uint32_t value, id<MTLBuffer> const input, const off_t input_offset, const size_t input_size)
@@ -207,6 +294,11 @@ int ccv_nnc_mps_encode_tensor_fast_fence(MPSCommandBuffer* const command_buffer,
 	MTLCommandBatch* const command_batch = ccv_nnc_start_command_batch_from_command_buffer((__bridge mtl_command_buffer_t*)command_buffer.commandBuffer, 0);
 	const int encoded = ccv_nnc_mps_encode_fast_fence_signal_in_command_batch(command_batch, token_buffer, token_offset, pending, pending + 1, buffer, offset, size);
 	ccv_nnc_finish_command_batch(command_batch);
+	if (encoded)
+		[command_buffer.commandBuffer addCompletedHandler:^(id<MTLCommandBuffer> completed) {
+			if (completed.status == MTLCommandBufferStatusError)
+				_ccv_nnc_mps_fast_fence_record_failure(completed, token, pending);
+		}];
 	if (release_token_buffer)
 		[token_buffer release];
 	return encoded;
@@ -708,6 +800,7 @@ void mpmemcpy(void* dest, const off_t dest_off, const int dest_type, const void*
 			[encoder endEncoding];
 			[command_buffer commit];
 			[command_buffer waitUntilCompleted];
+			_ccv_nnc_mps_check_command_buffer_status(command_buffer);
 			[buffer_a release];
 		}
 	} else if (CCV_TENSOR_GET_MEMORY(src_type) == CCV_TENSOR_GPU_MEMORY && CCV_TENSOR_GET_MEMORY(dest_type) == CCV_TENSOR_CPU_MEMORY) {
@@ -724,6 +817,7 @@ void mpmemcpy(void* dest, const off_t dest_off, const int dest_type, const void*
 			[encoder endEncoding];
 			[command_buffer commit];
 			[command_buffer waitUntilCompleted];
+			_ccv_nnc_mps_check_command_buffer_status(command_buffer);
 			[buffer_b release];
 		}
 	} else {
@@ -1038,6 +1132,8 @@ static void _ccv_nnc_mps_track_submitted_command_buffer(id<MTLCommandBuffer> mtl
 	if (mtl_command_buffer.status >= MTLCommandBufferStatusCompleted)
 		_ccv_nnc_mps_release_tracked_command_buffer(mtl_command_buffer, buffer_size);
 	[old_last_command_buffer waitUntilCompleted];
+	// A later synchronization no longer sees this buffer, so count its failure here.
+	_ccv_nnc_mps_check_command_buffer_status(old_last_command_buffer);
 	[old_last_command_buffer release];
 }
 
@@ -1048,6 +1144,7 @@ static void _ccv_nnc_mps_commit_command_buffer(MPSCommandBuffer* const command_b
 	id<MTLCommandBuffer> const mtl_command_buffer = [command_buffer.commandBuffer retain];
 	const int buffer_size = _ccv_nnc_mps_tracked_command_buffer_watermark();
 	[mtl_command_buffer addCompletedHandler:^(id<MTLCommandBuffer> buffer) {
+		_ccv_nnc_mps_check_command_buffer_status(buffer);
 		_ccv_nnc_mps_release_tracked_command_buffer(buffer, buffer_size);
 	}];
 	[command_buffer commit];
@@ -1108,6 +1205,7 @@ void ccv_nnc_synchronize_stream_context(const ccv_nnc_stream_context_t* const st
 		id<MTLCommandBuffer> command_buffer = execution_state->last;
 		execution_state->last = nil;
 		[command_buffer waitUntilCompleted];
+		_ccv_nnc_mps_check_command_buffer_status(command_buffer);
 		[command_buffer release];
 		return;
 	}
@@ -1123,12 +1221,16 @@ void ccv_nnc_synchronize_stream_context(const ccv_nnc_stream_context_t* const st
 		old_last_command_buffers[i] = nil;
 	}
 	os_unfair_lock_unlock(&queue_lock);
+	// Completion handlers may still be running when a wait returns. Check the status here as well, so
+	// a failure is counted by the time synchronization returns.
 	[command_buffer waitUntilCompleted];
+	_ccv_nnc_mps_check_command_buffer_status(command_buffer);
 	[command_buffer release];
 	for (i = 0; i < buffer_size; i++)
 		if (old_buffers[i])
 		{
 			[old_buffers[i] waitUntilCompleted];
+			_ccv_nnc_mps_check_command_buffer_status(old_buffers[i]);
 			[old_buffers[i] release];
 		}
 }
@@ -1341,6 +1443,7 @@ void ccv_nnc_stream_context_finish_command_buffer(ccv_nnc_stream_context_t* cons
 	else
 		ccv_nnc_finish_command_batch(command_batch);
 	[committed_command_buffer waitUntilCompleted];
+	_ccv_nnc_mps_check_command_buffer_status(committed_command_buffer);
 	[committed_command_buffer release];
 }
 

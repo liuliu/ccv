@@ -58,7 +58,9 @@ void ccv_nnc_mps_set_binary_artifacts(const char** const paths_to_read, const in
 int ccv_nnc_mps_tensor_fast_fence_mark_pending(ccv_nnc_tensor_t* const tensor);
 int ccv_nnc_mps_tensor_fast_fence_pending(const ccv_nnc_tensor_t* const tensor);
 void ccv_nnc_mps_tensor_fast_fence_clear(ccv_nnc_tensor_t* const tensor);
-void ccv_nnc_mps_tensor_fast_fence_wait(ccv_nnc_tensor_t* const tensor);
+// Returns 0 once the copy landed, or -1 if the command buffer carrying the fence's signal failed.
+int ccv_nnc_mps_tensor_fast_fence_wait(ccv_nnc_tensor_t* const tensor);
+CCV_WARN_UNUSED(uint64_t) ccv_nnc_mps_command_buffer_error_count(int* const last_error);
 ccv_nnc_mfa_context_t* ccv_nnc_default_mfa_context(void);
 
 #ifdef __OBJC__
