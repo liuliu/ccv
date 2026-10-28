@@ -1001,3 +1001,10 @@ void ccv_nnc_vacuum(void)
 	ccv_nnc_mps_clear_graph_executable_cache();
 #endif
 }
+
+void ccv_nnc_abort(void)
+{
+#ifdef HAVE_MPS
+	ccv_nnc_mps_abort();
+#endif
+}

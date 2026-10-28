@@ -843,6 +843,11 @@ void ccv_nnc_mps_clear_graph_executable_cache(void)
 	}
 }
 
+void ccv_nnc_mps_abort(void)
+{
+	ccv_nnc_mfa_cancel_fast_fence_waits();
+}
+
 MPSGraphExecutable* ccv_nnc_mps_graph_executable_cache(const ccv_nnc_mps_graph_key_t key, int* indices, void(NS_NOESCAPE ^block)(MPSGraph* graph, NSMutableArray<MPSGraphTensor*>* inputTensors, NSMutableArray<MPSGraphShapedType*>* inputShapedTypes, NSMutableArray<MPSGraphTensor*>* resultTensors))
 {
 	if (!execution_state->graph_executable_cache)

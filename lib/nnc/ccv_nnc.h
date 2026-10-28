@@ -1097,6 +1097,10 @@ void ccv_nnc_set_binary_artifacts(const char** const paths_to_read, const int pa
  * Remove system level cache artifacts and other resources.
  */
 void ccv_nnc_vacuum(void);
+/**
+ * Abort any on-going execution on heterogeneous hardware.
+ */
+void ccv_nnc_abort(void);
 
 enum {
 	CCV_NNC_QX_8I_ROWWISE = 0x900,
