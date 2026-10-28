@@ -11,6 +11,9 @@ typedef struct {
   uint32_t bincount;
   uint32_t broadcast_input;
   float clamp;
+  // Rows of a shared expert's int8 rowwise gate / up weights over the same K, evaluated in the
+  // same dispatch for one shared activation row. Zero without a shared expert. IQ2_XXS only.
+  uint32_t shared_rows;
 } ccv_nnc_mfa_segmented_int8_swiglu_params_t;
 
 #ifdef __cplusplus

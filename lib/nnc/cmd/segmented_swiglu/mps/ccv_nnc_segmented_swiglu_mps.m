@@ -19,10 +19,10 @@ static uint64_t _ccv_nnc_segmented_swiglu_mtl_datatype(const int datatype)
 	}
 }
 
-static int _ccv_nnc_segmented_swiglu_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
+// The routed experts. With shared (activation, gate and up weights, output), the decode kernel may
+// evaluate the shared expert in the same dispatch, and sets *shared_done when it does.
+static int _ccv_nnc_segmented_swiglu_routed_forw(const ccv_nnc_cmd_t cmd, ccv_nnc_tensor_t* const* const inputs, ccv_nnc_tensor_t* const* const outputs, ccv_nnc_tensor_t* const* const shared, int* const shared_done, ccv_nnc_stream_context_t* const stream_context)
 {
-	assert(input_size == 6);
-	assert(output_size == 1);
 	if (outputs[0]->info.dim[0] == 0)
 		return CCV_NNC_EXEC_SUCCESS;
 	const ccv_nnc_tensor_view_t* const a = (const ccv_nnc_tensor_view_t*)inputs[0];
@@ -124,6 +124,24 @@ static int _ccv_nnc_segmented_swiglu_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc
 			gate_format == CCV_NNC_QX_8I_ROWWISE_IQ1_S ||
 			gate_format == CCV_NNC_QX_8I_ROWWISE_IQ1_M)
 		{
+			// A one-row shared expert with int8 rowwise weights over the same FP32 input width
+			// joins the routed dispatch.
+			const ccv_nnc_tensor_view_t* const shared_a = shared ? (const ccv_nnc_tensor_view_t*)shared[0] : 0;
+			const ccv_nnc_tensor_view_t* const shared_gate_w = shared ? (const ccv_nnc_tensor_view_t*)shared[1] : 0;
+			const ccv_nnc_tensor_view_t* const shared_up_w = shared ? (const ccv_nnc_tensor_view_t*)shared[2] : 0;
+			const ccv_nnc_tensor_view_t* const shared_output = shared ? (const ccv_nnc_tensor_view_t*)shared[3] : 0;
+			const int shared_gate_nd = shared ? ccv_nnc_tensor_nd(shared_gate_w->info.dim) : 0;
+			const uint32_t shared_rows = shared_gate_nd == 2 ? (uint32_t)shared_gate_w->info.dim[0] : 0;
+			const int fuse_shared = shared &&
+				a->info.datatype == CCV_32F && shared_a->info.datatype == CCV_32F && shared_output->info.datatype == CCV_32F &&
+				shared_rows > 0 && shared_a->info.dim[ccv_nnc_tensor_nd(shared_a->info.dim) - 1] == (int)K &&
+				ccv_nnc_tensor_count(shared_a->info) == K && ccv_nnc_tensor_count(shared_output->info) == shared_rows &&
+				shared_gate_w->info.datatype == (CCV_QX | CCV_NNC_QX_8I_ROWWISE | (CCV_32F >> 12)) &&
+				shared_up_w->info.datatype == shared_gate_w->info.datatype &&
+				shared_gate_w->info.dim[1] == (int)K && ccv_nnc_tensor_nd(shared_up_w->info.dim) == 2 &&
+				shared_up_w->info.dim[0] == (int)shared_rows && shared_up_w->info.dim[1] == (int)K &&
+				CCV_IS_TENSOR_CONTIGUOUS(shared_a) && CCV_IS_TENSOR_CONTIGUOUS(shared_gate_w) &&
+				CCV_IS_TENSOR_CONTIGUOUS(shared_up_w) && CCV_IS_TENSOR_CONTIGUOUS(shared_output);
 			const ccv_nnc_mfa_segmented_int8_swiglu_params_t params = {
 				.data_type = mtl_datatype,
 				.format = gate_format,
@@ -134,13 +152,14 @@ static int _ccv_nnc_segmented_swiglu_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc
 				.bincount = bincount,
 				.broadcast_input = broadcast_input,
 				.clamp = cmd.info.segmented_swiglu.clamp,
+				.shared_rows = fuse_shared ? shared_rows : 0,
 			};
 			ccv_nnc_mfa_prepare_segmented_int8_swiglu(context, params);
 			mtl_command_batch_t* const command_batch = ccv_nnc_stream_context_start_command_batch(stream_context);
 			ccv_nnc_mps_moe_weights_encode_wait(inputs[3], command_batch);
 			if (!command_batch)
 				return CCV_NNC_EXEC_INVALID;
-			mtl_buffer_t* tensors[8] = {
+			mtl_buffer_t* tensors[12] = {
 				mpgetbuffer((ccv_nnc_tensor_t*)gate_w),
 				mpgetbuffer((ccv_nnc_tensor_t*)up_w),
 				mpgetbuffer((ccv_nnc_tensor_t*)a),
@@ -148,15 +167,23 @@ static int _ccv_nnc_segmented_swiglu_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc
 				mpgetbuffer((ccv_nnc_tensor_t*)counts),
 				mpgetbuffer((ccv_nnc_tensor_t*)route_weight),
 				mpgetbuffer((ccv_nnc_tensor_t*)output),
+				fuse_shared ? mpgetbuffer((ccv_nnc_tensor_t*)shared_gate_w) : NULL,
+				fuse_shared ? mpgetbuffer((ccv_nnc_tensor_t*)shared_up_w) : NULL,
+				fuse_shared ? mpgetbuffer((ccv_nnc_tensor_t*)shared_a) : NULL,
+				fuse_shared ? mpgetbuffer((ccv_nnc_tensor_t*)shared_output) : NULL,
 				NULL,
 			};
-			size_t tensor_offsets[7] = {
+			size_t tensor_offsets[11] = {
 				gate_w->dataof, up_w->dataof, a->dataof, indices->dataof,
 				counts->dataof, route_weight->dataof, output->dataof,
+				fuse_shared ? shared_gate_w->dataof : 0, fuse_shared ? shared_up_w->dataof : 0,
+				fuse_shared ? shared_a->dataof : 0, fuse_shared ? shared_output->dataof : 0,
 			};
 			ccv_nnc_mfa_encode_segmented_int8_swiglu(
 				context, params, command_batch, tensors, tensor_offsets);
 			ccv_nnc_mps_moe_weights_finish_command_batch(inputs + 3, 2, stream_context, command_batch);
+			if (fuse_shared)
+				*shared_done = 1;
 			return CCV_NNC_EXEC_SUCCESS;
 		}
 		const size_t intermediate_size = (size_t)M * N * CCV_GET_DATA_TYPE_SIZE(a->info.datatype);
@@ -391,6 +418,24 @@ static int _ccv_nnc_segmented_swiglu_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc
 static int _ccv_nnc_segmented_swiglu_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
 {
 	return CCV_NNC_EXEC_INVALID;
+}
+
+// Inputs: activation, indices, counts, gate and up weights, route weights, and optionally a shared
+// expert's activation, gate and up weights, whose SwiGLU is the second output.
+static int _ccv_nnc_segmented_swiglu_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
+{
+	if (!(input_size == 6 && output_size == 1) && !(input_size == 9 && output_size == 2))
+		return CCV_NNC_EXEC_INVALID;
+	ccv_nnc_tensor_t* const shared[4] = {
+		input_size == 9 ? inputs[6] : 0, input_size == 9 ? inputs[7] : 0, input_size == 9 ? inputs[8] : 0, output_size == 2 ? outputs[1] : 0,
+	};
+	int shared_done = 0;
+	const int status = _ccv_nnc_segmented_swiglu_routed_forw(cmd, inputs, outputs, input_size == 9 ? shared : 0, &shared_done, stream_context);
+	if (status != CCV_NNC_EXEC_SUCCESS || input_size == 6 || shared_done || outputs[1]->info.dim[0] == 0)
+		return status;
+	ccv_nnc_cmd_t shared_cmd = CMD_SWIGLU_FORWARD(cmd.info.segmented_swiglu.clamp);
+	shared_cmd.backend = CCV_NNC_BACKEND_MPS;
+	return ccv_nnc_cmd_exec(shared_cmd, hint, flags, inputs + 6, 3, outputs + 1, 1, stream_context);
 }
 
 REGISTER_COMMAND_BACKEND(CCV_NNC_SEGMENTED_SWIGLU_FORWARD, CCV_NNC_BACKEND_MPS)(ccv_nnc_cmd_backend_registry_t* const registry)

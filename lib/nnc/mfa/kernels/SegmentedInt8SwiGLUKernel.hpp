@@ -8,11 +8,13 @@ struct SegmentedInt8SwiGLUKernelDescriptor {
   uint32_t format;
   bool clamp;
   GEMMOperandPrecision memoryPrecision;
+  // Also evaluate a shared expert's int8 SwiGLU in the same dispatch.
+  bool sharedFused = false;
 
   constexpr bool operator==(const SegmentedInt8SwiGLUKernelDescriptor& rhs) const
   {
     return format == rhs.format && clamp == rhs.clamp &&
-      memoryPrecision == rhs.memoryPrecision;
+      memoryPrecision == rhs.memoryPrecision && sharedFused == rhs.sharedFused;
   }
 };
 
@@ -23,7 +25,7 @@ struct std::hash<SegmentedInt8SwiGLUKernelDescriptor>
   {
     return std::hash<uint64_t>()(
       (uint64_t)value.format | ((uint64_t)value.memoryPrecision.value << 32) |
-      ((uint64_t)value.clamp << 40));
+      ((uint64_t)value.clamp << 40) | ((uint64_t)value.sharedFused << 41));
   }
 };
 

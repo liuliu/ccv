@@ -476,6 +476,208 @@ inline float2 dot_pair(
 )";
 }
 
+// Every packed format's routed rows are segmented_int8_swiglu_routes, so the plain kernel and the
+// shared-expert kernel below work for all of them.
+static void appendRoutesSignature(std::string& shader)
+{
+  shader += R"(
+inline void segmented_int8_swiglu_routes(
+  device const uchar* gate_weights,
+  device const uchar* up_weights,
+  device const real* activation,
+  device real* destination,
+  device const real* gate_scales,
+  device const real* up_scales,
+  device const int* indices,
+  device const int* counts,
+  device const real* route_weights,
+  threadgroup int& route_expert,
+  uint threadgroup_position,
+  uint simdgroup_index,
+  uint lane)
+{)";
+}
+
+static void appendSegmentedSwiGLUKernels(
+  std::string& shader, const SegmentedInt8SwiGLUKernelDescriptor& descriptor)
+{
+  shader += R"(
+kernel void segmented_int8_swiglu(
+  device const uchar* gate_weights [[buffer(0)]],
+  device const uchar* up_weights [[buffer(1)]],
+  device const real* activation [[buffer(2)]],
+  device real* destination [[buffer(3)]],
+  device const real* gate_scales [[buffer(4)]],
+  device const real* up_scales [[buffer(5)]],
+  device const int* indices [[buffer(6)]],
+  device const int* counts [[buffer(7)]],
+  device const real* route_weights [[buffer(8)]],
+  uint threadgroup_position [[threadgroup_position_in_grid]],
+  uint simdgroup_index [[simdgroup_index_in_threadgroup]],
+  uint lane [[thread_index_in_simdgroup]])
+{
+  threadgroup int route_expert;
+  segmented_int8_swiglu_routes(
+    gate_weights, up_weights, activation, destination, gate_scales, up_scales,
+    indices, counts, route_weights, route_expert, threadgroup_position,
+    simdgroup_index, lane);
+}
+)";
+  if (descriptor.sharedFused) {
+    // The shared expert's int8 SwiGLU, two rows per threadgroup as in Int8SwiGLUKernel. Its
+    // threadgroups interleave with the routed ones: the routed rows are ALU bound on the packed
+    // decode and the shared rows bandwidth bound, so the GPU overlaps the two.
+    shader += "constant uint shared_nrows [[function_constant(9)]];\n";
+    shader += "constant uint routed_threadgroups [[function_constant(10)]];\n";
+    shader += R"(
+inline void segmented_int8_swiglu_shared_rows(
+  device const char* gate_weights,
+  device const char* up_weights,
+  device const real* activation,
+  device real* destination,
+  device const real* gate_scales,
+  device const real* up_scales,
+  threadgroup float (&partials)[4][32],
+  uint threadgroup_position,
+  uint simdgroup_index,
+  uint lane)
+{
+  constexpr uint rows_per_threadgroup = 2;
+  constexpr uint simdgroups_per_threadgroup = 4;
+  const uint row_base = threadgroup_position * rows_per_threadgroup;
+  const bool active1 = row_base + 1 < shared_nrows;
+  device const real4* activation4 = (device const real4*)activation;
+  device const char4* gate0 =
+    (device const char4*)(gate_weights + (ulong)(row_base + 0) * ncols);
+  device const char4* gate1 =
+    (device const char4*)(gate_weights + (ulong)(row_base + 1) * ncols);
+  device const char4* up0 =
+    (device const char4*)(up_weights + (ulong)(row_base + 0) * ncols);
+  device const char4* up1 =
+    (device const char4*)(up_weights + (ulong)(row_base + 1) * ncols);
+
+  float gate_sum0 = 0;
+  float gate_sum1 = 0;
+  float up_sum0 = 0;
+  float up_sum1 = 0;
+  const uint vectors = ncols / 4;
+  const uint stride = simdgroups_per_threadgroup * 64;
+  uint i = simdgroup_index * 64 + lane * 2;
+  for (; i + 1 < vectors; i += stride) {
+    const float4 a0 = float4(activation4[i]);
+    const float4 a1 = float4(activation4[i + 1]);
+    gate_sum0 += dot(float4(gate0[i]), a0);
+    gate_sum0 += dot(float4(gate0[i + 1]), a1);
+    up_sum0 += dot(float4(up0[i]), a0);
+    up_sum0 += dot(float4(up0[i + 1]), a1);
+    if (active1) {
+      gate_sum1 += dot(float4(gate1[i]), a0);
+      gate_sum1 += dot(float4(gate1[i + 1]), a1);
+      up_sum1 += dot(float4(up1[i]), a0);
+      up_sum1 += dot(float4(up1[i + 1]), a1);
+    }
+  }
+  if (i < vectors) {
+    const float4 a0 = float4(activation4[i]);
+    gate_sum0 += dot(float4(gate0[i]), a0);
+    up_sum0 += dot(float4(up0[i]), a0);
+    if (active1) {
+      gate_sum1 += dot(float4(gate1[i]), a0);
+      up_sum1 += dot(float4(up1[i]), a0);
+    }
+  }
+
+  if (simdgroup_index == 0) {
+    partials[0][lane] = 0;
+    partials[1][lane] = 0;
+    partials[2][lane] = 0;
+    partials[3][lane] = 0;
+  }
+  const float lane_gate0 = simd_sum(gate_sum0);
+  const float lane_gate1 = simd_sum(gate_sum1);
+  const float lane_up0 = simd_sum(up_sum0);
+  const float lane_up1 = simd_sum(up_sum1);
+  threadgroup_barrier(mem_flags::mem_threadgroup);
+  if (lane == 0) {
+    partials[0][simdgroup_index] = lane_gate0;
+    partials[1][simdgroup_index] = lane_gate1;
+    partials[2][simdgroup_index] = lane_up0;
+    partials[3][simdgroup_index] = lane_up1;
+  }
+  threadgroup_barrier(mem_flags::mem_threadgroup);
+  if (simdgroup_index == 0) {
+    const float all_gate0 = simd_sum(partials[0][lane]);
+    const float all_gate1 = simd_sum(partials[1][lane]);
+    const float all_up0 = simd_sum(partials[2][lane]);
+    const float all_up1 = simd_sum(partials[3][lane]);
+    if (lane == 0) {
+      float gate = all_gate0 * (float)gate_scales[row_base + 0];
+      float up = all_up0 * (float)up_scales[row_base + 0];
+)";
+    if (descriptor.clamp)
+      shader += R"(
+      gate = min(gate, clamp_limit);
+      up = clamp(up, -clamp_limit, clamp_limit);
+)";
+    shader += R"(
+      destination[row_base + 0] = (real)(up * gate * stable_sigmoid(gate));
+    }
+    if (lane == 1 && active1) {
+      float gate = all_gate1 * (float)gate_scales[row_base + 1];
+      float up = all_up1 * (float)up_scales[row_base + 1];
+)";
+    if (descriptor.clamp)
+      shader += R"(
+      gate = min(gate, clamp_limit);
+      up = clamp(up, -clamp_limit, clamp_limit);
+)";
+    shader += R"(
+      destination[row_base + 1] = (real)(up * gate * stable_sigmoid(gate));
+    }
+  }
+}
+
+kernel void segmented_int8_swiglu_shared(
+  device const uchar* gate_weights [[buffer(0)]],
+  device const uchar* up_weights [[buffer(1)]],
+  device const real* activation [[buffer(2)]],
+  device real* destination [[buffer(3)]],
+  device const real* gate_scales [[buffer(4)]],
+  device const real* up_scales [[buffer(5)]],
+  device const int* indices [[buffer(6)]],
+  device const int* counts [[buffer(7)]],
+  device const real* route_weights [[buffer(8)]],
+  device const char* shared_gate_weights [[buffer(9)]],
+  device const char* shared_up_weights [[buffer(10)]],
+  device const real* shared_activation [[buffer(11)]],
+  device real* shared_destination [[buffer(12)]],
+  device const real* shared_gate_scales [[buffer(13)]],
+  device const real* shared_up_scales [[buffer(14)]],
+  uint threadgroup_position [[threadgroup_position_in_grid]],
+  uint simdgroup_index [[simdgroup_index_in_threadgroup]],
+  uint lane [[thread_index_in_simdgroup]])
+{
+  threadgroup int route_expert;
+  threadgroup float partials[4][32];
+  // Spread the shared threadgroups evenly through the grid: grouping them at either end leaves
+  // most of the routed work without bandwidth-bound neighbors.
+  const uint shared_threadgroups = (shared_nrows + 1u) / 2u;
+  const uint total = routed_threadgroups + shared_threadgroups;
+  const uint shared_before = (uint)((ulong)threadgroup_position * shared_threadgroups / total);
+  if ((uint)((ulong)(threadgroup_position + 1) * shared_threadgroups / total) != shared_before)
+    segmented_int8_swiglu_shared_rows(
+      shared_gate_weights, shared_up_weights, shared_activation, shared_destination,
+      shared_gate_scales, shared_up_scales, partials, shared_before, simdgroup_index, lane);
+  else
+    segmented_int8_swiglu_routes(
+      gate_weights, up_weights, activation, destination, gate_scales, up_scales,
+      indices, counts, route_weights, route_expert, threadgroup_position - shared_before,
+      simdgroup_index, lane);
+}
+)";
+  }
+}
+
 static std::string buildIQ2XSShader(
   const SegmentedInt8SwiGLUKernelDescriptor& descriptor)
 {
@@ -511,27 +713,15 @@ inline float stable_sigmoid(const float value)
   return tail + step(0.0f, value) * (1.0f - 2.0f * tail);
 }
 
-kernel void segmented_int8_swiglu(
-  device const uchar* gate_weights [[buffer(0)]],
-  device const uchar* up_weights [[buffer(1)]],
-  device const real* activation [[buffer(2)]],
-  device real* destination [[buffer(3)]],
-  device const real* gate_scales [[buffer(4)]],
-  device const real* up_scales [[buffer(5)]],
-  device const int* indices [[buffer(6)]],
-  device const int* counts [[buffer(7)]],
-  device const real* route_weights [[buffer(8)]],
-  uint threadgroup_position [[threadgroup_position_in_grid]],
-  uint simdgroup_index [[simdgroup_index_in_threadgroup]],
-  uint lane [[thread_index_in_simdgroup]])
-{
+)";
+  appendRoutesSignature(shader);
+  shader += R"(
   constexpr uint rows_per_simdgroup = 1;
   constexpr uint row_simdgroups = 4;
   constexpr uint rows_per_threadgroup = rows_per_simdgroup * row_simdgroups;
   const uint threadgroups_per_route =
     (nrows + rows_per_threadgroup - 1u) / rows_per_threadgroup;
   const uint route = threadgroup_position / threadgroups_per_route;
-  threadgroup int route_expert;
   if (simdgroup_index == 0 && lane == 0) {
     route_expert = -1;
     uint row_offset = 0;
@@ -606,6 +796,7 @@ kernel void segmented_int8_swiglu(
   }
 }
 )";
+  appendSegmentedSwiGLUKernels(shader, descriptor);
   return shader;
 }
 
@@ -644,27 +835,15 @@ inline float stable_sigmoid(const float value)
   return tail + step(0.0f, value) * (1.0f - 2.0f * tail);
 }
 
-kernel void segmented_int8_swiglu(
-  device const uchar* gate_weights [[buffer(0)]],
-  device const uchar* up_weights [[buffer(1)]],
-  device const real* activation [[buffer(2)]],
-  device real* destination [[buffer(3)]],
-  device const real* gate_scales [[buffer(4)]],
-  device const real* up_scales [[buffer(5)]],
-  device const int* indices [[buffer(6)]],
-  device const int* counts [[buffer(7)]],
-  device const real* route_weights [[buffer(8)]],
-  uint threadgroup_position [[threadgroup_position_in_grid]],
-  uint simdgroup_index [[simdgroup_index_in_threadgroup]],
-  uint lane [[thread_index_in_simdgroup]])
-{
+)";
+  appendRoutesSignature(shader);
+  shader += R"(
   constexpr uint rows_per_simdgroup = 1;
   constexpr uint row_simdgroups = 4;
   constexpr uint rows_per_threadgroup = rows_per_simdgroup * row_simdgroups;
   const uint threadgroups_per_route =
     (nrows + rows_per_threadgroup - 1u) / rows_per_threadgroup;
   const uint route = threadgroup_position / threadgroups_per_route;
-  threadgroup int route_expert;
   if (simdgroup_index == 0 && lane == 0) {
     route_expert = -1;
     uint row_offset = 0;
@@ -742,6 +921,7 @@ kernel void segmented_int8_swiglu(
   }
 }
 )";
+  appendSegmentedSwiGLUKernels(shader, descriptor);
   return shader;
 }
 
@@ -780,27 +960,15 @@ inline float stable_sigmoid(const float value)
   return tail + step(0.0f, value) * (1.0f - 2.0f * tail);
 }
 
-kernel void segmented_int8_swiglu(
-  device const uchar* gate_weights [[buffer(0)]],
-  device const uchar* up_weights [[buffer(1)]],
-  device const real* activation [[buffer(2)]],
-  device real* destination [[buffer(3)]],
-  device const real* gate_scales [[buffer(4)]],
-  device const real* up_scales [[buffer(5)]],
-  device const int* indices [[buffer(6)]],
-  device const int* counts [[buffer(7)]],
-  device const real* route_weights [[buffer(8)]],
-  uint threadgroup_position [[threadgroup_position_in_grid]],
-  uint simdgroup_index [[simdgroup_index_in_threadgroup]],
-  uint lane [[thread_index_in_simdgroup]])
-{
+)";
+  appendRoutesSignature(shader);
+  shader += R"(
   constexpr uint rows_per_simdgroup = 1;
   constexpr uint row_simdgroups = 4;
   constexpr uint rows_per_threadgroup = rows_per_simdgroup * row_simdgroups;
   const uint threadgroups_per_route =
     (nrows + rows_per_threadgroup - 1u) / rows_per_threadgroup;
   const uint route = threadgroup_position / threadgroups_per_route;
-  threadgroup int route_expert;
   if (simdgroup_index == 0 && lane == 0) {
     route_expert = -1;
     uint row_offset = 0;
@@ -875,6 +1043,7 @@ kernel void segmented_int8_swiglu(
   }
 }
 )";
+  appendSegmentedSwiGLUKernels(shader, descriptor);
   return shader;
 }
 
@@ -913,27 +1082,15 @@ inline float stable_sigmoid(const float value)
   return tail + step(0.0f, value) * (1.0f - 2.0f * tail);
 }
 
-kernel void segmented_int8_swiglu(
-  device const uchar* gate_weights [[buffer(0)]],
-  device const uchar* up_weights [[buffer(1)]],
-  device const real* activation [[buffer(2)]],
-  device real* destination [[buffer(3)]],
-  device const real* gate_scales [[buffer(4)]],
-  device const real* up_scales [[buffer(5)]],
-  device const int* indices [[buffer(6)]],
-  device const int* counts [[buffer(7)]],
-  device const real* route_weights [[buffer(8)]],
-  uint threadgroup_position [[threadgroup_position_in_grid]],
-  uint simdgroup_index [[simdgroup_index_in_threadgroup]],
-  uint lane [[thread_index_in_simdgroup]])
-{
+)";
+  appendRoutesSignature(shader);
+  shader += R"(
   constexpr uint rows_per_simdgroup = 1;
   constexpr uint row_simdgroups = 4;
   constexpr uint rows_per_threadgroup = rows_per_simdgroup * row_simdgroups;
   const uint threadgroups_per_route =
     (nrows + rows_per_threadgroup - 1u) / rows_per_threadgroup;
   const uint route = threadgroup_position / threadgroups_per_route;
-  threadgroup int route_expert;
   if (simdgroup_index == 0 && lane == 0) {
     route_expert = -1;
     uint row_offset = 0;
@@ -1007,6 +1164,7 @@ kernel void segmented_int8_swiglu(
   }
 }
 )";
+  appendSegmentedSwiGLUKernels(shader, descriptor);
   return shader;
 }
 
@@ -1140,27 +1298,15 @@ inline float stable_sigmoid(const float value)
   return tail + step(0.0f, value) * (1.0f - 2.0f * tail);
 }
 
-kernel void segmented_int8_swiglu(
-  device const uchar* gate_weights [[buffer(0)]],
-  device const uchar* up_weights [[buffer(1)]],
-  device const real* activation [[buffer(2)]],
-  device real* destination [[buffer(3)]],
-  device const real* gate_scales [[buffer(4)]],
-  device const real* up_scales [[buffer(5)]],
-  device const int* indices [[buffer(6)]],
-  device const int* counts [[buffer(7)]],
-  device const real* route_weights [[buffer(8)]],
-  uint threadgroup_position [[threadgroup_position_in_grid]],
-  uint simdgroup_index [[simdgroup_index_in_threadgroup]],
-  uint lane [[thread_index_in_simdgroup]])
-{
+)";
+  appendRoutesSignature(shader);
+  shader += R"(
   constexpr uint rows_per_simdgroup = 1;
   constexpr uint row_simdgroups = 4;
   constexpr uint rows_per_threadgroup = rows_per_simdgroup * row_simdgroups;
   const uint threadgroups_per_route =
     (nrows + rows_per_threadgroup - 1u) / rows_per_threadgroup;
   const uint route = threadgroup_position / threadgroups_per_route;
-  threadgroup int route_expert;
   if (simdgroup_index == 0 && lane == 0) {
     route_expert = -1;
     uint row_offset = 0;
@@ -1231,6 +1377,7 @@ kernel void segmented_int8_swiglu(
   }
 }
 )";
+  appendSegmentedSwiGLUKernels(shader, descriptor);
 
   source = std::move(shader);
   auto string = NS::String::string(source.c_str(), NS::UTF8StringEncoding);

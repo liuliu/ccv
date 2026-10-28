@@ -16,6 +16,10 @@ struct SegmentedInt8SwiGLUDescriptor {
   uint32_t broadcastInput;
   float clamp;
   GEMMOperandPrecision memoryPrecision;
+  // Shared expert rows evaluated in the same dispatch, and the routed threadgroups they
+  // interleave with. Zero without a shared expert.
+  uint32_t sharedRows = 0;
+  uint32_t routedThreadgroups = 0;
 
   bool operator==(const SegmentedInt8SwiGLUDescriptor& rhs) const;
   uint32_t groupSize() const noexcept;

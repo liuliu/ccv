@@ -40,7 +40,10 @@ void ccv_nnc_mfa_encode_segmented_int8_swiglu(
   int tensorCount = 0;
   while (tensors[tensorCount] != nullptr)
     ++tensorCount;
-  CCV_NNC_MFA_PRECONDITION(tensorCount == 7);
+  // Tensors: gate, up, activation, indices, counts, route weights, output, then with a shared
+  // expert its gate, up, activation and output.
+  CCV_NNC_MFA_PRECONDITION(tensorCount == (params.shared_rows > 0 ? 11 : 7));
+  CCV_NNC_MFA_PRECONDITION(params.shared_rows == 0 || (params.K % 4) == 0);
   CCV_NNC_MFA_PRECONDITION(
     params.M > 0 && params.N > 0 && params.K > 0 &&
     params.expert_count > 0 && params.bincount > 0);
@@ -61,6 +64,10 @@ void ccv_nnc_mfa_encode_segmented_int8_swiglu(
   descriptor.broadcastInput = params.broadcast_input;
   descriptor.clamp = params.clamp;
   descriptor.memoryPrecision = ioPrecision(params.data_type);
+  const NS::UInteger threadgroupsPerRoute = (params.N + 3) / 4;
+  const NS::UInteger routedThreadgroups = threadgroupsPerRoute * params.M;
+  descriptor.sharedRows = params.shared_rows;
+  descriptor.routedThreadgroups = params.shared_rows > 0 ? (uint32_t)routedThreadgroups : 0;
   auto pipelineValue = context->kernel_cache.findKernel<
     SegmentedInt8SwiGLUKernel,
     SegmentedInt8SwiGLUDescriptor,
@@ -84,9 +91,22 @@ void ccv_nnc_mfa_encode_segmented_int8_swiglu(
   for (int i = 0; i < 6; ++i)
     encoder->useResource(tensors[i], MTL::ResourceUsageRead);
   encoder->useResource(tensors[6], MTL::ResourceUsageWrite);
+  NS::UInteger sharedThreadgroups = 0;
+  if (params.shared_rows > 0) {
+    const uint64_t sharedScaleOffset = ((uint64_t)params.shared_rows * params.K + 127) & ~UINT64_C(127);
+    encoder->setBuffer(tensors[7], tensorOffsets[7], 9);
+    encoder->setBuffer(tensors[8], tensorOffsets[8], 10);
+    encoder->setBuffer(tensors[9], tensorOffsets[9], 11);
+    encoder->setBuffer(tensors[10], tensorOffsets[10], 12);
+    encoder->setBuffer(tensors[7], tensorOffsets[7] + sharedScaleOffset, 13);
+    encoder->setBuffer(tensors[8], tensorOffsets[8] + sharedScaleOffset, 14);
+    for (int i = 7; i < 10; ++i)
+      encoder->useResource(tensors[i], MTL::ResourceUsageRead);
+    encoder->useResource(tensors[10], MTL::ResourceUsageWrite);
+    sharedThreadgroups = (params.shared_rows + 1) / 2;
+  }
 
-  const NS::UInteger threadgroupsPerRoute = (params.N + 3) / 4;
-  const MTL::Size gridSize(threadgroupsPerRoute * params.M, 1, 1);
+  const MTL::Size gridSize(routedThreadgroups + sharedThreadgroups, 1, 1);
   const MTL::Size threadgroupSize(128, 1, 1);
   encoder->dispatchThreadgroups(gridSize, threadgroupSize);
   commandBatch->finishCommand(encoder);

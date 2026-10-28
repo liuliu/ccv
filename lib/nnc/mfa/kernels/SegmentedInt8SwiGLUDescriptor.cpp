@@ -8,7 +8,8 @@ bool SegmentedInt8SwiGLUDescriptor::operator==(const SegmentedInt8SwiGLUDescript
   return simd_all(matrixDimensions == rhs.matrixDimensions) &&
     expertCount == rhs.expertCount && routeCount == rhs.routeCount &&
     format == rhs.format && broadcastInput == rhs.broadcastInput &&
-    clamp == rhs.clamp && memoryPrecision == rhs.memoryPrecision;
+    clamp == rhs.clamp && memoryPrecision == rhs.memoryPrecision &&
+    sharedRows == rhs.sharedRows && routedThreadgroups == rhs.routedThreadgroups;
 }
 
 std::size_t std::hash<SegmentedInt8SwiGLUDescriptor>::operator()(
@@ -23,6 +24,7 @@ std::size_t std::hash<SegmentedInt8SwiGLUDescriptor>::operator()(
   seed = combine_32(seed, value.broadcastInput);
   seed = combine_32(seed, uint32_t(std::hash<float>{}(value.clamp)));
   seed = combine_32(seed, (uint32_t)value.memoryPrecision.value);
+  seed = combine_64(seed, pack_64(simd::uint2 { value.sharedRows, value.routedThreadgroups }));
   return seed;
 }
 
@@ -145,6 +147,7 @@ std::pair<
   kernelDesc.format = format;
   kernelDesc.clamp = clamp > 0;
   kernelDesc.memoryPrecision = memoryPrecision;
+  kernelDesc.sharedFused = sharedRows > 0;
   SegmentedInt8SwiGLUKernel* kernel;
   auto iterator = libraryCache->find(kernelDesc);
   if (iterator != libraryCache->end()) {
@@ -171,9 +174,14 @@ std::pair<
   constants->setConstantValue(&weightStride, MTL::DataTypeULong, NS::UInteger(7));
   if (clamp > 0)
     constants->setConstantValue(&clamp, MTL::DataTypeFloat, NS::UInteger(8));
+  if (sharedRows > 0) {
+    constants->setConstantValue(&sharedRows, MTL::DataTypeUInt, NS::UInteger(9));
+    constants->setConstantValue(&routedThreadgroups, MTL::DataTypeUInt, NS::UInteger(10));
+  }
 
   NS::String* functionName = NS::String::string(
-    "segmented_int8_swiglu", NS::UTF8StringEncoding);
+    sharedRows > 0 ? "segmented_int8_swiglu_shared" : "segmented_int8_swiglu",
+    NS::UTF8StringEncoding);
   NS::Error* error = nil;
   auto function = NS::TransferPtr(
     kernel->library->newFunction(functionName, constants.get(), &error));

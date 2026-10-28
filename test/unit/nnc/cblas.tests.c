@@ -1780,7 +1780,7 @@ TEST_CASE("functional segmented swiglu model uses supplied weights")
 		route_weights->data.f32[i] = dsfmt_genrand_open_close(&dsfmt);
 	ccv_nnc_cmd_exec(CMD_SEGMENTED_SWIGLU_FORWARD(10), ccv_nnc_no_hint, 0,
 		TENSOR_LIST(a, indices, counts, gate_weights, up_weights, route_weights), TENSOR_LIST(expected), 0);
-	ccv_cnnp_model_t* const segmented_swiglu = ccv_cnnp_segmented_swiglu(3, 4, 10, 1, 0, "segmented_swiglu");
+	ccv_cnnp_model_t* const segmented_swiglu = ccv_cnnp_segmented_swiglu(3, 4, 10, 1, 0, 0, "segmented_swiglu");
 	ccv_cnnp_model_compile(segmented_swiglu,
 		TENSOR_PARAM_LIST(a->info, indices->info, counts->info, gate_weights->info, up_weights->info, route_weights->info),
 		CMD_NOOP(), CMD_NOOP());

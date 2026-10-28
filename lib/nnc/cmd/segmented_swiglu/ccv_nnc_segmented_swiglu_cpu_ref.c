@@ -10,10 +10,8 @@
 #include <dispatch/dispatch.h>
 #endif
 
-static int _ccv_nnc_segmented_swiglu_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
+static int _ccv_nnc_segmented_swiglu_routed_forw(const ccv_nnc_cmd_t cmd, ccv_nnc_tensor_t* const* const inputs, ccv_nnc_tensor_t* const* const outputs, ccv_nnc_stream_context_t* const stream_context)
 {
-	assert(input_size == 6);
-	assert(output_size == 1);
 	if (outputs[0]->info.dim[0] == 0)
 		return CCV_NNC_EXEC_SUCCESS;
 	const ccv_nnc_tensor_t* const a = inputs[0];
@@ -96,6 +94,20 @@ static int _ccv_nnc_segmented_swiglu_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc
 		}
 	}
 	return row == rows ? CCV_NNC_EXEC_SUCCESS : CCV_NNC_EXEC_INVALID;
+}
+
+// Inputs: activation, indices, counts, gate and up weights, route weights, and optionally a shared
+// expert's activation, gate and up weights, whose SwiGLU is the second output.
+static int _ccv_nnc_segmented_swiglu_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
+{
+	if (!(input_size == 6 && output_size == 1) && !(input_size == 9 && output_size == 2))
+		return CCV_NNC_EXEC_INVALID;
+	const int status = _ccv_nnc_segmented_swiglu_routed_forw(cmd, inputs, outputs, stream_context);
+	if (status != CCV_NNC_EXEC_SUCCESS || input_size == 6 || outputs[1]->info.dim[0] == 0)
+		return status;
+	ccv_nnc_cmd_t shared_cmd = CMD_SWIGLU_FORWARD(cmd.info.segmented_swiglu.clamp);
+	shared_cmd.backend = CCV_NNC_BACKEND_CPU_REF;
+	return ccv_nnc_cmd_exec(shared_cmd, hint, flags, inputs + 6, 3, outputs + 1, 1, stream_context);
 }
 
 static int _ccv_nnc_segmented_swiglu_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
