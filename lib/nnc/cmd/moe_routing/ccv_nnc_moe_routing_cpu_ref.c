@@ -67,7 +67,7 @@ static int _ccv_nnc_moe_routing_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint
 		if (route->info.datatype != CCV_32S || ccv_nnc_tensor_nd(route->info.dim) != 2 || route->info.dim[0] != token_count || route->info.dim[1] != kth)
 			return CCV_NNC_EXEC_INVALID;
 	} else if ((route->info.datatype != CCV_32F && route->info.datatype != CCV_16F) ||
-		route->info.datatype != logits->info.datatype || ccv_nnc_tensor_nd(route->info.dim) != 1 ||
+		ccv_nnc_tensor_nd(route->info.dim) != 1 ||
 		route->info.dim[0] != expert_count) {
 		return CCV_NNC_EXEC_INVALID;
 	}

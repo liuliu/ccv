@@ -22,9 +22,11 @@ MoERoutingKernel::MoERoutingKernel(MoERoutingKernelDescriptor descriptor, MTL::D
 {
 	const char* const activation_type = _ccv_nnc_moe_routing_type_name(descriptor.activationDataType);
 	const char* const routing_type = _ccv_nnc_moe_routing_type_name(descriptor.routingDataType);
+	const char* const bias_type = _ccv_nnc_moe_routing_type_name(descriptor.biasDataType);
 	CodeWriter source;
 	source.SetValue("ACTIVATION_TYPE", activation_type);
 	source.SetValue("ROUTING_TYPE", routing_type);
+	source.SetValue("BIAS_TYPE", bias_type);
 	source.SetValue("SIMD_GROUPS", std::to_string(descriptor.executionSIMDGroups));
 	source += R"(
 #include <metal_stdlib>
@@ -32,6 +34,7 @@ using namespace metal;
 
 typedef {{ACTIVATION_TYPE}} activation_t;
 typedef {{ROUTING_TYPE}} routing_t;
+typedef {{BIAS_TYPE}} bias_t;
 
 constant uint expert_count [[function_constant(0)]];
 constant uint kth [[function_constant(1)]];
@@ -88,8 +91,43 @@ kernel void moe_routing_t1(
 			for (uint slot = 0; slot < kth; slot++)
 				top_experts[slot] = (uint)selected[slot];
 		}
+	} else if (expert_count <= 32 * 16) {
+		// One SIMD group selects without threadgroup barriers: lane l holds experts l, l + 32, ...
+		// Ties go to the lowest expert index, as in the threadgroup-wide search below. Experts out
+		// of range or already selected are masked rather than scored -INFINITY, so experts whose
+		// score is -INFINITY (or NaN, scored as -INFINITY) stay selectable, as on the CPU.
+		if (simd_group == 0)
+		{
+			float scores[16];
+			uint taken = 0;
+			for (uint i = 0; i < 16; i++)
+			{
+				const uint expert = i * 32 + lane;
+				const float score = expert < expert_count ? probabilities[expert] + (float)((device const bias_t*)route)[expert] : -INFINITY;
+				scores[i] = isnan(score) ? -INFINITY : score;
+				if (expert >= expert_count)
+					taken |= 1u << i;
+			}
+			for (uint slot = 0; slot < kth; slot++)
+			{
+				float best_score = -INFINITY;
+				uint best_expert = 0xffffffffu;
+				for (uint i = 0; i < 16; i++)
+					if (!(taken & (1u << i)) && (best_expert == 0xffffffffu || scores[i] > best_score))
+					{
+						best_score = scores[i];
+						best_expert = i * 32 + lane;
+					}
+				const float simd_score = simd_max(best_score);
+				const uint selected = simd_min(best_score == simd_score ? best_expert : 0xffffffffu);
+				if (lane == 0)
+					top_experts[slot] = selected;
+				if (selected % 32 == lane)
+					taken |= 1u << (selected / 32);
+			}
+		}
 	} else {
-		float candidate_score = tid < expert_count ? probabilities[tid] + (float)((device const routing_t*)route)[tid] : -INFINITY;
+		float candidate_score = tid < expert_count ? probabilities[tid] + (float)((device const bias_t*)route)[tid] : -INFINITY;
 		for (uint slot = 0; slot < kth; slot++)
 		{
 			const float simd_score = simd_max(candidate_score);

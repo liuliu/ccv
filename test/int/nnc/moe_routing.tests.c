@@ -790,4 +790,168 @@ TEST_CASE("multi-token moe routing gathers prefill rows and partial widths exact
 	}
 }
 
+static int _moe_routing_mixed_bias_case(const int token_count, const int disable_mfa)
+{
+	// FP16 logits with an FP32 bias must route exactly as the same logits widened to FP32.
+	const int expert_count = 384, kth = 6, hidden = 256;
+	const int pair_count = token_count * kth;
+	const int group_count = ccv_min(expert_count, pair_count);
+	ccv_nnc_tensor_t* const hlogits16 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, token_count, expert_count), 0);
+	ccv_nnc_tensor_t* const hlogits32 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, token_count, expert_count), 0);
+	ccv_nnc_tensor_t* const hbias = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, expert_count), 0);
+	ccv_nnc_tensor_t* const hactivation = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, token_count, hidden), 0);
+	int i;
+	for (i = 0; i < token_count * expert_count; i++)
+		hlogits32->data.f32[i] = (float)(((i * 37) % expert_count) - expert_count / 2) * 0.03125f;
+	ccv_float_to_half_precision(hlogits32->data.f32, (uint16_t*)hlogits16->data.f16, token_count * expert_count);
+	ccv_half_precision_to_float((uint16_t*)hlogits16->data.f16, hlogits32->data.f32, token_count * expert_count);
+	// Offsets finer than FP16 resolution near 0.3 decide ties, so a rounded bias would route differently.
+	for (i = 0; i < expert_count; i++)
+		hbias->data.f32[i] = 0.3f + (float)((i * 11) % expert_count) * 1e-6f;
+	for (i = 0; i < token_count * hidden; i++)
+		hactivation->data.f32[i] = (float)((i % 29) - 14) / 16.0f;
+	ccv_nnc_tensor_t* const logits16 = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, token_count, expert_count), 0);
+	ccv_nnc_tensor_t* const logits32 = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, token_count, expert_count), 0);
+	ccv_nnc_tensor_t* const bias = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, expert_count), 0);
+	ccv_nnc_tensor_t* const activation = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, token_count, hidden), 0);
+	ccv_nnc_tensor_t* outputs[2][5];
+	ccv_nnc_tensor_t* host[2][5];
+	int j;
+	for (j = 0; j < 2; j++)
+	{
+		// A single input token gathers its one activation row.
+		const int gathered_rows = token_count == 1 ? 1 : pair_count;
+		outputs[j][0] = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, gathered_rows, hidden), 0);
+		outputs[j][1] = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, pair_count), 0);
+		outputs[j][2] = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32S, pair_count), 0);
+		outputs[j][3] = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32S, group_count), 0);
+		outputs[j][4] = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32S, group_count), 0);
+		host[j][0] = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, gathered_rows, hidden), 0);
+		host[j][1] = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, pair_count), 0);
+		host[j][2] = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, pair_count), 0);
+		host[j][3] = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, group_count), 0);
+		host[j][4] = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, group_count), 0);
+	}
+	const uint64_t old_flags = ccv_nnc_flags();
+	if (disable_mfa)
+		ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(hlogits16, hlogits32, hbias, hactivation), TENSOR_LIST(logits16, logits32, bias, activation), 0);
+	ccv_nnc_cmd_t cmd = CMD_MOE_ROUTING_FORWARD_FLAGS(kth, 1.5f, 0, token_count == 1 ? CCV_NNC_MOE_ROUTING_SINGLE_INPUT_TOKEN : 0);
+	cmd.backend = CCV_NNC_BACKEND_MPS;
+	cmd.info.moe_routing.normalization_epsilon = 1e-20f;
+	int status = ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(logits16, bias, activation), outputs[0], 5, 0);
+	if (status == CCV_NNC_EXEC_SUCCESS)
+		status = ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(logits32, bias, activation), outputs[1], 5, 0);
+	if (!(old_flags & CCV_NNC_DISABLE_MFA))
+		ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA);
+	int match = status == CCV_NNC_EXEC_SUCCESS;
+	for (j = 0; j < 2 && match; j++)
+		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, outputs[j], 5, host[j], 5, 0);
+	for (i = 0; i < 5 && match; i++)
+		match = memcmp(host[0][i]->data.u8, host[1][i]->data.u8, ccv_nnc_tensor_data_size_without_padding(host[0][i]->info)) == 0;
+	for (j = 0; j < 2; j++)
+		for (i = 0; i < 5; i++)
+		{
+			ccv_nnc_tensor_free(outputs[j][i]);
+			ccv_nnc_tensor_free(host[j][i]);
+		}
+	ccv_nnc_tensor_free(activation);
+	ccv_nnc_tensor_free(bias);
+	ccv_nnc_tensor_free(logits32);
+	ccv_nnc_tensor_free(logits16);
+	ccv_nnc_tensor_free(hactivation);
+	ccv_nnc_tensor_free(hbias);
+	ccv_nnc_tensor_free(hlogits32);
+	ccv_nnc_tensor_free(hlogits16);
+	return status != CCV_NNC_EXEC_SUCCESS ? -1 : match;
+}
+
+TEST_CASE("moe routing with FP16 logits and FP32 bias matches FP32 logits exactly on MPS")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_MOE_ROUTING_FORWARD, CCV_NNC_BACKEND_MPS));
+	REQUIRE_EQ(_moe_routing_mixed_bias_case(1, 0), 1, "single-token MFA routing should match");
+	REQUIRE_EQ(_moe_routing_mixed_bias_case(1, 1), 1, "single-token MPSGraph routing should match");
+	REQUIRE_EQ(_moe_routing_mixed_bias_case(7, 0), 1, "multi-token MPSGraph routing should match");
+}
+
+static int _moe_routing_infinite_bias_case(const int expert_count, const int kth, const int finite_count, const int* const finite_experts)
+{
+	// Experts with a -INFINITY bias stay selectable: once the finite experts are taken, the
+	// remaining slots take the lowest remaining indices, as on the CPU.
+	const int hidden = 64;
+	ccv_nnc_tensor_t* const hlogits = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, expert_count), 0);
+	ccv_nnc_tensor_t* const hbias = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, expert_count), 0);
+	ccv_nnc_tensor_t* const hactivation = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, hidden), 0);
+	int i, j;
+	for (i = 0; i < expert_count; i++)
+	{
+		hlogits->data.f32[i] = (float)((i * 7) % 11 - 5) * 0.125f;
+		hbias->data.f32[i] = -INFINITY;
+	}
+	for (i = 0; i < finite_count; i++)
+		hbias->data.f32[finite_experts[i]] = (float)(finite_count - i);
+	for (i = 0; i < hidden; i++)
+		hactivation->data.f32[i] = (float)((i % 13) - 6) / 8.0f;
+	ccv_nnc_tensor_t* const logits = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 1, expert_count), 0);
+	ccv_nnc_tensor_t* const bias = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, expert_count), 0);
+	ccv_nnc_tensor_t* const activation = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 1, hidden), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(hlogits, hbias, hactivation), TENSOR_LIST(logits, bias, activation), 0);
+	ccv_nnc_tensor_t* expected[5];
+	ccv_nnc_tensor_t* outputs[5];
+	ccv_nnc_tensor_t* actual[5];
+	const ccv_nnc_tensor_param_t params[5] = {
+		CPU_TENSOR_NHWC(32F, 1, hidden), CPU_TENSOR_NHWC(32F, kth), CPU_TENSOR_NHWC(32S, kth), CPU_TENSOR_NHWC(32S, kth), CPU_TENSOR_NHWC(32S, kth),
+	};
+	for (i = 0; i < 5; i++)
+	{
+		expected[i] = ccv_nnc_tensor_new(0, params[i], 0);
+		actual[i] = ccv_nnc_tensor_new(0, params[i], 0);
+		ccv_nnc_tensor_param_t gpu_params = params[i];
+		gpu_params.type = CCV_TENSOR_GPU_MEMORY;
+		outputs[i] = ccv_nnc_tensor_new(0, gpu_params, 0);
+	}
+	ccv_nnc_cmd_t cmd = CMD_MOE_ROUTING_FORWARD_FLAGS(kth, 1.5f, 0, CCV_NNC_MOE_ROUTING_SINGLE_INPUT_TOKEN);
+	cmd.info.moe_routing.normalization_epsilon = 1e-20f;
+	cmd.backend = CCV_NNC_BACKEND_CPU_REF;
+	int status = ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(hlogits, hbias, hactivation), expected, 5, 0);
+	cmd.backend = CCV_NNC_BACKEND_MPS;
+	if (status == CCV_NNC_EXEC_SUCCESS)
+		status = ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(logits, bias, activation), outputs, 5, 0);
+	int match = status == CCV_NNC_EXEC_SUCCESS;
+	if (match)
+	{
+		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, outputs, 5, actual, 5, 0);
+		for (i = 0; i < kth && match; i++)
+		{
+			match = actual[3]->data.i32[i] == expected[3]->data.i32[i] && actual[4]->data.i32[i] == 1 &&
+				fabsf(actual[1]->data.f32[i] - expected[1]->data.f32[i]) <= 1e-5f * ccv_max(1.0f, fabsf(expected[1]->data.f32[i]));
+			for (j = 0; j < i && match; j++)
+				match = actual[3]->data.i32[j] != actual[3]->data.i32[i];
+		}
+	}
+	for (i = 0; i < 5; i++)
+	{
+		ccv_nnc_tensor_free(outputs[i]);
+		ccv_nnc_tensor_free(actual[i]);
+		ccv_nnc_tensor_free(expected[i]);
+	}
+	ccv_nnc_tensor_free(activation);
+	ccv_nnc_tensor_free(bias);
+	ccv_nnc_tensor_free(logits);
+	ccv_nnc_tensor_free(hactivation);
+	ccv_nnc_tensor_free(hbias);
+	ccv_nnc_tensor_free(hlogits);
+	return status != CCV_NNC_EXEC_SUCCESS ? -1 : match;
+}
+
+TEST_CASE("single-token moe routing selects distinct experts when biases are -INFINITY on MPS")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_MOE_ROUTING_FORWARD, CCV_NNC_BACKEND_MPS));
+	const int finite_experts[] = { 40, 3 };
+	REQUIRE_EQ(_moe_routing_infinite_bias_case(32, 1, 0, 0), 1, "one slot over all -INFINITY biases should take expert 0");
+	REQUIRE_EQ(_moe_routing_infinite_bias_case(32, 6, 0, 0), 1, "six slots over all -INFINITY biases should take experts 0 to 5");
+	REQUIRE_EQ(_moe_routing_infinite_bias_case(64, 6, 2, finite_experts), 1, "slots past the finite experts should take the lowest remaining experts");
+	REQUIRE_EQ(_moe_routing_infinite_bias_case(384, 6, 1, finite_experts + 1), 1, "-INFINITY experts across many lanes should stay selectable");
+}
+
 #include "case_main.h"

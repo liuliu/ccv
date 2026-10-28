@@ -4,6 +4,7 @@
 typedef struct {
 	uint32_t activation_data_type;
 	uint32_t routing_data_type;
+	uint32_t bias_data_type;
 	uint32_t expert_count;
 	uint32_t kth;
 	uint32_t hidden;

@@ -8,6 +8,7 @@ void ccv_nnc_mfa_prepare_moe_routing(ccv_nnc_mfa_context_t* context, ccv_nnc_mfa
 	const MoERoutingDescriptor descriptor {
 		params.activation_data_type,
 		params.routing_data_type,
+		params.bias_data_type,
 		params.expert_count,
 		params.kth,
 		params.hidden,
@@ -38,6 +39,7 @@ void ccv_nnc_mfa_encode_moe_routing(ccv_nnc_mfa_context_t* context, ccv_nnc_mfa_
 	const MoERoutingDescriptor descriptor {
 		params.activation_data_type,
 		params.routing_data_type,
+		params.bias_data_type,
 		params.expert_count,
 		params.kth,
 		params.hidden,

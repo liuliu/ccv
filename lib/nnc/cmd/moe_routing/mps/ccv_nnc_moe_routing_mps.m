@@ -111,7 +111,7 @@ static int _ccv_nnc_moe_routing_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint
 		if (route->info.datatype != CCV_32S || ccv_nnc_tensor_nd(route->info.dim) != 2 || route->info.dim[0] != token_count || route->info.dim[1] != kth)
 			return CCV_NNC_EXEC_INVALID;
 	} else if ((route->info.datatype != CCV_32F && route->info.datatype != CCV_16F) ||
-		route->info.datatype != logits->info.datatype || ccv_nnc_tensor_nd(route->info.dim) != 1 ||
+		ccv_nnc_tensor_nd(route->info.dim) != 1 ||
 		route->info.dim[0] != expert_count) {
 		return CCV_NNC_EXEC_INVALID;
 	}
@@ -123,9 +123,12 @@ static int _ccv_nnc_moe_routing_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint
 			{
 				const uint32_t activation_data_type = _ccv_nnc_moe_routing_mfa_datatype(activation->info.datatype);
 				const uint32_t routing_data_type = _ccv_nnc_moe_routing_mfa_datatype(logits->info.datatype);
+				// Preselected routes are expert indices; the bias type is unused.
+				const uint32_t bias_data_type = cmd.info.moe_routing.preselected ? routing_data_type : _ccv_nnc_moe_routing_mfa_datatype(route->info.datatype);
 				const ccv_nnc_mfa_moe_routing_params_t params = {
 					.activation_data_type = activation_data_type,
 					.routing_data_type = routing_data_type,
+					.bias_data_type = bias_data_type,
 					.expert_count = (uint32_t)expert_count,
 					.kth = (uint32_t)kth,
 					.hidden = (uint32_t)hidden,
@@ -171,10 +174,12 @@ static int _ccv_nnc_moe_routing_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint
 			[input_tensors addObject:input_activation];
 			[input_shapes addObject:ccv_nnc_mps_graph_tensor_input_shape(activation, activation->info.dim, activation->stride)];
 
-			if (cmd.info.moe_routing.normalization_epsilon > 0 || sigmoid)
+			if (cmd.info.moe_routing.normalization_epsilon > 0 || sigmoid ||
+				(!cmd.info.moe_routing.preselected && route->info.datatype != logits->info.datatype))
 			{
 				// Compute scores and normalization in FP32 so small scores and epsilon survive FP16 inputs,
 				// and so saturated sigmoid scores do not collapse into the same FP16 value before top-k.
+				// An FP32 bias with FP16 logits also scores in FP32.
 				if (mps_logits.dataType != MPSDataTypeFloat32)
 					mps_logits = [graph castTensor:mps_logits toType:MPSDataTypeFloat32 name:nil];
 				if (!cmd.info.moe_routing.preselected && mps_route.dataType != MPSDataTypeFloat32)
