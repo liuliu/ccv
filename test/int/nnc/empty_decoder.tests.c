@@ -134,27 +134,34 @@ TEST_CASE("empty decoder models retain their parameter slots and infer empty out
 	ccv_cnnp_model_t* const models[] = {
 		ccv_cnnp_swiglu(32, 10, 0, "swiglu"),
 		ccv_cnnp_segmented_swiglu(4, 32, 10, 0, 0, 0, "segmented_swiglu"),
+		ccv_cnnp_segmented_swiglu(4, 32, 10, 0, 1, 0, "segmented_swiglu_with_shared_expert"),
 		ccv_cnnp_segmented_dense(4, 32, 1, 0, 0, 0, "segmented_dense"),
 		ccv_cnnp_segmented_dense(4, 32, 0, 0, 0, 0, "segmented_dense_with_bias"),
 		ccv_cnnp_scatter_add(0, 2, "scatter_add"),
 		ccv_cnnp_scatter_add(8, 2, "scatter_add_with_bins"),
 	};
-	const int input_sizes[] = {1, 4, 3, 3, 2, 2};
-	const int parameter_counts[] = {2, 2, 1, 2, 0, 0};
+	const int input_sizes[] = {1, 4, 5, 3, 3, 2, 2};
+	const int output_sizes[] = {1, 1, 2, 1, 1, 1, 1};
+	const int parameter_counts[] = {2, 2, 4, 1, 2, 0, 0};
 	const ccv_nnc_tensor_param_t inputs[] = {
 		CPU_TENSOR_NHWC(32F, 0),
 		CPU_TENSOR_NHWC(32S, 0),
 		CPU_TENSOR_NHWC(32S, 0),
 		CPU_TENSOR_NHWC(32F, 0),
+		CPU_TENSOR_NHWC(32F, 0),
 	};
+	int j;
 	int i;
 	for (i = 0; i < sizeof(models) / sizeof(models[0]); i++)
 	{
 		ccv_cnnp_model_compile(models[i], inputs, input_sizes[i], CMD_NOOP(), CMD_NOOP());
-		ccv_nnc_tensor_param_t output_params = {};
-		ccv_cnnp_model_tensor_auto(models[i], &output_params, 1);
-		REQUIRE_EQ(ccv_nnc_tensor_count(output_params), 0, "empty model must not infer an activation or index a missing feature dimension");
-		REQUIRE_EQ(output_params.datatype, CCV_32F, "empty model preserves the activation datatype");
+		ccv_nnc_tensor_param_t output_params[2] = {};
+		ccv_cnnp_model_tensor_auto(models[i], output_params, output_sizes[i]);
+		for (j = 0; j < output_sizes[i]; j++)
+		{
+			REQUIRE_EQ(ccv_nnc_tensor_count(output_params[j]), 0, "empty model must not infer an activation or index a missing feature dimension");
+			REQUIRE_EQ(output_params[j].datatype, CCV_32F, "empty model preserves the activation datatype");
+		}
 		REQUIRE_EQ(ccv_cnnp_model_parameter_count(models[i]), parameter_counts[i], "empty model retains the same parameter slots as an active model");
 		ccv_cnnp_model_free(models[i]);
 	}

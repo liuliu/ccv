@@ -5720,6 +5720,8 @@ typedef struct {
 	ccv_nnc_tensor_symbol_t outputs[2]; // The routed SwiGLU, and the shared expert's SwiGLU.
 	ccv_nnc_tensor_symbol_t gate_weights;
 	ccv_nnc_tensor_symbol_t up_weights;
+	ccv_nnc_tensor_symbol_t shared_gate_weights;
+	ccv_nnc_tensor_symbol_t shared_up_weights;
 	int segments;
 	int count;
 	float clamp;
@@ -5731,15 +5733,22 @@ static void _ccv_cnnp_segmented_swiglu_build(ccv_cnnp_model_t* const super, ccv_
 {
 	ccv_cnnp_model_segmented_swiglu_t* const self = (ccv_cnnp_model_segmented_swiglu_t*)super;
 	PRINT(CCV_CLI_VERBOSE, "[cnnp_segmented_swiglu_build] -\n");
-	assert(input_size == (self->functional ? (self->shared_expert ? 9 : 6) : 4));
+	assert(input_size == (self->functional ? (self->shared_expert ? 9 : 6) : (self->shared_expert ? 5 : 4)));
 	assert(output_size == (self->shared_expert ? 2 : 1));
 	const ccv_nnc_tensor_param_t params = ccv_nnc_tensor_symbol_params(graph, inputs[0]);
 	ccv_nnc_tensor_symbol_t gate_weights;
 	ccv_nnc_tensor_symbol_t up_weights;
+	ccv_nnc_tensor_symbol_t shared_gate_weights = NO_TENSOR_SYMBOL;
+	ccv_nnc_tensor_symbol_t shared_up_weights = NO_TENSOR_SYMBOL;
 	if (self->functional)
 	{
 		gate_weights = inputs[3];
 		up_weights = inputs[4];
+		if (self->shared_expert)
+		{
+			shared_gate_weights = inputs[7];
+			shared_up_weights = inputs[8];
+		}
 	} else {
 		const int params_nd = ccv_nnc_tensor_nd(params.dim);
 		ccv_nnc_tensor_param_t weights_params = params;
@@ -5758,11 +5767,32 @@ static void _ccv_cnnp_segmented_swiglu_build(ccv_cnnp_model_t* const super, ccv_
 		assert(self->up_weights.graph == graph);
 		gate_weights = ccv_cnnp_model_get_symbol(super, self->gate_weights);
 		up_weights = ccv_cnnp_model_get_symbol(super, self->up_weights);
+		if (self->shared_expert)
+		{
+			// The shared expert is as wide as each routed expert, over its own activation's width.
+			const ccv_nnc_tensor_param_t shared_params = ccv_nnc_tensor_symbol_params(graph, inputs[4]);
+			const int shared_params_nd = ccv_nnc_tensor_nd(shared_params.dim);
+			ccv_nnc_tensor_param_t shared_weights_params = shared_params;
+			memset(shared_weights_params.dim, 0, sizeof(shared_weights_params.dim));
+			if (shared_params_nd > 0)
+			{
+				shared_weights_params.dim[0] = self->count;
+				shared_weights_params.dim[1] = shared_params.dim[shared_params_nd - 1];
+			}
+			if (!self->shared_gate_weights.graph)
+				self->shared_gate_weights = ccv_nnc_tensor_symbol_new(graph, shared_weights_params, "shared_gate.weight");
+			if (!self->shared_up_weights.graph)
+				self->shared_up_weights = ccv_nnc_tensor_symbol_new(graph, shared_weights_params, "shared_up.weight");
+			assert(self->shared_gate_weights.graph == graph);
+			assert(self->shared_up_weights.graph == graph);
+			shared_gate_weights = ccv_cnnp_model_get_symbol(super, self->shared_gate_weights);
+			shared_up_weights = ccv_cnnp_model_get_symbol(super, self->shared_up_weights);
+		}
 	}
 	const ccv_nnc_cmd_t cmd = CMD_SEGMENTED_SWIGLU_FORWARD(self->clamp);
 	const ccv_nnc_tensor_symbol_t command_inputs[] = {
 		inputs[0], inputs[1], inputs[2], gate_weights, up_weights, inputs[self->functional ? 5 : 3],
-		self->shared_expert ? inputs[6] : NO_TENSOR_SYMBOL, self->shared_expert ? inputs[7] : NO_TENSOR_SYMBOL, self->shared_expert ? inputs[8] : NO_TENSOR_SYMBOL,
+		self->shared_expert ? inputs[self->functional ? 6 : 4] : NO_TENSOR_SYMBOL, shared_gate_weights, shared_up_weights,
 	};
 	const int command_input_size = self->shared_expert ? 9 : 6;
 	ccv_nnc_tensor_param_t command_input_params[9];
@@ -5785,6 +5815,12 @@ static void _ccv_cnnp_segmented_swiglu_init_states(ccv_cnnp_model_t* const super
 	const float bound = sqrtf(6.f / weight_params.dim[2]);
 	initializer(context, CMD_RANDOM_UNIFORM_FORWARD(-bound, bound), ccv_nnc_no_hint, 0, 0, self->gate_weights);
 	initializer(context, CMD_RANDOM_UNIFORM_FORWARD(-bound, bound), ccv_nnc_no_hint, 0, 0, self->up_weights);
+	if (!self->shared_expert)
+		return;
+	const ccv_nnc_tensor_param_t shared_weight_params = ccv_nnc_tensor_symbol_params(graph, self->shared_gate_weights);
+	const float shared_bound = sqrtf(6.f / shared_weight_params.dim[1]);
+	initializer(context, CMD_RANDOM_UNIFORM_FORWARD(-shared_bound, shared_bound), ccv_nnc_no_hint, 0, 0, self->shared_gate_weights);
+	initializer(context, CMD_RANDOM_UNIFORM_FORWARD(-shared_bound, shared_bound), ccv_nnc_no_hint, 0, 0, self->shared_up_weights);
 }
 
 static void _ccv_cnnp_segmented_swiglu_add_to_parameter(ccv_cnnp_model_t* const super, const ccv_cnnp_add_to_array_f add_to_array, void* const parameters, const int is_trainable)
@@ -5794,6 +5830,11 @@ static void _ccv_cnnp_segmented_swiglu_add_to_parameter(ccv_cnnp_model_t* const 
 		return;
 	add_to_array(parameters, self->gate_weights, is_trainable);
 	add_to_array(parameters, self->up_weights, is_trainable);
+	if (self->shared_expert)
+	{
+		add_to_array(parameters, self->shared_gate_weights, is_trainable);
+		add_to_array(parameters, self->shared_up_weights, is_trainable);
+	}
 }
 
 static ccv_cnnp_model_t* _ccv_cnnp_segmented_swiglu_copy(const ccv_cnnp_model_t* const super, void* const context);
@@ -5807,16 +5848,17 @@ static const ccv_cnnp_model_vtab_t ccv_cnnp_segmented_swiglu_isa = {
 
 ccv_cnnp_model_t* ccv_cnnp_segmented_swiglu(const int segments, const int count, const float clamp, const int functional, const int shared_expert, const int is_trainable, const char* const name)
 {
-	assert(!shared_expert || functional);
 	ccv_cnnp_model_segmented_swiglu_t* const model = (ccv_cnnp_model_segmented_swiglu_t*)cccalloc(1, sizeof(ccv_cnnp_model_segmented_swiglu_t));
 	model->super.isa = &ccv_cnnp_segmented_swiglu_isa;
-	model->super.input_size = functional ? (shared_expert ? 9 : 6) : 4;
+	model->super.input_size = functional ? (shared_expert ? 9 : 6) : (shared_expert ? 5 : 4);
 	model->super.outputs = model->outputs;
 	model->super.output_size = shared_expert ? 2 : 1;
 	model->super.is_trainable = is_trainable;
 	ccv_cnnp_model_copy_name(&model->super, name);
 	model->gate_weights.d = CCV_NNC_NO_TENSOR_SYMBOL;
 	model->up_weights.d = CCV_NNC_NO_TENSOR_SYMBOL;
+	model->shared_gate_weights.d = CCV_NNC_NO_TENSOR_SYMBOL;
+	model->shared_up_weights.d = CCV_NNC_NO_TENSOR_SYMBOL;
 	model->segments = segments;
 	model->count = count;
 	model->clamp = clamp;

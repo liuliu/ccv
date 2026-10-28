@@ -1799,4 +1799,79 @@ TEST_CASE("functional segmented swiglu model uses supplied weights")
 	ccv_nnc_tensor_free(actual);
 }
 
+TEST_CASE("segmented swiglu model owns its shared expert weights")
+{
+	dsfmt_t dsfmt;
+	dsfmt_init_gen_rand(&dsfmt, 0);
+	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 7, 5), 0);
+	ccv_nnc_tensor_t* const shared_a = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 5), 0);
+	ccv_nnc_tensor_t* const indices = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, 3), 0);
+	indices->data.i32[0] = 0;
+	indices->data.i32[1] = 2;
+	indices->data.i32[2] = 1;
+	ccv_nnc_tensor_t* const counts = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, 3), 0);
+	counts->data.i32[0] = 2;
+	counts->data.i32[1] = 3;
+	counts->data.i32[2] = 2;
+	ccv_nnc_tensor_t* const gate_weights = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 3, 4, 5), 0);
+	ccv_nnc_tensor_t* const up_weights = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 3, 4, 5), 0);
+	ccv_nnc_tensor_t* const shared_gate_weights = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 4, 5), 0);
+	ccv_nnc_tensor_t* const shared_up_weights = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 4, 5), 0);
+	ccv_nnc_tensor_t* const route_weights = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 7, 1), 0);
+	ccv_nnc_tensor_t* const expected = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 7, 4), 0);
+	ccv_nnc_tensor_t* const expected_shared = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 4), 0);
+	ccv_nnc_tensor_t* const actual = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 7, 4), 0);
+	ccv_nnc_tensor_t* const actual_shared = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 4), 0);
+	int i;
+	for (i = 0; i < 7 * 5; i++)
+		a->data.f32[i] = dsfmt_genrand_open_close(&dsfmt);
+	for (i = 0; i < 2 * 5; i++)
+		shared_a->data.f32[i] = dsfmt_genrand_open_close(&dsfmt);
+	for (i = 0; i < 3 * 4 * 5; i++)
+	{
+		gate_weights->data.f32[i] = dsfmt_genrand_open_close(&dsfmt) / 20;
+		up_weights->data.f32[i] = dsfmt_genrand_open_close(&dsfmt) / 20;
+	}
+	for (i = 0; i < 4 * 5; i++)
+	{
+		shared_gate_weights->data.f32[i] = dsfmt_genrand_open_close(&dsfmt) / 20;
+		shared_up_weights->data.f32[i] = dsfmt_genrand_open_close(&dsfmt) / 20;
+	}
+	for (i = 0; i < 7; i++)
+		route_weights->data.f32[i] = dsfmt_genrand_open_close(&dsfmt);
+	ccv_nnc_cmd_exec(CMD_SEGMENTED_SWIGLU_FORWARD(10), ccv_nnc_no_hint, 0,
+		TENSOR_LIST(a, indices, counts, gate_weights, up_weights, route_weights), TENSOR_LIST(expected), 0);
+	ccv_nnc_cmd_exec(CMD_SWIGLU_FORWARD(10), ccv_nnc_no_hint, 0,
+		TENSOR_LIST(shared_a, shared_gate_weights, shared_up_weights), TENSOR_LIST(expected_shared), 0);
+	// Without functional, the model owns the routed and then the shared gate and up weights.
+	ccv_cnnp_model_t* const segmented_swiglu = ccv_cnnp_segmented_swiglu(3, 4, 10, 0, 1, 0, "segmented_swiglu");
+	ccv_cnnp_model_compile(segmented_swiglu,
+		TENSOR_PARAM_LIST(a->info, indices->info, counts->info, route_weights->info, shared_a->info),
+		CMD_NOOP(), CMD_NOOP());
+	REQUIRE_EQ(ccv_cnnp_model_parameter_count(segmented_swiglu), 4, "the model should own routed and shared gate and up weights");
+	ccv_cnnp_model_set_parameter(segmented_swiglu, ccv_cnnp_model_parameters(segmented_swiglu, ALL_PARAMETERS, 0), gate_weights);
+	ccv_cnnp_model_set_parameter(segmented_swiglu, ccv_cnnp_model_parameters(segmented_swiglu, ALL_PARAMETERS, 1), up_weights);
+	ccv_cnnp_model_set_parameter(segmented_swiglu, ccv_cnnp_model_parameters(segmented_swiglu, ALL_PARAMETERS, 2), shared_gate_weights);
+	ccv_cnnp_model_set_parameter(segmented_swiglu, ccv_cnnp_model_parameters(segmented_swiglu, ALL_PARAMETERS, 3), shared_up_weights);
+	ccv_cnnp_model_evaluate(segmented_swiglu, (ccv_cnnp_evaluate_param_t){
+		.requires_grad = 0,
+	}, TENSOR_LIST(a, indices, counts, route_weights, shared_a), TENSOR_LIST(actual, actual_shared), 0, 0);
+	REQUIRE_TENSOR_EQ(actual, expected, "segmented SwiGLU should use its routed weights");
+	REQUIRE_TENSOR_EQ(actual_shared, expected_shared, "segmented SwiGLU should use its shared expert weights");
+	ccv_cnnp_model_free(segmented_swiglu);
+	ccv_nnc_tensor_free(a);
+	ccv_nnc_tensor_free(shared_a);
+	ccv_nnc_tensor_free(indices);
+	ccv_nnc_tensor_free(counts);
+	ccv_nnc_tensor_free(gate_weights);
+	ccv_nnc_tensor_free(up_weights);
+	ccv_nnc_tensor_free(shared_gate_weights);
+	ccv_nnc_tensor_free(shared_up_weights);
+	ccv_nnc_tensor_free(route_weights);
+	ccv_nnc_tensor_free(expected);
+	ccv_nnc_tensor_free(expected_shared);
+	ccv_nnc_tensor_free(actual);
+	ccv_nnc_tensor_free(actual_shared);
+}
+
 #include "case_main.h"

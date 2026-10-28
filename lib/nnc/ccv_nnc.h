@@ -5384,9 +5384,10 @@ CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_swiglu(const int count, const float 
  * @param count The intermediate output width of each expert.
  * @param clamp If positive, clamp the up projection symmetrically and gate projection from above.
  * @param functional If non-zero, the model owns no parameters and takes gate and up weight tensors as inputs.
- * @param shared_expert With functional, also take a shared expert's activation, gate and up weights
- *        after the route weights, and return its clamped SwiGLU as a second output. Decode can
- *        evaluate both in one dispatch.
+ * @param shared_expert Also take a shared expert's activation after the route weights (followed by
+ *        its gate and up weights with functional), and return its clamped SwiGLU as a second
+ *        output. Without functional, the model owns the shared expert's gate and up weights, count
+ *        rows each. Decode can evaluate both in one dispatch.
  * @param is_trainable Whether the parameters of this model can be trained.
  * @param name The unique name of the model.
  * @return A segmented SwiGLU layer model.

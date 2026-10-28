@@ -1462,6 +1462,119 @@ TEST_CASE("MPS segmented SwiGLU evaluates a shared expert in the packed decode d
 		_segmented_swiglu_shared_case(formats[i], 0, __case_result__);
 }
 
+static void _segmented_swiglu_unfused_shared_case(const int shared_rows, const int quantized_shared, int* const __case_result__)
+{
+	// Plain int8 rowwise routed experts never take the shared expert into their dispatch, so the
+	// shared expert runs its own MFA kernels, which must match SWIGLU_FORWARD bit for bit.
+	const int rows = 6, segments = 6, experts = 8, n = 256, k = 256, shared_n = 96;
+	const size_t weight_count = (size_t)experts * n * k;
+	const size_t shared_count = (size_t)shared_n * k;
+	ccv_nnc_tensor_t* const ha = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, k), 0);
+	ccv_nnc_tensor_t* const hshared_a = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, shared_rows, k), 0);
+	ccv_nnc_tensor_t* const hgate = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, experts, n, k), 0);
+	ccv_nnc_tensor_t* const hup = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, experts, n, k), 0);
+	ccv_nnc_tensor_t* const hshared_gate = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, shared_n, k), 0);
+	ccv_nnc_tensor_t* const hshared_up = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, shared_n, k), 0);
+	ccv_nnc_tensor_t* const hroute = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows), 0);
+	ccv_nnc_tensor_t* const hindices = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, segments), 0);
+	ccv_nnc_tensor_t* const hcounts = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, segments), 0);
+	_segmented_swiglu_fill(ha->data.f32, k, 17, 101, 1.0f / 16);
+	_segmented_swiglu_fill(hshared_a->data.f32, (size_t)shared_rows * k, 19, 97, 1.0f / 16);
+	_segmented_swiglu_fill(hgate->data.f32, weight_count, 29, 113, 1.0f / 256);
+	_segmented_swiglu_fill(hup->data.f32, weight_count, 37, 127, 1.0f / 256);
+	_segmented_swiglu_fill(hshared_gate->data.f32, shared_count, 41, 109, 1.0f / 256);
+	_segmented_swiglu_fill(hshared_up->data.f32, shared_count, 43, 103, 1.0f / 256);
+	const int selected[] = { 7, 1, 5, 2, 6, 3 };
+	const int rows_per_segment[] = { 1, 1, 1, 1, 1, 1 };
+	memcpy(hindices->data.i32, selected, sizeof(selected));
+	memcpy(hcounts->data.i32, rows_per_segment, sizeof(rows_per_segment));
+	int i;
+	for (i = 0; i < rows; i++)
+		hroute->data.f32[i] = (float)(i + 1) / (rows + 1);
+	const ccv_nnc_tensor_param_t q_params = ccv_nnc_tensor_8i_rowwise(hgate->info);
+	const ccv_nnc_tensor_param_t shared_params = quantized_shared ? ccv_nnc_tensor_8i_rowwise(hshared_gate->info) : hshared_gate->info;
+	ccv_nnc_tensor_t* const hq[4] = {
+		ccv_nnc_tensor_new(0, q_params, 0), ccv_nnc_tensor_new(0, q_params, 0),
+		ccv_nnc_tensor_new(0, shared_params, 0), ccv_nnc_tensor_new(0, shared_params, 0),
+	};
+	ccv_nnc_quantize_8i_rowwise(hgate->data.u8, CCV_32F, CCV_TENSOR_CPU_MEMORY, weight_count, k, 0, 0, hq[0]->data.u8, ccv_nnc_tensor_data_size_without_padding(hq[0]->info));
+	ccv_nnc_quantize_8i_rowwise(hup->data.u8, CCV_32F, CCV_TENSOR_CPU_MEMORY, weight_count, k, 0, 0, hq[1]->data.u8, ccv_nnc_tensor_data_size_without_padding(hq[1]->info));
+	if (quantized_shared)
+	{
+		ccv_nnc_quantize_8i_rowwise(hshared_gate->data.u8, CCV_32F, CCV_TENSOR_CPU_MEMORY, shared_count, k, 0, 0, hq[2]->data.u8, ccv_nnc_tensor_data_size_without_padding(hq[2]->info));
+		ccv_nnc_quantize_8i_rowwise(hshared_up->data.u8, CCV_32F, CCV_TENSOR_CPU_MEMORY, shared_count, k, 0, 0, hq[3]->data.u8, ccv_nnc_tensor_data_size_without_padding(hq[3]->info));
+	} else {
+		memcpy(hq[2]->data.f32, hshared_gate->data.f32, sizeof(float) * shared_count);
+		memcpy(hq[3]->data.f32, hshared_up->data.f32, sizeof(float) * shared_count);
+	}
+	ccv_nnc_tensor_t* q[4];
+	for (i = 0; i < 4; i++)
+	{
+		ccv_nnc_tensor_param_t params = hq[i]->info;
+		params.type = CCV_TENSOR_GPU_MEMORY | 000;
+		q[i] = ccv_nnc_tensor_new(0, params, 0);
+	}
+	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 1, k), 0);
+	ccv_nnc_tensor_t* const shared_a = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, shared_rows, k), 0);
+	ccv_nnc_tensor_t* const route = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, rows), 0);
+	ccv_nnc_tensor_t* const indices = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32S, segments), 0);
+	ccv_nnc_tensor_t* const counts = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32S, segments), 0);
+	ccv_nnc_tensor_t* const outputs[4] = {
+		ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, rows, n), 0), ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, shared_rows, shared_n), 0),
+		ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, rows, n), 0), ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, shared_rows, shared_n), 0),
+	};
+	ccv_nnc_tensor_t* const actual[4] = {
+		ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, n), 0), ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, shared_rows, shared_n), 0),
+		ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, n), 0), ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, shared_rows, shared_n), 0),
+	};
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha, hshared_a, hroute, hindices, hcounts, hq[0], hq[1], hq[2], hq[3]), TENSOR_LIST(a, shared_a, route, indices, counts, q[0], q[1], q[2], q[3]), 0);
+	ccv_nnc_cmd_t command = CMD_SEGMENTED_SWIGLU_FORWARD(10);
+	command.backend = CCV_NNC_BACKEND_MPS;
+	ccv_nnc_cmd_t shared_command = CMD_SWIGLU_FORWARD(10);
+	shared_command.backend = CCV_NNC_BACKEND_MPS;
+	REQUIRE_EQ(ccv_nnc_cmd_exec(command, ccv_nnc_no_hint, 0, TENSOR_LIST(a, indices, counts, q[0], q[1], route, shared_a, q[2], q[3]), TENSOR_LIST(outputs[0], outputs[1]), 0), CCV_NNC_EXEC_SUCCESS, "segmented SwiGLU with %d shared rows (quantized=%d) should execute", shared_rows, quantized_shared);
+	REQUIRE_EQ(ccv_nnc_cmd_exec(command, ccv_nnc_no_hint, 0, TENSOR_LIST(a, indices, counts, q[0], q[1], route), TENSOR_LIST(outputs[2]), 0), CCV_NNC_EXEC_SUCCESS, "segmented SwiGLU should execute");
+	REQUIRE_EQ(ccv_nnc_cmd_exec(shared_command, ccv_nnc_no_hint, 0, TENSOR_LIST(shared_a, q[2], q[3]), TENSOR_LIST(outputs[3]), 0), CCV_NNC_EXEC_SUCCESS, "shared SwiGLU should execute");
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, outputs, 4, actual, 4, 0);
+	REQUIRE(memcmp(actual[0]->data.f32, actual[2]->data.f32, sizeof(float) * rows * n) == 0, "routed rows should match the routed command with %d shared rows (quantized=%d)", shared_rows, quantized_shared);
+	REQUIRE(memcmp(actual[1]->data.f32, actual[3]->data.f32, sizeof(float) * shared_rows * shared_n) == 0, "shared rows should match SWIGLU_FORWARD with %d shared rows (quantized=%d)", shared_rows, quantized_shared);
+	float largest = 0;
+	for (i = 0; i < shared_rows * shared_n; i++)
+		largest = ccv_max(largest, fabsf(actual[1]->data.f32[i]));
+	REQUIRE(largest > 1e-3, "shared rows should not be zero with %d shared rows (quantized=%d)", shared_rows, quantized_shared);
+	for (i = 0; i < 4; i++)
+	{
+		ccv_nnc_tensor_free(actual[i]);
+		ccv_nnc_tensor_free(outputs[i]);
+		ccv_nnc_tensor_free(q[i]);
+		ccv_nnc_tensor_free(hq[i]);
+	}
+	ccv_nnc_tensor_free(counts);
+	ccv_nnc_tensor_free(indices);
+	ccv_nnc_tensor_free(route);
+	ccv_nnc_tensor_free(shared_a);
+	ccv_nnc_tensor_free(a);
+	ccv_nnc_tensor_free(hcounts);
+	ccv_nnc_tensor_free(hindices);
+	ccv_nnc_tensor_free(hroute);
+	ccv_nnc_tensor_free(hshared_up);
+	ccv_nnc_tensor_free(hshared_gate);
+	ccv_nnc_tensor_free(hup);
+	ccv_nnc_tensor_free(hgate);
+	ccv_nnc_tensor_free(hshared_a);
+	ccv_nnc_tensor_free(ha);
+}
+
+TEST_CASE("MPS segmented SwiGLU encodes an unfused shared expert as SWIGLU_FORWARD does")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SEGMENTED_SWIGLU_FORWARD, CCV_NNC_BACKEND_MPS));
+	// One int8 row (the int8 SwiGLU kernel), several int8 rows (the scaled SwiGLU kernel), and
+	// dense weights (GEMMs and the swish multiply).
+	_segmented_swiglu_unfused_shared_case(1, 1, __case_result__);
+	_segmented_swiglu_unfused_shared_case(5, 1, __case_result__);
+	_segmented_swiglu_unfused_shared_case(5, 0, __case_result__);
+}
+
 TEST_CASE("segmented SwiGLU with a shared expert matches separate commands on CPU")
 {
 	const int rows = 3, segments = 2, experts = 3, n = 4, k = 8, shared_n = 5;
