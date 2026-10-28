@@ -30,6 +30,12 @@ struct HyperConnectionDescriptor {
 	uint32_t operation;
 	bool blockFP16;
 	bool loadM;
+	// The mix stages (operations 3...6) also use these.
+	float normEpsilon = 0;
+	// Expansion only: add an FP32 addend to the block.
+	bool expandAddend = false;
+	uint32_t dotSplits = 0;
+	uint32_t collapseSplits = 0;
 
 	bool operator==(const HyperConnectionDescriptor& rhs) const;
 

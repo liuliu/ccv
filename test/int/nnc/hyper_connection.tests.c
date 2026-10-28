@@ -414,4 +414,241 @@ TEST_CASE("hyper connection Metal expansion handles runtime rows and partial til
 		ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M);
 }
 
+// Mix fills: projection rows are small so the gates stay in their sensitive range.
+static void _hyper_connection_mix_inputs(const int rows, const int hc, const int hidden, ccv_nnc_tensor_t** const tensors)
+{
+	const int mix_dim = 2 * hc + hc * hc;
+	tensors[0] = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, hc, hidden), 0);
+	tensors[1] = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, hc), 0);
+	tensors[2] = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, mix_dim, hc * hidden), 0);
+	tensors[3] = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 3), 0);
+	tensors[4] = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, mix_dim), 0);
+	tensors[5] = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, hidden), 0);
+	dsfmt_t dsfmt;
+	dsfmt_init_gen_rand(&dsfmt, rows * 31 + hidden);
+	int i;
+	for (i = 0; i < rows * hc * hidden; i++)
+		tensors[0]->data.f32[i] = (float)(dsfmt_genrand_open_close(&dsfmt) * 4 - 2);
+	for (i = 0; i < rows * hc; i++)
+		tensors[1]->data.f32[i] = (float)dsfmt_genrand_open_close(&dsfmt);
+	for (i = 0; i < mix_dim * hc * hidden; i++)
+		tensors[2]->data.f32[i] = (float)(dsfmt_genrand_open_close(&dsfmt) - 0.5) / 16;
+	for (i = 0; i < 3; i++)
+		tensors[3]->data.f32[i] = (float)(dsfmt_genrand_open_close(&dsfmt) + 0.5);
+	for (i = 0; i < mix_dim; i++)
+		tensors[4]->data.f32[i] = (float)(dsfmt_genrand_open_close(&dsfmt) - 0.5);
+	for (i = 0; i < hidden; i++)
+		tensors[5]->data.f32[i] = (float)(dsfmt_genrand_open_close(&dsfmt) + 0.5);
+}
+
+TEST_CASE("hyper connection mix matches RMSNorm, projection, split, collapse and RMSNorm")
+{
+	const int rows = 3;
+	const int hc = 4;
+	const int hidden = 64;
+	const int mix_dim = 2 * hc + hc * hc;
+	const float norm_epsilon = 1e-6;
+	ccv_nnc_tensor_t* inputs[6];
+	_hyper_connection_mix_inputs(rows, hc, hidden, inputs);
+	ccv_nnc_cmd_t mix_cmd = CMD_HYPER_CONNECTION_FORWARD(hc, 20, 1e-6);
+	mix_cmd.info.hyper_connection.norm_epsilon = norm_epsilon;
+	ccv_nnc_tensor_t* const pre = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, hc), 0);
+	ccv_nnc_tensor_t* const post = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, hc), 0);
+	ccv_nnc_tensor_t* const comb = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, hc * hc), 0);
+	ccv_nnc_tensor_t* const collapsed = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, hidden), 0);
+	REQUIRE_EQ(ccv_nnc_cmd_exec(mix_cmd, ccv_nnc_no_hint, 0, inputs, 6, TENSOR_LIST(pre, post, comb, collapsed), 0), CCV_NNC_EXEC_SUCCESS, "CPU mix should execute");
+	// The same computation from the existing commands.
+	ccv_nnc_tensor_t flat = ccv_nnc_tensor(inputs[0]->data.f32, CPU_TENSOR_NHWC(32F, rows, hc * hidden), 0);
+	ccv_nnc_tensor_t* const normalized = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, hc * hidden), 0);
+	ccv_nnc_tensor_t* const rstd = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, 1), 0);
+	ccv_nnc_cmd_exec(CMD_RMSNORM_FORWARD(norm_epsilon, 0, 1), ccv_nnc_no_hint, 0, TENSOR_LIST(&flat), TENSOR_LIST(normalized, rstd), 0);
+	ccv_nnc_tensor_t* const mix = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, mix_dim), 0);
+	ccv_nnc_cmd_exec(CMD_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(0, 1)), ccv_nnc_no_hint, 0, TENSOR_LIST(normalized, inputs[2]), TENSOR_LIST(mix), 0);
+	ccv_nnc_tensor_t* const expected_pre = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, hc), 0);
+	ccv_nnc_tensor_t* const expected_post = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, hc), 0);
+	ccv_nnc_tensor_t* const expected_comb = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, hc * hc), 0);
+	ccv_nnc_cmd_exec(CMD_HYPER_CONNECTION_FORWARD(hc, 20, 1e-6), ccv_nnc_no_hint, 0, TENSOR_LIST(mix, inputs[3], inputs[4]), TENSOR_LIST(expected_pre, expected_post, expected_comb), 0);
+	ccv_nnc_tensor_t* const sum = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, hidden), 0);
+	int i, j, k;
+	for (i = 0; i < rows; i++)
+		for (j = 0; j < hidden; j++)
+		{
+			float value = 0;
+			for (k = 0; k < hc; k++)
+				value += inputs[0]->data.f32[(i * hc + k) * hidden + j] * inputs[1]->data.f32[i * hc + k];
+			sum->data.f32[i * hidden + j] = value;
+		}
+	ccv_nnc_tensor_t* const expected_collapsed = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, hidden), 0);
+	ccv_nnc_cmd_exec(CMD_RMSNORM_FORWARD(norm_epsilon, 1, 1), ccv_nnc_no_hint, 0, TENSOR_LIST(sum, inputs[5]), TENSOR_LIST(expected_collapsed, rstd), 0);
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, pre->data.f32, expected_pre->data.f32, rows * hc, 1e-5, "mix pre weights should match the composed commands");
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, post->data.f32, expected_post->data.f32, rows * hc, 1e-5, "mix post weights should match the composed commands");
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, comb->data.f32, expected_comb->data.f32, rows * hc * hc, 1e-5, "mix combination should match the composed commands");
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, collapsed->data.f32, expected_collapsed->data.f32, rows * hidden, 1e-5, "mix collapse should match the composed commands");
+	ccv_nnc_tensor_free(expected_collapsed);
+	ccv_nnc_tensor_free(sum);
+	ccv_nnc_tensor_free(expected_comb);
+	ccv_nnc_tensor_free(expected_post);
+	ccv_nnc_tensor_free(expected_pre);
+	ccv_nnc_tensor_free(mix);
+	ccv_nnc_tensor_free(rstd);
+	ccv_nnc_tensor_free(normalized);
+	ccv_nnc_tensor_free(collapsed);
+	ccv_nnc_tensor_free(comb);
+	ccv_nnc_tensor_free(post);
+	ccv_nnc_tensor_free(pre);
+	for (i = 0; i < 6; i++)
+		ccv_nnc_tensor_free(inputs[i]);
+}
+
+static void _hyper_connection_mix_mps_case(const int rows, const int hidden, int* const __case_result__)
+{
+	const int hc = 4;
+	ccv_nnc_tensor_t* hinputs[6];
+	_hyper_connection_mix_inputs(rows, hc, hidden, hinputs);
+	ccv_nnc_cmd_t cmd = CMD_HYPER_CONNECTION_FORWARD(hc, 20, 1e-6);
+	cmd.info.hyper_connection.norm_epsilon = 1e-20;
+	ccv_nnc_tensor_t* const expected[4] = {
+		ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, hc), 0),
+		ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, hc), 0),
+		ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, hc * hc), 0),
+		ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, hidden), 0),
+	};
+	REQUIRE_EQ(ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, hinputs, 6, (ccv_nnc_tensor_t**)expected, 4, 0), CCV_NNC_EXEC_SUCCESS, "CPU mix should execute");
+	ccv_nnc_tensor_t* inputs[6];
+	int i;
+	for (i = 0; i < 6; i++)
+	{
+		ccv_nnc_tensor_param_t params = hinputs[i]->info;
+		params.type = CCV_TENSOR_GPU_MEMORY;
+		inputs[i] = ccv_nnc_tensor_new(0, params, 0);
+	}
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, hinputs, 6, inputs, 6, 0);
+	ccv_nnc_tensor_t* const outputs[4] = {
+		ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, rows, hc), 0),
+		ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, rows, hc), 0),
+		ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, rows, hc * hc), 0),
+		ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, rows, hidden), 0),
+	};
+	ccv_nnc_cmd_t mps_cmd = cmd;
+	mps_cmd.backend = CCV_NNC_BACKEND_MPS;
+	REQUIRE_EQ(ccv_nnc_cmd_exec(mps_cmd, ccv_nnc_no_hint, 0, inputs, 6, (ccv_nnc_tensor_t**)outputs, 4, 0), CCV_NNC_EXEC_SUCCESS, "Metal mix should execute");
+	ccv_nnc_tensor_t* const actual[4] = {
+		ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, hc), 0),
+		ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, hc), 0),
+		ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, hc * hc), 0),
+		ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, hidden), 0),
+	};
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, outputs, 4, actual, 4, 0);
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, actual[0]->data.f32, expected[0]->data.f32, rows * hc, 1e-5, "Metal mix pre weights should match CPU reference");
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, actual[1]->data.f32, expected[1]->data.f32, rows * hc, 1e-5, "Metal mix post weights should match CPU reference");
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, actual[2]->data.f32, expected[2]->data.f32, rows * hc * hc, 1e-5, "Metal mix combination should match CPU reference");
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, actual[3]->data.f32, expected[3]->data.f32, rows * hidden, 1e-5, "Metal mix collapse should match CPU reference");
+	for (i = 0; i < 4; i++)
+	{
+		ccv_nnc_tensor_free(actual[i]);
+		ccv_nnc_tensor_free(outputs[i]);
+		ccv_nnc_tensor_free(expected[i]);
+	}
+	for (i = 0; i < 6; i++)
+	{
+		ccv_nnc_tensor_free(inputs[i]);
+		ccv_nnc_tensor_free(hinputs[i]);
+	}
+}
+
+TEST_CASE("hyper connection Metal mix matches CPU reference for decode rows")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_HYPER_CONNECTION_FORWARD, CCV_NNC_BACKEND_MPS));
+	_hyper_connection_mix_mps_case(1, 5120, __case_result__);
+	_hyper_connection_mix_mps_case(2, 1000, __case_result__);
+}
+
+TEST_CASE("hyper connection Metal mix matches CPU reference for prefill rows")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_HYPER_CONNECTION_FORWARD, CCV_NNC_BACKEND_MPS));
+	// The projection GEMM runs FP32 at reduced precision on the neural accelerators, so compare
+	// with them off.
+	const uint64_t old_flags = ccv_nnc_flags();
+	ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS);
+	_hyper_connection_mix_mps_case(40, 5120, __case_result__);
+	_hyper_connection_mix_mps_case(40, 1000, __case_result__);
+	if (!(old_flags & CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS))
+		ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS);
+}
+
+static void _hyper_connection_expand_sum_case(const int backend, const int rows, const int hidden, int* const __case_result__)
+{
+	// Expand-sum must match adding the addend to the block and then expanding, bit for bit.
+	const int hc = 4;
+	ccv_nnc_tensor_t* const hblock = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, hidden), 0);
+	ccv_nnc_tensor_t* const haddend = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, hidden), 0);
+	ccv_nnc_tensor_t* const hresidual = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, hc, hidden), 0);
+	ccv_nnc_tensor_t* const hpost = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, hc), 0);
+	ccv_nnc_tensor_t* const hcomb = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, hc * hc), 0);
+	int i;
+	for (i = 0; i < rows * hidden; i++)
+	{
+		hblock->data.f32[i] = (float)((i * 7) % 23 - 11) / 3;
+		haddend->data.f32[i] = (float)((i * 13) % 29 - 14) / 7;
+	}
+	for (i = 0; i < rows * hc * hidden; i++)
+		hresidual->data.f32[i] = (float)((i * 11) % 31 - 15) / 5;
+	for (i = 0; i < rows * hc; i++)
+		hpost->data.f32[i] = (float)(i % 5 + 1) / 3;
+	for (i = 0; i < rows * hc * hc; i++)
+		hcomb->data.f32[i] = (float)((i * 3) % 7 + 1) / 9;
+	ccv_nnc_tensor_t* const hexpected = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, hc, hidden), 0);
+	ccv_nnc_tensor_t* const hactual = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, hc, hidden), 0);
+	ccv_nnc_cmd_t expand = CMD_HYPER_CONNECTION_FORWARD(hc, 20, 1e-6);
+	expand.backend = backend;
+	ccv_nnc_cmd_t add = CMD_ADD_FORWARD(1, 1);
+	add.backend = backend == CCV_NNC_BACKEND_MPS ? CCV_NNC_BACKEND_MPS : CCV_NNC_BACKEND_CPU_REF;
+	if (backend == CCV_NNC_BACKEND_MPS)
+	{
+		ccv_nnc_tensor_t* const block = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, rows, hidden), 0);
+		ccv_nnc_tensor_t* const addend = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, rows, hidden), 0);
+		ccv_nnc_tensor_t* const sum = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, rows, hidden), 0);
+		ccv_nnc_tensor_t* const residual = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, rows, hc, hidden), 0);
+		ccv_nnc_tensor_t* const post = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, rows, hc), 0);
+		ccv_nnc_tensor_t* const comb = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, rows, hc * hc), 0);
+		ccv_nnc_tensor_t* const expected = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, rows, hc, hidden), 0);
+		ccv_nnc_tensor_t* const actual = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, rows, hc, hidden), 0);
+		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(hblock, haddend, hresidual, hpost, hcomb), TENSOR_LIST(block, addend, residual, post, comb), 0);
+		REQUIRE_EQ(ccv_nnc_cmd_exec(add, ccv_nnc_no_hint, 0, TENSOR_LIST(block, addend), TENSOR_LIST(sum), 0), CCV_NNC_EXEC_SUCCESS, "add should execute");
+		REQUIRE_EQ(ccv_nnc_cmd_exec(expand, ccv_nnc_no_hint, 0, TENSOR_LIST(sum, residual, post, comb), TENSOR_LIST(expected), 0), CCV_NNC_EXEC_SUCCESS, "expand should execute");
+		REQUIRE_EQ(ccv_nnc_cmd_exec(expand, ccv_nnc_no_hint, 0, TENSOR_LIST(block, residual, post, comb, addend), TENSOR_LIST(actual), 0), CCV_NNC_EXEC_SUCCESS, "expand-sum should execute");
+		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(expected, actual), TENSOR_LIST(hexpected, hactual), 0);
+		ccv_nnc_tensor_free(actual);
+		ccv_nnc_tensor_free(expected);
+		ccv_nnc_tensor_free(comb);
+		ccv_nnc_tensor_free(post);
+		ccv_nnc_tensor_free(residual);
+		ccv_nnc_tensor_free(sum);
+		ccv_nnc_tensor_free(addend);
+		ccv_nnc_tensor_free(block);
+	} else {
+		ccv_nnc_tensor_t* const hsum = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, hidden), 0);
+		REQUIRE_EQ(ccv_nnc_cmd_exec(add, ccv_nnc_no_hint, 0, TENSOR_LIST(hblock, haddend), TENSOR_LIST(hsum), 0), CCV_NNC_EXEC_SUCCESS, "add should execute");
+		REQUIRE_EQ(ccv_nnc_cmd_exec(expand, ccv_nnc_no_hint, 0, TENSOR_LIST(hsum, hresidual, hpost, hcomb), TENSOR_LIST(hexpected), 0), CCV_NNC_EXEC_SUCCESS, "expand should execute");
+		REQUIRE_EQ(ccv_nnc_cmd_exec(expand, ccv_nnc_no_hint, 0, TENSOR_LIST(hblock, hresidual, hpost, hcomb, haddend), TENSOR_LIST(hactual), 0), CCV_NNC_EXEC_SUCCESS, "expand-sum should execute");
+		ccv_nnc_tensor_free(hsum);
+	}
+	REQUIRE(memcmp(hexpected->data.f32, hactual->data.f32, sizeof(float) * rows * hc * hidden) == 0, "expand-sum should match add then expand");
+	ccv_nnc_tensor_free(hactual);
+	ccv_nnc_tensor_free(hexpected);
+	ccv_nnc_tensor_free(hcomb);
+	ccv_nnc_tensor_free(hpost);
+	ccv_nnc_tensor_free(hresidual);
+	ccv_nnc_tensor_free(haddend);
+	ccv_nnc_tensor_free(hblock);
+}
+
+TEST_CASE("hyper connection expand-sum matches add then expand")
+{
+	_hyper_connection_expand_sum_case(CCV_NNC_BACKEND_CPU_REF, 3, 64, __case_result__);
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_HYPER_CONNECTION_FORWARD, CCV_NNC_BACKEND_MPS));
+	_hyper_connection_expand_sum_case(CCV_NNC_BACKEND_MPS, 1, 5120, __case_result__);
+	_hyper_connection_expand_sum_case(CCV_NNC_BACKEND_MPS, 7, 1000, __case_result__);
+}
+
 #include "case_main.h"

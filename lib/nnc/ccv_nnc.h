@@ -393,6 +393,7 @@ typedef struct {
 			int count; /**< [hyper_connection.count] Number of hyper-connection streams. */
 			int sinkhorn_iterations; /**< [hyper_connection.sinkhorn_iterations] Number of alternating Sinkhorn column normalizations. */
 			float epsilon; /**< [hyper_connection.epsilon] Numerical epsilon used by the gates and Sinkhorn normalization. */
+			float norm_epsilon; /**< [hyper_connection.norm_epsilon] RMSNorm epsilon of the fused mix, which normalizes both the flattened residual before the mixing projection and the collapsed residual. */
 		} hyper_connection;
 		struct {
 			int kth; /**< [moe_routing.kth] Number of experts selected for each token. */
@@ -4985,17 +4986,23 @@ CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_cos(const char* const name);
  */
 CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_walsh_hadamard_transform(const float scale, const char* const name);
 /**
- * Hyper-connection split, fused pre-weighted residual reduction, or expansion.
+ * Hyper-connection split, fused pre-weighted residual reduction, expansion, or fused mix.
  * Split produces pre weights, post weights and combination weights. Split-weighted-sum produces post weights,
  * combination weights and the pre-weighted residual. Expand computes post * block + transpose(combination) * residual.
+ * Expand-sum takes an FP32 addend of the block's shape after the expansion inputs, and expands block + addend.
+ * Mix takes the residual, the incoming pre-mix, the mixing projection, scale, base and an RMSNorm
+ * scale. It RMS-normalizes the flattened residual before the projection, splits the result, and
+ * returns pre, post and combination weights with the residual collapsed by the incoming pre-mix
+ * and RMS-normalized.
  * @param count Number of hyper-connection streams.
  * @param sinkhorn_iterations Number of Sinkhorn normalization iterations.
  * @param epsilon Numerical epsilon used by the gates and Sinkhorn normalization.
- * @param operation 0 for split, 1 for split-weighted-sum, or 2 for expand.
+ * @param norm_epsilon RMSNorm epsilon used by mix; ignored by the other operations.
+ * @param operation 0 for split, 1 for split-weighted-sum, 2 for expand, 3 for mix, or 4 for expand-sum.
  * @param name The unique name of the model.
- * @return A model that accepts three or four inputs and generates one or three outputs.
+ * @return A model that accepts three, four, five or six inputs and generates one, three or four outputs.
  */
-CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_hyper_connection(const int count, const int sinkhorn_iterations, const float epsilon, const int operation, const char* const name);
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_hyper_connection(const int count, const int sinkhorn_iterations, const float epsilon, const float norm_epsilon, const int operation, const char* const name);
 /**
  * Rotate the last dimension of the input tensor by half.
  * @param name The unique name of the model.

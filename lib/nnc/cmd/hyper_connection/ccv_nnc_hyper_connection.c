@@ -11,6 +11,12 @@ static int _ccv_nnc_hyper_connection_forw_bitmask(const ccv_nnc_cmd_param_t cmd,
 		return 1;
 	if (input_size == 4 && output_size == 1 && (input_bitmasks[0] & 15u) == 15u && (output_bitmasks[0] & 1u) == 1u)
 		return 1;
+	// Expansion of the block plus an addend of the same shape.
+	if (input_size == 5 && output_size == 1 && (input_bitmasks[0] & 31u) == 31u && (output_bitmasks[0] & 1u) == 1u)
+		return 1;
+	// Mix.
+	if (input_size == 6 && output_size == 4 && (input_bitmasks[0] & 63u) == 63u && (output_bitmasks[0] & 15u) == 15u)
+		return 1;
 	return 0;
 }
 
@@ -21,12 +27,41 @@ static int _ccv_nnc_hyper_connection_back_bitmask(const ccv_nnc_cmd_param_t cmd,
 
 static void _ccv_nnc_hyper_connection_tensor_auto_forw(const ccv_nnc_cmd_param_t cmd, const ccv_nnc_tensor_param_t* const inputs, const int input_size, const ccv_nnc_hint_t hint, ccv_nnc_tensor_param_t* const outputs, const int output_size)
 {
-	if (!((input_size == 3 && output_size == 3) || (input_size == 4 && (output_size == 1 || output_size == 3))))
+	if (!((input_size == 3 && output_size == 3) || (input_size == 4 && (output_size == 1 || output_size == 3)) || (input_size == 5 && output_size == 1) || (input_size == 6 && output_size == 4)))
 	{
 		assert(0 && "invalid hyper connection input / output arity");
 		return;
 	}
 	const int hc = cmd.hyper_connection.count;
+	if (input_size == 6)
+	{
+		// Mix: pre / post [..., count], combination [..., count * count], collapsed [..., hidden].
+		outputs[0] = outputs[1] = outputs[2] = outputs[3] = inputs[0];
+		// An empty residual has no [count, hidden] tail to check.
+		if (inputs[0].dim[0] == 0)
+		{
+			int i;
+			for (i = 0; i < 4; i++)
+				memset(outputs[i].dim, 0, sizeof(outputs[i].dim));
+			return;
+		}
+		const int nd = ccv_nnc_tensor_nd(inputs[0].dim);
+		if (nd < 2)
+		{
+			assert(0 && "hyper connection mix residual must end in [count, hidden]");
+			return;
+		}
+		const int hidden = inputs[0].dim[nd - 1];
+		outputs[0].dim[nd - 1] = 0;
+		outputs[0].dim[nd - 2] = hc;
+		outputs[1] = outputs[0];
+		outputs[2] = outputs[0];
+		outputs[2].dim[nd - 2] = hc * hc;
+		outputs[3].dim[nd - 1] = 0;
+		outputs[3].dim[nd - 2] = hidden;
+		assert(_ccv_nnc_hyper_connection_mix_shapes_are_valid(hc, inputs[0], inputs[1], inputs[2], inputs[3], inputs[4], inputs[5], outputs[0], outputs[1], outputs[2], outputs[3]));
+		return;
+	}
 	if (inputs[0].dim[0] == 0)
 	{
 		int i;

@@ -30,9 +30,12 @@ TEST_CASE("decoder operators infer empty outputs and do not touch storage on CPU
 		CMD_SEGMENTED_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(1, 2)),
 		CMD_SCATTER_ADD_FORWARD(0, 0),
 		CMD_SCATTER_ADD_FORWARD(8, 2),
+		CMD_HYPER_CONNECTION_FORWARD(4, 20, 1e-6),
+		CMD_HYPER_CONNECTION_FORWARD(4, 20, 1e-6),
 	};
-	const int input_sizes[] = {3, 4, 4, 3, 6, 3, 4, 7, 3, 6, 4, 2, 2};
-	const int output_sizes[] = {3, 3, 1, 5, 6, 2, 1, 1, 1, 1, 1, 1, 1};
+	// The last two are the hyper-connection expand-sum and mix.
+	const int input_sizes[] = {3, 4, 4, 3, 6, 3, 4, 7, 3, 6, 4, 2, 2, 5, 6};
+	const int output_sizes[] = {3, 3, 1, 5, 6, 2, 1, 1, 1, 1, 1, 1, 1, 1, 4};
 	commands[5].info.scaled_dot_product_arg_partition.candidate_block_size = 4;
 	commands[5].info.scaled_dot_product_arg_partition.candidate_kth = 2;
 	commands[6].info.scaled_dot_product_arg_partition.candidate_block_size = 4;
