@@ -1839,12 +1839,13 @@ TEST_CASE("segmented swiglu model owns its shared expert weights")
 	}
 	for (i = 0; i < 7; i++)
 		route_weights->data.f32[i] = dsfmt_genrand_open_close(&dsfmt);
-	ccv_nnc_cmd_exec(CMD_SEGMENTED_SWIGLU_FORWARD(10), ccv_nnc_no_hint, 0,
+	ccv_nnc_cmd_exec(CMD_SEGMENTED_SWIGLU_FORWARD(0.1), ccv_nnc_no_hint, 0,
 		TENSOR_LIST(a, indices, counts, gate_weights, up_weights, route_weights), TENSOR_LIST(expected), 0);
-	ccv_nnc_cmd_exec(CMD_SWIGLU_FORWARD(10), ccv_nnc_no_hint, 0,
+	ccv_nnc_cmd_exec(CMD_SWIGLU_FORWARD(0.1), ccv_nnc_no_hint, 0,
 		TENSOR_LIST(shared_a, shared_gate_weights, shared_up_weights), TENSOR_LIST(expected_shared), 0);
-	// Without functional, the model owns the routed and then the shared gate and up weights.
-	ccv_cnnp_model_t* const segmented_swiglu = ccv_cnnp_segmented_swiglu(3, 4, 10, 0, 1, 0, "segmented_swiglu");
+	// Without functional, the model owns the routed and then the shared gate and up weights. A clamp
+	// of 0.1 is crossed by these projections, so the model must pass it to the shared expert too.
+	ccv_cnnp_model_t* const segmented_swiglu = ccv_cnnp_segmented_swiglu(3, 4, 0.1, 0, 1, 0, "segmented_swiglu");
 	ccv_cnnp_model_compile(segmented_swiglu,
 		TENSOR_PARAM_LIST(a->info, indices->info, counts->info, route_weights->info, shared_a->info),
 		CMD_NOOP(), CMD_NOOP());
