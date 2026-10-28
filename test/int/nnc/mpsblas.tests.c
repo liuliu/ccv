@@ -1527,31 +1527,45 @@ static int _mps_forward_scaled_gemm_compare_dense(const int datatype, const int 
 	return _mps_forward_scaled_gemm_compare_dense_format(datatype, use_bias, m_dim, n_dim, k_dim, 0, max_abs_ref, max_rel_ref);
 }
 
-static void _mps_forward_fp32_gemv_compare_cpu(const int use_bias, const int n_dim, const int k_dim, double* const max_abs_ref, double* const max_rel_ref)
+static void _mps_forward_cooperative_gemv_compare_cpu(const int datatype, const int use_bias, const int n_dim, const int k_dim, double* const max_abs_ref, double* const max_rel_ref)
 {
+	// The GPU runs in the datatype; the CPU reference runs in FP32 on the same rounded inputs.
+	ccv_nnc_tensor_param_t a_params = CPU_TENSOR_NHWC(32F, 1, k_dim);
+	ccv_nnc_tensor_param_t w_params = CPU_TENSOR_NHWC(32F, n_dim, k_dim);
+	ccv_nnc_tensor_param_t b_params = CPU_TENSOR_NHWC(32F, 1, n_dim);
+	ccv_nnc_tensor_param_t bias_params = CPU_TENSOR_NHWC(32F, n_dim);
+	a_params.datatype = w_params.datatype = b_params.datatype = bias_params.datatype = datatype;
+	ccv_nnc_tensor_t* const la = ccv_nnc_tensor_new(0, a_params, 0);
+	ccv_nnc_tensor_t* const lw = ccv_nnc_tensor_new(0, w_params, 0);
+	ccv_nnc_tensor_t* const lb = ccv_nnc_tensor_new(0, b_params, 0);
+	ccv_nnc_tensor_t* const lbias = use_bias ? ccv_nnc_tensor_new(0, bias_params, 0) : 0;
 	ccv_nnc_tensor_t* const ha = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, k_dim), 0);
 	ccv_nnc_tensor_t* const hw = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, n_dim, k_dim), 0);
 	ccv_nnc_tensor_t* const hb = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, n_dim), 0);
 	ccv_nnc_tensor_t* const hb_ref = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, n_dim), 0);
 	ccv_nnc_tensor_t* const hbias = use_bias ? ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, n_dim), 0) : 0;
-	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 1, k_dim), 0);
-	ccv_nnc_tensor_t* const w = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, n_dim, k_dim), 0);
-	ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 1, n_dim), 0);
-	ccv_nnc_tensor_t* const bias = use_bias ? ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, n_dim), 0) : 0;
-	_mps_forward_scaled_gemm_fill_matrix(CCV_32F, ha->data.u8, 1, k_dim, 1);
-	_mps_forward_scaled_gemm_fill_matrix(CCV_32F, hw->data.u8, n_dim, k_dim, 0);
+	a_params.type = w_params.type = b_params.type = bias_params.type = CCV_TENSOR_GPU_MEMORY;
+	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, a_params, 0);
+	ccv_nnc_tensor_t* const w = ccv_nnc_tensor_new(0, w_params, 0);
+	ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, b_params, 0);
+	ccv_nnc_tensor_t* const bias = use_bias ? ccv_nnc_tensor_new(0, bias_params, 0) : 0;
+	_mps_forward_scaled_gemm_fill_matrix(datatype, la->data.u8, 1, k_dim, 1);
+	_mps_forward_scaled_gemm_fill_matrix(datatype, lw->data.u8, n_dim, k_dim, 0);
 	if (use_bias)
 	{
-		_mps_forward_scaled_gemm_fill_bias(CCV_32F, hbias->data.u8, n_dim);
-		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha, hw, hbias), TENSOR_LIST(a, w, bias), 0);
+		_mps_forward_scaled_gemm_fill_bias(datatype, lbias->data.u8, n_dim);
+		ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(la, lw, lbias), TENSOR_LIST(ha, hw, hbias), 0);
+		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(la, lw, lbias), TENSOR_LIST(a, w, bias), 0);
 		ccv_nnc_cmd_exec(CMD_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(0, 1)), ccv_nnc_no_hint, 0, TENSOR_LIST(a, w, bias), TENSOR_LIST(b), 0);
 		ccv_nnc_cmd_exec(CMD_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(0, 1)), ccv_nnc_no_hint, 0, TENSOR_LIST(ha, hw, hbias), TENSOR_LIST(hb_ref), 0);
 	} else {
-		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha, hw), TENSOR_LIST(a, w), 0);
+		ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(la, lw), TENSOR_LIST(ha, hw), 0);
+		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(la, lw), TENSOR_LIST(a, w), 0);
 		ccv_nnc_cmd_exec(CMD_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(0, 1)), ccv_nnc_no_hint, 0, TENSOR_LIST(a, w), TENSOR_LIST(b), 0);
 		ccv_nnc_cmd_exec(CMD_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(0, 1)), ccv_nnc_no_hint, 0, TENSOR_LIST(ha, hw), TENSOR_LIST(hb_ref), 0);
 	}
-	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(b), TENSOR_LIST(hb), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(b), TENSOR_LIST(lb), 0);
+	ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(lb), TENSOR_LIST(hb), 0);
 	double max_abs = 0;
 	double max_rel = 0;
 	int i;
@@ -1575,6 +1589,11 @@ static void _mps_forward_fp32_gemv_compare_cpu(const int use_bias, const int n_d
 	ccv_nnc_tensor_free(hb);
 	ccv_nnc_tensor_free(hw);
 	ccv_nnc_tensor_free(ha);
+	if (lbias)
+		ccv_nnc_tensor_free(lbias);
+	ccv_nnc_tensor_free(lb);
+	ccv_nnc_tensor_free(lw);
+	ccv_nnc_tensor_free(la);
 }
 
 static int _mps_forward_scaled_gemm_compare_dense_batched_padded_a_shape(const int datatype, const int use_bias, const int batch_dim, const int m_dim, const int n_dim, const int k_dim, const int padded_m_dim, double* const max_abs_ref, double* const max_rel_ref)
@@ -3552,9 +3571,36 @@ TEST_CASE("mps forward cooperative fp32 gemv")
 		const int n_dim = shapes[i][0];
 		const int k_dim = shapes[i][1];
 		const int use_bias = shapes[i][2];
-		_mps_forward_fp32_gemv_compare_cpu(use_bias, n_dim, k_dim, &max_abs, &max_rel);
+		_mps_forward_cooperative_gemv_compare_cpu(CCV_32F, use_bias, n_dim, k_dim, &max_abs, &max_rel);
 		REQUIRE(max_abs < 2e-2 || max_rel < 5e-3, "cooperative fp32 GEMV should match the dense reference for N=%d K=%d bias=%d, max_abs=%g max_rel=%g", n_dim, k_dim, use_bias, max_abs, max_rel);
 	}
+}
+
+TEST_CASE("mps forward cooperative fp16 and bf16 gemv")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_MPS));
+	// Odd output counts, a K that leaves a partial column tile, and DeepSeek 4.1 widths.
+	const int shapes[][3] = {
+		{ 23, 512, 0 },
+		{ 7, 1028, 1 },
+		{ 24, 2048, 0 },
+		{ 24, 16384, 0 },
+		{ 64, 5120, 1 },
+	};
+	const int datatypes[] = { CCV_16F, CCV_16BF };
+	int i, j;
+	for (j = 0; j < 2; j++)
+		for (i = 0; i < (int)(sizeof(shapes) / sizeof(shapes[0])); i++)
+		{
+			double max_abs = 0;
+			double max_rel = 0;
+			const int n_dim = shapes[i][0];
+			const int k_dim = shapes[i][1];
+			const int use_bias = shapes[i][2];
+			_mps_forward_cooperative_gemv_compare_cpu(datatypes[j], use_bias, n_dim, k_dim, &max_abs, &max_rel);
+			// One output rounding, 2^-11 for FP16 and 2^-8 for BF16, plus accumulation slack.
+			REQUIRE(max_rel < (datatypes[j] == CCV_16F ? 2e-3 : 1e-2), "cooperative %s GEMV should match the FP32 reference for N=%d K=%d bias=%d, max_abs=%g max_rel=%g", datatypes[j] == CCV_16F ? "fp16" : "bf16", n_dim, k_dim, use_bias, max_abs, max_rel);
+		}
 }
 
 TEST_CASE("mps forward gemv with row-wise 8i weight and bias scaled gemv")

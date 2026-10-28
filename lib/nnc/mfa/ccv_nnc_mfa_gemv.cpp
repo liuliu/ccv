@@ -32,11 +32,14 @@ void ccv_nnc_mfa_encode_gemv(ccv_nnc_mfa_context_t* context, ccv_nnc_mfa_gemv_pa
   GemvDescriptor descriptor;
   descriptor.fusedBias = params.fused_bias ? 1 : 0;
   descriptor.mrows = (uint8_t)params.mrows;
-  descriptor.cooperative = params.data_type == MTL::DataTypeFloat &&
+  // Few long rows: a threadgroup per row pair spreads them over more of the GPU. The kernel
+  // accumulates in FP32 for every input precision.
+  const size_t element_size = params.data_type == MTL::DataTypeFloat ? sizeof(float) : sizeof(uint16_t);
+  descriptor.cooperative =
     batchDimension == 1 && params.mrows == 1 && params.nrows <= 64 &&
     params.ncols >= 512 && params.ncols % 4 == 0 &&
-    tensor_offsets[0] % (sizeof(float) * 4) == 0 &&
-    tensor_offsets[1] % (sizeof(float) * 4) == 0;
+    tensor_offsets[0] % (element_size * 4) == 0 &&
+    tensor_offsets[1] % (element_size * 4) == 0;
   if (params.data_type == MTL::DataTypeFloat) {
     descriptor.memoryPrecision = GEMMOperandPrecision::FP32;
   } else if (params.data_type == MTL::DataTypeBFloat) {

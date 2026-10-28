@@ -8,7 +8,7 @@ GemvKernel::GemvKernel(GemvKernelDescriptor descriptor, MTL::Device* const devic
   cooperative = descriptor.cooperative;
   memoryPrecision = descriptor.memoryPrecision;
   CCV_NNC_MFA_PRECONDITION(!batched || (mrows == 1 && !fusedBias));
-  CCV_NNC_MFA_PRECONDITION(!cooperative || (!batched && mrows == 1 && memoryPrecision == GEMMOperandPrecision::FP32));
+  CCV_NNC_MFA_PRECONDITION(!cooperative || (!batched && mrows == 1));
 
   source = createSource();
 
@@ -500,9 +500,17 @@ std::string GemvKernel::createConstants() const noexcept {
   } else if (memoryPrecision == GEMMOperandPrecision::BF16) {
     defines += std::string("typedef bfloat real;");
     defines += "\n";
+    if (cooperative) {
+      defines += std::string("typedef bfloat4 real4;");
+      defines += "\n";
+    }
   } else {
     defines += std::string("typedef half real;");
     defines += "\n";
+    if (cooperative) {
+      defines += std::string("typedef half4 real4;");
+      defines += "\n";
+    }
   }
   defines += "constant uint N [[function_constant(0)]];";
   defines += "\n";
