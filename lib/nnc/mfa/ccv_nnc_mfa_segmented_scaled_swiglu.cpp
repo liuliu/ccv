@@ -433,6 +433,10 @@ void ccv_nnc_mfa_encode_segmented_scaled_swiglu(
     execution(context, params);
   const ccv_nnc_mfa_segmented_scaled_swiglu_plan_layout_t p_layout =
     plan_layout(params);
+  // The plan writes up to maxTileRecords records ahead of the dispatch arguments.
+  CCV_NNC_MFA_PRECONDITION(
+    (p_layout.dispatch_offset - p_layout.records_offset) / sizeof(simd::uint4) >=
+    execution_state.segmented_pipeline_value->kernel->maxTileRecords(params.M, params.bincount));
   const size_t row_count = (size_t)params.expert_count * params.N;
   const size_t decoded_weight_size = (params.format && !execution_state.segmented_desc.format) ?
     rowwise_8i_scale_offset(row_count, params.K) +

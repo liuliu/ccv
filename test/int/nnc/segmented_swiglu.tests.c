@@ -1062,6 +1062,9 @@ TEST_CASE("MPS segmented SwiGLU packed matrix selection preserves small batch bo
 							counts[bin] = 1;
 					memcpy(hi->data.i32, selected, sizeof(selected));
 					memcpy(hc->data.i32, counts, sizeof(counts));
+					// The vector path keeps float activations for at most three rows per bin, and
+					// with neural accelerators at most 36 rows; the matrix paths quantize them.
+					const int vector_rows = accelerated ? ccv_min(36, segments * 3) : segments * 3;
 					for (int row = 0; row < rows; row++)
 					{
 						hr->data.f32[row] = dsfmt_genrand_open_close(&dsfmt);
@@ -1070,7 +1073,7 @@ TEST_CASE("MPS segmented SwiGLU packed matrix selection preserves small batch bo
 							ha->data.f32[row * k + j] = ((int)(dsfmt_genrand_uint32(&dsfmt) % 253) - 126 + 0.25f) / 128;
 						ha->data.f32[row * k] = 127.f / 128;
 						for (int j = 0; j < k; j++)
-							reference_a->data.f32[row * k + j] = rows > (accelerated ? 0 : 18) ?
+							reference_a->data.f32[row * k + j] = rows > vector_rows ?
 								lrintf(ha->data.f32[row * k + j] * 128) / 128.f : ha->data.f32[row * k + j];
 					}
 					_segmented_swiglu_reference(reference_a->data.f32, hi->data.i32, hc->data.i32,
@@ -1138,9 +1141,11 @@ TEST_CASE("MPS segmented SwiGLU packed 16-row tiles reserve records for many par
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SEGMENTED_SWIGLU_FORWARD, CCV_NNC_BACKEND_MPS));
 	extern uint8_t ccv_nnc_mfa_has_neural_accelerators(ccv_nnc_mfa_context_t* context);
 	GUARD_ELSE_RETURN(ccv_nnc_mfa_has_neural_accelerators(ccv_nnc_default_mfa_context()));
-	// 32 rows over 16 bins selects 16-row tiles. One bin needs two tiles and every
-	// other bin one, so there are more tile records than bins * ceil(32 / 32).
-	const int segments = 16, experts = 16, rows = 32, n = 256, k = 256;
+	// 40 rows over 16 bins, past the vector path's 36, selects 16-row tiles. One bin needs
+	// two tiles and every other bin one, so there are more tile records than bins. The
+	// encode checks its record reservation against the kernel's bound, so reserving only
+	// bins * ceil(rows / 32) records (32 here, against 48) fails before any tile runs.
+	const int segments = 16, experts = 16, rows = 40, n = 256, k = 256;
 	const int formats[] = {
 		CCV_NNC_QX_8I_ROWWISE_Q4_K, CCV_NNC_QX_8I_ROWWISE_Q3_K,
 		CCV_NNC_QX_8I_ROWWISE_Q2_K, CCV_NNC_QX_8I_ROWWISE_IQ2_S,
@@ -1236,6 +1241,106 @@ TEST_CASE("MPS segmented SwiGLU packed 16-row tiles reserve records for many par
 		for (i = 0; i < sizeof(tensors) / sizeof(tensors[0]); i++)
 			ccv_nnc_tensor_free(tensors[i]);
 	}
+#endif
+}
+
+TEST_CASE("MPS segmented SwiGLU packed weights keep the vector path up to 36 routed rows")
+{
+#ifdef HAVE_MPS
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SEGMENTED_SWIGLU_FORWARD, CCV_NNC_BACKEND_MPS));
+	extern uint8_t ccv_nnc_mfa_has_neural_accelerators(ccv_nnc_mfa_context_t* context);
+	GUARD_ELSE_RETURN(ccv_nnc_mfa_has_neural_accelerators(ccv_nnc_default_mfa_context()));
+	// 16 bins leave room for three rows per bin, so 36 routed rows keep the vector path's float
+	// activations and 37 take the tiles, which quantize them. One format decodes packed weights
+	// in the fused vector kernel, the other goes through the segmented int8 GEMV.
+	const int segments = 16, experts = 16, n = 256, k = 256;
+	const int row_counts[] = { 36, 37 };
+	const int formats[] = { CCV_NNC_QX_8I_ROWWISE_IQ2_XXS, CCV_NNC_QX_8I_ROWWISE_Q4_K };
+	dsfmt_t dsfmt;
+	dsfmt_init_gen_rand(&dsfmt, 3637);
+	const uint64_t old_flags = ccv_nnc_flags();
+	ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA | CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS);
+	int f, step, i, j;
+	for (f = 0; f < sizeof(formats) / sizeof(formats[0]); f++)
+	{
+		const int format = formats[f];
+		const ccv_nnc_tensor_param_t dense_info = CPU_TENSOR_NHWC(32F, experts, n, k);
+		const ccv_nnc_tensor_param_t packed_info = ccv_nnc_tensor_8i_rowwise_x(dense_info, format);
+		const size_t packed_size = ccv_nnc_tensor_data_size_without_padding(packed_info);
+		ccv_nnc_tensor_t* const hg = ccv_nnc_tensor_new(0, packed_info, 0);
+		ccv_nnc_tensor_t* const hu = ccv_nnc_tensor_new(0, packed_info, 0);
+		ccv_nnc_tensor_t* const gd = ccv_nnc_tensor_new(0, dense_info, 0);
+		ccv_nnc_tensor_t* const ud = ccv_nnc_tensor_new(0, dense_info, 0);
+		_segmented_swiglu_packed_weights(&dsfmt, format, (size_t)experts * n * k, k, hg->data.u8, packed_size, gd->data.f32);
+		_segmented_swiglu_packed_weights(&dsfmt, format, (size_t)experts * n * k, k, hu->data.u8, packed_size, ud->data.f32);
+		ccv_nnc_tensor_param_t gpu_info = packed_info;
+		gpu_info.type = CCV_TENSOR_GPU_MEMORY;
+		ccv_nnc_tensor_t* const gate = ccv_nnc_tensor_new(0, gpu_info, 0);
+		ccv_nnc_tensor_t* const up = ccv_nnc_tensor_new(0, gpu_info, 0);
+		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(hg, hu), TENSOR_LIST(gate, up), 0);
+		for (step = 0; step < sizeof(row_counts) / sizeof(row_counts[0]); step++)
+		{
+			const int rows = row_counts[step];
+			ccv_nnc_tensor_t* const ha = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, k), 0);
+			ccv_nnc_tensor_t* const reference_a = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, k), 0);
+			ccv_nnc_tensor_t* const hi = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, segments), 0);
+			ccv_nnc_tensor_t* const hc = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, segments), 0);
+			ccv_nnc_tensor_t* const hr = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows), 0);
+			ccv_nnc_tensor_t* const expected = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, n), 0);
+			ccv_nnc_tensor_t* const actual = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, n), 0);
+			for (i = 0; i < segments; i++)
+			{
+				hi->data.i32[i] = (i * 7 + 3) % experts;
+				hc->data.i32[i] = rows / segments + (i < rows % segments ? 1 : 0);
+			}
+			for (i = 0; i < rows; i++)
+			{
+				hr->data.f32[i] = dsfmt_genrand_open_close(&dsfmt);
+				// Quarter-step inputs make the tiles' INT8 activations exact and a quarter step off
+				// the float activations of the vector path.
+				for (j = 0; j < k; j++)
+					ha->data.f32[i * k + j] = ((int)(dsfmt_genrand_uint32(&dsfmt) % 253) - 126 + 0.25f) / 128;
+				ha->data.f32[i * k] = 127.f / 128;
+				for (j = 0; j < k; j++)
+					reference_a->data.f32[i * k + j] = rows > 36 ?
+						lrintf(ha->data.f32[i * k + j] * 128) / 128.f : ha->data.f32[i * k + j];
+			}
+			_segmented_swiglu_reference(reference_a->data.f32, hi->data.i32, hc->data.i32,
+				gd->data.f32, ud->data.f32, hr->data.f32, rows, segments, n, k, 10, expected->data.f32);
+			ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, rows, k), 0);
+			ccv_nnc_tensor_t* const output = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, rows, n), 0);
+			ccv_nnc_tensor_t* const indices = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32S, segments), 0);
+			ccv_nnc_tensor_t* const counts = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32S, segments), 0);
+			ccv_nnc_tensor_t* const route = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, rows), 0);
+			ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha, hi, hc, hr), TENSOR_LIST(a, indices, counts, route), 0);
+			ccv_nnc_cmd_t command = CMD_SEGMENTED_SWIGLU_FORWARD(10);
+			command.backend = CCV_NNC_BACKEND_MPS;
+			REQUIRE_EQ(ccv_nnc_cmd_exec(command, ccv_nnc_no_hint, 0, TENSOR_LIST(a, indices, counts, gate, up, route), TENSOR_LIST(output), 0), CCV_NNC_EXEC_SUCCESS, "%d routed rows should execute for format=%d", rows, format);
+			ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(output), TENSOR_LIST(actual), 0);
+			for (i = 0; i < rows; i++)
+			{
+				double error = 0, norm = 0;
+				for (j = 0; j < n; j++)
+				{
+					const double value = actual->data.f32[i * n + j];
+					const double reference = expected->data.f32[i * n + j];
+					error += (value - reference) * (value - reference);
+					norm += reference * reference;
+				}
+				REQUIRE(sqrt(error / ccv_max(norm, 1e-20)) < 1e-4, "%d routed rows should take the %s path: format=%d row=%d", rows, rows > 36 ? "tile" : "vector", format, i);
+			}
+			ccv_nnc_tensor_t* const tensors[] = { ha, reference_a, hi, hc, hr, expected, actual, a, output, indices, counts, route };
+			for (i = 0; i < sizeof(tensors) / sizeof(tensors[0]); i++)
+				ccv_nnc_tensor_free(tensors[i]);
+		}
+		ccv_nnc_tensor_t* const tensors[] = { hg, hu, gd, ud, gate, up };
+		for (i = 0; i < sizeof(tensors) / sizeof(tensors[0]); i++)
+			ccv_nnc_tensor_free(tensors[i]);
+	}
+	if (old_flags & CCV_NNC_DISABLE_MFA)
+		ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA);
+	if (old_flags & CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS)
+		ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS);
 #endif
 }
 

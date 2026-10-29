@@ -326,12 +326,15 @@ static int _ccv_nnc_segmented_swiglu_routed_forw(const ccv_nnc_cmd_t cmd, ccv_nn
 		(mtl_datatype != 121 || ccv_nnc_mfa_neural_accelerators_support_bfloat(context));
 	// Fused packed matrix tiles need no expanded weight bank, even for sparse batches.
 	// The grouped matrix path needs one input row per output row, so a single input
-	// row (token decode or a broadcast input) keeps the vector path.
+	// row (token decode or a broadcast input) keeps the vector path. So do up to 36
+	// routed rows, a 6-token speculative verify, provisionally: the vector path decodes an
+	// expert's weights once per row, so it wins at about one row per expert and loses once
+	// rows share experts (on M5 Max, 0.86x at 36 rows when consecutive tokens share half).
 	const int fused_packed_matrix_supported =
 		ccv_nnc_mfa_segmented_scaled_gemm_fuses_packed_format(gate_format, M, bincount) &&
 		a->info.datatype == CCV_32F && use_neural_accelerators;
 	const int direct_small_batch =
-		input_shape_supported && (!fused_packed_matrix_supported || input_rows == 1) &&
+		input_shape_supported && (!fused_packed_matrix_supported || input_rows == 1 || M <= 36) &&
 		(uint64_t)M <= (uint64_t)bincount * 3 &&
 		M > 0 && N > 0 && K > 0 && expert_count > 0 &&
 		gate_rowwise && up_rowwise && gate_format == up_format && rowwise_shape_supported &&
