@@ -13915,6 +13915,33 @@ TEST_CASE("sparse indexed attention R1 with MFA")
 	REQUIRE(bf16_status == 0, "MFA BF16 sparse indexed attention R1 direct mode should match CPU reference (status=%d max abs %g relative %g at %d: CPU %g GPU %g)", bf16_status, max_abs, max_relative, max_idx, expected, actual);
 }
 
+TEST_CASE("sparse indexed attention R1 with a few causal queries")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SPARSE_INDEXED_ATTENTION_FORWARD, CCV_NNC_BACKEND_MPS));
+	// Speculative verify shapes: each query sees the dense rows up to its own position.
+	const struct { int T, H, D, dense_rows, sparse_rows, K, window, block_size; } cases[] = {
+		{2, 64, 512, 130, 8192, 512, 128, 1},
+		{3, 64, 512, 131, 4096, 512, 128, 1},
+		{6, 64, 512, 134, 8192, 512, 128, 1},
+		{8, 64, 512, 136, 8192, 512, 128, 1},
+		{6, 64, 512, 9, 97, 17, 128, 1},
+		{6, 64, 512, 37, 97, 17, 3, 1},
+		{6, 7, 130, 23, 71, 19, 0, 1},
+		{6, 64, 128, 13, 512, 16, 0, 8},
+		// T - 1 dense rows leave the first query none; fewer take the other kernels.
+		{6, 64, 512, 5, 97, 17, 128, 1},
+		{6, 64, 512, 3, 97, 17, 128, 1},
+	};
+	int i;
+	for (i = 0; i < sizeof(cases) / sizeof(cases[0]); i++)
+	{
+		float max_abs, max_relative, expected, actual;
+		int max_idx;
+		const int status = _mps_sparse_indexed_attention_compare(CCV_16F, cases[i].T, cases[i].H, cases[i].D, cases[i].dense_rows, cases[i].sparse_rows, cases[i].K, 1, cases[i].window, cases[i].block_size, 1e-2, &max_abs, &max_relative, &max_idx, &expected, &actual);
+		REQUIRE(status == 0, "MFA FP16 sparse indexed attention R1 case %d (T=%d) should match CPU reference (status=%d max abs %g relative %g at %d: CPU %g GPU %g)", i, cases[i].T, status, max_abs, max_relative, max_idx, expected, actual);
+	}
+}
+
 TEST_CASE("sparse indexed attention R1 randomized partial widths and traversal boundaries")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SPARSE_INDEXED_ATTENTION_FORWARD, CCV_NNC_BACKEND_MPS));

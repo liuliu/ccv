@@ -48,7 +48,8 @@ uint32_t SparseIndexedAttentionR1Kernel::reduceThreadgroupSize(
   return (descriptor.D + 31) / 32 * 32;
 }
 
-// Shared by both modes. The caller defines h, stream, streams, and partial_invalid.
+// Shared by both modes. The caller defines h, stream, streams, partial_invalid, and the query's
+// query_q, query_indices, and query_dense_rows.
 // All SIMD groups scan for the terminator together; each then visits rows stream,
 // stream + streams, ... and leaves its softmax state in q, acc, row_m, and row_s.
 // exitPastHeads retires SIMD groups past the last head after the scan barrier.
@@ -59,7 +60,7 @@ static std::string traversalSource(const bool attentionSinks, const char* sinkOw
   const uint sparse_capacity = K * block_size;
   uint first_invalid = sparse_capacity;
   for (uint i = sgid * 32 + lane_id; i < sparse_capacity; i += NSG * 32) {
-    const int index = sparse_row(Indices, i);
+    const int index = sparse_row(query_indices, i);
     if (index < 0 || uint(index) >= sparse_rows) {
       first_invalid = i;
       break;
@@ -80,12 +81,12 @@ static std::string traversalSource(const bool attentionSinks, const char* sinkOw
   }
   source += R"(
   const uint sparse_count = simd_min(lane_id < NSG ? partial_invalid[lane_id] : sparse_capacity);
-  // One query: blocked attention sees only its incomplete block densely.
+  // Blocked attention sees only the query's incomplete block densely.
   const uint dense_count =
-      block_size > 1 ? dense_rows % block_size :
-      sliding_window > 0 && sliding_window < dense_rows ?
-      sliding_window : dense_rows;
-  const uint dense_start = dense_rows - dense_count;
+      block_size > 1 ? query_dense_rows % block_size :
+      sliding_window > 0 && sliding_window < query_dense_rows ?
+      sliding_window : query_dense_rows;
+  const uint dense_start = query_dense_rows - dense_count;
   const uint total_rows = dense_count + sparse_count;
 
   // Cache contiguous query and accumulator components in registers.
@@ -93,7 +94,7 @@ static std::string traversalSource(const bool attentionSinks, const char* sinkOw
   float q[16], acc[16];
   for (uint i = 0; i < elements; ++i) {
     const uint d = lane_id * elements + i;
-    q[i] = d < D_LEN ? (float)Q[h * D_LEN + d] * scale_log2e : 0;
+    q[i] = d < D_LEN ? (float)query_q[h * D_LEN + d] * scale_log2e : 0;
     acc[i] = 0;
   }
   float row_m = )";
@@ -115,7 +116,7 @@ static std::string traversalSource(const bool attentionSinks, const char* sinkOw
     if (lane_row < dense_count) {
       code = (dense_start + lane_row) | 0x80000000u;
     } else if (lane_row < total_rows) {
-      code = uint(sparse_row(Indices, lane_row - dense_count));
+      code = uint(sparse_row(query_indices, lane_row - dense_count));
     }
     const uint steps = min(32u, (total_rows - batch + streams - 1) / streams);
     uint j = 0;
@@ -238,6 +239,13 @@ inline device const real* row_pointer(device const real* dense, device const rea
   const uniform<uint> K = make_uniform(shape[2]);
 )";
     }
+    // Grid y walks a few causal queries, as a speculative verify runs: query t of T sees the
+    // dense rows up to its own position. One query folds every offset away.
+    source += R"(  const uint query = query_count == 1 ? 0 : tgid.y;
+  device const real* query_q = Q + query * H * D_LEN;
+  device const int* query_indices = Indices + query * K;
+  const uint query_dense_rows = dense_rows - (query_count - 1 - query);
+)";
     if (partial) {
       // NSG heads per workgroup walk the same rows, so their key/value loads
       // share cache lines. Each SIMD group owns one head of one partition.
@@ -248,7 +256,7 @@ inline device const real* row_pointer(device const real* dense, device const rea
 )";
       source += traversalSource(attentionSinks, "stream == 0", true, 4);
       source += R"(
-  device float* partial = Partial + (h * NWG + stream) * (D_LEN + 2);
+  device float* partial = Partial + ((query * H + h) * NWG + stream) * (D_LEN + 2);
   for (uint i = 0; i < elements; ++i) {
     const uint d = lane_id * elements + i;
     if (d < D_LEN) {
@@ -290,7 +298,7 @@ inline device const real* row_pointer(device const real* dense, device const rea
   const float global_m = simd_max(local_m);
   const float factor = valid ? fast::exp2(local_m - global_m) : 0;
   const float global_s = simd_sum(valid ? partial_s[lane_id] * factor : 0);
-  device real* o_row = O + h * D_LEN;
+  device real* o_row = O + (query * H + h) * D_LEN;
   // Keep all lanes active for the shuffles, including a partial output tile.
   for (uint base = sgid * 32; base < D_LEN; base += NSG * 32) {
     const uint d = base + lane_id;
@@ -309,19 +317,21 @@ inline device const real* row_pointer(device const real* dense, device const rea
 kernel void sparse_indexed_attention_r1_split_reduce(
     device const float* Partial [[buffer(0)]],
     device real* O [[buffer(1)]],
-    uint h [[threadgroup_position_in_grid]],
+    uint2 tgid [[threadgroup_position_in_grid]],
     ushort lane_id [[thread_index_in_simdgroup]],
     ushort sgid [[simdgroup_index_in_threadgroup]],
     ushort nsg [[simdgroups_per_threadgroup]])
 {
+  const uint h = tgid.x;
+  const uint query = query_count == 1 ? 0 : tgid.y;
   // One lane per partition (NWG <= 32); shuffles broadcast each rescale.
-  device const float* base = Partial + h * NWG * (D_LEN + 2);
+  device const float* base = Partial + (query * H + h) * NWG * (D_LEN + 2);
   const bool valid = lane_id < NWG && base[lane_id * (D_LEN + 2) + D_LEN] > 0;
   const float local_m = valid ? base[lane_id * (D_LEN + 2) + D_LEN + 1] : -INFINITY;
   const float global_m = simd_max(local_m);
   const float factor = valid ? fast::exp2(local_m - global_m) : 0;
   const float global_s = simd_sum(valid ? base[lane_id * (D_LEN + 2) + D_LEN] * factor : 0);
-  device real* o_row = O + h * D_LEN;
+  device real* o_row = O + (query * H + h) * D_LEN;
   for (uint tile = sgid * 32; tile < D_LEN; tile += nsg * 32) {
     const uint d = tile + lane_id;
     float numerator = 0;
@@ -358,6 +368,7 @@ std::string SparseIndexedAttentionR1Kernel::createConstants() const noexcept {
   }
   defines += "constant float scale_log2e = dot_product_scale * 1.442695041;\n";
   defines += "constant uint block_size [[function_constant(9)]];\n";
+  defines += "constant uint query_count [[function_constant(10)]];\n";
   // Blocked sparse indices: virtual row i reads block Indices[i / block_size].
   defines +=
       "inline int sparse_row(device const int* row_indices, uint i) {\n"

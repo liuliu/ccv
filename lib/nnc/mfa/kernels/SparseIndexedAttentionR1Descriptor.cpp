@@ -43,6 +43,7 @@ bool SparseIndexedAttentionR1Descriptor::operator==(const SparseIndexedAttention
       attentionSinks == rhs.attentionSinks &&
       slidingWindow == rhs.slidingWindow &&
       blockSize == rhs.blockSize &&
+      queryCount == rhs.queryCount &&
       simdgroups == rhs.simdgroups &&
       workgroups == rhs.workgroups &&
       mode == rhs.mode;
@@ -59,7 +60,8 @@ SparseIndexedAttentionR1Descriptor SparseIndexedAttentionR1Descriptor::select(
     bool loadK,
     bool attentionSinks,
     uint32_t slidingWindow,
-    uint32_t blockSize) noexcept
+    uint32_t blockSize,
+    uint32_t queryCount) noexcept
 {
   SparseIndexedAttentionR1Descriptor descriptor;
   descriptor.memoryPrecision = memoryPrecision;
@@ -73,6 +75,7 @@ SparseIndexedAttentionR1Descriptor SparseIndexedAttentionR1Descriptor::select(
   descriptor.attentionSinks = attentionSinks;
   descriptor.slidingWindow = slidingWindow;
   descriptor.blockSize = blockSize;
+  descriptor.queryCount = queryCount;
 
   // Blocked: one query sees its incomplete block densely and K blocks sparsely.
   const uint32_t visibleDenseRows =
@@ -110,6 +113,7 @@ std::size_t std::hash<SparseIndexedAttentionR1Descriptor>::operator()(const Spar
   seed = combine_32(seed, hash.loadK ? 1 : 0);
   seed = combine_32(seed, hash.slidingWindow);
   seed = combine_32(seed, hash.blockSize);
+  seed = combine_32(seed, hash.queryCount);
   seed = combine_32(seed, hash.attentionSinks ? 1 : 0);
   seed = combine_32(seed, uint32_t(std::hash<float>{}(hash.scale)));
   return seed;
@@ -158,6 +162,7 @@ std::pair<SparseIndexedAttentionR1KernelDescriptor, PipelineValue<SparseIndexedA
     constants->setConstantValue(
         &slidingWindow, MTL::DataTypeUInt, NS::UInteger(5));
     constants->setConstantValue(&blockSize, MTL::DataTypeUInt, NS::UInteger(9));
+    constants->setConstantValue(&queryCount, MTL::DataTypeUInt, NS::UInteger(10));
     if (!loadK) {
       constants->setConstantValue(
           &denseRows, MTL::DataTypeUInt, NS::UInteger(6));

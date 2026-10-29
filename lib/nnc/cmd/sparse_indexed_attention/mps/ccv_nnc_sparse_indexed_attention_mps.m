@@ -136,7 +136,9 @@ static int _ccv_nnc_sparse_indexed_attention_forw(const ccv_nnc_cmd_t cmd, const
 			mpgetbuffer((ccv_nnc_tensor_t*)sparse_k) == mpgetbuffer((ccv_nnc_tensor_t*)sparse_v) && sparse_k->dataof == sparse_v->dataof;
 		if (!kv_is_shared)
 			return CCV_NNC_EXEC_INVALID;
-		const int use_r1 = T == 1 && D > 0 && D <= 512 && mtl_data_type != 3;
+		// A few causal queries, as a speculative verify runs, are as many independent R1 problems.
+		// Query t sees dense_rows - (T - 1 - t) dense rows, so the first must not go below zero.
+		const int use_r1 = (T == 1 || (T <= 8 && is_causal && dense_rows >= T - 1)) && D > 0 && D <= 512 && mtl_data_type != 3;
 		// The D=512 two-pass neural accelerator kernels stage rows as 16-byte vectors.
 		const int na_shape = H == 64 && ((D == 512 && dense_k->dataof % 16 == 0 && sparse_k->dataof % 16 == 0) || (D == 128 && K > 0));
 		const int use_neural_accelerators = !use_r1 && mtl_data_type != 3 && na_shape && !(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS) && ccv_nnc_mfa_has_neural_accelerators(context);

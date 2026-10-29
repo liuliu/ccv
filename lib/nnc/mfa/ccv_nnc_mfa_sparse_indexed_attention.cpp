@@ -59,7 +59,8 @@ void ccv_nnc_mfa_prepare_sparse_indexed_attention(mfa::context*, ccv_nnc_mfa_spa
 void ccv_nnc_mfa_encode_sparse_indexed_attention(ccv_nnc_mfa_context_t* context, ccv_nnc_mfa_sparse_indexed_attention_params_t params, MTL::CommandBatch* command_batch, MTL::Buffer** tensors, size_t* tensor_offsets)
 {
   if (params.use_r1) {
-    CCV_NNC_MFA_PRECONDITION(params.T == 1);
+    // A few causal queries, each on its own grid row, with at least T - 1 dense rows.
+    CCV_NNC_MFA_PRECONDITION(params.T == 1 || (params.T <= 8 && params.is_causal && params.dense_rows + 1 >= params.T));
     CCV_NNC_MFA_PRECONDITION(params.H > 0);
     CCV_NNC_MFA_PRECONDITION(params.D > 0);
     CCV_NNC_MFA_PRECONDITION(params.D <= SparseIndexedAttentionR1Kernel::maxHeadDimension);
@@ -258,7 +259,8 @@ void ccv_nnc_mfa_encode_sparse_indexed_attention(ccv_nnc_mfa_context_t* context,
             true,
             params.attention_sinks != 0,
             params.sliding_window,
-            std::max(params.block_size, 1u));
+            std::max(params.block_size, 1u),
+            params.T);
     auto pipelineValue = shaderCache.findKernel<
         SparseIndexedAttentionR1Kernel,
         SparseIndexedAttentionR1Descriptor,
@@ -302,14 +304,14 @@ void ccv_nnc_mfa_encode_sparse_indexed_attention(ccv_nnc_mfa_context_t* context,
             &params.sink_head_stride, sizeof(params.sink_head_stride), 7);
       }
       encoder->dispatchThreadgroups(
-          MTL::Size(params.H, 1, 1),
+          MTL::Size(params.H, params.T, 1),
           MTL::Size(threadgroupSize, 1, 1));
       command_batch->finishCommand(encoder);
       return;
     }
 
     const size_t partialBytes =
-        (size_t)params.H * descriptor.workgroups *
+        (size_t)params.T * params.H * descriptor.workgroups *
         (params.D + 2) * sizeof(float);
     auto scratch = context->request_scratch(partialBytes);
     auto encoder = command_batch->startCommand();
@@ -338,7 +340,7 @@ void ccv_nnc_mfa_encode_sparse_indexed_attention(ccv_nnc_mfa_context_t* context,
           &params.sink_head_stride, sizeof(params.sink_head_stride), 7);
     }
     encoder->dispatchThreadgroups(
-        MTL::Size((params.H + descriptor.simdgroups - 1) / descriptor.simdgroups, 1, descriptor.workgroups),
+        MTL::Size((params.H + descriptor.simdgroups - 1) / descriptor.simdgroups, params.T, descriptor.workgroups),
         MTL::Size(threadgroupSize, 1, 1));
     command_batch->finishCommand(encoder);
 
@@ -349,7 +351,7 @@ void ccv_nnc_mfa_encode_sparse_indexed_attention(ccv_nnc_mfa_context_t* context,
     reduceEncoder->setBuffer(scratch, 0, 0);
     reduceEncoder->setBuffer(tensors[7], tensor_offsets[7], 1);
     reduceEncoder->dispatchThreadgroups(
-        MTL::Size(params.H, 1, 1),
+        MTL::Size(params.H, params.T, 1),
         MTL::Size(kernel->reduceThreadgroupSize(descriptor), 1, 1));
     command_batch->finishCommand(reduceEncoder);
     return;

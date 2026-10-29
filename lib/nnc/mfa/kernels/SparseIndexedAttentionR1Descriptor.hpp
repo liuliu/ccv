@@ -63,6 +63,9 @@ struct SparseIndexedAttentionR1Descriptor {
 
   uint32_t blockSize;
 
+  // Causal queries, each on its own grid row.
+  uint32_t queryCount;
+
   uint32_t simdgroups;
 
   uint32_t workgroups;
@@ -82,7 +85,8 @@ struct SparseIndexedAttentionR1Descriptor {
       bool loadK,
       bool attentionSinks,
       uint32_t slidingWindow,
-      uint32_t blockSize = 1) noexcept;
+      uint32_t blockSize = 1,
+      uint32_t queryCount = 1) noexcept;
 
   std::pair<SparseIndexedAttentionR1KernelDescriptor, PipelineValue<SparseIndexedAttentionR1Kernel>*> findKernel(
       MTL::Device* const device,
