@@ -115,7 +115,8 @@ static int _ccv_nnc_moe_routing_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint
 		route->info.dim[0] != expert_count) {
 		return CCV_NNC_EXEC_INVALID;
 	}
-	if (token_count == 1 && kth <= 32 && expert_count <= 512)
+	// A few tokens, as a speculative verify routes, take the MFA kernel too.
+	if (((token_count == 1 && kth <= 32) || (token_count <= 16 && kth <= 8)) && expert_count <= 512)
 	{
 		@autoreleasepool {
 			ccv_nnc_mfa_context_t* const context = ccv_nnc_default_mfa_context();
@@ -137,6 +138,7 @@ static int _ccv_nnc_moe_routing_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint
 					.single_input_token = (uint32_t)single_input_token,
 					.normalization_epsilon = cmd.info.moe_routing.normalization_epsilon,
 					.sigmoid = (uint32_t)sigmoid,
+					.token_count = (uint32_t)token_count,
 				};
 				ccv_nnc_mfa_prepare_moe_routing(context, params);
 				mtl_command_batch_t* const command_batch = ccv_nnc_stream_context_start_command_batch(stream_context);

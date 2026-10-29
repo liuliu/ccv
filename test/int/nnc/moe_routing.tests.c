@@ -576,10 +576,13 @@ TEST_CASE("moe routing sigmoid scoring MFA and MPSGraph paths match CPU")
 	// Same MFA shape without the flag, so the cached sigmoid pipeline must not be reused for sqrt(softplus) scoring.
 	const moe_routing_mps_result_t softplus_mfa = _moe_routing_mps_case(1, 288, 8, 4096, 0, 0, CCV_32F, CCV_16BF, CCV_NNC_MOE_ROUTING_SINGLE_INPUT_TOKEN, 1e-20f, 0);
 	const moe_routing_mps_result_t single_graph = _moe_routing_mps_case(1, 288, 8, 4096, 0, 1, CCV_32F, CCV_16BF, flags | CCV_NNC_MOE_ROUTING_SINGLE_INPUT_TOKEN, 1e-20f, 0);
-	const moe_routing_mps_result_t multi_graph = _moe_routing_mps_case(7, 288, 8, 65, 0, 0, CCV_32F, CCV_32F, flags, 1e-20f, 0);
+	// A few tokens take the MFA kernel unless it is disabled.
+	const moe_routing_mps_result_t multi_mfa = _moe_routing_mps_case(7, 288, 8, 65, 0, 0, CCV_32F, CCV_32F, flags, 1e-20f, 0);
+	const moe_routing_mps_result_t multi_graph = _moe_routing_mps_case(7, 288, 8, 65, 0, 1, CCV_32F, CCV_32F, flags, 1e-20f, 0);
 	const moe_routing_mps_result_t shifted_mfa = _moe_routing_mps_case(1, 288, 8, 128, 0, 0, CCV_16F, CCV_16F, flags, 0, -4);
 	// Large logits saturate sigmoid, so FP16 scores would collapse and change the selected experts without FP32 promotion.
-	const moe_routing_mps_result_t saturated_graph = _moe_routing_mps_case(2, 288, 8, 128, 0, 0, CCV_16F, CCV_16F, flags, 0, 4);
+	const moe_routing_mps_result_t saturated_mfa = _moe_routing_mps_case(2, 288, 8, 128, 0, 0, CCV_16F, CCV_16F, flags, 0, 4);
+	const moe_routing_mps_result_t saturated_graph = _moe_routing_mps_case(2, 288, 8, 128, 0, 1, CCV_16F, CCV_16F, flags, 0, 4);
 	REQUIRE_EQ(single_mfa.status, CCV_NNC_EXEC_SUCCESS, "sigmoid single-token MFA routing should execute");
 	REQUIRE(single_mfa.metadata_match, "sigmoid single-token MFA metadata should match CPU");
 	REQUIRE(single_mfa.gathered_match, "sigmoid single-token MFA activation should match CPU exactly");
@@ -591,6 +594,10 @@ TEST_CASE("moe routing sigmoid scoring MFA and MPSGraph paths match CPU")
 	REQUIRE(single_graph.metadata_match, "sigmoid single-token MPSGraph metadata should match CPU");
 	REQUIRE(single_graph.gathered_match, "sigmoid single-token MPSGraph activation should match CPU exactly");
 	REQUIRE(single_graph.max_weight_difference <= 5e-4f, "sigmoid single-token MPSGraph weights should match CPU");
+	REQUIRE_EQ(multi_mfa.status, CCV_NNC_EXEC_SUCCESS, "sigmoid multi-token MFA routing should execute");
+	REQUIRE(multi_mfa.metadata_match, "sigmoid multi-token MFA metadata should match CPU");
+	REQUIRE(multi_mfa.gathered_match, "sigmoid multi-token MFA gathered activations should match CPU exactly");
+	REQUIRE(multi_mfa.max_weight_difference <= 5e-4f, "sigmoid multi-token MFA weights should match CPU");
 	REQUIRE_EQ(multi_graph.status, CCV_NNC_EXEC_SUCCESS, "sigmoid multi-token MPSGraph routing should execute");
 	REQUIRE(multi_graph.metadata_match, "sigmoid multi-token metadata should match CPU");
 	REQUIRE(multi_graph.gathered_match, "sigmoid multi-token gathered activations should match CPU exactly");
@@ -598,6 +605,10 @@ TEST_CASE("moe routing sigmoid scoring MFA and MPSGraph paths match CPU")
 	REQUIRE_EQ(shifted_mfa.status, CCV_NNC_EXEC_SUCCESS, "sigmoid half-precision MFA routing should execute");
 	REQUIRE(shifted_mfa.metadata_match, "sigmoid half-precision MFA metadata should match CPU");
 	REQUIRE(shifted_mfa.max_weight_difference <= 5e-4f, "sigmoid half-precision MFA weights should match CPU");
+	REQUIRE_EQ(saturated_mfa.status, CCV_NNC_EXEC_SUCCESS, "sigmoid half-precision multi-token MFA routing should execute");
+	REQUIRE(saturated_mfa.metadata_match, "sigmoid half-precision multi-token MFA metadata should match CPU with saturated scores");
+	REQUIRE(saturated_mfa.gathered_match, "sigmoid half-precision multi-token MFA gathered activations should match CPU exactly");
+	REQUIRE(saturated_mfa.max_weight_difference <= 5e-4f, "sigmoid half-precision multi-token MFA weights should match CPU with saturated scores");
 	REQUIRE_EQ(saturated_graph.status, CCV_NNC_EXEC_SUCCESS, "sigmoid half-precision MPSGraph routing should execute");
 	REQUIRE(saturated_graph.metadata_match, "sigmoid half-precision MPSGraph metadata should match CPU with saturated scores");
 	REQUIRE(saturated_graph.gathered_match, "sigmoid half-precision MPSGraph gathered activations should match CPU exactly");
@@ -608,7 +619,7 @@ TEST_CASE("multi-token moe routing ignores the single input token flag and match
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_MOE_ROUTING_FORWARD, CCV_NNC_BACKEND_MPS));
 	const moe_routing_mps_result_t result = _moe_routing_mps_case(7, 16, 3, 65, 0, 0, CCV_16F, CCV_32F, CCV_NNC_MOE_ROUTING_SINGLE_INPUT_TOKEN, 0, 0);
-	REQUIRE_EQ(result.status, CCV_NNC_EXEC_SUCCESS, "multi-token MPSGraph routing should execute");
+	REQUIRE_EQ(result.status, CCV_NNC_EXEC_SUCCESS, "multi-token routing should execute");
 	REQUIRE(result.metadata_match, "multi-token grouping metadata should match CPU independent of equal-key sort order");
 	REQUIRE(result.gathered_match, "multi-token gathered activations should match CPU exactly");
 	REQUIRE(result.max_weight_difference <= 5e-4f, "multi-token normalized weights should match CPU");
@@ -633,6 +644,26 @@ TEST_CASE("single-token moe routing supports 384 experts and the 512-expert MFA 
 			REQUIRE(result.gathered_match, "gathered activations should match CPU exactly");
 			REQUIRE(result.max_weight_difference <= 5e-4f, "normalized weights should match CPU");
 		}
+}
+
+TEST_CASE("few-token moe routing MFA kernel matches CPU")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_MOE_ROUTING_FORWARD, CCV_NNC_BACKEND_MPS));
+	// A speculative verify routes a handful of tokens; they take the MFA kernel, not MPSGraph.
+	// 16 tokens at top-8 fill the kernel's 128 (expert, token, slot) pairs.
+	const int token_counts[] = {2, 3, 6, 16};
+	const int kths[] = {6, 8};
+	int i, j, preselected;
+	for (i = 0; i < sizeof(token_counts) / sizeof(token_counts[0]); i++)
+		for (j = 0; j < sizeof(kths) / sizeof(kths[0]); j++)
+			for (preselected = 0; preselected < 2; preselected++)
+			{
+				const moe_routing_mps_result_t result = _moe_routing_mps_case(token_counts[i], 384, kths[j], 5120, preselected, 0, CCV_16F, CCV_32F, 0, 1e-20f, 0);
+				REQUIRE_EQ(result.status, CCV_NNC_EXEC_SUCCESS, "few-token MFA routing should execute");
+				REQUIRE(result.metadata_match, "few-token MFA grouping should match CPU for tokens=%d kth=%d preselected=%d", token_counts[i], kths[j], preselected);
+				REQUIRE(result.gathered_match, "few-token MFA gathered rows should match CPU exactly");
+				REQUIRE(result.max_weight_difference <= 5e-4f, "few-token MFA weights should match CPU");
+			}
 }
 
 TEST_CASE("moe routing additive epsilon preserves legacy normalization and rejects invalid values on CPU")
@@ -697,20 +728,23 @@ TEST_CASE("moe routing MFA additive epsilon matches CPU across score magnitudes 
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_MOE_ROUTING_FORWARD, CCV_NNC_BACKEND_MPS));
 	const float epsilons[] = {0, 1e-20f, 1e-5f, 0.25f, 0};
 	const float shifts[] = {0, -30, -INFINITY};
-	int dtype, preselected, magnitude, step;
-	for (dtype = 0; dtype < 2; dtype++)
-		for (preselected = 0; preselected < 2; preselected++)
-			for (magnitude = 0; magnitude < sizeof(shifts) / sizeof(shifts[0]); magnitude++)
-				for (step = 0; step < sizeof(epsilons) / sizeof(epsilons[0]); step++)
-				{
-					const moe_routing_mps_result_t result = _moe_routing_mps_case(1, 384, 6, 5120, preselected, 0,
-						dtype ? CCV_16F : CCV_32F, dtype ? CCV_16BF : CCV_32F,
-						preselected ? CCV_NNC_MOE_ROUTING_SINGLE_INPUT_TOKEN : 0, epsilons[step], shifts[magnitude]);
-					REQUIRE_EQ(result.status, CCV_NNC_EXEC_SUCCESS, "MFA additive normalization should execute");
-					REQUIRE(result.metadata_match, "epsilon should preserve selected IDs and routing metadata");
-					REQUIRE(result.gathered_match, "gathered activations should match CPU exactly");
-					REQUIRE(result.max_weight_difference <= 2e-6f, "MFA weights should match CPU for dtype=%d preselected=%d magnitude=%d epsilon=%g difference=%g", dtype, preselected, magnitude, epsilons[step], result.max_weight_difference);
-				}
+	// One token, and a few tokens as a speculative verify routes them.
+	const int token_counts[] = {1, 6};
+	int tokens, dtype, preselected, magnitude, step;
+	for (tokens = 0; tokens < sizeof(token_counts) / sizeof(token_counts[0]); tokens++)
+		for (dtype = 0; dtype < 2; dtype++)
+			for (preselected = 0; preselected < 2; preselected++)
+				for (magnitude = 0; magnitude < sizeof(shifts) / sizeof(shifts[0]); magnitude++)
+					for (step = 0; step < sizeof(epsilons) / sizeof(epsilons[0]); step++)
+					{
+						const moe_routing_mps_result_t result = _moe_routing_mps_case(token_counts[tokens], 384, 6, 5120, preselected, 0,
+							dtype ? CCV_16F : CCV_32F, dtype ? CCV_16BF : CCV_32F,
+							preselected ? CCV_NNC_MOE_ROUTING_SINGLE_INPUT_TOKEN : 0, epsilons[step], shifts[magnitude]);
+						REQUIRE_EQ(result.status, CCV_NNC_EXEC_SUCCESS, "MFA additive normalization should execute");
+						REQUIRE(result.metadata_match, "epsilon should preserve selected IDs and routing metadata");
+						REQUIRE(result.gathered_match, "gathered activations should match CPU exactly");
+						REQUIRE(result.max_weight_difference <= 2e-6f, "MFA weights should match CPU for tokens=%d dtype=%d preselected=%d magnitude=%d epsilon=%g difference=%g", token_counts[tokens], dtype, preselected, magnitude, epsilons[step], result.max_weight_difference);
+					}
 }
 
 TEST_CASE("moe routing MPSGraph additive epsilon matches CPU across fallback conditions")
@@ -726,8 +760,9 @@ TEST_CASE("moe routing MPSGraph additive epsilon matches CPU across fallback con
 				for (magnitude = 0; magnitude < sizeof(shifts) / sizeof(shifts[0]); magnitude++)
 					for (step = 0; step < sizeof(epsilons) / sizeof(epsilons[0]); step++)
 					{
-						// Force the graph, or reach it through multi-token / expert-count / top-k limits.
-						const moe_routing_mps_result_t result = _moe_routing_mps_case(mode == 1 ? 7 : 1, mode == 2 ? 513 : 384,
+						// Force the graph, or reach it through token-count (past the MFA kernel's 16) /
+						// expert-count / top-k limits.
+						const moe_routing_mps_result_t result = _moe_routing_mps_case(mode == 1 ? 17 : 1, mode == 2 ? 513 : 384,
 							mode == 3 ? 33 : 6, 1024, preselected, mode == 0, dtype ? CCV_16F : CCV_32F,
 							activation_datatypes[magnitude], CCV_NNC_MOE_ROUTING_SINGLE_INPUT_TOKEN, epsilons[step], shifts[magnitude]);
 						REQUIRE_EQ(result.status, CCV_NNC_EXEC_SUCCESS, "MPSGraph additive normalization should execute");

@@ -13,6 +13,7 @@ typedef struct {
 	uint32_t single_input_token;
 	float normalization_epsilon;
 	uint32_t sigmoid;
+	uint32_t token_count;
 } ccv_nnc_mfa_moe_routing_params_t;
 
 #ifdef __cplusplus

@@ -33,6 +33,7 @@ struct MoERoutingDescriptor {
 	bool singleInputToken;
 	float normalizationEpsilon;
 	bool sigmoid;
+	uint32_t tokenCount;
 
 	bool operator==(const MoERoutingDescriptor& rhs) const;
 	uint32_t executionSIMDGroups() const noexcept;

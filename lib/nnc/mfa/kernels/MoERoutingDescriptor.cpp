@@ -15,7 +15,8 @@ bool MoERoutingDescriptor::operator==(const MoERoutingDescriptor& rhs) const
 		preselected == rhs.preselected &&
 		singleInputToken == rhs.singleInputToken &&
 		normalizationEpsilon == rhs.normalizationEpsilon &&
-		sigmoid == rhs.sigmoid;
+		sigmoid == rhs.sigmoid &&
+		tokenCount == rhs.tokenCount;
 }
 
 std::size_t std::hash<MoERoutingDescriptor>::operator()(const MoERoutingDescriptor& hash) const noexcept
@@ -33,11 +34,15 @@ std::size_t std::hash<MoERoutingDescriptor>::operator()(const MoERoutingDescript
 	seed = combine_32(seed, hash.singleInputToken ? 1 : 0);
 	seed = combine_64(seed, std::hash<float>()(hash.normalizationEpsilon));
 	seed = combine_32(seed, hash.sigmoid ? 1 : 0);
+	seed = combine_32(seed, hash.tokenCount);
 	return seed;
 }
 
 uint32_t MoERoutingDescriptor::executionSIMDGroups() const noexcept
 {
+	// Several tokens take a SIMD group each, and every thread gathers their rows.
+	if (tokenCount > 1)
+		return 32u;
 	// Extra threads also gather activations: at E=384, H=5120, 512 threads
 	// outperform 384 on M5 Max. See bin/mfa/moe_routing_bench.cpp.
 	return expertCount <= 256 ? 8u : 16u;
@@ -58,8 +63,9 @@ std::pair<MoERoutingKernelDescriptor, PipelineValue<MoERoutingKernel>*> MoERouti
 	constants->setConstantValue(&singleInputToken, MTL::DataTypeBool, NS::UInteger(5));
 	constants->setConstantValue(&normalizationEpsilon, MTL::DataTypeFloat, NS::UInteger(6));
 	constants->setConstantValue(&sigmoid, MTL::DataTypeBool, NS::UInteger(7));
+	constants->setConstantValue(&tokenCount, MTL::DataTypeUInt, NS::UInteger(8));
 	NS::Error* error = nil;
-	auto function = NS::TransferPtr(iterator->second->library->newFunction(NS::String::string("moe_routing_t1", NS::UTF8StringEncoding), constants.get(), &error));
+	auto function = NS::TransferPtr(iterator->second->library->newFunction(NS::String::string(tokenCount > 1 ? "moe_routing_tn" : "moe_routing_t1", NS::UTF8StringEncoding), constants.get(), &error));
 	CCV_NNC_MFA_CHECK_ERROR(error);
 	auto pipeline = NS::TransferPtr(device->newComputePipelineState(function.get(), &error));
 	CCV_NNC_MFA_CHECK_ERROR(error);
