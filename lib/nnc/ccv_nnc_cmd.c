@@ -964,6 +964,17 @@ int ccv_nnc_queue_watermark(void)
 #endif
 }
 
+uint64_t ccv_nnc_gpu_error_count(int* const last_error)
+{
+#ifdef HAVE_MPS
+	return ccv_nnc_mps_command_buffer_error_count(last_error);
+#else
+	if (last_error)
+		*last_error = 0;
+	return 0;
+#endif
+}
+
 void ccv_nnc_set_queue_watermark(int watermark)
 {
 #ifdef HAVE_MPS

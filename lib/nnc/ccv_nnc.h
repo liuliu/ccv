@@ -1076,6 +1076,17 @@ void ccv_nnc_set_queue_watermark(int state);
  */
 CCV_WARN_UNUSED(int) ccv_nnc_queue_watermark(void);
 /**
+ * Get a count that grows whenever submitted GPU work fails. A failed Metal command buffer (for example, when
+ * the GPU runs out of memory) is aborted as a whole and leaves the outputs of every command in it unwritten,
+ * although those commands already returned success. Compare two reads of the count to learn whether work
+ * submitted in between failed; the count itself is not the number of failed submissions. A wait on the
+ * stream or on a tensor variable returns only after the failures it waited on are counted. This is a
+ * Metal-only option.
+ * @param last_error If not 0, receives the backend error code of the latest failure (an MTLCommandBufferError on Metal), or 0 if nothing failed.
+ * @return The count, which is 0 until GPU work fails.
+ */
+CCV_WARN_UNUSED(uint64_t) ccv_nnc_gpu_error_count(int* const last_error);
+/**
  * Set the device mapping to use custom order for device rather than driver imposed order. This is helpful
  * to manage code where which GPU to use have no control over. The previous permutation is cleared up on
  * each call and you can set 0 size device map to clear up all custom mapping.
@@ -3157,8 +3168,9 @@ CCV_WARN_UNUSED(ccv_nnc_tensor_t*) ccv_nnc_tensor_from_variable_impl(ccv_nnc_dyn
  * This is a no-op if the tensor variable has no materialized CPU tensor.
  * @param graph The dynamic graph.
  * @param tensor_variable The tensor variable to wait for.
+ * @return 0 when the tensor is safe to read, -1 if the GPU work that copies into it failed and its content is undefined.
  */
-void ccv_nnc_tensor_variable_wait(ccv_nnc_dynamic_graph_t* const graph, const ccv_nnc_tensor_variable_t tensor_variable);
+int ccv_nnc_tensor_variable_wait(ccv_nnc_dynamic_graph_t* const graph, const ccv_nnc_tensor_variable_t tensor_variable);
 /**
  * Query whether a given tensor variable is a constant (no gradient).
  * @param graph The dynamic graph.
