@@ -3361,7 +3361,150 @@ kernel void int8_gemv(
     CCV_NNC_MFA_PRECONDITION(false);
     return shader;
   }
-  if (mrows == 3) {
+  if (mrows > 3) {
+    // Q8_0 rowwise weights against 4 to 8 activation rows: the 3-row kernel's layout, with the
+    // activation rows in compile-time loops so the accumulators stay in registers.
+    shader += R"(
+#include <metal_stdlib>
+using namespace metal;
+
+kernel void int8_gemv(
+  device const char *src0 [[buffer(0)]],
+  device const real *src1 [[buffer(1)]],
+  device real *dst [[buffer(2)]],
+  device const real *scales [[buffer(3)]],
+)";
+    if (fusedBias) {
+      shader += R"(
+  device const real *bias [[buffer(4)]],
+)";
+    }
+    shader += R"(
+  uint tgpig [[threadgroup_position_in_grid]],
+  uint sgitg [[simdgroup_index_in_threadgroup]],
+  uint tiisg [[thread_index_in_simdgroup]]
+) {
+  constexpr uint ROWS = )";
+    shader += std::to_string(kInt8GemvRowsPerThreadgroup);
+    shader += R"(;
+  constexpr uint S = )";
+    shader += std::to_string(kInt8GemvSIMDGroupsPerThreadgroup);
+    shader += R"(;
+  constexpr uint M = )";
+    shader += std::to_string(mrows);
+    shader += R"(;
+  const uint rb = tgpig * ROWS;
+  const bool active1 = rb + 1 < nrows;
+  threadgroup float partials[M * 2][32];
+  device const char4* x0 = (device const char4*)((device const char*)src0 + (ulong)(rb + 0) * ncols);
+  device const char4* x1 = (device const char4*)((device const char*)src0 + (ulong)(rb + (active1 ? 1 : 0)) * ncols);
+
+  float sum0[M];
+  float sum1[M];
+  for (uint m = 0; m < M; m++) {
+    sum0[m] = 0;
+    sum1[m] = 0;
+  }
+  const uint nvecs = ncols / 4;
+  const uint stride = S * 64;
+  uint i = sgitg * 64 + tiisg * 2;
+  for (; i + 1 < nvecs; i += stride) {
+    const float4 q0 = float4(x0[i]);
+    const float4 q0b = float4(x0[i + 1]);
+    const float4 q1 = float4(x1[i]);
+    const float4 q1b = float4(x1[i + 1]);
+    for (uint m = 0; m < M; m++) {
+      device const real4* y = (device const real4*)(src1 + (ulong)ncols * m);
+      const float4 yv0 = float4(y[i]);
+      const float4 yv1 = float4(y[i + 1]);
+      sum0[m] += dot(q0, yv0);
+      sum0[m] += dot(q0b, yv1);
+      sum1[m] += dot(q1, yv0);
+      sum1[m] += dot(q1b, yv1);
+    }
+  }
+  if (i < nvecs) {
+    const float4 q0 = float4(x0[i]);
+    const float4 q1 = float4(x1[i]);
+    for (uint m = 0; m < M; m++) {
+      device const real4* y = (device const real4*)(src1 + (ulong)ncols * m);
+      const float4 yv = float4(y[i]);
+      sum0[m] += dot(q0, yv);
+      sum1[m] += dot(q1, yv);
+    }
+  }
+
+  if (sgitg == 0) {
+    for (uint j = 0; j < M * 2; j++)
+      partials[j][tiisg] = 0;
+  }
+  float lane0[M];
+  float lane1[M];
+  for (uint m = 0; m < M; m++) {
+    lane0[m] = simd_sum(sum0[m]);
+    lane1[m] = simd_sum(sum1[m]);
+  }
+  threadgroup_barrier(mem_flags::mem_threadgroup);
+  if (tiisg == 0) {
+    for (uint m = 0; m < M; m++) {
+      partials[m * 2][sgitg] = lane0[m];
+      partials[m * 2 + 1][sgitg] = lane1[m];
+    }
+  }
+  threadgroup_barrier(mem_flags::mem_threadgroup);
+  if (sgitg == 0) {
+    float all0[M];
+    float all1[M];
+    for (uint m = 0; m < M; m++) {
+      all0[m] = simd_sum(partials[m * 2][tiisg]);
+      all1[m] = simd_sum(partials[m * 2 + 1][tiisg]);
+    }
+    if (tiisg == 0) {
+      const float scale = (float)scales[rb + 0];
+)";
+    if (fusedBias) {
+      shader += R"(
+      const float biasv = (float)bias[rb + 0];
+)";
+    }
+    shader += R"(
+      for (uint m = 0; m < M; m++) {
+        float value = all0[m] * scale;
+)";
+    if (fusedBias) {
+      shader += R"(
+        value += biasv;
+)";
+    }
+    shader += R"(
+        dst[nrows * m + rb + 0] = (real)value;
+      }
+    }
+    if (tiisg == 1 && active1) {
+      const float scale = (float)scales[rb + 1];
+)";
+    if (fusedBias) {
+      shader += R"(
+      const float biasv = (float)bias[rb + 1];
+)";
+    }
+    shader += R"(
+      for (uint m = 0; m < M; m++) {
+        float value = all1[m] * scale;
+)";
+    if (fusedBias) {
+      shader += R"(
+        value += biasv;
+)";
+    }
+    shader += R"(
+        dst[nrows * m + rb + 1] = (real)value;
+      }
+    }
+  }
+}
+)";
+  } else if (mrows == 3) {
     shader += R"(
 #include <metal_stdlib>
 using namespace metal;

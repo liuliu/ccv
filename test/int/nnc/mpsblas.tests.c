@@ -3140,10 +3140,11 @@ TEST_CASE("mps fp32 row-wise 8i fallback quantizes values outside the fp16 range
 TEST_CASE("mps Int8MatMul matches quantized reference across tiles, edges, precisions and bias")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_MPS));
-	// Tiny M, partial tiles in M and N, a K remainder after the unrolled loop,
-	// and enough rows and columns to choose the larger tiles on most GPUs.
+	// Tiny M (past the 8 rows the vector kernel takes), partial tiles in M and N, a K
+	// remainder after the unrolled loop, and enough rows and columns to choose the larger
+	// tiles on most GPUs.
 	const int shapes[][3] = {
-		{5, 33, 136}, {16, 64, 4096}, {37, 1001, 520}, {1025, 1000, 1032},
+		{9, 33, 136}, {16, 64, 4096}, {37, 1001, 520}, {1025, 1000, 1032},
 		{2049, 3072, 1024}, {4100, 6144, 512},
 	};
 	const int datatypes[] = {CCV_16F, CCV_32F};
@@ -3552,6 +3553,28 @@ TEST_CASE("mps forward gemv with row-wise 8i weight scaled gemv")
 	max_rel = 0;
 	REQUIRE_EQ(_mps_forward_scaled_gemm_compare_dense(CCV_16BF, 0, 3, 1024, 2560, &max_abs, &max_rel), 0, "row-wise 8i GEMV M=3 bf16 validation should run");
 	REQUIRE(max_abs < 4e-2 || max_rel < 1e-2, "row-wise 8i GEMV M=3 bf16 should match dense GPU reference, max_abs=%g max_rel=%g", max_abs, max_rel);
+}
+
+TEST_CASE("mps forward gemv with row-wise 8i weight scaled gemv for 4 to 8 rows")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_MPS));
+	// A speculative verify's rows: an odd output count leaves the second row of a threadgroup idle.
+	// FP32 activations take the vector kernel for 4 rows only.
+	const int datatypes[] = { CCV_16F, CCV_32F, CCV_16BF };
+	const int shapes[][2] = { { 1024, 2560 }, { 1023, 5120 } };
+	int rows, bias, i, j;
+	for (rows = 4; rows <= 8; rows++)
+		for (bias = 0; bias < 2; bias++)
+			for (i = 0; i < 3; i++)
+				for (j = 0; j < 2; j++)
+				{
+					if (datatypes[i] == CCV_32F && rows > 4)
+						continue;
+					double max_abs = 0;
+					double max_rel = 0;
+					REQUIRE_EQ(_mps_forward_scaled_gemm_compare_dense(datatypes[i], bias, rows, shapes[j][0], shapes[j][1], &max_abs, &max_rel), 0, "row-wise 8i GEMV M=%d validation should run", rows);
+					REQUIRE(max_abs < (datatypes[i] == CCV_16BF ? 4e-2 : 2e-2) || max_rel < (datatypes[i] == CCV_16BF ? 1e-2 : 5e-3), "row-wise 8i GEMV M=%d bias=%d datatype=%d N=%d should match dense GPU reference, max_abs=%g max_rel=%g", rows, bias, datatypes[i], shapes[j][0], max_abs, max_rel);
+				}
 }
 
 TEST_CASE("mps forward cooperative fp32 gemv")

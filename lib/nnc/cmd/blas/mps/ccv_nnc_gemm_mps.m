@@ -448,7 +448,10 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 			(CCV_GET_DATA_TYPE(a->info.datatype) != CCV_QX) &&
 			(CCV_GET_DATA_TYPE(b->info.datatype) != CCV_QX) &&
 			(!bias || CCV_GET_DATA_TYPE(bias->info.datatype) != CCV_QX) &&
-			(a_rows == 1 || a_rows == 2 || a_rows == 3) &&
+			// Q8_0 weights keep the vector kernel up to 8 rows, which covers a speculative verify.
+			// Every threadgroup rereads all activation rows, so FP32 activations stop at 4 rows:
+			// past that they lose to the matrix paths on wide or long weights (M5 Max).
+			(a_rows == 1 || a_rows == 2 || a_rows == 3 || (!w_8i_rowwise_x_format && a_rows >= 4 && a_rows * (a_datatype == CCV_32F ? 4 : 2) <= 16)) &&
 			!is_transpose_a &&
 			is_transpose_w &&
 			(w_rows % 4) == 0 &&
