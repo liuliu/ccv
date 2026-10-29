@@ -152,8 +152,10 @@ void ccv_nnc_mfa_encode_int8_swiglu(
   CCV_NNC_MFA_PRECONDITION(num_tensors == 4);
   CCV_NNC_MFA_PRECONDITION(params.N > 0 && params.K > 0);
   CCV_NNC_MFA_PRECONDITION((params.K % 4) == 0);
+  CCV_NNC_MFA_PRECONDITION(params.M <= 6);
 
   Int8SwiGLUDescriptor descriptor;
+  descriptor.M = params.M > 0 ? params.M : 1;
   descriptor.N = params.N;
   descriptor.K = params.K;
   descriptor.clamp = params.clamp;

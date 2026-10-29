@@ -3,6 +3,8 @@
 
 typedef struct {
   uint64_t data_type;
+  // Activation rows, at most 6; 0 means 1.
+  uint32_t M;
   uint32_t N;
   uint32_t K;
   float clamp;

@@ -257,7 +257,7 @@ static void _swiglu_mps_rowwise_case(const int rows, const float clamp, const ch
 	else
 		ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA);
 	_swiglu_compare_half(actual->data.f16, expected->data.f32, rows * n,
-		rows == 1 ? 0.02 : 0.04, case_name, __case_result__);
+		rows <= 6 ? 0.02 : 0.04, case_name, __case_result__);
 	ccv_nnc_stream_context_free(stream);
 	ccv_nnc_tensor_free(actual);
 	ccv_nnc_tensor_free(output);
@@ -285,6 +285,15 @@ TEST_CASE("MPS SwiGLU fuses rowwise int8 decode")
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SWIGLU_FORWARD, CCV_NNC_BACKEND_MPS));
 	_swiglu_mps_rowwise_case(1, 10, "rowwise int8 decode SwiGLU should match its dequantized CPU reference", __case_result__);
 	_swiglu_mps_rowwise_case(1, 0, "unclamped rowwise int8 decode SwiGLU should match its dequantized CPU reference", __case_result__);
+}
+
+TEST_CASE("MPS SwiGLU reads rowwise int8 weights once for a few rows")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SWIGLU_FORWARD, CCV_NNC_BACKEND_MPS));
+	static const int rows[] = { 2, 3, 4, 6 };
+	int i;
+	for (i = 0; i < sizeof(rows) / sizeof(rows[0]); i++)
+		_swiglu_mps_rowwise_case(rows[i], 10, "few-row rowwise int8 SwiGLU should match its dequantized CPU reference", __case_result__);
 }
 
 TEST_CASE("MPS SwiGLU quantizes activation once for rowwise int8 prefill")

@@ -85,10 +85,13 @@ static int _ccv_nnc_swiglu_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hi
 	if (rowwise_weights && !rowwise_shape_supported)
 		return CCV_NNC_EXEC_INVALID;
 
-	if (rowwise_weights && gate_format == 0 && M == 1)
+	// A few rows, as a speculative verify runs, read the weights once in the GEMV-style kernel.
+	// Past 6 rows its per-row sums make it slower than the matrix paths on wide FFNs (M5 Max).
+	if (rowwise_weights && gate_format == 0 && M <= 6)
 	{
 		const ccv_nnc_mfa_int8_swiglu_params_t params = {
 			.data_type = mtl_datatype,
+			.M = M,
 			.N = N,
 			.K = K,
 			.clamp = cmd.info.swiglu.clamp,

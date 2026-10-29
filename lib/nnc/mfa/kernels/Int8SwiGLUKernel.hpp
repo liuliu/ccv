@@ -10,10 +10,12 @@ constexpr uint32_t kInt8SwiGLUSIMDGroupsPerThreadgroup = 4;
 struct Int8SwiGLUKernelDescriptor {
   bool clamp;
   GEMMOperandPrecision memoryPrecision;
+  uint32_t activationRows;
 
   constexpr bool operator==(const Int8SwiGLUKernelDescriptor& rhs) const
   {
-    return clamp == rhs.clamp && memoryPrecision == rhs.memoryPrecision;
+    return clamp == rhs.clamp && memoryPrecision == rhs.memoryPrecision &&
+      activationRows == rhs.activationRows;
   }
 };
 
@@ -23,7 +25,8 @@ struct std::hash<Int8SwiGLUKernelDescriptor>
   std::size_t operator()(const Int8SwiGLUKernelDescriptor& value) const noexcept
   {
     return std::hash<uint32_t>()(
-      (uint32_t)value.memoryPrecision.value | ((uint32_t)value.clamp << 8));
+      (uint32_t)value.memoryPrecision.value | ((uint32_t)value.clamp << 8) |
+      (value.activationRows << 16));
   }
 };
 
