@@ -12,6 +12,11 @@ typedef struct {
 	uint32_t route_weight_bytes;
 } ccv_nnc_mfa_moe_weights_streaming_params_t;
 
+// Calls of up to this many tokens, the widest DSpark verify (the pending token and five drafts),
+// use the resident pool as decode does when every routed pair could take a slot. The host and the
+// plan kernel apply the same rule: the host binds the expert buffers, the kernel plans for them.
+#define CCV_NNC_MFA_MOE_WEIGHTS_STREAMING_RESIDENT_TOKENS 6
+
 #ifdef __cplusplus
 extern "C" {
 #endif

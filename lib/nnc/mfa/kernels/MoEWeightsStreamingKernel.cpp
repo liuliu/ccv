@@ -15,7 +15,8 @@ constexpr constant metal::thread_scope thread_scope_system =
 	static_cast<thread_scope>(__METAL_MEMORY_SCOPE_SYSTEM__);
 }
 using namespace metal;
-
+)" + std::string("\nconstant uint resident_tokens = ") +
+		std::to_string(CCV_NNC_MFA_MOE_WEIGHTS_STREAMING_RESIDENT_TOKENS) + ";\n" + R"(
 struct Plan {
 	uint generation;
 	uint desired_count;
@@ -65,7 +66,9 @@ kernel void moe_weights_streaming(
 	plan->desired_count = 0;
 	plan->load_count = 0;
 	plan->invalid = 0;
-	const bool prefill = p.route_weight_count != p.routing_width;
+	// The host binds the staging buffers or the resident pool by the same rule.
+	const bool prefill = p.route_weight_count / p.routing_width > resident_tokens ||
+		p.route_weight_count > p.resident_slots;
 	if (p.initialize)
 	{
 		for (uint i = 0; i < p.expert_count; i++)

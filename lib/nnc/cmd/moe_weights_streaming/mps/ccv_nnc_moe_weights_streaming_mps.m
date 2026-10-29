@@ -830,8 +830,13 @@ static int _ccv_nnc_moe_weights_streaming_forw(const ccv_nnc_cmd_t cmd, const cc
 	if (!state)
 		return CCV_NNC_EXEC_INVALID;
 	const size_t route_weight_count = ccv_nnc_tensor_count(inputs[2]->info);
-	const int prefill = route_weight_count != (size_t)cmd.info.moe_weights_streaming.routing_width;
 	const size_t tokens = route_weight_count / cmd.info.moe_weights_streaming.routing_width;
+	// Up to the widest DSpark verify, a call uses the resident pool as decode does when every
+	// routed pair could take a slot of its own: hits read in place and misses join the pool.
+	// Longer calls, such as prompt chunks, stage the experts they use. The plan kernel applies
+	// the same rule.
+	const int prefill = tokens > CCV_NNC_MFA_MOE_WEIGHTS_STREAMING_RESIDENT_TOKENS ||
+		route_weight_count > (size_t)state->resident_slot_count;
 	// Use token count, not routed rows. Above 25% resident coverage, retain
 	// selective loading until the larger prefill boundary (tuned on DS4).
 	const int full_prefill = tokens >= 4096 || (tokens >= 3072 &&

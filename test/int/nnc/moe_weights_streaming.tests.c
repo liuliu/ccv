@@ -58,13 +58,17 @@ static int _moe_weights_streaming_write_file(const ccv_nnc_tensor_t* const tenso
 	return success;
 }
 
+// How a case's output indices should come back: compacted staging positions, logical expert IDs
+// from a full load, or resident slots.
+enum { STAGED_INDICES, FULL_INDICES, RESIDENT_INDICES };
+
 static int _moe_weights_streaming_run_case(
 	ccv_nnc_tensor_t* const gate_source, ccv_nnc_tensor_t* const up_source,
 	ccv_nnc_tensor_t* const down_source, ccv_nnc_tensor_t* const gate_reference,
 	ccv_nnc_tensor_t* const up_reference, ccv_nnc_tensor_t* const down_reference,
 	const int* const selected, const int* const segment_counts, const int segment_count,
 	const int row_count, const int case_seed, const int resident_slots,
-	const int expected_full, const int with_shared, double* const max_difference)
+	const int expected_indices, const int with_shared, double* const max_difference)
 {
 	const int n = gate_source->info.dim[1];
 	const int k = gate_source->info.dim[2];
@@ -194,8 +198,20 @@ static int _moe_weights_streaming_run_case(
 	if (status == CCV_NNC_EXEC_SUCCESS && row_count > 1)
 	{
 		// Full load keeps logical expert IDs; selective staging compacts them.
-		if (expected_full ? memcmp(host_indices->data.i32, selected, sizeof(int) * segment_count) != 0 : host_indices->data.i32[0] != 0)
+		if (expected_indices == FULL_INDICES ? memcmp(host_indices->data.i32, selected, sizeof(int) * segment_count) != 0 :
+			expected_indices == STAGED_INDICES && host_indices->data.i32[0] != 0)
 			status = CCV_NNC_EXEC_INVALID;
+		// Resident calls rewrite each used expert to a distinct slot of the pool.
+		for (i = 0; expected_indices == RESIDENT_INDICES && i < segment_count; i++)
+		{
+			if (!segment_counts[i])
+				continue;
+			if (host_indices->data.i32[i] < 0 || host_indices->data.i32[i] >= resident_slots)
+				status = CCV_NNC_EXEC_INVALID;
+			for (int j = 0; j < i; j++)
+				if (segment_counts[j] && host_indices->data.i32[j] == host_indices->data.i32[i])
+					status = CCV_NNC_EXEC_INVALID;
+		}
 	}
 	if (status == CCV_NNC_EXEC_SUCCESS)
 	{
@@ -421,6 +437,39 @@ TEST_CASE("MPS MoE weights streaming covers resident decode, eviction, and prefi
 			"default decode should retain the resident cache across adaptive prefill");
 		REQUIRE(max_difference < 1e-3, "post-adaptive decode should match reference");
 	}
+	// Up to six rows that fit the pool decode through resident slots: cold misses, hits, and
+	// evictions that spare the call's own experts. Seven rows stage even though they fit.
+	const int verify_indices[] = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 };
+	const int verify_counts[][10] = {
+		{ 1, 1, 1, 1, 1, 1, 0, 0, 0, 0 },
+		{ 0, 0, 0, 0, 1, 1, 1, 1, 1, 1 },
+		{ 2, 0, 3, 0, 0, 0, 0, 0, 0, 1 },
+		{ 0, 1, 0, 1, 0, 0, 2, 0, 0, 0 },
+		{ 1, 1, 1, 1, 1, 1, 1, 0, 0, 0 },
+	};
+	const int verify_rows[] = { 6, 6, 6, 4, 7 };
+	for (i = 0; i < 5; i++)
+	{
+		REQUIRE_EQ(_moe_weights_streaming_run_case(
+			streamed_weights[0], streamed_weights[1], streamed_weights[2],
+			reference_weights[0], reference_weights[1], reference_weights[2],
+			verify_indices, verify_counts[i], 10, verify_rows[i], 121 + i, 8,
+			i < 4 ? RESIDENT_INDICES : STAGED_INDICES, i % 2, &max_difference), CCV_NNC_EXEC_SUCCESS,
+			"a short multi-row call should decode through the resident pool");
+		REQUIRE(max_difference < 1e-3,
+			"resident multi-row decode should match the same rowwise weights without streaming (max difference %.8g)",
+			max_difference);
+	}
+	// Six tokens whose routed pairs outnumber the slots stage: the resident pool could not give
+	// every pair a slot of its own.
+	REQUIRE_EQ(_moe_weights_streaming_run_case(
+		streamed_weights[0], streamed_weights[1], streamed_weights[2],
+		reference_weights[0], reference_weights[1], reference_weights[2],
+		verify_indices, verify_counts[0], 10, 6, 126, 4, STAGED_INDICES, 0, &max_difference), CCV_NNC_EXEC_SUCCESS,
+		"a short call with more routed pairs than resident slots should stage");
+	REQUIRE(max_difference < 1e-3,
+		"staged short call should match the same rowwise weights without streaming (max difference %.8g)",
+		max_difference);
 	// Each capacity change creates fresh state on the same source weights.
 	// Check cold and warm dispatch at the 25% resident cutoff, with both high
 	// expert IDs and a zero-count entry.
