@@ -5137,6 +5137,14 @@ CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_reduce_norm2(const int* const axis, 
  */
 CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_argmax(const int axis, const char* const name);
 /**
+ * A Gumbel argmax model, which samples indices by adding scaled Gumbel noise to the input before argmax.
+ * @param axis The axis to be reduced.
+ * @param scale The scale applied to the Gumbel noise (i.e. the sampling temperature). 0 makes it a plain argmax.
+ * @param name The unique name of the model.
+ * @return A sampled indices model.
+ */
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_gumbel_argmax(const int axis, const float scale, const char* const name);
+/**
  * A argmin model.
  * @param axis The axis to be reduced.
  * @param name The unique name of the model.

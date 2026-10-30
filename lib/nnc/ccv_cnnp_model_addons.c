@@ -4139,6 +4139,55 @@ static ccv_cnnp_model_t* _ccv_cnnp_argmax_copy(const ccv_cnnp_model_t* const sup
 	return ccv_cnnp_argmax(self->axis, self->super.name);
 }
 
+// MARK - Gumbel Argmax Layer
+
+typedef struct {
+	ccv_cnnp_model_t super;
+	int axis;
+	float scale;
+	ccv_nnc_tensor_symbol_t output;
+} ccv_cnnp_model_gumbel_argmax_t;
+
+static void _ccv_cnnp_gumbel_argmax_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
+{
+	const ccv_cnnp_model_gumbel_argmax_t* const self = (const ccv_cnnp_model_gumbel_argmax_t*)super;
+	PRINT(CCV_CLI_VERBOSE, "[cnnp_gumbel_argmax_build] -\n");
+	assert(input_size == 1);
+	assert(output_size == 1);
+	ccv_nnc_tensor_param_t input_params = ccv_nnc_tensor_symbol_params(graph, inputs[0]);
+	ccv_nnc_tensor_param_t output_params;
+	ccv_nnc_cmd_t gumbel_argmax = CMD_GUMBEL_ARGMAX_FORWARD(self->scale, self->axis);
+	ccv_nnc_hint_tensor_auto(gumbel_argmax, &input_params, 1, ccv_nnc_no_hint, &output_params, 1);
+	outputs[0] = ccv_nnc_tensor_symbol_new(graph, output_params, 0);
+	ccv_nnc_graph_exec_symbol_new(graph, gumbel_argmax, inputs, input_size, outputs, output_size, "gumbel_argmax");
+}
+
+static ccv_cnnp_model_t* _ccv_cnnp_gumbel_argmax_copy(const ccv_cnnp_model_t* const self, void* const context);
+
+static const ccv_cnnp_model_vtab_t ccv_cnnp_gumbel_argmax_isa = {
+	.build = _ccv_cnnp_gumbel_argmax_build,
+	.copy = _ccv_cnnp_gumbel_argmax_copy,
+};
+
+ccv_cnnp_model_t* ccv_cnnp_gumbel_argmax(const int axis, const float scale, const char* const name)
+{
+	ccv_cnnp_model_gumbel_argmax_t* const model_gumbel_argmax = (ccv_cnnp_model_gumbel_argmax_t*)cccalloc(1, sizeof(ccv_cnnp_model_gumbel_argmax_t));
+	model_gumbel_argmax->super.isa = &ccv_cnnp_gumbel_argmax_isa;
+	model_gumbel_argmax->super.input_size = 1;
+	model_gumbel_argmax->super.outputs = &model_gumbel_argmax->output;
+	model_gumbel_argmax->super.output_size = 1;
+	ccv_cnnp_model_copy_name(&model_gumbel_argmax->super, name);
+	model_gumbel_argmax->axis = axis;
+	model_gumbel_argmax->scale = scale;
+	return (ccv_cnnp_model_t*)model_gumbel_argmax;
+}
+
+static ccv_cnnp_model_t* _ccv_cnnp_gumbel_argmax_copy(const ccv_cnnp_model_t* const super, void* const context)
+{
+	const ccv_cnnp_model_gumbel_argmax_t* const self = (const ccv_cnnp_model_gumbel_argmax_t*)super;
+	return ccv_cnnp_gumbel_argmax(self->axis, self->scale, self->super.name);
+}
+
 // MARK - Argmin Layer
 
 typedef struct {
