@@ -138,7 +138,9 @@ inline uint4 philox4x32_10(uint4 counter, uint2 key)
 
 inline float uniform_open_01(uint random_bits)
 {
-  return (float(random_bits >> 8) + 0.5f) * 0x1.0p-24f;
+  // 23 bits keep every value representable: the largest is 1 - 2^-24. With 24 bits it would be
+  // 1 - 2^-25, which rounds to 1, and the Gumbel noise of a 1 is infinite.
+  return (float(random_bits >> 9) + 0.5f) * 0x1.0p-23f;
 }
 
 inline float gumbel_from_bits(uint random_bits)

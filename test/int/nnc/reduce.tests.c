@@ -815,6 +815,48 @@ TEST_CASE("mps gumbel argmax over multiple MFA partitions")
 	ccv_nnc_tensor_free(hb);
 }
 
+TEST_CASE("mps gumbel argmax noise never overcomes a 40 nat lead")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GUMBEL_ARGMAX_FORWARD, CCV_NNC_BACKEND_MPS));
+	// Noise from a uniform of at most 1 - 2^-24 stays under 17, so column 0 always wins. A
+	// uniform that rounds to 1 gives infinite noise; 2^27 draws would hit that about 8 times.
+	const int rows = 64;
+	const int columns = 65536;
+	const int calls = 32;
+	ccv_nnc_tensor_t* const ha = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, columns), 0);
+	int i, j;
+	for (i = 0; i < rows; i++)
+	{
+		for (j = 0; j < columns; j++)
+			ha->data.f32[i * columns + j] = 0;
+		ha->data.f32[i * columns] = 40;
+	}
+	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, rows, columns), 0);
+	ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32S, rows, 1), 0);
+	ccv_nnc_tensor_t* const hb = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, rows, 1), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha), TENSOR_LIST(a), 0);
+	ccv_nnc_stream_context_t* const stream_context = ccv_nnc_stream_context_new(CCV_STREAM_CONTEXT_GPU);
+	ccv_nnc_stream_context_set_seed(stream_context, 7);
+	ccv_nnc_cmd_t cmd = CMD_GUMBEL_ARGMAX(1, 1);
+	cmd.backend = CCV_NNC_BACKEND_MPS;
+	assert(cmd.backend >= 0);
+	int overcome = 0;
+	for (i = 0; i < calls; i++)
+	{
+		ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(a), TENSOR_LIST(b), stream_context);
+		ccv_nnc_stream_context_wait(stream_context);
+		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(b), TENSOR_LIST(hb), 0);
+		for (j = 0; j < rows; j++)
+			overcome += hb->data.i32[j] != 0;
+	}
+	REQUIRE_EQ(0, overcome, "gumbel noise should never overcome a 40 nat lead");
+	ccv_nnc_stream_context_free(stream_context);
+	ccv_nnc_tensor_free(ha);
+	ccv_nnc_tensor_free(a);
+	ccv_nnc_tensor_free(b);
+	ccv_nnc_tensor_free(hb);
+}
+
 TEST_CASE("mps gumbel argmax falls back for a non-final axis")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GUMBEL_ARGMAX_FORWARD, CCV_NNC_BACKEND_MPS));
