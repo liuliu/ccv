@@ -495,10 +495,6 @@ static int _ccv_nnc_moe_pread_all(const int fd, const off_t source_offset, void*
 {
 	if (fd < 0 || source_offset < 0 || !destination)
 		return 0;
-#ifdef F_RDADVISE
-	struct radvisory advice = { .ra_offset = source_offset, .ra_count = (int)ccv_min(size, (size_t)INT_MAX) };
-	(void)fcntl(fd, F_RDADVISE, &advice);
-#endif
 	size_t completed = 0;
 	while (completed < size)
 	{

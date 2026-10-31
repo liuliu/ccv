@@ -15,7 +15,7 @@ constexpr constant metal::thread_scope thread_scope_system =
 	static_cast<thread_scope>(__METAL_MEMORY_SCOPE_SYSTEM__);
 }
 using namespace metal;
-)" + std::string("\nconstant uint resident_tokens = ") +
+)" + std::string("\nconstant uint reused_bit = 0x80000000u;\nconstant uint resident_tokens = ") +
 		std::to_string(CCV_NNC_MFA_MOE_WEIGHTS_STREAMING_RESIDENT_TOKENS) + ";\n" + R"(
 struct Plan {
 	uint generation;
@@ -121,6 +121,8 @@ kernel void moe_weights_streaming(
 		plan->invalid = 1;
 		return;
 	}
+	// Stamps wrap, so eviction orders them by age; now is at or past every stamp.
+	const uint now = (p.generation + 1) * p.expert_count;
 	for (uint i = 0; i < plan->desired_count; i++)
 	{
 		const int expert = desired_experts[i];
@@ -141,6 +143,7 @@ kernel void moe_weights_streaming(
 			}
 			continue;
 		}
+		const bool hit = slot >= 0;
 		if (slot < 0)
 		{
 			for (uint j = 0; j < p.resident_slots; j++)
@@ -151,7 +154,10 @@ kernel void moe_weights_streaming(
 				}
 			if (slot < 0)
 			{
-				uint oldest = 0xffffffffu;
+				// Evict the oldest expert not used since it loaded, then the oldest of the rest.
+				uint oldest = 0;
+				uint oldest_reused = 0;
+				int reused_slot = -1;
 				for (uint j = 0; j < p.resident_slots; j++)
 				{
 					const int resident = slot_to_logical[j];
@@ -162,12 +168,24 @@ kernel void moe_weights_streaming(
 							protected_slot = true;
 							break;
 						}
-					if (!protected_slot && last_used[j] < oldest)
+					if (protected_slot)
+						continue;
+					const uint age = (now - last_used[j]) & ~reused_bit;
+					if (last_used[j] & reused_bit)
 					{
-						oldest = last_used[j];
+						if (reused_slot < 0 || age > oldest_reused)
+						{
+							oldest_reused = age;
+							reused_slot = int(j);
+						}
+					} else if (slot < 0 || age > oldest)
+					{
+						oldest = age;
 						slot = int(j);
 					}
 				}
+				if (slot < 0)
+					slot = reused_slot;
 			}
 			if (slot < 0)
 			{
@@ -183,7 +201,29 @@ kernel void moe_weights_streaming(
 			load_experts[load] = expert;
 			load_slots[load] = slot;
 		}
-		last_used[slot] = p.generation * p.expert_count + i + 1;
+		const uint stamp = (p.generation * p.expert_count + i + 1) & ~reused_bit;
+		if (hit && !(last_used[slot] & reused_bit))
+		{
+			// At most 90% of the pool counts as reused; the oldest beyond that starts over.
+			uint reused = 1;
+			uint oldest_reused = 0;
+			int oldest_slot = -1;
+			for (uint j = 0; j < p.resident_slots; j++)
+				if (last_used[j] & reused_bit)
+				{
+					reused++;
+					const uint age = (now - last_used[j]) & ~reused_bit;
+					if (oldest_slot < 0 || age > oldest_reused)
+					{
+						oldest_reused = age;
+						oldest_slot = int(j);
+					}
+				}
+			if (reused * 10 > p.resident_slots * 9 && oldest_slot >= 0)
+				last_used[oldest_slot] &= ~reused_bit;
+			last_used[slot] = stamp | reused_bit;
+		} else
+			last_used[slot] = stamp | (hit ? reused_bit : 0);
 		desired_slots[i] = slot;
 	}
 	uint desired = 0;
