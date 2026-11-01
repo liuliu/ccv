@@ -1038,4 +1038,28 @@ TEST_CASE("reduce isnan in half precision")
 	ccv_nnc_tensor_free(bt);
 }
 
+TEST_CASE("reduce mean forward accepts zero-sized tensors without storage")
+{
+	const uint32_t backends[] = {CCV_NNC_BACKEND_MPS, CCV_NNC_BACKEND_CPU_REF};
+	const int datatypes[] = {CCV_32F, CCV_16F};
+	int backend, datatype;
+	for (backend = 0; backend < sizeof(backends) / sizeof(backends[0]); backend++)
+		for (datatype = 0; datatype < sizeof(datatypes) / sizeof(datatypes[0]); datatype++)
+		{
+			ccv_nnc_cmd_t cmd = CMD_REDUCE_MEAN_FORWARD(1);
+			cmd.backend = backends[backend];
+			if (!ccv_nnc_cmd_ok(cmd.cmd, cmd.backend) || (cmd.backend == CCV_NNC_BACKEND_CPU_REF && datatypes[datatype] != CCV_32F))
+				continue;
+			const int gpu = cmd.backend != CCV_NNC_BACKEND_CPU_REF;
+			ccv_nnc_tensor_param_t input_params = gpu ? GPU_TENSOR_NHWC(000, 32F, 0, 4, 64) : CPU_TENSOR_NHWC(32F, 0, 4, 64);
+			ccv_nnc_tensor_param_t output_params = gpu ? GPU_TENSOR_NHWC(000, 32F, 0, 1, 64) : CPU_TENSOR_NHWC(32F, 0, 1, 64);
+			input_params.datatype = datatypes[datatype];
+			output_params.datatype = datatypes[datatype];
+			// Empty activations can have no storage at all.
+			ccv_nnc_tensor_t input = { .info = input_params };
+			ccv_nnc_tensor_t output = { .info = output_params };
+			REQUIRE_EQ(CCV_NNC_EXEC_SUCCESS, ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(&input), TENSOR_LIST(&output), 0), "empty reduce mean must not access storage");
+		}
+}
+
 #include "case_main.h"

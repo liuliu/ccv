@@ -61,6 +61,8 @@ void _ccv_nnc_reduce_mean_forw_cpu_ref(ccv_nnc_tensor_view_t* const a, ccv_nnc_t
 static int _ccv_nnc_reduce_mean_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
 {
 	assert(input_size == 1);
+	if (inputs[0]->info.dim[0] == 0 || outputs[0]->info.dim[0] == 0)
+		return CCV_NNC_EXEC_SUCCESS;
 	ccv_nnc_tensor_view_t* const a = (ccv_nnc_tensor_view_t*)inputs[0];
 	ccv_nnc_tensor_view_t* const b = (ccv_nnc_tensor_view_t*)outputs[0];
 	_ccv_nnc_reduce_mean_forw_cpu_ref(a, b);
