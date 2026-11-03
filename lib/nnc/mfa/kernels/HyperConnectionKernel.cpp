@@ -344,7 +344,7 @@ kernel void hyper_connection_mix_finish(
 // the residual's squares for the split. Rows hold at most 16 * 1024 hidden columns.
 constant uint ROW_THREADS = 1024;
 
-kernel void hyper_connection_collapse_norm_rows(
+[[kernel, max_total_threads_per_threadgroup(1024)]] void hyper_connection_collapse_norm_rows(
 	device const float* residual [[buffer(0)]],
 	device const float* incoming_pre [[buffer(1)]],
 	device const float* norm_scale [[buffer(2)]],
@@ -403,6 +403,95 @@ kernel void hyper_connection_collapse_norm_rows(
 		const uint d = t * ROW_THREADS + tid;
 		if (d < hidden)
 			output[(ulong)row * hidden + d] = values[t] * rstd * norm_scale[d];
+	}
+}
+
+// Mix with its own pre: a threadgroup splits the row after the projection, collapses the residual
+// with the pre it just wrote, and normalizes. Rows hold at most 16 * 1024 hidden columns.
+[[kernel, max_total_threads_per_threadgroup(1024)]] void hyper_connection_mix_finish_own_pre(
+	device const float* dots [[buffer(0)]],
+	device const float* squares [[buffer(1)]],
+	device const float* scale [[buffer(2)]],
+	device const float* base [[buffer(3)]],
+	device float* pre_out [[buffer(4)]],
+	device float* post_out [[buffer(5)]],
+	device float* comb_out [[buffer(6)]],
+	device const float* residual [[buffer(7)]],
+	device const float* norm_scale [[buffer(8)]],
+	device float* output [[buffer(9)]],
+	uint row [[threadgroup_position_in_grid]],
+	uint tid [[thread_index_in_threadgroup]],
+	ushort sgid [[simdgroup_index_in_threadgroup]],
+	ushort lane [[thread_index_in_simdgroup]])
+{
+	threadgroup float sums[ROW_THREADS / 32];
+	if (sgid == 0)
+		hyper_connection_mix_split_row(dots, squares, scale, base, pre_out, post_out, comb_out, row, lane);
+	threadgroup_barrier(mem_flags::mem_device);
+	float pre[16];
+	for (uint i = 0; i < hc; i++)
+		pre[i] = pre_out[row * hc + i];
+	device const float* x = residual + (ulong)row * hc * hidden;
+	float values[16];
+	float collapsed_square = 0;
+	#pragma clang loop unroll(full)
+	for (uint t = 0; t < 16; t++)
+	{
+		const uint d = t * ROW_THREADS + tid;
+		if (d < hidden)
+		{
+			float value = 0;
+			for (uint i = 0; i < hc; i++)
+				value += x[i * hidden + d] * pre[i];
+			values[t] = value;
+			collapsed_square += value * value;
+		}
+	}
+	collapsed_square = simd_sum(collapsed_square);
+	if (lane == 0)
+		sums[sgid] = collapsed_square;
+	threadgroup_barrier(mem_flags::mem_threadgroup);
+	if (sgid == 0)
+	{
+		collapsed_square = simd_sum(sums[lane]);
+		if (lane == 0)
+			sums[0] = rsqrt(collapsed_square / float(hidden) + norm_epsilon);
+	}
+	threadgroup_barrier(mem_flags::mem_threadgroup);
+	const float rstd = sums[0];
+	#pragma clang loop unroll(full)
+	for (uint t = 0; t < 16; t++)
+	{
+		const uint d = t * ROW_THREADS + tid;
+		if (d < hidden)
+			output[(ulong)row * hidden + d] = values[t] * rstd * norm_scale[d];
+	}
+}
+
+// Mix with many rows: the squares the split reads, before the projection GEMM.
+[[kernel, max_total_threads_per_threadgroup(1024)]] void hyper_connection_mix_row_squares(
+	device const float* residual [[buffer(0)]],
+	device float* squares [[buffer(1)]],
+	uint row [[threadgroup_position_in_grid]],
+	uint tid [[thread_index_in_threadgroup]],
+	ushort sgid [[simdgroup_index_in_threadgroup]],
+	ushort lane [[thread_index_in_simdgroup]])
+{
+	threadgroup float sums[ROW_THREADS / 32];
+	const uint flat = hc * hidden;
+	device const float* x = residual + (ulong)row * flat;
+	float square = 0;
+	for (uint i = tid; i < flat; i += ROW_THREADS)
+		square += x[i] * x[i];
+	square = simd_sum(square);
+	if (lane == 0)
+		sums[sgid] = square;
+	threadgroup_barrier(mem_flags::mem_threadgroup);
+	if (sgid == 0)
+	{
+		square = simd_sum(sums[lane]);
+		if (lane == 0)
+			squares[row] = square;
 	}
 }
 )";

@@ -48,7 +48,9 @@ std::pair<HyperConnectionKernelDescriptor, PipelineValue<HyperConnectionKernel>*
 		operation == 3 ? "hyper_connection_mix_partials" :
 		operation == 4 ? "hyper_connection_mix_split" :
 		operation == 5 ? "hyper_connection_mix_finish" :
-		operation == 6 ? "hyper_connection_collapse_norm_rows" : "hyper_connection";
+		operation == 6 ? "hyper_connection_collapse_norm_rows" :
+		operation == 7 ? "hyper_connection_mix_finish_own_pre" :
+		operation == 8 ? "hyper_connection_mix_row_squares" : "hyper_connection";
 	NS::Error* error = nil;
 	auto function = NS::TransferPtr(iterator->second->library->newFunction(NS::String::string(functionName, NS::UTF8StringEncoding), constants.get(), &error));
 	CCV_NNC_MFA_CHECK_ERROR(error);

@@ -500,11 +500,15 @@ TEST_CASE("hyper connection mix matches RMSNorm, projection, split, collapse and
 		ccv_nnc_tensor_free(inputs[i]);
 }
 
-static void _hyper_connection_mix_mps_case(const int rows, const int hidden, int* const __case_result__)
+static void _hyper_connection_mix_mps_case(const int rows, const int hc, const int hidden, const int own_pre, int* const __case_result__)
 {
-	const int hc = 4;
 	ccv_nnc_tensor_t* hinputs[6];
 	_hyper_connection_mix_inputs(rows, hc, hidden, hinputs);
+	// Without the incoming pre-mix, the mix collapses with its own.
+	ccv_nnc_tensor_t* const dropped = own_pre ? hinputs[1] : 0;
+	const int input_size = own_pre ? 5 : 6;
+	if (own_pre)
+		memmove(hinputs + 1, hinputs + 2, sizeof(ccv_nnc_tensor_t*) * 4);
 	ccv_nnc_cmd_t cmd = CMD_HYPER_CONNECTION_FORWARD(hc, 20, 1e-6);
 	cmd.info.hyper_connection.norm_epsilon = 1e-20;
 	ccv_nnc_tensor_t* const expected[4] = {
@@ -513,16 +517,16 @@ static void _hyper_connection_mix_mps_case(const int rows, const int hidden, int
 		ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, hc * hc), 0),
 		ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, hidden), 0),
 	};
-	REQUIRE_EQ(ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, hinputs, 6, (ccv_nnc_tensor_t**)expected, 4, 0), CCV_NNC_EXEC_SUCCESS, "CPU mix should execute");
+	REQUIRE_EQ(ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, hinputs, input_size, (ccv_nnc_tensor_t**)expected, 4, 0), CCV_NNC_EXEC_SUCCESS, "CPU mix should execute");
 	ccv_nnc_tensor_t* inputs[6];
 	int i;
-	for (i = 0; i < 6; i++)
+	for (i = 0; i < input_size; i++)
 	{
 		ccv_nnc_tensor_param_t params = hinputs[i]->info;
 		params.type = CCV_TENSOR_GPU_MEMORY;
 		inputs[i] = ccv_nnc_tensor_new(0, params, 0);
 	}
-	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, hinputs, 6, inputs, 6, 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, hinputs, input_size, inputs, input_size, 0);
 	ccv_nnc_tensor_t* const outputs[4] = {
 		ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, rows, hc), 0),
 		ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, rows, hc), 0),
@@ -531,7 +535,7 @@ static void _hyper_connection_mix_mps_case(const int rows, const int hidden, int
 	};
 	ccv_nnc_cmd_t mps_cmd = cmd;
 	mps_cmd.backend = CCV_NNC_BACKEND_MPS;
-	REQUIRE_EQ(ccv_nnc_cmd_exec(mps_cmd, ccv_nnc_no_hint, 0, inputs, 6, (ccv_nnc_tensor_t**)outputs, 4, 0), CCV_NNC_EXEC_SUCCESS, "Metal mix should execute");
+	REQUIRE_EQ(ccv_nnc_cmd_exec(mps_cmd, ccv_nnc_no_hint, 0, inputs, input_size, (ccv_nnc_tensor_t**)outputs, 4, 0), CCV_NNC_EXEC_SUCCESS, "Metal mix should execute");
 	ccv_nnc_tensor_t* const actual[4] = {
 		ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, hc), 0),
 		ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, hc), 0),
@@ -539,28 +543,106 @@ static void _hyper_connection_mix_mps_case(const int rows, const int hidden, int
 		ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, hidden), 0),
 	};
 	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, outputs, 4, actual, 4, 0);
-	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, actual[0]->data.f32, expected[0]->data.f32, rows * hc, 1e-5, "Metal mix pre weights should match CPU reference");
-	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, actual[1]->data.f32, expected[1]->data.f32, rows * hc, 1e-5, "Metal mix post weights should match CPU reference");
-	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, actual[2]->data.f32, expected[2]->data.f32, rows * hc * hc, 1e-5, "Metal mix combination should match CPU reference");
-	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, actual[3]->data.f32, expected[3]->data.f32, rows * hidden, 1e-5, "Metal mix collapse should match CPU reference");
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, actual[0]->data.f32, expected[0]->data.f32, rows * hc, 1e-5, "Metal mix pre weights should match CPU reference: rows=%d hc=%d hidden=%d own_pre=%d", rows, hc, hidden, own_pre);
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, actual[1]->data.f32, expected[1]->data.f32, rows * hc, 1e-5, "Metal mix post weights should match CPU reference: rows=%d hc=%d hidden=%d own_pre=%d", rows, hc, hidden, own_pre);
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, actual[2]->data.f32, expected[2]->data.f32, rows * hc * hc, 1e-5, "Metal mix combination should match CPU reference: rows=%d hc=%d hidden=%d own_pre=%d", rows, hc, hidden, own_pre);
+	if (own_pre)
+	{
+		// This collapse carries the pre's error times the residual, so compare it with the CPU
+		// collapse of the pre Metal wrote.
+		ccv_nnc_tensor_t* const fed_inputs[6] = { hinputs[0], actual[0], hinputs[1], hinputs[2], hinputs[3], hinputs[4] };
+		REQUIRE_EQ(ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, fed_inputs, 6, (ccv_nnc_tensor_t**)expected, 4, 0), CCV_NNC_EXEC_SUCCESS, "CPU mix with the Metal pre should execute");
+	}
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, actual[3]->data.f32, expected[3]->data.f32, rows * hidden, 1e-5, "Metal mix collapse should match CPU reference: rows=%d hc=%d hidden=%d own_pre=%d", rows, hc, hidden, own_pre);
 	for (i = 0; i < 4; i++)
 	{
 		ccv_nnc_tensor_free(actual[i]);
 		ccv_nnc_tensor_free(outputs[i]);
 		ccv_nnc_tensor_free(expected[i]);
 	}
-	for (i = 0; i < 6; i++)
+	for (i = 0; i < input_size; i++)
 	{
 		ccv_nnc_tensor_free(inputs[i]);
 		ccv_nnc_tensor_free(hinputs[i]);
 	}
+	if (dropped)
+		ccv_nnc_tensor_free(dropped);
 }
 
 TEST_CASE("hyper connection Metal mix matches CPU reference for decode rows")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_HYPER_CONNECTION_FORWARD, CCV_NNC_BACKEND_MPS));
-	_hyper_connection_mix_mps_case(1, 5120, __case_result__);
-	_hyper_connection_mix_mps_case(2, 1000, __case_result__);
+	_hyper_connection_mix_mps_case(1, 4, 5120, 0, __case_result__);
+	_hyper_connection_mix_mps_case(2, 4, 1000, 0, __case_result__);
+	_hyper_connection_mix_mps_case(2, 4, 16384, 0, __case_result__);
+	// The last row count on this path.
+	_hyper_connection_mix_mps_case(16, 4, 4096, 0, __case_result__);
+	_hyper_connection_mix_mps_case(1, 1, 4096, 0, __case_result__);
+	_hyper_connection_mix_mps_case(2, 2, 1000, 0, __case_result__);
+	_hyper_connection_mix_mps_case(3, 3, 2048, 0, __case_result__);
+}
+
+TEST_CASE("hyper connection mix with its own pre matches the mix collapsed with that pre")
+{
+	const int rows = 3;
+	const int hc = 4;
+	const int hidden = 64;
+	ccv_nnc_tensor_t* inputs[6];
+	_hyper_connection_mix_inputs(rows, hc, hidden, inputs);
+	ccv_nnc_cmd_t cmd = CMD_HYPER_CONNECTION_FORWARD(hc, 20, 1e-6);
+	cmd.info.hyper_connection.norm_epsilon = 1e-6;
+	ccv_nnc_tensor_t* const outputs[4] = {
+		ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, hc), 0),
+		ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, hc), 0),
+		ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, hc * hc), 0),
+		ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, hidden), 0),
+	};
+	ccv_nnc_tensor_t* const own_inputs[5] = { inputs[0], inputs[2], inputs[3], inputs[4], inputs[5] };
+	REQUIRE_EQ(ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, own_inputs, 5, (ccv_nnc_tensor_t**)outputs, 4, 0), CCV_NNC_EXEC_SUCCESS, "CPU mix with its own pre should execute");
+	// Feeding that pre back as the incoming one leaves every output alone.
+	ccv_nnc_tensor_t* const expected[4] = {
+		ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, hc), 0),
+		ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, hc), 0),
+		ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, hc * hc), 0),
+		ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, hidden), 0),
+	};
+	ccv_nnc_tensor_t* const fed[6] = { inputs[0], outputs[0], inputs[2], inputs[3], inputs[4], inputs[5] };
+	REQUIRE_EQ(ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, fed, 6, (ccv_nnc_tensor_t**)expected, 4, 0), CCV_NNC_EXEC_SUCCESS, "CPU mix should execute");
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, outputs[0]->data.f32, expected[0]->data.f32, rows * hc, 1e-6, "pre should not depend on the incoming pre");
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, outputs[3]->data.f32, expected[3]->data.f32, rows * hidden, 1e-6, "the collapse should use the mix's own pre");
+	int i;
+	for (i = 0; i < 4; i++)
+	{
+		ccv_nnc_tensor_free(expected[i]);
+		ccv_nnc_tensor_free(outputs[i]);
+	}
+	for (i = 0; i < 6; i++)
+		ccv_nnc_tensor_free(inputs[i]);
+}
+
+TEST_CASE("hyper connection Metal mix with its own pre matches CPU reference")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_HYPER_CONNECTION_FORWARD, CCV_NNC_BACKEND_MPS));
+	const uint64_t old_flags = ccv_nnc_flags();
+	ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS);
+	_hyper_connection_mix_mps_case(1, 4, 4096, 1, __case_result__);
+	_hyper_connection_mix_mps_case(3, 4, 4096, 1, __case_result__);
+	_hyper_connection_mix_mps_case(2, 4, 1000, 1, __case_result__);
+	_hyper_connection_mix_mps_case(2, 4, 16384, 1, __case_result__);
+	_hyper_connection_mix_mps_case(40, 4, 5120, 1, __case_result__);
+	_hyper_connection_mix_mps_case(40, 4, 1000, 1, __case_result__);
+	_hyper_connection_mix_mps_case(20, 4, 16384, 1, __case_result__);
+	// Either side of the switch from the partials to the projection GEMM.
+	_hyper_connection_mix_mps_case(16, 4, 4096, 1, __case_result__);
+	_hyper_connection_mix_mps_case(17, 4, 4096, 1, __case_result__);
+	_hyper_connection_mix_mps_case(1, 1, 4096, 1, __case_result__);
+	_hyper_connection_mix_mps_case(2, 2, 1000, 1, __case_result__);
+	_hyper_connection_mix_mps_case(3, 3, 2048, 1, __case_result__);
+	_hyper_connection_mix_mps_case(17, 2, 4096, 1, __case_result__);
+	_hyper_connection_mix_mps_case(40, 1, 1000, 1, __case_result__);
+	_hyper_connection_mix_mps_case(40, 3, 2048, 1, __case_result__);
+	if (!(old_flags & CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS))
+		ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS);
 }
 
 TEST_CASE("hyper connection Metal mix matches CPU reference for prefill rows")
@@ -570,8 +652,13 @@ TEST_CASE("hyper connection Metal mix matches CPU reference for prefill rows")
 	// with them off.
 	const uint64_t old_flags = ccv_nnc_flags();
 	ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS);
-	_hyper_connection_mix_mps_case(40, 5120, __case_result__);
-	_hyper_connection_mix_mps_case(40, 1000, __case_result__);
+	_hyper_connection_mix_mps_case(40, 4, 5120, 0, __case_result__);
+	_hyper_connection_mix_mps_case(40, 4, 1000, 0, __case_result__);
+	// The first row count on this path.
+	_hyper_connection_mix_mps_case(17, 4, 4096, 0, __case_result__);
+	_hyper_connection_mix_mps_case(17, 2, 4096, 0, __case_result__);
+	_hyper_connection_mix_mps_case(40, 1, 1000, 0, __case_result__);
+	_hyper_connection_mix_mps_case(40, 3, 2048, 0, __case_result__);
 	if (!(old_flags & CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS))
 		ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS);
 }

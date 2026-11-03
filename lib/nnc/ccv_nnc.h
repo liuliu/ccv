@@ -5002,7 +5002,7 @@ CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_walsh_hadamard_transform(const float
  * @param sinkhorn_iterations Number of Sinkhorn normalization iterations.
  * @param epsilon Numerical epsilon used by the gates and Sinkhorn normalization.
  * @param norm_epsilon RMSNorm epsilon used by mix; ignored by the other operations.
- * @param operation 0 for split, 1 for split-weighted-sum, 2 for expand, 3 for mix, or 4 for expand-sum.
+ * @param operation 0 for split, 1 for split-weighted-sum, 2 for expand, 3 for mix, 4 for expand-sum, or 5 for mix collapsing with its own pre.
  * @param name The unique name of the model.
  * @return A model that accepts three, four, five or six inputs and generates one, three or four outputs.
  */

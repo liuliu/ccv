@@ -63,21 +63,23 @@ static void _ccv_nnc_hyper_connection_split_row(const float* const mix, const fl
 	}
 }
 
-static int _ccv_nnc_hyper_connection_mix(const ccv_nnc_cmd_t cmd, ccv_nnc_tensor_t* const* const inputs, ccv_nnc_tensor_t* const* const outputs)
+static int _ccv_nnc_hyper_connection_mix(const ccv_nnc_cmd_t cmd, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs)
 {
 	const int hc = cmd.info.hyper_connection.count;
 	const ccv_nnc_tensor_view_t* const residual = (const ccv_nnc_tensor_view_t*)inputs[0];
-	const ccv_nnc_tensor_view_t* const incoming_pre = (const ccv_nnc_tensor_view_t*)inputs[1];
-	const ccv_nnc_tensor_view_t* const projection = (const ccv_nnc_tensor_view_t*)inputs[2];
-	const ccv_nnc_tensor_view_t* const scale = (const ccv_nnc_tensor_view_t*)inputs[3];
-	const ccv_nnc_tensor_view_t* const base = (const ccv_nnc_tensor_view_t*)inputs[4];
-	const ccv_nnc_tensor_view_t* const norm_scale = (const ccv_nnc_tensor_view_t*)inputs[5];
+	// Five inputs mean the mix collapses with the pre it computes.
+	const ccv_nnc_tensor_view_t* const incoming_pre = input_size == 6 ? (const ccv_nnc_tensor_view_t*)inputs[1] : 0;
+	const int first = input_size == 6 ? 2 : 1;
+	const ccv_nnc_tensor_view_t* const projection = (const ccv_nnc_tensor_view_t*)inputs[first];
+	const ccv_nnc_tensor_view_t* const scale = (const ccv_nnc_tensor_view_t*)inputs[first + 1];
+	const ccv_nnc_tensor_view_t* const base = (const ccv_nnc_tensor_view_t*)inputs[first + 2];
+	const ccv_nnc_tensor_view_t* const norm_scale = (const ccv_nnc_tensor_view_t*)inputs[first + 3];
 	ccv_nnc_tensor_view_t* const pre = (ccv_nnc_tensor_view_t*)outputs[0];
 	ccv_nnc_tensor_view_t* const post = (ccv_nnc_tensor_view_t*)outputs[1];
 	ccv_nnc_tensor_view_t* const comb = (ccv_nnc_tensor_view_t*)outputs[2];
 	ccv_nnc_tensor_view_t* const collapsed = (ccv_nnc_tensor_view_t*)outputs[3];
 	int i;
-	for (i = 0; i < 6; i++)
+	for (i = 0; i < input_size; i++)
 		if (inputs[i]->info.datatype != CCV_32F || !CCV_IS_TENSOR_CONTIGUOUS(inputs[i]))
 			return CCV_NNC_EXEC_INVALID;
 	for (i = 0; i < 4; i++)
@@ -88,7 +90,7 @@ static int _ccv_nnc_hyper_connection_mix(const ccv_nnc_cmd_t cmd, ccv_nnc_tensor
 	const float norm_epsilon = cmd.info.hyper_connection.norm_epsilon;
 	if (iterations <= 0 || !(epsilon >= 0) || !(norm_epsilon > 0))
 		return CCV_NNC_EXEC_INVALID;
-	if (!_ccv_nnc_hyper_connection_mix_shapes_are_valid(hc, residual->info, incoming_pre->info, projection->info, scale->info, base->info, norm_scale->info, pre->info, post->info, comb->info, collapsed->info))
+	if (!_ccv_nnc_hyper_connection_mix_shapes_are_valid(hc, residual->info, incoming_pre ? &incoming_pre->info : 0, projection->info, scale->info, base->info, norm_scale->info, pre->info, post->info, comb->info, collapsed->info))
 		return CCV_NNC_EXEC_INVALID;
 	const int nd = ccv_nnc_tensor_nd(residual->info.dim);
 	const int hidden = residual->info.dim[nd - 1];
@@ -113,13 +115,14 @@ static int _ccv_nnc_hyper_connection_mix(const ccv_nnc_cmd_t cmd, ccv_nnc_tensor
 			mix[k] = (float)dot * rstd;
 		}
 		_ccv_nnc_hyper_connection_split_row(mix, scale->data.f32, base->data.f32, pre->data.f32 + row * hc, post->data.f32 + row * hc, comb->data.f32 + row * hc * hc, hc, iterations, epsilon);
+		const float* const collapse_pre = (incoming_pre ? incoming_pre : pre)->data.f32 + row * hc;
 		float* const out = collapsed->data.f32 + row * hidden;
 		double collapsed_squares = 0;
 		for (j = 0; j < hidden; j++)
 		{
 			float sum = 0;
 			for (k = 0; k < hc; k++)
-				sum += x[k * hidden + j] * incoming_pre->data.f32[row * hc + k];
+				sum += x[k * hidden + j] * collapse_pre[k];
 			out[j] = sum;
 			collapsed_squares += (double)sum * sum;
 		}
@@ -132,15 +135,15 @@ static int _ccv_nnc_hyper_connection_mix(const ccv_nnc_cmd_t cmd, ccv_nnc_tensor
 
 static int _ccv_nnc_hyper_connection_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
 {
-	if (!((input_size == 3 && output_size == 3) || (input_size == 4 && (output_size == 1 || output_size == 3)) || (input_size == 5 && output_size == 1) || (input_size == 6 && output_size == 4)))
+	if (!((input_size == 3 && output_size == 3) || (input_size == 4 && (output_size == 1 || output_size == 3)) || (input_size == 5 && (output_size == 1 || output_size == 4)) || (input_size == 6 && output_size == 4)))
 		return CCV_NNC_EXEC_INVALID;
 	if (outputs[0]->info.dim[0] == 0)
 		return CCV_NNC_EXEC_SUCCESS;
 	const int hc = cmd.info.hyper_connection.count;
 	if (hc <= 0 || hc > 16)
 		return CCV_NNC_EXEC_INVALID;
-	if (input_size == 6)
-		return _ccv_nnc_hyper_connection_mix(cmd, inputs, outputs);
+	if (output_size == 4)
+		return _ccv_nnc_hyper_connection_mix(cmd, inputs, input_size, outputs);
 	if (output_size == 1)
 	{
 		const ccv_nnc_tensor_view_t* const block = (const ccv_nnc_tensor_view_t*)inputs[0];

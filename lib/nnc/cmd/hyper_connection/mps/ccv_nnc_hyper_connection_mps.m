@@ -13,13 +13,20 @@ static size_t _ccv_nnc_hyper_connection_align(const size_t value)
 
 // Mix in two dispatches for decode-sized row counts: the partials, then the split alongside the
 // collapse normalization. Longer inputs collapse and normalize a row per threadgroup, project the
-// raw residual with the GEMM kernel, and fold the RMS into the split.
-static int _ccv_nnc_hyper_connection_mix_forw(const ccv_nnc_cmd_t cmd, ccv_nnc_tensor_t* const* const inputs, ccv_nnc_tensor_t* const* const outputs, ccv_nnc_stream_context_t* const stream_context)
+// raw residual with the GEMM kernel, and fold the RMS into the split. Five inputs mean the mix
+// collapses with the pre it computes, so one dispatch finishes the row after the partials: the
+// projection and the residual's squares come first at any row count.
+static int _ccv_nnc_hyper_connection_mix_forw(const ccv_nnc_cmd_t cmd, ccv_nnc_tensor_t* const* const all_inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, ccv_nnc_stream_context_t* const stream_context)
 {
 	const int hc = cmd.info.hyper_connection.count;
+	const int own_pre = input_size == 5;
+	// In the order of a mix with an incoming pre-mix; own_pre leaves inputs[1] unset.
+	ccv_nnc_tensor_t* const inputs[6] = {
+		all_inputs[0], own_pre ? 0 : all_inputs[1], all_inputs[own_pre ? 1 : 2], all_inputs[own_pre ? 2 : 3], all_inputs[own_pre ? 3 : 4], all_inputs[own_pre ? 4 : 5],
+	};
 	int i;
-	for (i = 0; i < 6; i++)
-		if (inputs[i]->info.datatype != CCV_32F || !CCV_IS_TENSOR_CONTIGUOUS(inputs[i]))
+	for (i = 0; i < input_size; i++)
+		if (all_inputs[i]->info.datatype != CCV_32F || !CCV_IS_TENSOR_CONTIGUOUS(all_inputs[i]))
 			return CCV_NNC_EXEC_INVALID;
 	for (i = 0; i < 4; i++)
 		if (outputs[i]->info.datatype != CCV_32F || !CCV_IS_TENSOR_CONTIGUOUS(outputs[i]))
@@ -29,7 +36,7 @@ static int _ccv_nnc_hyper_connection_mix_forw(const ccv_nnc_cmd_t cmd, ccv_nnc_t
 	const float norm_epsilon = cmd.info.hyper_connection.norm_epsilon;
 	if (iterations <= 0 || !(cmd.info.hyper_connection.epsilon >= 0) || !(norm_epsilon > 0))
 		return CCV_NNC_EXEC_INVALID;
-	if (!_ccv_nnc_hyper_connection_mix_shapes_are_valid(hc, inputs[0]->info, inputs[1]->info, inputs[2]->info, inputs[3]->info, inputs[4]->info, inputs[5]->info, outputs[0]->info, outputs[1]->info, outputs[2]->info, collapsed->info))
+	if (!_ccv_nnc_hyper_connection_mix_shapes_are_valid(hc, inputs[0]->info, own_pre ? 0 : &inputs[1]->info, inputs[2]->info, inputs[3]->info, inputs[4]->info, inputs[5]->info, outputs[0]->info, outputs[1]->info, outputs[2]->info, collapsed->info))
 		return CCV_NNC_EXEC_INVALID;
 	const int nd = ccv_nnc_tensor_nd(inputs[0]->info.dim);
 	const uint32_t hidden = inputs[0]->info.dim[nd - 1];
@@ -42,11 +49,11 @@ static int _ccv_nnc_hyper_connection_mix_forw(const ccv_nnc_cmd_t cmd, ccv_nnc_t
 	const uint32_t rows = (uint32_t)row_count;
 	const int decode = rows <= 16;
 	const uint32_t dot_splits = decode ? (flat + CCV_NNC_MFA_HYPER_CONNECTION_MIX_CHUNK - 1) / CCV_NNC_MFA_HYPER_CONNECTION_MIX_CHUNK : 1;
-	const uint32_t collapse_splits = decode ? (hidden + CCV_NNC_MFA_HYPER_CONNECTION_MIX_THREADS - 1) / CCV_NNC_MFA_HYPER_CONNECTION_MIX_THREADS : 0;
+	const uint32_t collapse_splits = decode && !own_pre ? (hidden + CCV_NNC_MFA_HYPER_CONNECTION_MIX_THREADS - 1) / CCV_NNC_MFA_HYPER_CONNECTION_MIX_THREADS : 0;
 	const size_t dots_offset = 0;
 	const size_t squares_offset = _ccv_nnc_hyper_connection_align(dots_offset + (size_t)rows * dot_splits * mix_dim * sizeof(float));
 	const size_t collapsed_offset = _ccv_nnc_hyper_connection_align(squares_offset + (size_t)rows * dot_splits * sizeof(float));
-	const size_t collapsed_squares_offset = _ccv_nnc_hyper_connection_align(collapsed_offset + (decode ? (size_t)rows * hidden * sizeof(float) : 0));
+	const size_t collapsed_squares_offset = _ccv_nnc_hyper_connection_align(collapsed_offset + (decode && !own_pre ? (size_t)rows * hidden * sizeof(float) : 0));
 	const size_t scratch_size = collapsed_squares_offset + (size_t)rows * collapse_splits * sizeof(float);
 	@autoreleasepool {
 		ccv_nnc_mfa_context_t* const context = ccv_nnc_default_mfa_context();
@@ -71,15 +78,27 @@ static int _ccv_nnc_hyper_connection_mix_forw(const ccv_nnc_cmd_t cmd, ccv_nnc_t
 		if (decode)
 		{
 			params.operation = 3;
+			// With no collapse threadgroups in the partials, the incoming pre and collapse slots stay
+			// unread. Their regions are empty then, so they bind at offsets inside their buffers.
+			const ccv_nnc_tensor_t* const incoming_pre = own_pre ? inputs[0] : inputs[1];
 			mtl_buffer_t* partial_tensors[8] = {
-				mpgetbuffer(inputs[0]), mpgetbuffer(inputs[1]), mpgetbuffer(inputs[2]),
+				mpgetbuffer(inputs[0]), mpgetbuffer((ccv_nnc_tensor_t*)incoming_pre), mpgetbuffer(inputs[2]),
 				scratch, scratch, scratch, scratch, NULL,
 			};
 			size_t partial_offsets[7] = {
-				inputs[0]->dataof, inputs[1]->dataof, inputs[2]->dataof,
-				dots_offset, squares_offset, collapsed_offset, collapsed_squares_offset,
+				inputs[0]->dataof, incoming_pre->dataof, inputs[2]->dataof,
+				dots_offset, squares_offset, own_pre ? dots_offset : collapsed_offset, own_pre ? dots_offset : collapsed_squares_offset,
 			};
 			ccv_nnc_mfa_encode_hyper_connection(context, params, command_batch, partial_tensors, partial_offsets);
+		} else if (own_pre) {
+			params.operation = 8;
+			mtl_buffer_t* squares_tensors[3] = {
+				mpgetbuffer(inputs[0]), scratch, NULL,
+			};
+			size_t squares_offsets[2] = {
+				inputs[0]->dataof, squares_offset,
+			};
+			ccv_nnc_mfa_encode_hyper_connection(context, params, command_batch, squares_tensors, squares_offsets);
 		} else {
 			params.operation = 6;
 			mtl_buffer_t* row_tensors[6] = {
@@ -90,6 +109,9 @@ static int _ccv_nnc_hyper_connection_mix_forw(const ccv_nnc_cmd_t cmd, ccv_nnc_t
 				inputs[0]->dataof, inputs[1]->dataof, inputs[5]->dataof, collapsed->dataof, squares_offset,
 			};
 			ccv_nnc_mfa_encode_hyper_connection(context, params, command_batch, row_tensors, row_offsets);
+		}
+		if (!decode)
+		{
 			// Project the raw residual; the split scales the result by the residual's RMS reciprocal.
 			const ccv_nnc_mfa_gemm_params_t gemm_params = {
 				.data_type = 3,
@@ -114,8 +136,21 @@ static int _ccv_nnc_hyper_connection_mix_forw(const ccv_nnc_cmd_t cmd, ccv_nnc_t
 			};
 			ccv_nnc_mfa_encode_gemm(context, gemm_params, command_batch, gemm_tensors, gemm_offsets);
 		}
-		if (decode)
+		if (own_pre)
 		{
+			params.operation = 7;
+			mtl_buffer_t* finish_tensors[11] = {
+				scratch, scratch, mpgetbuffer(inputs[3]), mpgetbuffer(inputs[4]),
+				mpgetbuffer(outputs[0]), mpgetbuffer(outputs[1]), mpgetbuffer(outputs[2]),
+				mpgetbuffer(inputs[0]), mpgetbuffer(inputs[5]), mpgetbuffer(collapsed), NULL,
+			};
+			size_t finish_offsets[10] = {
+				dots_offset, squares_offset, inputs[3]->dataof, inputs[4]->dataof,
+				outputs[0]->dataof, outputs[1]->dataof, outputs[2]->dataof,
+				inputs[0]->dataof, inputs[5]->dataof, collapsed->dataof,
+			};
+			ccv_nnc_mfa_encode_hyper_connection(context, params, command_batch, finish_tensors, finish_offsets);
+		} else if (decode) {
 			params.operation = 5;
 			mtl_buffer_t* finish_tensors[12] = {
 				scratch, scratch, mpgetbuffer(inputs[3]), mpgetbuffer(inputs[4]),
@@ -154,15 +189,15 @@ static int _ccv_nnc_hyper_connection_mix_forw(const ccv_nnc_cmd_t cmd, ccv_nnc_t
 
 static int _ccv_nnc_hyper_connection_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
 {
-	if (!((input_size == 3 && output_size == 3) || (input_size == 4 && (output_size == 1 || output_size == 3)) || (input_size == 5 && output_size == 1) || (input_size == 6 && output_size == 4)))
+	if (!((input_size == 3 && output_size == 3) || (input_size == 4 && (output_size == 1 || output_size == 3)) || (input_size == 5 && (output_size == 1 || output_size == 4)) || (input_size == 6 && output_size == 4)))
 		return CCV_NNC_EXEC_INVALID;
 	if (outputs[0]->info.dim[0] == 0)
 		return CCV_NNC_EXEC_SUCCESS;
 	const int hc = cmd.info.hyper_connection.count;
 	if (hc <= 0 || hc > 16)
 		return CCV_NNC_EXEC_INVALID;
-	if (input_size == 6)
-		return _ccv_nnc_hyper_connection_mix_forw(cmd, inputs, outputs, stream_context);
+	if (output_size == 4)
+		return _ccv_nnc_hyper_connection_mix_forw(cmd, inputs, input_size, outputs, stream_context);
 	if (output_size == 1)
 	{
 		const ccv_nnc_tensor_view_t* const block = (const ccv_nnc_tensor_view_t*)inputs[0];

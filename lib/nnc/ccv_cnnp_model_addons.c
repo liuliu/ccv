@@ -2723,8 +2723,8 @@ static void _ccv_cnnp_hyper_connection_build(ccv_cnnp_model_t* const super, ccv_
 {
 	PRINT(CCV_CLI_VERBOSE, "[cnnp_hyper_connection_build] -\n");
 	const ccv_cnnp_model_hyper_connection_t* const self = (const ccv_cnnp_model_hyper_connection_t*)super;
-	assert(input_size == (self->operation == 0 ? 3 : self->operation == 3 ? 6 : self->operation == 4 ? 5 : 4));
-	assert(output_size == (self->operation == 2 || self->operation == 4 ? 1 : self->operation == 3 ? 4 : 3));
+	assert(input_size == (self->operation == 0 ? 3 : self->operation == 3 ? 6 : self->operation == 4 || self->operation == 5 ? 5 : 4));
+	assert(output_size == (self->operation == 2 || self->operation == 4 ? 1 : self->operation == 3 || self->operation == 5 ? 4 : 3));
 	ccv_nnc_tensor_param_t input_params[6];
 	int i;
 	for (i = 0; i < input_size; i++)
@@ -2750,13 +2750,13 @@ ccv_cnnp_model_t* ccv_cnnp_hyper_connection(const int count, const int sinkhorn_
 	assert(count > 0 && count <= 16);
 	assert(sinkhorn_iterations > 0);
 	assert(epsilon >= 0);
-	assert(operation >= 0 && operation <= 4);
-	assert(operation != 3 || norm_epsilon > 0);
+	assert(operation >= 0 && operation <= 5);
+	assert((operation != 3 && operation != 5) || norm_epsilon > 0);
 	ccv_cnnp_model_hyper_connection_t* const model_hyper_connection = (ccv_cnnp_model_hyper_connection_t*)cccalloc(1, sizeof(ccv_cnnp_model_hyper_connection_t));
 	model_hyper_connection->super.isa = &ccv_cnnp_hyper_connection_isa;
-	model_hyper_connection->super.input_size = operation == 0 ? 3 : operation == 3 ? 6 : operation == 4 ? 5 : 4;
+	model_hyper_connection->super.input_size = operation == 0 ? 3 : operation == 3 ? 6 : operation == 4 || operation == 5 ? 5 : 4;
 	model_hyper_connection->super.outputs = model_hyper_connection->outputs;
-	model_hyper_connection->super.output_size = operation == 2 || operation == 4 ? 1 : operation == 3 ? 4 : 3;
+	model_hyper_connection->super.output_size = operation == 2 || operation == 4 ? 1 : operation == 3 || operation == 5 ? 4 : 3;
 	model_hyper_connection->count = count;
 	model_hyper_connection->sinkhorn_iterations = sinkhorn_iterations;
 	model_hyper_connection->epsilon = epsilon;

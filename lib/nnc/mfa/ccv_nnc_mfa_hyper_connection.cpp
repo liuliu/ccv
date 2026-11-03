@@ -17,7 +17,41 @@ static void _ccv_nnc_mfa_encode_hyper_connection_mix_stage(ccv_nnc_mfa_context_t
 		encoder->useResource(tensors[num_tensors], MTL::ResourceUsageRead | MTL::ResourceUsageWrite);
 		num_tensors++;
 	}
-	CCV_NNC_MFA_PRECONDITION(num_tensors == (params.operation == 3 || params.operation == 4 ? 7 : params.operation == 5 ? 11 : 5));
+	const uint32_t mix_dim = 2 * params.count + params.count * params.count;
+	int stage_tensors = 0;
+	uint32_t threads = 0;
+	MTL::Size grid;
+	switch (params.operation)
+	{
+		case 3:
+			stage_tensors = 7;
+			threads = CCV_NNC_MFA_HYPER_CONNECTION_MIX_THREADS;
+			grid = MTL::Size((mix_dim + 1) / 2 * params.dot_splits + params.collapse_splits, params.row_count, 1);
+			break;
+		case 4:
+			stage_tensors = 7;
+			threads = 32;
+			grid = MTL::Size(params.row_count, 1, 1);
+			break;
+		case 5:
+			// The split's threadgroup, then the normalization's.
+			stage_tensors = 11;
+			threads = CCV_NNC_MFA_HYPER_CONNECTION_MIX_THREADS;
+			grid = MTL::Size(1 + params.collapse_splits, params.row_count, 1);
+			break;
+		case 6:
+		case 7:
+		case 8:
+			// A row per threadgroup, reduced over all of its SIMD groups.
+			stage_tensors = params.operation == 6 ? 5 : params.operation == 7 ? 10 : 2;
+			threads = CCV_NNC_MFA_HYPER_CONNECTION_ROW_THREADS;
+			grid = MTL::Size(params.row_count, 1, 1);
+			break;
+		default:
+			CCV_NNC_MFA_PRECONDITION(false);
+			break;
+	}
+	CCV_NNC_MFA_PRECONDITION(num_tensors == stage_tensors);
 	HyperConnectionDescriptor descriptor {
 		0, params.count, params.hidden, params.sinkhorn_iterations,
 		params.epsilon, params.operation, false, false
@@ -29,23 +63,9 @@ static void _ccv_nnc_mfa_encode_hyper_connection_mix_stage(ccv_nnc_mfa_context_t
 	auto pipelineValue = context->kernel_cache.findKernel<HyperConnectionKernel, HyperConnectionDescriptor, HyperConnectionKernelDescriptor>(descriptor, context->device.get(), DeviceProperties());
 	pool->drain();
 	encoder->setComputePipelineState(pipelineValue->pipeline.get());
-	const uint32_t mix_dim = 2 * params.count + params.count * params.count;
-	switch (params.operation)
-	{
-		case 3:
-			encoder->dispatchThreadgroups(MTL::Size((mix_dim + 1) / 2 * params.dot_splits + params.collapse_splits, params.row_count, 1), MTL::Size(CCV_NNC_MFA_HYPER_CONNECTION_MIX_THREADS, 1, 1));
-			break;
-		case 4:
-			encoder->dispatchThreadgroups(MTL::Size(params.row_count, 1, 1), MTL::Size(32, 1, 1));
-			break;
-		case 5:
-			// The split's threadgroup, then the normalization's.
-			encoder->dispatchThreadgroups(MTL::Size(1 + params.collapse_splits, params.row_count, 1), MTL::Size(CCV_NNC_MFA_HYPER_CONNECTION_MIX_THREADS, 1, 1));
-			break;
-		default:
-			encoder->dispatchThreadgroups(MTL::Size(params.row_count, 1, 1), MTL::Size(1024, 1, 1));
-			break;
-	}
+	// The kernels size their reductions for exactly this many threads.
+	CCV_NNC_MFA_PRECONDITION(threads <= pipelineValue->pipeline->maxTotalThreadsPerThreadgroup());
+	encoder->dispatchThreadgroups(grid, MTL::Size(threads, 1, 1));
 	command_batch->finishCommand(encoder);
 }
 

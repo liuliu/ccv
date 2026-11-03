@@ -13,7 +13,8 @@ typedef struct {
 	// Expansion adds an FP32 addend, bound as the second output, to the block.
 	uint8_t expand_addend;
 	// Mix stages: 3 decode partials, 4 split, 5 decode split and collapse normalization, 6 collapse
-	// and normalization per row.
+	// and normalization per row, 7 split, collapse with that pre and normalization per row, 8 the
+	// residual's squares per row.
 	float norm_epsilon;
 	uint32_t dot_splits;
 	uint32_t collapse_splits;
@@ -22,6 +23,8 @@ typedef struct {
 // Threads and flattened residual columns per decode mix partial threadgroup.
 #define CCV_NNC_MFA_HYPER_CONNECTION_MIX_THREADS (256)
 #define CCV_NNC_MFA_HYPER_CONNECTION_MIX_CHUNK (1024)
+// Threads per threadgroup of the mix kernels that take a row each.
+#define CCV_NNC_MFA_HYPER_CONNECTION_ROW_THREADS (1024)
 
 #ifdef __cplusplus
 extern "C" {
