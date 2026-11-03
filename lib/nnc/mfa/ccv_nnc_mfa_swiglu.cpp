@@ -151,10 +151,12 @@ void ccv_nnc_mfa_encode_int8_swiglu(
     ++num_tensors;
   CCV_NNC_MFA_PRECONDITION(num_tensors == 4);
   CCV_NNC_MFA_PRECONDITION(params.N > 0 && params.K > 0);
-  CCV_NNC_MFA_PRECONDITION((params.K % 4) == 0);
+  CCV_NNC_MFA_PRECONDITION(params.format == 0 || params.format == CCV_NNC_QX_8I_ROWWISE_Q5_K || params.format == CCV_NNC_QX_8I_ROWWISE_Q6_K);
+  CCV_NNC_MFA_PRECONDITION(params.format == 0 ? (params.K % 4) == 0 : (params.K % 256) == 0 && (params.N % 256) == 0);
   CCV_NNC_MFA_PRECONDITION(params.M <= 6);
 
   Int8SwiGLUDescriptor descriptor;
+  descriptor.format = params.format;
   descriptor.M = params.M > 0 ? params.M : 1;
   descriptor.N = params.N;
   descriptor.K = params.K;
@@ -169,7 +171,10 @@ void ccv_nnc_mfa_encode_int8_swiglu(
   encoder->setBuffer(tensors[1], tensor_offsets[1], 1);
   encoder->setBuffer(tensors[2], tensor_offsets[2], 2);
   encoder->setBuffer(tensors[3], tensor_offsets[3], 3);
-  const size_t scale_offset = rowwise_8i_scale_offset(params.N, params.K);
+  // Q5_K groups are 16 weights in 88 bits, Q6_K groups 8 weights in 52 bits.
+  const size_t scale_offset = params.format == 0 ? rowwise_8i_scale_offset(params.N, params.K) :
+    align_up((size_t)params.N * params.K / 16 * (params.format == CCV_NNC_QX_8I_ROWWISE_Q5_K ? 11 : 13), 128);
+  const uint32_t rows_per_threadgroup = params.format == 0 ? kInt8SwiGLURowsPerThreadgroup : kInt8SwiGLUPackedRowsPerThreadgroup;
   encoder->setBuffer(tensors[0], tensor_offsets[0] + scale_offset, 4);
   encoder->setBuffer(tensors[1], tensor_offsets[1] + scale_offset, 5);
   encoder->useResource(tensors[0], MTL::ResourceUsageRead);
@@ -178,8 +183,7 @@ void ccv_nnc_mfa_encode_int8_swiglu(
   encoder->useResource(tensors[3], MTL::ResourceUsageWrite);
   encoder->dispatchThreadgroups(
     MTL::Size(
-      (params.N + kInt8SwiGLURowsPerThreadgroup - 1) /
-        kInt8SwiGLURowsPerThreadgroup,
+      (params.N + rows_per_threadgroup - 1) / rows_per_threadgroup,
       1, 1),
     MTL::Size(kInt8SwiGLUSIMDGroupsPerThreadgroup * 32, 1, 1));
   command_batch->finishCommand(encoder);

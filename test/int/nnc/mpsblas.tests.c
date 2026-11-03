@@ -1333,10 +1333,11 @@ static int _mps_forward_scaled_gemm_validate_interleaved_batched(const int forma
 	const ccv_nnc_tensor_param_t b_params = GPU_TENSOR_NHWC(000, 16F, token_dim, group_dim, 1, n_dim);
 	ccv_nnc_tensor_t* const ha = ccv_nnc_tensor_new(0, ha_params, 0);
 	ccv_nnc_tensor_t* const hwd = ccv_nnc_tensor_new(0, hwd_params, 0);
-	ccv_nnc_tensor_t* const hwq = ccv_nnc_tensor_new(0, ccv_nnc_tensor_8i_rowwise_x(hwd_params, format), 0);
+	// Format 0 is Q8_0, plain row-wise int8.
+	ccv_nnc_tensor_t* const hwq = ccv_nnc_tensor_new(0, format ? ccv_nnc_tensor_8i_rowwise_x(hwd_params, format) : ccv_nnc_tensor_8i_rowwise(hwd_params), 0);
 	ccv_nnc_tensor_t* const hb = ccv_nnc_tensor_new(0, hb_params, 0);
 	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, a_params, 0);
-	ccv_nnc_tensor_t* const w = ccv_nnc_tensor_new(0, ccv_nnc_tensor_8i_rowwise_x(w_params, format), 0);
+	ccv_nnc_tensor_t* const w = ccv_nnc_tensor_new(0, format ? ccv_nnc_tensor_8i_rowwise_x(w_params, format) : ccv_nnc_tensor_8i_rowwise(w_params), 0);
 	ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, b_params, 0);
 	float* const a_values = (float*)ccmalloc(sizeof(float) * token_dim * group_dim * k_dim);
 	float* const w_values = (float*)ccmalloc(sizeof(float) * group_dim * n_dim * k_dim);
@@ -1353,10 +1354,17 @@ static int _mps_forward_scaled_gemm_validate_interleaved_batched(const int forma
 	ccv_float_to_half_precision(w_values, (uint16_t*)hwd->data.u8, group_dim * n_dim * k_dim);
 	ccfree(w_values);
 	ccfree(a_values);
-	const size_t qsize = ccv_nnc_quantize_8i_rowwise_x(hwd->data.u8, datatype, CCV_TENSOR_CPU_MEMORY, (size_t)group_dim * n_dim * k_dim, k_dim, format, 0, 0, 0, 0, hwq->data.u8, ccv_nnc_tensor_data_size_without_padding(hwq->info));
+	const size_t qsize = format ?
+		ccv_nnc_quantize_8i_rowwise_x(hwd->data.u8, datatype, CCV_TENSOR_CPU_MEMORY, (size_t)group_dim * n_dim * k_dim, k_dim, format, 0, 0, 0, 0, hwq->data.u8, ccv_nnc_tensor_data_size_without_padding(hwq->info)) :
+		ccv_nnc_quantize_8i_rowwise(hwd->data.u8, datatype, CCV_TENSOR_CPU_MEMORY, (size_t)group_dim * n_dim * k_dim, k_dim, 0, 0, hwq->data.u8, ccv_nnc_tensor_data_size_without_padding(hwq->info));
 	int status = qsize == ccv_nnc_tensor_data_size_without_padding(hwq->info) ? CCV_NNC_EXEC_SUCCESS : CCV_NNC_EXEC_INVALID;
 	if (status == CCV_NNC_EXEC_SUCCESS)
-		ccv_nnc_dequantize_8i_rowwise_x(hwq->data.u8, datatype, CCV_TENSOR_CPU_MEMORY, qsize, k_dim, format, hwd->data.u8, (size_t)group_dim * n_dim * k_dim);
+	{
+		if (format)
+			ccv_nnc_dequantize_8i_rowwise_x(hwq->data.u8, datatype, CCV_TENSOR_CPU_MEMORY, qsize, k_dim, format, hwd->data.u8, (size_t)group_dim * n_dim * k_dim);
+		else
+			ccv_nnc_dequantize_8i_rowwise(hwq->data.u8, datatype, CCV_TENSOR_CPU_MEMORY, qsize, k_dim, hwd->data.u8, (size_t)group_dim * n_dim * k_dim);
+	}
 	if (status == CCV_NNC_EXEC_SUCCESS)
 		status = ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha, hwq), TENSOR_LIST(a, w), 0);
 	if (status == CCV_NNC_EXEC_SUCCESS)
@@ -3762,6 +3770,119 @@ TEST_CASE("mps forward gemv with row-wise 8i weight scaled gemv for 4 to 8 rows"
 				}
 }
 
+TEST_CASE("mps forward gemv with packed row-wise 8i weight scaled gemv for 4 to 8 rows")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_MPS));
+	// A speculative verify's rows. K = 1280 leaves the last lanes of each row short; K = 2304 is the
+	// shared expert's down projection.
+	const int formats[] = { CCV_NNC_QX_8I_ROWWISE_Q5_K, CCV_NNC_QX_8I_ROWWISE_Q6_K };
+	const int datatypes[] = { CCV_16F, CCV_32F, CCV_16BF };
+	const int shapes[][2] = { { 512, 1280 }, { 256, 2304 } };
+	int f, rows, bias, i, j;
+	for (f = 0; f < 2; f++)
+		for (rows = 4; rows <= 8; rows++)
+			for (bias = 0; bias < 2; bias++)
+				for (i = 0; i < 3; i++)
+					for (j = 0; j < 2; j++)
+					{
+						double max_abs = 0;
+						double max_rel = 0;
+						REQUIRE_EQ(_mps_forward_scaled_gemm_compare_dense_format(datatypes[i], bias, rows, shapes[j][0], shapes[j][1], formats[f], &max_abs, &max_rel), 0, "packed row-wise 8i GEMV M=%d validation should run for format=%d", rows, formats[f]);
+						REQUIRE(max_abs < (datatypes[i] == CCV_16BF ? 4e-2 : 2e-2) || max_rel < (datatypes[i] == CCV_16BF ? 1e-2 : 5e-3), "packed row-wise 8i GEMV M=%d bias=%d datatype=%d N=%d K=%d format=%d should match dequantized dense GPU reference, max_abs=%g max_rel=%g", rows, bias, datatypes[i], shapes[j][0], shapes[j][1], formats[f], max_abs, max_rel);
+					}
+}
+
+TEST_CASE("mps forward gemv with row-wise 8i weight leaves activation views off the vector boundary to the matrix paths")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_MPS));
+	// The vector kernels load activations four elements at a time. A 16-bit view one element past
+	// that boundary read shifted values there (relative L2 near 1.6), so it takes a matrix path.
+	const int formats[] = { 0, CCV_NNC_QX_8I_ROWWISE_Q5_K, CCV_NNC_QX_8I_ROWWISE_Q6_K };
+	const int datatypes[] = { CCV_16F, CCV_16BF };
+	const int n_dim = 512;
+	const int k_dim = 1280;
+	int f, d, rows, i;
+	for (f = 0; f < 3; f++)
+		for (d = 0; d < 2; d++)
+			for (rows = 1; rows <= 4; rows += 3)
+			{
+				const int format = formats[f];
+				const int datatype = datatypes[d];
+				const size_t element_size = CCV_GET_DATA_TYPE_SIZE(datatype);
+				ccv_nnc_tensor_param_t a_params = CPU_TENSOR_NHWC(32F, rows + 1, k_dim);
+				a_params.datatype = datatype;
+				ccv_nnc_tensor_param_t w_params = CPU_TENSOR_NHWC(32F, n_dim, k_dim);
+				w_params.datatype = datatype;
+				ccv_nnc_tensor_param_t b_params = CPU_TENSOR_NHWC(32F, rows, n_dim);
+				b_params.datatype = datatype;
+				const ccv_nnc_tensor_param_t q_params = format == 0 ? ccv_nnc_tensor_8i_rowwise(w_params) : ccv_nnc_tensor_8i_rowwise_x(w_params, format);
+				const size_t qsize = ccv_nnc_tensor_data_size_without_padding(q_params);
+				ccv_nnc_tensor_t* const ha = ccv_nnc_tensor_new(0, a_params, 0);
+				ccv_nnc_tensor_t* const hw = ccv_nnc_tensor_new(0, w_params, 0);
+				ccv_nnc_tensor_t* const hq = ccv_nnc_tensor_new(0, q_params, 0);
+				ccv_nnc_tensor_t* const hb = ccv_nnc_tensor_new(0, b_params, 0);
+				// The activation rows start one element into their buffer.
+				memset(ha->data.u8, 0, element_size * (rows + 1) * k_dim);
+				_mps_forward_na_gemm_fill_signed(datatype, ha->data.u8 + element_size, rows, k_dim, 1);
+				_mps_forward_na_gemm_fill_signed(datatype, hw->data.u8, n_dim, k_dim, 0);
+				const size_t encoded = format == 0 ?
+					ccv_nnc_quantize_8i_rowwise(hw->data.u8, datatype, CCV_TENSOR_CPU_MEMORY, (size_t)n_dim * k_dim, k_dim, 0, 0, hq->data.u8, qsize) :
+					ccv_nnc_quantize_8i_rowwise_x(hw->data.u8, datatype, CCV_TENSOR_CPU_MEMORY, (size_t)n_dim * k_dim, k_dim, format, 0, 0, 0, 0, hq->data.u8, qsize);
+				REQUIRE_EQ(encoded, qsize, "format=%d weights should quantize to the declared size", format);
+				if (format == 0)
+					ccv_nnc_dequantize_8i_rowwise(hq->data.u8, datatype, CCV_TENSOR_CPU_MEMORY, qsize, k_dim, hw->data.u8, (size_t)n_dim * k_dim);
+				else
+					ccv_nnc_dequantize_8i_rowwise_x(hq->data.u8, datatype, CCV_TENSOR_CPU_MEMORY, qsize, k_dim, format, hw->data.u8, (size_t)n_dim * k_dim);
+				float* const a_values = (float*)ccmalloc(sizeof(float) * rows * k_dim);
+				float* const w_values = (float*)ccmalloc(sizeof(float) * n_dim * k_dim);
+				float* const expected = (float*)ccmalloc(sizeof(float) * rows * n_dim);
+				float* const actual = (float*)ccmalloc(sizeof(float) * rows * n_dim);
+				_mps_forward_scaled_gemm_to_float(datatype, ha->data.u8 + element_size, rows * k_dim, a_values);
+				_mps_forward_scaled_gemm_to_float(datatype, hw->data.u8, n_dim * k_dim, w_values);
+				_mps_forward_scaled_gemm_reference(a_values, w_values, 0, rows, n_dim, k_dim, expected);
+				ccv_nnc_tensor_param_t gpu_a_params = a_params;
+				gpu_a_params.type = CCV_TENSOR_GPU_MEMORY | 000;
+				ccv_nnc_tensor_param_t gpu_q_params = q_params;
+				gpu_q_params.type = CCV_TENSOR_GPU_MEMORY | 000;
+				ccv_nnc_tensor_param_t gpu_b_params = b_params;
+				gpu_b_params.type = CCV_TENSOR_GPU_MEMORY | 000;
+				ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, gpu_a_params, 0);
+				ccv_nnc_tensor_t* const q = ccv_nnc_tensor_new(0, gpu_q_params, 0);
+				ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, gpu_b_params, 0);
+				ccv_nnc_tensor_param_t a_view_params = gpu_a_params;
+				a_view_params.dim[0] = rows;
+				ccv_nnc_tensor_view_t* const a_view = ccv_nnc_tensor_view_new(a, a_view_params, DIM_ALLOC(0, 1), DIM_ALLOC(k_dim, 1));
+				ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha, hq), TENSOR_LIST(a, q), 0);
+				REQUIRE_EQ(ccv_nnc_cmd_exec(CMD_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(0, 1)), ccv_nnc_no_hint, 0, TENSOR_LIST((ccv_nnc_tensor_t*)a_view, q), TENSOR_LIST(b), 0),
+					CCV_NNC_EXEC_SUCCESS, "format=%d datatype=%d rows=%d GEMM over an offset view should execute", format, datatype, rows);
+				ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(b), TENSOR_LIST(hb), 0);
+				_mps_forward_scaled_gemm_to_float(datatype, hb->data.u8, rows * n_dim, actual);
+				double difference_norm = 0;
+				double expected_norm = 0;
+				for (i = 0; i < rows * n_dim; i++)
+				{
+					const double difference = (double)actual[i] - expected[i];
+					difference_norm += difference * difference;
+					expected_norm += (double)expected[i] * expected[i];
+				}
+				const double relative_l2 = sqrt(difference_norm / ccv_max(expected_norm, 1e-20));
+				// The matrix paths reach about 1e-2 for BF16 here on M5 Max.
+				REQUIRE(relative_l2 < 2e-2, "format=%d datatype=%d rows=%d GEMM over a view one element off the vector boundary should match its dequantized CPU reference (relative L2 %.8g)", format, datatype, rows, relative_l2);
+				ccv_nnc_tensor_view_free(a_view);
+				ccv_nnc_tensor_free(b);
+				ccv_nnc_tensor_free(q);
+				ccv_nnc_tensor_free(a);
+				ccfree(actual);
+				ccfree(expected);
+				ccfree(w_values);
+				ccfree(a_values);
+				ccv_nnc_tensor_free(hb);
+				ccv_nnc_tensor_free(hq);
+				ccv_nnc_tensor_free(hw);
+				ccv_nnc_tensor_free(ha);
+			}
+}
+
 TEST_CASE("mps forward cooperative fp32 gemv")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_MPS));
@@ -4004,6 +4125,45 @@ TEST_CASE("mps forward interleaved batched gemv with row-wise 8i-x weight Int8Ge
 		}
 		REQUIRE_EQ(status, 0, "single-token interleaved batched scaled GEMV validation should run for format=%d", formats[i]);
 		REQUIRE(max_rel < 2e-3, "single-token interleaved batched Int8Gemv should match the fp16 reference for format=%d, max_abs=%g max_rel=%g", formats[i], max_abs, max_rel);
+	}
+}
+
+TEST_CASE("mps forward interleaved batched gemv with row-wise 8i weight Int8Gemv for 2 to 8 tokens")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_MPS));
+	// Every format's vector kernel takes up to 3 tokens; Q8_0 (format 0), Q5_K and Q6_K take up to 8.
+	const int formats[] = {
+		0,
+		CCV_NNC_QX_8I_ROWWISE_Q5_K,
+		CCV_NNC_QX_8I_ROWWISE_Q6_K,
+		CCV_NNC_QX_8I_ROWWISE_Q4_K,
+		CCV_NNC_QX_8I_ROWWISE_Q3_K,
+		CCV_NNC_QX_8I_ROWWISE_Q2_K,
+		CCV_NNC_QX_8I_ROWWISE_IQ2_XXS,
+		CCV_NNC_QX_8I_ROWWISE_IQ2_S,
+		CCV_NNC_QX_8I_ROWWISE_IQ2_XS,
+		CCV_NNC_QX_8I_ROWWISE_IQ3_S,
+		CCV_NNC_QX_8I_ROWWISE_IQ3_XXS,
+		CCV_NNC_QX_8I_ROWWISE_IQ1_S,
+		CCV_NNC_QX_8I_ROWWISE_IQ1_M,
+	};
+	int i, tokens;
+	for (i = 0; i < sizeof(formats) / sizeof(formats[0]); i++)
+	{
+		const int max_tokens = (formats[i] == 0 || formats[i] == CCV_NNC_QX_8I_ROWWISE_Q5_K || formats[i] == CCV_NNC_QX_8I_ROWWISE_Q6_K) ? 8 : 3;
+		for (tokens = 2; tokens <= max_tokens; tokens++)
+		{
+			const uint64_t old_flags = ccv_nnc_flags();
+			ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA_GEMM);
+			double max_abs = 0;
+			double max_rel = 0;
+			const int status = _mps_forward_scaled_gemm_validate_interleaved_batched(formats[i], tokens, 256, &max_abs, &max_rel);
+			if (!(old_flags & CCV_NNC_DISABLE_MFA_GEMM)) {
+				ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA_GEMM);
+			}
+			REQUIRE_EQ(status, 0, "%d-token interleaved batched scaled GEMV validation should run for format=%d", tokens, formats[i]);
+			REQUIRE(max_rel < 2e-3, "%d-token interleaved batched Int8Gemv should match the fp16 reference for format=%d, max_abs=%g max_rel=%g", tokens, formats[i], max_abs, max_rel);
+		}
 	}
 }
 

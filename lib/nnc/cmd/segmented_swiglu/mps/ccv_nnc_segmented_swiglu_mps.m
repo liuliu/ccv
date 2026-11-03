@@ -83,10 +83,14 @@ static int _ccv_nnc_segmented_swiglu_shared_forw(const float clamp, const ccv_nn
 
 	// A few rows, as a speculative verify runs, read the weights once in the GEMV-style kernel.
 	// Past 6 rows its per-row sums make it slower than the matrix paths on wide FFNs (M5 Max).
-	if (rowwise_weights && gate_format == 0 && M <= 6)
+	// Q5_K and Q6_K weights take it too: their matrix paths decode both whole weights first.
+	// It loads activations four elements at a time, so a view must start on that boundary.
+	if (rowwise_weights && (gate_format == 0 || gate_format == CCV_NNC_QX_8I_ROWWISE_Q5_K || gate_format == CCV_NNC_QX_8I_ROWWISE_Q6_K) && M <= 6 &&
+		(a->dataof % (4 * CCV_GET_DATA_TYPE_SIZE(a->info.datatype))) == 0)
 	{
 		const ccv_nnc_mfa_int8_swiglu_params_t params = {
 			.data_type = mtl_datatype,
+			.format = gate_format,
 			.M = M,
 			.N = N,
 			.K = K,
@@ -362,25 +366,33 @@ static int _ccv_nnc_segmented_swiglu_routed_forw(const ccv_nnc_cmd_t cmd, ccv_nn
 		 gate_format == CCV_NNC_QX_8I_ROWWISE_Q2_K ||
 		 gate_format == CCV_NNC_QX_8I_ROWWISE_IQ1_S ||
 		 gate_format == CCV_NNC_QX_8I_ROWWISE_IQ1_M);
-	// A one-row shared expert with int8 rowwise weights over the same FP32 input width joins the
-	// packed decode dispatch when the routed weights are resident.
+	// A one-row shared expert with int8 rowwise (Q8_0, Q5_K or Q6_K) weights over the same FP32
+	// input width joins the packed decode dispatch when the routed weights are resident.
 	const ccv_nnc_tensor_view_t* const shared_a = shared ? (const ccv_nnc_tensor_view_t*)shared[0] : 0;
 	const ccv_nnc_tensor_view_t* const shared_gate_w = shared ? (const ccv_nnc_tensor_view_t*)shared[1] : 0;
 	const ccv_nnc_tensor_view_t* const shared_up_w = shared ? (const ccv_nnc_tensor_view_t*)shared[2] : 0;
 	ccv_nnc_tensor_view_t* const shared_output = shared ? (ccv_nnc_tensor_view_t*)shared[3] : 0;
 	const int shared_gate_nd = shared ? ccv_nnc_tensor_nd(shared_gate_w->info.dim) : 0;
 	const uint32_t shared_rows = shared_gate_nd == 2 ? (uint32_t)shared_gate_w->info.dim[0] : 0;
+	const uint32_t shared_format = shared && (shared_gate_w->info.datatype & 0xf00) == CCV_NNC_QX_8I_ROWWISE_X ? (uint32_t)shared_gate_w->info.reserved : 0;
+	const int shared_weights_supported = shared && (
+		shared_gate_w->info.datatype == (CCV_QX | CCV_NNC_QX_8I_ROWWISE | (CCV_32F >> 12)) ||
+		(shared_gate_w->info.datatype == (CCV_QX | CCV_NNC_QX_8I_ROWWISE_X | (CCV_32F >> 12)) &&
+		 (shared_format == CCV_NNC_QX_8I_ROWWISE_Q5_K || shared_format == CCV_NNC_QX_8I_ROWWISE_Q6_K) &&
+		 (shared_rows % 256) == 0 && (K % 256) == 0));
 	const int routed_waits = (gate_resolved > 0 && gate_weight_view.readiness_value) || (up_resolved > 0 && up_weight_view.readiness_value);
 	const int fuse_shared = shared && packed_small_batch && !routed_waits &&
 		a->info.datatype == CCV_32F && shared_a->info.datatype == CCV_32F && shared_output->info.datatype == CCV_32F &&
 		shared_rows > 0 && shared_a->info.dim[ccv_nnc_tensor_nd(shared_a->info.dim) - 1] == (int)K &&
 		ccv_nnc_tensor_count(shared_a->info) == K && ccv_nnc_tensor_count(shared_output->info) == shared_rows &&
-		shared_gate_w->info.datatype == (CCV_QX | CCV_NNC_QX_8I_ROWWISE | (CCV_32F >> 12)) &&
-		shared_up_w->info.datatype == shared_gate_w->info.datatype &&
+		shared_weights_supported &&
+		shared_up_w->info.datatype == shared_gate_w->info.datatype && shared_up_w->info.reserved == shared_gate_w->info.reserved &&
 		shared_gate_w->info.dim[1] == (int)K && ccv_nnc_tensor_nd(shared_up_w->info.dim) == 2 &&
 		shared_up_w->info.dim[0] == (int)shared_rows && shared_up_w->info.dim[1] == (int)K &&
 		CCV_IS_TENSOR_CONTIGUOUS(shared_a) && CCV_IS_TENSOR_CONTIGUOUS(shared_gate_w) &&
-		CCV_IS_TENSOR_CONTIGUOUS(shared_up_w) && CCV_IS_TENSOR_CONTIGUOUS(shared_output);
+		CCV_IS_TENSOR_CONTIGUOUS(shared_up_w) && CCV_IS_TENSOR_CONTIGUOUS(shared_output) &&
+		// The shared rows load their FP32 input as float4.
+		(shared_a->dataof % (4 * CCV_GET_DATA_TYPE_SIZE(CCV_32F))) == 0;
 	if (shared && !fuse_shared)
 	{
 		const int status = _ccv_nnc_segmented_swiglu_shared_forw(cmd.info.segmented_swiglu.clamp, shared_a, shared_gate_w, shared_up_w, shared_output, stream_context);
@@ -402,6 +414,7 @@ static int _ccv_nnc_segmented_swiglu_routed_forw(const ccv_nnc_cmd_t cmd, ccv_nn
 				.broadcast_input = broadcast_input,
 				.clamp = cmd.info.segmented_swiglu.clamp,
 				.shared_rows = fuse_shared ? shared_rows : 0,
+				.shared_format = fuse_shared ? shared_format : 0,
 			};
 			ccv_nnc_mfa_prepare_segmented_int8_swiglu(context, params);
 			mtl_command_batch_t* const command_batch = ccv_nnc_stream_context_start_command_batch(stream_context);

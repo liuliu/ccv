@@ -9,7 +9,8 @@ bool SegmentedInt8SwiGLUDescriptor::operator==(const SegmentedInt8SwiGLUDescript
     expertCount == rhs.expertCount && routeCount == rhs.routeCount &&
     format == rhs.format && broadcastInput == rhs.broadcastInput &&
     clamp == rhs.clamp && memoryPrecision == rhs.memoryPrecision &&
-    sharedRows == rhs.sharedRows && routedThreadgroups == rhs.routedThreadgroups;
+    sharedRows == rhs.sharedRows && routedThreadgroups == rhs.routedThreadgroups &&
+    sharedFormat == rhs.sharedFormat;
 }
 
 std::size_t std::hash<SegmentedInt8SwiGLUDescriptor>::operator()(
@@ -25,6 +26,7 @@ std::size_t std::hash<SegmentedInt8SwiGLUDescriptor>::operator()(
   seed = combine_32(seed, uint32_t(std::hash<float>{}(value.clamp)));
   seed = combine_32(seed, (uint32_t)value.memoryPrecision.value);
   seed = combine_64(seed, pack_64(simd::uint2 { value.sharedRows, value.routedThreadgroups }));
+  seed = combine_32(seed, value.sharedFormat);
   return seed;
 }
 
@@ -148,6 +150,7 @@ std::pair<
   kernelDesc.clamp = clamp > 0;
   kernelDesc.memoryPrecision = memoryPrecision;
   kernelDesc.sharedFused = sharedRows > 0;
+  kernelDesc.sharedFormat = sharedRows > 0 ? sharedFormat : 0;
   SegmentedInt8SwiGLUKernel* kernel;
   auto iterator = libraryCache->find(kernelDesc);
   if (iterator != libraryCache->end()) {

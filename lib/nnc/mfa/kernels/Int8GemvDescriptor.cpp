@@ -12,6 +12,8 @@ bool Int8GemvDescriptor::operator==(const Int8GemvDescriptor& rhs) const {
   memoryPrecision == rhs.memoryPrecision &&
   nrows == rhs.nrows &&
   ncols == rhs.ncols &&
+  vectorRowStride == rhs.vectorRowStride &&
+  outputRowStride == rhs.outputRowStride &&
   batchStrides.has_value() == rhs.batchStrides.has_value() &&
   simd_all(batchStrides.value_or(simd::uint4(UINT32_MAX)) == rhs.batchStrides.value_or(simd::uint4(UINT32_MAX)));
 }
@@ -22,6 +24,7 @@ std::size_t std::hash<Int8GemvDescriptor>::operator()(const Int8GemvDescriptor& 
   seed = combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.memoryPrecision.value, (unsigned int)hash.fusedBias | ((unsigned int)hash.mrows << 8) }));
   seed = combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.format, (unsigned int)hash.nrows }));
   seed = combine_64(seed, hash.ncols);
+  seed = combine_64(seed, pack_64(simd::uint2 { hash.vectorRowStride, hash.outputRowStride }));
   if (hash.batchStrides.has_value()) {
     seed = combine_32(seed, hash.batchStrides.value()[0]);
     seed = combine_32(seed, hash.batchStrides.value()[1]);
@@ -92,6 +95,13 @@ uint32_t Int8GemvDescriptor::groupBits() const noexcept {
   }
 }
 
+uint32_t Int8GemvDescriptor::rowsPerThreadgroup() const noexcept {
+  // The 4 to 8 row packed kernel gives each half SIMD group a row of its own.
+  if (format != 0 && mrows > 3)
+    return kInt8GemvSIMDGroupsPerThreadgroup * 2;
+  return kInt8GemvRowsPerThreadgroup;
+}
+
 uint64_t Int8GemvDescriptor::inputScaleOffset() const noexcept {
   const uint64_t payloadBits = (uint64_t)nrows * groupsPerRow() * groupBits();
   const uint64_t payloadBytes = (payloadBits + 7) / 8;
@@ -128,6 +138,8 @@ std::pair<Int8GemvKernelDescriptor, PipelineValue<Int8GemvKernel>*> Int8GemvDesc
     constants->setConstantValue(&nrows, MTL::DataTypeUInt, NS::UInteger(1));
     constants->setConstantValue(&groupSize, MTL::DataTypeUInt, NS::UInteger(3));
     constants->setConstantValue(&groupsPerRow, MTL::DataTypeUInt, NS::UInteger(4));
+    constants->setConstantValue(&vectorRowStride, MTL::DataTypeUInt, NS::UInteger(9));
+    constants->setConstantValue(&outputRowStride, MTL::DataTypeUInt, NS::UInteger(10));
     if (batchStrides.has_value()) {
       const uint32_t batchStrideWeights = batchStrides.value()[0];
       const uint32_t batchStrideVector = batchStrides.value()[1];

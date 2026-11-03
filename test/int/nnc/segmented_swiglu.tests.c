@@ -1449,13 +1449,14 @@ TEST_CASE("MPS segmented SwiGLU packed broadcast input keeps the vector path")
 #endif
 }
 
-static void _segmented_swiglu_shared_case(const int format, const int disable_mfa, int* const __case_result__)
+static void _segmented_swiglu_shared_case(const int format, const int shared_format, const int disable_mfa, int* const __case_result__)
 {
-	// Packed routed experts with a broadcast FP32 row and an int8 rowwise shared expert, as in
-	// DeepSeek V4 decode (IQ2_XXS). The one-dispatch decode must match the routed and shared
-	// commands run separately bit for bit. A clamp of 4 cuts 24 shared gates and 46 shared ups,
-	// so the shared rows must also match an FP32 reference with that clamp.
-	const int rows = 6, segments = 6, experts = 8, n = 256, k = 256, shared_n = 301;
+	// Packed routed experts with a broadcast FP32 row and an int8 rowwise (Q8_0 for shared_format
+	// 0, else Q5_K or Q6_K) shared expert, as in DeepSeek V4 decode (IQ2_XXS). The one-dispatch
+	// decode must match the routed and shared commands run separately bit for bit. A clamp of 4
+	// cuts 24 shared gates and 46 shared ups, so the shared rows must also match an FP32 reference
+	// with that clamp. Packed shared rows come in multiples of 256.
+	const int rows = 6, segments = 6, experts = 8, n = 256, k = 256, shared_n = shared_format ? 512 : 301;
 	const size_t weight_count = (size_t)experts * n * k;
 	const size_t shared_count = (size_t)shared_n * k;
 	ccv_nnc_tensor_t* const ha = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, k), 0);
@@ -1479,15 +1480,25 @@ static void _segmented_swiglu_shared_case(const int format, const int disable_mf
 	for (i = 0; i < rows; i++)
 		hroute->data.f32[i] = (float)(i + 1) / (rows + 1);
 	const ccv_nnc_tensor_param_t q_params = ccv_nnc_tensor_8i_rowwise_x(hgate->info, format);
-	const ccv_nnc_tensor_param_t shared_q_params = ccv_nnc_tensor_8i_rowwise(hshared_gate->info);
+	const ccv_nnc_tensor_param_t shared_q_params = shared_format ? ccv_nnc_tensor_8i_rowwise_x(hshared_gate->info, shared_format) : ccv_nnc_tensor_8i_rowwise(hshared_gate->info);
 	ccv_nnc_tensor_t* const hq[4] = {
 		ccv_nnc_tensor_new(0, q_params, 0), ccv_nnc_tensor_new(0, q_params, 0),
 		ccv_nnc_tensor_new(0, shared_q_params, 0), ccv_nnc_tensor_new(0, shared_q_params, 0),
 	};
 	REQUIRE_EQ(ccv_nnc_quantize_8i_rowwise_x(hgate->data.u8, CCV_32F, CCV_TENSOR_CPU_MEMORY, weight_count, k, format, 0, 0, 0, 0, hq[0]->data.u8, ccv_nnc_tensor_data_size_without_padding(hq[0]->info)), ccv_nnc_tensor_data_size_without_padding(hq[0]->info), "weights should quantize to the declared size");
 	REQUIRE_EQ(ccv_nnc_quantize_8i_rowwise_x(hup->data.u8, CCV_32F, CCV_TENSOR_CPU_MEMORY, weight_count, k, format, 0, 0, 0, 0, hq[1]->data.u8, ccv_nnc_tensor_data_size_without_padding(hq[1]->info)), ccv_nnc_tensor_data_size_without_padding(hq[1]->info), "weights should quantize to the declared size");
-	REQUIRE_EQ(ccv_nnc_quantize_8i_rowwise(hshared_gate->data.u8, CCV_32F, CCV_TENSOR_CPU_MEMORY, shared_count, k, 0, 0, hq[2]->data.u8, ccv_nnc_tensor_data_size_without_padding(hq[2]->info)), ccv_nnc_tensor_data_size_without_padding(hq[2]->info), "weights should quantize to the declared size");
-	REQUIRE_EQ(ccv_nnc_quantize_8i_rowwise(hshared_up->data.u8, CCV_32F, CCV_TENSOR_CPU_MEMORY, shared_count, k, 0, 0, hq[3]->data.u8, ccv_nnc_tensor_data_size_without_padding(hq[3]->info)), ccv_nnc_tensor_data_size_without_padding(hq[3]->info), "weights should quantize to the declared size");
+	if (shared_format)
+	{
+		REQUIRE_EQ(ccv_nnc_quantize_8i_rowwise_x(hshared_gate->data.u8, CCV_32F, CCV_TENSOR_CPU_MEMORY, shared_count, k, shared_format, 0, 0, 0, 0, hq[2]->data.u8, ccv_nnc_tensor_data_size_without_padding(hq[2]->info)), ccv_nnc_tensor_data_size_without_padding(hq[2]->info), "weights should quantize to the declared size");
+		REQUIRE_EQ(ccv_nnc_quantize_8i_rowwise_x(hshared_up->data.u8, CCV_32F, CCV_TENSOR_CPU_MEMORY, shared_count, k, shared_format, 0, 0, 0, 0, hq[3]->data.u8, ccv_nnc_tensor_data_size_without_padding(hq[3]->info)), ccv_nnc_tensor_data_size_without_padding(hq[3]->info), "weights should quantize to the declared size");
+		// Q5_K and Q6_K lose more than int8 on this fill (0.29 or more off the FP32 weights), so the
+		// clamp reference takes the dequantized shared weights.
+		ccv_nnc_dequantize_8i_rowwise_x(hq[2]->data.u8, CCV_32F, CCV_TENSOR_CPU_MEMORY, ccv_nnc_tensor_data_size_without_padding(hq[2]->info), k, shared_format, hshared_gate->data.u8, shared_count);
+		ccv_nnc_dequantize_8i_rowwise_x(hq[3]->data.u8, CCV_32F, CCV_TENSOR_CPU_MEMORY, ccv_nnc_tensor_data_size_without_padding(hq[3]->info), k, shared_format, hshared_up->data.u8, shared_count);
+	} else {
+		REQUIRE_EQ(ccv_nnc_quantize_8i_rowwise(hshared_gate->data.u8, CCV_32F, CCV_TENSOR_CPU_MEMORY, shared_count, k, 0, 0, hq[2]->data.u8, ccv_nnc_tensor_data_size_without_padding(hq[2]->info)), ccv_nnc_tensor_data_size_without_padding(hq[2]->info), "weights should quantize to the declared size");
+		REQUIRE_EQ(ccv_nnc_quantize_8i_rowwise(hshared_up->data.u8, CCV_32F, CCV_TENSOR_CPU_MEMORY, shared_count, k, 0, 0, hq[3]->data.u8, ccv_nnc_tensor_data_size_without_padding(hq[3]->info)), ccv_nnc_tensor_data_size_without_padding(hq[3]->info), "weights should quantize to the declared size");
+	}
 	ccv_nnc_tensor_t* q[4];
 	for (i = 0; i < 4; i++)
 	{
@@ -1524,12 +1535,12 @@ static void _segmented_swiglu_shared_case(const int format, const int disable_mf
 	{
 		REQUIRE_EQ(fused_status, CCV_NNC_EXEC_INVALID, "without MFA the segmented SwiGLU should decline");
 	} else {
-		REQUIRE_EQ(fused_status, CCV_NNC_EXEC_SUCCESS, "segmented SwiGLU with a shared expert should execute for format=%d", format);
+		REQUIRE_EQ(fused_status, CCV_NNC_EXEC_SUCCESS, "segmented SwiGLU with a shared expert should execute for format=%d shared_format=%d", format, shared_format);
 		REQUIRE_EQ(routed_status, CCV_NNC_EXEC_SUCCESS, "segmented SwiGLU should execute");
 		REQUIRE_EQ(shared_status, CCV_NNC_EXEC_SUCCESS, "shared SwiGLU should execute");
 		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, outputs, 4, actual, 4, 0);
 		REQUIRE(memcmp(actual[0]->data.f32, actual[2]->data.f32, sizeof(float) * rows * n) == 0, "routed rows should match the routed command for format=%d", format);
-		REQUIRE(memcmp(actual[1]->data.f32, actual[3]->data.f32, sizeof(float) * shared_n) == 0, "shared rows should match the shared command for format=%d", format);
+		REQUIRE(memcmp(actual[1]->data.f32, actual[3]->data.f32, sizeof(float) * shared_n) == 0, "shared rows should match the shared command for format=%d shared_format=%d", format, shared_format);
 		float largest = 0;
 		for (i = 0; i < shared_n; i++)
 			largest = ccv_max(largest, fabsf(actual[1]->data.f32[i]));
@@ -1541,7 +1552,7 @@ static void _segmented_swiglu_shared_case(const int format, const int disable_mf
 			max_rel = ccv_max(max_rel, fabs((double)actual[1]->data.f32[i] - hexpected->data.f32[i]) / ccv_max(1.0, fabs((double)hexpected->data.f32[i])));
 		// int8 weights (and int8 activations on the NA scaled path) stay within 0.08; without
 		// the clamp the shared rows are 0.29 or more off.
-		REQUIRE(max_rel < 0.15, "clamped shared rows should match the FP32 reference for format=%d, max_rel=%g", format, max_rel);
+		REQUIRE(max_rel < 0.15, "clamped shared rows should match the FP32 reference for format=%d shared_format=%d, max_rel=%g", format, shared_format, max_rel);
 		ccv_nnc_tensor_free(hexpected);
 	}
 	for (i = 0; i < 4; i++)
@@ -1574,7 +1585,20 @@ TEST_CASE("MPS segmented SwiGLU evaluates a shared expert in the packed decode d
 	};
 	int i;
 	for (i = 0; i < sizeof(formats) / sizeof(formats[0]); i++)
-		_segmented_swiglu_shared_case(formats[i], 0, __case_result__);
+		_segmented_swiglu_shared_case(formats[i], 0, 0, __case_result__);
+}
+
+TEST_CASE("MPS segmented SwiGLU evaluates a Q5_K or Q6_K shared expert in the packed decode dispatch")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SEGMENTED_SWIGLU_FORWARD, CCV_NNC_BACKEND_MPS));
+	const int formats[] = {
+		CCV_NNC_QX_8I_ROWWISE_IQ2_XXS, CCV_NNC_QX_8I_ROWWISE_Q2_K, CCV_NNC_QX_8I_ROWWISE_IQ1_M,
+	};
+	const int shared_formats[] = { CCV_NNC_QX_8I_ROWWISE_Q5_K, CCV_NNC_QX_8I_ROWWISE_Q6_K };
+	int i, j;
+	for (i = 0; i < sizeof(formats) / sizeof(formats[0]); i++)
+		for (j = 0; j < sizeof(shared_formats) / sizeof(shared_formats[0]); j++)
+			_segmented_swiglu_shared_case(formats[i], shared_formats[j], 0, __case_result__);
 }
 
 static void _segmented_swiglu_unfused_shared_case(const int shared_rows, const int quantized_shared, int* const __case_result__)

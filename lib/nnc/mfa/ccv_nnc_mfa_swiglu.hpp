@@ -3,6 +3,8 @@
 
 typedef struct {
   uint64_t data_type;
+  // 0 for Q8_0 row-wise weights, or CCV_NNC_QX_8I_ROWWISE_Q5_K / Q6_K.
+  uint32_t format;
   // Activation rows, at most 6; 0 means 1.
   uint32_t M;
   uint32_t N;

@@ -44,6 +44,8 @@ void ccv_nnc_mfa_encode_segmented_int8_swiglu(
   // expert its gate, up, activation and output.
   CCV_NNC_MFA_PRECONDITION(tensorCount == (params.shared_rows > 0 ? 11 : 7));
   CCV_NNC_MFA_PRECONDITION(params.shared_rows == 0 || (params.K % 4) == 0);
+  CCV_NNC_MFA_PRECONDITION(params.shared_format == 0 || params.shared_format == CCV_NNC_QX_8I_ROWWISE_Q5_K || params.shared_format == CCV_NNC_QX_8I_ROWWISE_Q6_K);
+  CCV_NNC_MFA_PRECONDITION(params.shared_format == 0 || (params.shared_rows % 256) == 0);
   CCV_NNC_MFA_PRECONDITION(
     params.M > 0 && params.N > 0 && params.K > 0 &&
     params.expert_count > 0 && params.bincount > 0);
@@ -68,6 +70,7 @@ void ccv_nnc_mfa_encode_segmented_int8_swiglu(
   const NS::UInteger routedThreadgroups = threadgroupsPerRoute * params.M;
   descriptor.sharedRows = params.shared_rows;
   descriptor.routedThreadgroups = params.shared_rows > 0 ? (uint32_t)routedThreadgroups : 0;
+  descriptor.sharedFormat = params.shared_rows > 0 ? params.shared_format : 0;
   auto pipelineValue = context->kernel_cache.findKernel<
     SegmentedInt8SwiGLUKernel,
     SegmentedInt8SwiGLUDescriptor,
@@ -93,7 +96,10 @@ void ccv_nnc_mfa_encode_segmented_int8_swiglu(
   encoder->useResource(tensors[6], MTL::ResourceUsageWrite);
   NS::UInteger sharedThreadgroups = 0;
   if (params.shared_rows > 0) {
-    const uint64_t sharedScaleOffset = ((uint64_t)params.shared_rows * params.K + 127) & ~UINT64_C(127);
+    // Q8_0 rows are K bytes; Q5_K packs 16 weights in 11 bytes, Q6_K in 13.
+    const uint64_t sharedPayloadBytes = params.shared_format == 0 ? (uint64_t)params.shared_rows * params.K :
+      (uint64_t)params.shared_rows * params.K / 16 * (params.shared_format == CCV_NNC_QX_8I_ROWWISE_Q5_K ? 11 : 13);
+    const uint64_t sharedScaleOffset = (sharedPayloadBytes + 127) & ~UINT64_C(127);
     encoder->setBuffer(tensors[7], tensorOffsets[7], 9);
     encoder->setBuffer(tensors[8], tensorOffsets[8], 10);
     encoder->setBuffer(tensors[9], tensorOffsets[9], 11);
@@ -103,7 +109,9 @@ void ccv_nnc_mfa_encode_segmented_int8_swiglu(
     for (int i = 7; i < 10; ++i)
       encoder->useResource(tensors[i], MTL::ResourceUsageRead);
     encoder->useResource(tensors[10], MTL::ResourceUsageWrite);
-    sharedThreadgroups = (params.shared_rows + 1) / 2;
+    // Two Q8_0 rows per threadgroup, or a packed row per half SIMD group.
+    const NS::UInteger sharedRowsPerThreadgroup = params.shared_format == 0 ? 2 : 8;
+    sharedThreadgroups = (params.shared_rows + sharedRowsPerThreadgroup - 1) / sharedRowsPerThreadgroup;
   }
 
   const MTL::Size gridSize(routedThreadgroups + sharedThreadgroups, 1, 1);

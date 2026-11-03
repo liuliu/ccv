@@ -4,8 +4,8 @@
 
 bool Int8SwiGLUDescriptor::operator==(const Int8SwiGLUDescriptor& rhs) const
 {
-  return M == rhs.M && N == rhs.N && K == rhs.K && clamp == rhs.clamp &&
-    memoryPrecision == rhs.memoryPrecision;
+  return format == rhs.format && M == rhs.M && N == rhs.N && K == rhs.K &&
+    clamp == rhs.clamp && memoryPrecision == rhs.memoryPrecision;
 }
 
 std::size_t std::hash<Int8SwiGLUDescriptor>::operator()(
@@ -13,6 +13,7 @@ std::size_t std::hash<Int8SwiGLUDescriptor>::operator()(
 {
   using namespace ccv::nnc::mfa::hash;
   std::size_t seed = 0;
+  seed = combine_32(seed, value.format);
   seed = combine_32(seed, value.M);
   seed = combine_32(seed, value.N);
   seed = combine_32(seed, value.K);
@@ -42,6 +43,7 @@ std::pair<
   kernelDesc.clamp = clamp > 0;
   kernelDesc.memoryPrecision = memoryPrecision;
   kernelDesc.activationRows = M;
+  kernelDesc.format = format;
   Int8SwiGLUKernel* kernel;
   auto iterator = libraryCache->find(kernelDesc);
   if (iterator != libraryCache->end()) {

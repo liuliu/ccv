@@ -387,6 +387,8 @@ Pipelines create_pipelines(
   scaled_desc.memoryPrecision = precision;
   scaled_desc.nrows = shape.rows;
   scaled_desc.ncols = shape.cols;
+  scaled_desc.vectorRowStride = shape.cols;
+  scaled_desc.outputRowStride = shape.rows;
   auto scaled_value = shader_cache.findKernel<Int8GemvKernel, Int8GemvDescriptor, Int8GemvKernelDescriptor>(
       scaled_desc, device, dprops);
 
@@ -408,6 +410,8 @@ Pipelines create_pipelines(
     scaled_x_desc.memoryPrecision = precision;
     scaled_x_desc.nrows = shape.rows;
     scaled_x_desc.ncols = shape.cols;
+    scaled_x_desc.vectorRowStride = shape.cols;
+    scaled_x_desc.outputRowStride = shape.rows;
     scaled_x_value = shader_cache.findKernel<Int8GemvKernel, Int8GemvDescriptor, Int8GemvKernelDescriptor>(
         scaled_x_desc, device, dprops);
   }

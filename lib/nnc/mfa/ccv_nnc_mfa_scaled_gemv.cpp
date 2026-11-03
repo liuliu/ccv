@@ -38,11 +38,13 @@ void ccv_nnc_mfa_encode_scaled_gemv(ccv_nnc_mfa_context_t* context, ccv_nnc_mfa_
   }
   CCV_NNC_MFA_PRECONDITION(num_tensors == 3 || num_tensors == 4);
   CCV_NNC_MFA_PRECONDITION((params.fused_bias && num_tensors == 4) || (!params.fused_bias && num_tensors == 3));
-  // Packed formats have kernels up to 3 rows; Q8_0 rowwise weights take up to 8.
-  CCV_NNC_MFA_PRECONDITION(params.mrows >= 1 && params.mrows <= (params.format == 0 ? 8 : 3));
+  // Packed formats have kernels up to 3 rows; Q8_0, Q5_K and Q6_K rowwise weights take up to 8.
+  CCV_NNC_MFA_PRECONDITION(params.mrows >= 1 && params.mrows <= ((params.format == 0 || params.format == CCV_NNC_QX_8I_ROWWISE_Q5_K || params.format == CCV_NNC_QX_8I_ROWWISE_Q6_K) ? 8 : 3));
   const uint32_t batchDimension = params.batch_dimension > 1 ? params.batch_dimension : 1;
+  const uint32_t vectorRowStride = params.vector_row_stride ? params.vector_row_stride : params.ncols;
+  const uint32_t outputRowStride = params.output_row_stride ? params.output_row_stride : params.nrows;
+  CCV_NNC_MFA_PRECONDITION(vectorRowStride >= params.ncols && outputRowStride >= params.nrows);
   if (batchDimension > 1) {
-    CCV_NNC_MFA_PRECONDITION(params.mrows == 1);
     CCV_NNC_MFA_PRECONDITION(!params.fused_bias);
     CCV_NNC_MFA_PRECONDITION(params.batch_stride_weights > 0);
     CCV_NNC_MFA_PRECONDITION(params.batch_stride_vector > 0);
@@ -59,6 +61,8 @@ void ccv_nnc_mfa_encode_scaled_gemv(ccv_nnc_mfa_context_t* context, ccv_nnc_mfa_
   descriptor.memoryPrecision = io_precision(params.data_type);
   descriptor.nrows = params.nrows;
   descriptor.ncols = params.ncols;
+  descriptor.vectorRowStride = vectorRowStride;
+  descriptor.outputRowStride = outputRowStride;
   if (batchDimension > 1) {
     descriptor.batchStrides = simd::uint4 {
       params.batch_stride_weights,
@@ -94,7 +98,8 @@ void ccv_nnc_mfa_encode_scaled_gemv(ccv_nnc_mfa_context_t* context, ccv_nnc_mfa_
     encoder->useResource(tensors[3], MTL::ResourceUsageRead);
   }
 
-  MTL::Size gridSize = MTL::Size((params.nrows + kInt8GemvRowsPerThreadgroup - 1) / kInt8GemvRowsPerThreadgroup, 1, batchDimension);
+  const uint32_t rowsPerThreadgroup = descriptor.rowsPerThreadgroup();
+  MTL::Size gridSize = MTL::Size((params.nrows + rowsPerThreadgroup - 1) / rowsPerThreadgroup, 1, batchDimension);
   CCV_NNC_MFA_PRECONDITION(gridSize.width > 0);
   encoder->dispatchThreadgroups(gridSize, MTL::Size(kInt8GemvSIMDGroupsPerThreadgroup * 32, 1, 1));
   command_batch->finishCommand(encoder);

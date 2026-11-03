@@ -296,6 +296,156 @@ TEST_CASE("MPS SwiGLU reads rowwise int8 weights once for a few rows")
 		_swiglu_mps_rowwise_case(rows[i], 10, "few-row rowwise int8 SwiGLU should match its dequantized CPU reference", __case_result__);
 }
 
+static void _swiglu_mps_packed_case(const int format, const int datatype, const int rows, const float clamp, const int activation_offset, int* const __case_result__)
+{
+	// Q8_0 (format 0), Q5_K or Q6_K weights over a few rows, as the shared expert of a speculative
+	// verify runs. The reference takes the dequantized weights and the activations in FP32. A
+	// nonzero activation_offset reads the activations through a view that many elements into its
+	// buffer.
+	const int n = 512;
+	const int k = 768;
+	const size_t activation_count = (size_t)rows * k;
+	const size_t weight_count = (size_t)n * k;
+	ccv_nnc_tensor_t* const ha_f32 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, k), 0);
+	ccv_nnc_tensor_t* const hgate_f32 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, n, k), 0);
+	ccv_nnc_tensor_t* const hup_f32 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, n, k), 0);
+	_swiglu_fill(ha_f32->data.f32, activation_count, 17, 101, 1.0f / 64);
+	_swiglu_fill(hgate_f32->data.f32, weight_count, 29, 113, 1.0f / 1024);
+	_swiglu_fill(hup_f32->data.f32, weight_count, 37, 127, 1.0f / 1024);
+	ccv_nnc_tensor_param_t a_params = ha_f32->info;
+	a_params.datatype = datatype;
+	ccv_nnc_tensor_param_t w_params = hgate_f32->info;
+	w_params.datatype = datatype;
+	ccv_nnc_tensor_param_t b_params = CPU_TENSOR_NHWC(32F, rows, n);
+	b_params.datatype = datatype;
+	ccv_nnc_tensor_t* const ha = ccv_nnc_tensor_new(0, a_params, 0);
+	ccv_nnc_tensor_t* const hgate = ccv_nnc_tensor_new(0, w_params, 0);
+	ccv_nnc_tensor_t* const hup = ccv_nnc_tensor_new(0, w_params, 0);
+	ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0,
+		TENSOR_LIST(ha_f32, hgate_f32, hup_f32), TENSOR_LIST(ha, hgate, hup), 0);
+	const ccv_nnc_tensor_param_t q_params = format == 0 ? ccv_nnc_tensor_8i_rowwise(w_params) : ccv_nnc_tensor_8i_rowwise_x(w_params, format);
+	ccv_nnc_tensor_t* const hgate_q = ccv_nnc_tensor_new(0, q_params, 0);
+	ccv_nnc_tensor_t* const hup_q = ccv_nnc_tensor_new(0, q_params, 0);
+	const size_t qsize = ccv_nnc_tensor_data_size_without_padding(q_params);
+	ccv_nnc_tensor_t* const hw[2] = { hgate, hup };
+	ccv_nnc_tensor_t* const hq[2] = { hgate_q, hup_q };
+	int i;
+	for (i = 0; i < 2; i++)
+	{
+		const size_t encoded = format == 0 ?
+			ccv_nnc_quantize_8i_rowwise(hw[i]->data.u8, datatype, CCV_TENSOR_CPU_MEMORY, weight_count, k, 0, 0, hq[i]->data.u8, qsize) :
+			ccv_nnc_quantize_8i_rowwise_x(hw[i]->data.u8, datatype, CCV_TENSOR_CPU_MEMORY, weight_count, k, format, 0, 0, 0, 0, hq[i]->data.u8, qsize);
+		REQUIRE_EQ(encoded, qsize, "format=%d %s weights should quantize to the declared size", format, i == 0 ? "gate" : "up");
+		if (format == 0)
+			ccv_nnc_dequantize_8i_rowwise(hq[i]->data.u8, datatype, CCV_TENSOR_CPU_MEMORY, qsize, k, hw[i]->data.u8, weight_count);
+		else
+			ccv_nnc_dequantize_8i_rowwise_x(hq[i]->data.u8, datatype, CCV_TENSOR_CPU_MEMORY, qsize, k, format, hw[i]->data.u8, weight_count);
+	}
+	ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0,
+		TENSOR_LIST(ha, hgate, hup), TENSOR_LIST(ha_f32, hgate_f32, hup_f32), 0);
+	ccv_nnc_tensor_t* const expected = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, n), 0);
+	ccv_nnc_cmd_t cpu_command = CMD_SWIGLU_FORWARD(clamp);
+	cpu_command.backend = CCV_NNC_BACKEND_CPU_REF;
+	REQUIRE_EQ(ccv_nnc_cmd_exec(cpu_command, ccv_nnc_no_hint, 0,
+		TENSOR_LIST(ha_f32, hgate_f32, hup_f32), TENSOR_LIST(expected), 0),
+		CCV_NNC_EXEC_SUCCESS, "format=%d CPU dequantized reference should execute", format);
+	// With an offset, the activations go one row past theirs into a larger buffer, shifted by
+	// activation_offset elements, and the command reads them through a view.
+	ccv_nnc_tensor_param_t buffer_a_params = a_params;
+	buffer_a_params.dim[0] = rows + (activation_offset > 0);
+	ccv_nnc_tensor_t* const ha_buffer = activation_offset > 0 ? ccv_nnc_tensor_new(0, buffer_a_params, 0) : ha;
+	if (activation_offset > 0)
+	{
+		const size_t element_size = CCV_GET_DATA_TYPE_SIZE(datatype);
+		memset(ha_buffer->data.u8, 0, element_size * (rows + 1) * k);
+		memcpy(ha_buffer->data.u8 + element_size * activation_offset, ha->data.u8, element_size * activation_count);
+	}
+	ccv_nnc_tensor_param_t gpu_a_params = buffer_a_params;
+	gpu_a_params.type = CCV_TENSOR_GPU_MEMORY | 000;
+	ccv_nnc_tensor_param_t gpu_q_params = q_params;
+	gpu_q_params.type = CCV_TENSOR_GPU_MEMORY | 000;
+	ccv_nnc_tensor_param_t gpu_b_params = b_params;
+	gpu_b_params.type = CCV_TENSOR_GPU_MEMORY | 000;
+	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, gpu_a_params, 0);
+	ccv_nnc_tensor_param_t a_view_params = gpu_a_params;
+	a_view_params.dim[0] = rows;
+	ccv_nnc_tensor_view_t* const a_view = activation_offset > 0 ? ccv_nnc_tensor_view_new(a, a_view_params, DIM_ALLOC(0, activation_offset), DIM_ALLOC(k, 1)) : 0;
+	ccv_nnc_tensor_t* const gate_q = ccv_nnc_tensor_new(0, gpu_q_params, 0);
+	ccv_nnc_tensor_t* const up_q = ccv_nnc_tensor_new(0, gpu_q_params, 0);
+	ccv_nnc_tensor_t* const output = ccv_nnc_tensor_new(0, gpu_b_params, 0);
+	ccv_nnc_tensor_t* const hb = ccv_nnc_tensor_new(0, b_params, 0);
+	ccv_nnc_tensor_t* const actual = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, n), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0,
+		TENSOR_LIST(ha_buffer, hgate_q, hup_q), TENSOR_LIST(a, gate_q, up_q), 0);
+	ccv_nnc_cmd_t mps_command = CMD_SWIGLU_FORWARD(clamp);
+	mps_command.backend = CCV_NNC_BACKEND_MPS;
+	REQUIRE_EQ(ccv_nnc_cmd_exec(mps_command, ccv_nnc_no_hint, 0,
+		TENSOR_LIST(a_view ? (ccv_nnc_tensor_t*)a_view : a, gate_q, up_q), TENSOR_LIST(output), 0),
+		CCV_NNC_EXEC_SUCCESS, "format=%d datatype=%d rows=%d SwiGLU should execute", format, datatype, rows);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(output), TENSOR_LIST(hb), 0);
+	ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(hb), TENSOR_LIST(actual), 0);
+	double difference_norm = 0;
+	double expected_norm = 0;
+	for (i = 0; i < rows * n; i++)
+	{
+		const double difference = (double)actual->data.f32[i] - expected->data.f32[i];
+		difference_norm += difference * difference;
+		expected_norm += (double)expected->data.f32[i] * expected->data.f32[i];
+	}
+	const double relative_l2 = sqrt(difference_norm / ccv_max(expected_norm, 1e-20));
+	REQUIRE(expected_norm > 1e-6, "format=%d rows=%d reference should not be zero", format, rows);
+	// An offset view takes a matrix path, which can quantize the activations to int8: about 2.8e-2
+	// here on M5 Max. A misread lands near 1.3.
+	const double tolerance = activation_offset > 0 ? 5e-2 : datatype == CCV_32F ? 1e-5 : 2e-3;
+	REQUIRE(relative_l2 < tolerance,
+		"format=%d datatype=%d rows=%d clamp=%g activation_offset=%d SwiGLU should match its dequantized CPU reference (relative L2 %.8g)", format, datatype, rows, clamp, activation_offset, relative_l2);
+	ccv_nnc_tensor_free(actual);
+	ccv_nnc_tensor_free(hb);
+	ccv_nnc_tensor_free(output);
+	ccv_nnc_tensor_free(up_q);
+	ccv_nnc_tensor_free(gate_q);
+	if (a_view)
+		ccv_nnc_tensor_view_free(a_view);
+	ccv_nnc_tensor_free(a);
+	if (ha_buffer != ha)
+		ccv_nnc_tensor_free(ha_buffer);
+	ccv_nnc_tensor_free(expected);
+	ccv_nnc_tensor_free(hup_q);
+	ccv_nnc_tensor_free(hgate_q);
+	ccv_nnc_tensor_free(hup);
+	ccv_nnc_tensor_free(hgate);
+	ccv_nnc_tensor_free(ha);
+	ccv_nnc_tensor_free(hup_f32);
+	ccv_nnc_tensor_free(hgate_f32);
+	ccv_nnc_tensor_free(ha_f32);
+}
+
+TEST_CASE("MPS SwiGLU reads Q5_K and Q6_K weights once for up to 6 rows")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SWIGLU_FORWARD, CCV_NNC_BACKEND_MPS));
+	const int formats[] = { CCV_NNC_QX_8I_ROWWISE_Q5_K, CCV_NNC_QX_8I_ROWWISE_Q6_K };
+	const int datatypes[] = { CCV_32F, CCV_16F };
+	int f, d, rows;
+	for (f = 0; f < 2; f++)
+		for (d = 0; d < 2; d++)
+			for (rows = 1; rows <= 6; rows++)
+				_swiglu_mps_packed_case(formats[f], datatypes[d], rows, rows == 3 ? 0 : 0.5, 0, __case_result__);
+}
+
+TEST_CASE("MPS SwiGLU leaves activation views off the vector boundary to the matrix paths")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SWIGLU_FORWARD, CCV_NNC_BACKEND_MPS));
+	// The one-pass kernel loads activations four elements at a time. An FP16 view one element past
+	// that boundary read shifted values there (relative L2 near 1.3).
+	const int formats[] = { 0, CCV_NNC_QX_8I_ROWWISE_Q5_K, CCV_NNC_QX_8I_ROWWISE_Q6_K };
+	const int datatypes[] = { CCV_16F, CCV_32F };
+	int f, d, rows;
+	for (f = 0; f < 3; f++)
+		for (d = 0; d < 2; d++)
+			for (rows = 1; rows <= 4; rows += 3)
+				_swiglu_mps_packed_case(formats[f], datatypes[d], rows, 0.5, 1, __case_result__);
+}
+
 TEST_CASE("MPS SwiGLU quantizes activation once for rowwise int8 prefill")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SWIGLU_FORWARD, CCV_NNC_BACKEND_MPS));

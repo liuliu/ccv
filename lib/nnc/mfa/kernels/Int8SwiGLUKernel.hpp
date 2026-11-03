@@ -6,16 +6,19 @@
 
 constexpr uint32_t kInt8SwiGLURowsPerThreadgroup = 2;
 constexpr uint32_t kInt8SwiGLUSIMDGroupsPerThreadgroup = 4;
+// Q5_K and Q6_K weights give each half SIMD group a row of its own.
+constexpr uint32_t kInt8SwiGLUPackedRowsPerThreadgroup = kInt8SwiGLUSIMDGroupsPerThreadgroup * 2;
 
 struct Int8SwiGLUKernelDescriptor {
   bool clamp;
   GEMMOperandPrecision memoryPrecision;
   uint32_t activationRows;
+  uint32_t format;
 
   constexpr bool operator==(const Int8SwiGLUKernelDescriptor& rhs) const
   {
     return clamp == rhs.clamp && memoryPrecision == rhs.memoryPrecision &&
-      activationRows == rhs.activationRows;
+      activationRows == rhs.activationRows && format == rhs.format;
   }
 };
 
@@ -24,9 +27,9 @@ struct std::hash<Int8SwiGLUKernelDescriptor>
 {
   std::size_t operator()(const Int8SwiGLUKernelDescriptor& value) const noexcept
   {
-    return std::hash<uint32_t>()(
-      (uint32_t)value.memoryPrecision.value | ((uint32_t)value.clamp << 8) |
-      (value.activationRows << 16));
+    return std::hash<uint64_t>()(
+      (uint64_t)value.memoryPrecision.value | ((uint64_t)value.clamp << 8) |
+      ((uint64_t)value.activationRows << 16) | ((uint64_t)value.format << 32));
   }
 };
 

@@ -12,6 +12,9 @@ typedef struct {
   uint32_t batch_stride_vector;
   uint32_t batch_stride_output;
   uint32_t batch_stride_scale;
+  // Element strides between activation rows and between output rows; 0 for ncols and nrows.
+  uint32_t vector_row_stride;
+  uint32_t output_row_stride;
   uint8_t fused_bias;
 } ccv_nnc_mfa_scaled_gemv_params_t;
 

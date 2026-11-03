@@ -329,8 +329,18 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 			(uint64_t)w_cols * (((uint64_t)w_rows + ccv_nnc_8i_rowwise_x_group_size(w_8i_rowwise_x_format) - 1) / ccv_nnc_8i_rowwise_x_group_size(w_8i_rowwise_x_format)) * ccv_nnc_8i_rowwise_x_group_bits(w_8i_rowwise_x_format) : 0;
 		const uint64_t interleaved_scaled_gemv_w_batch_stride = w_8i_rowwise_x_format ?
 			(interleaved_scaled_gemv_w_batch_payload_bits + 7) / 8 : interleaved_w_batch_stride;
+		// Q8_0, Q5_K and Q6_K weights keep the vector kernel up to 8 rows, which covers a
+		// speculative verify; other packed formats have kernels up to 3 rows. Every threadgroup
+		// rereads all activation rows, so FP32 activations over Q8_0 weights stop at 4 rows: past
+		// that they lose to the matrix paths on wide or long weights (M5 Max). Q5_K and Q6_K
+		// matrix paths decode the whole weight first, so the vector kernel keeps all 8.
+		const int scaled_gemv_rows = is_interleaved_batched_scaled_gemm ? adim[0] : a_rows;
+		const int is_scaled_gemv_rows =
+			(scaled_gemv_rows >= 1 && scaled_gemv_rows <= 3) ||
+			(!w_8i_rowwise_x_format && scaled_gemv_rows >= 4 && scaled_gemv_rows * (a_datatype == CCV_32F ? 4 : 2) <= 16) ||
+			((w_8i_rowwise_x_format == CCV_NNC_QX_8I_ROWWISE_Q5_K || w_8i_rowwise_x_format == CCV_NNC_QX_8I_ROWWISE_Q6_K) && scaled_gemv_rows >= 4 && scaled_gemv_rows <= 8);
 		const int is_interleaved_batched_scaled_gemv =
-			is_interleaved_batched_scaled_gemm && adim[0] == 1 &&
+			is_interleaved_batched_scaled_gemm && is_scaled_gemv_rows &&
 			(!w_8i_rowwise_x_format || (interleaved_scaled_gemv_w_batch_payload_bits % 8) == 0) &&
 			interleaved_scaled_gemv_w_batch_stride <= UINT32_MAX;
 
@@ -457,10 +467,7 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 			(CCV_GET_DATA_TYPE(a->info.datatype) != CCV_QX) &&
 			(CCV_GET_DATA_TYPE(b->info.datatype) != CCV_QX) &&
 			(!bias || CCV_GET_DATA_TYPE(bias->info.datatype) != CCV_QX) &&
-			// Q8_0 weights keep the vector kernel up to 8 rows, which covers a speculative verify.
-			// Every threadgroup rereads all activation rows, so FP32 activations stop at 4 rows:
-			// past that they lose to the matrix paths on wide or long weights (M5 Max).
-			(a_rows == 1 || a_rows == 2 || a_rows == 3 || (!w_8i_rowwise_x_format && a_rows >= 4 && a_rows * (a_datatype == CCV_32F ? 4 : 2) <= 16)) &&
+			is_scaled_gemv_rows &&
 			!is_transpose_a &&
 			is_transpose_w &&
 			(w_rows % 4) == 0 &&
@@ -469,6 +476,9 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 			is_contiguous &&
 			is_same_dtype &&
 			is_supported_dtype &&
+			// The kernels load activations four elements at a time, so a view must start on that
+			// boundary; K % 4 keeps every later row and batch on it.
+			(a->dataof % (4 * CCV_GET_DATA_TYPE_SIZE(a->info.datatype))) == 0 &&
 			(!bias || bias_batch_size == 1) &&
 			ccv_nnc_mfa_context_supported(context) &&
 			!(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA);
@@ -494,7 +504,7 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 			ccv_nnc_mfa_scaled_gemv_params_t params = {
 				.data_type = mtl_data_type,
 				.format = w_8i_rowwise_x_format,
-				.mrows = (uint32_t)a_rows,
+				.mrows = (uint32_t)scaled_gemv_rows,
 				.ncols = (uint32_t)w_rows,
 				.nrows = (uint32_t)w_cols,
 				.batch_dimension = is_interleaved_batched_scaled_gemv ? (uint32_t)adim[1] : 0,
@@ -502,6 +512,8 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 				.batch_stride_vector = is_interleaved_batched_scaled_gemv ? (uint32_t)w_rows : 0,
 				.batch_stride_output = is_interleaved_batched_scaled_gemv ? (uint32_t)b_cols : 0,
 				.batch_stride_scale = is_interleaved_batched_scaled_gemv ? (uint32_t)b_cols : 0,
+				.vector_row_stride = is_interleaved_batched_scaled_gemv ? (uint32_t)interleaved_a_leading_dimension : 0,
+				.output_row_stride = is_interleaved_batched_scaled_gemv ? (uint32_t)interleaved_c_leading_dimension : 0,
 				.fused_bias = bias ? 1 : 0,
 			};
 			ccv_nnc_mfa_prepare_scaled_gemv(context, params);

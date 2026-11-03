@@ -101,8 +101,8 @@ kernel void int8_gemv(
   const uint rb = tgpig * ROWS;
   const bool active1 = rb + 1 < nrows;
   device const real4* y0 = (device const real4*)src1;
-  device const real4* y1 = (device const real4*)(src1 + ncols);
-  device const real4* y2 = (device const real4*)(src1 + ncols * 2);
+  device const real4* y1 = (device const real4*)(src1 + vector_row_stride);
+  device const real4* y2 = (device const real4*)(src1 + vector_row_stride * 2);
   threadgroup float partials[6][32];
 
   float sum00 = 0;
@@ -173,8 +173,8 @@ kernel void int8_gemv(
   }
   shader += R"(
       dst[rb + 0] = (real)value0;
-      dst[nrows + rb + 0] = (real)value1;
-      dst[nrows * 2 + rb + 0] = (real)value2;
+      dst[output_row_stride + rb + 0] = (real)value1;
+      dst[output_row_stride * 2 + rb + 0] = (real)value2;
     }
     if (tiisg == 1 && active1) {
       const float scale = (float)scales[rb + 1];
@@ -192,8 +192,8 @@ kernel void int8_gemv(
   }
   shader += R"(
       dst[rb + 1] = (real)value0;
-      dst[nrows + rb + 1] = (real)value1;
-      dst[nrows * 2 + rb + 1] = (real)value2;
+      dst[output_row_stride + rb + 1] = (real)value1;
+      dst[output_row_stride * 2 + rb + 1] = (real)value2;
     }
   }
 }
@@ -312,8 +312,8 @@ kernel void int8_gemv(
   const uint rb = tgpig * ROWS;
   const bool active1 = rb + 1 < nrows;
   device const real4* y0 = (device const real4*)src1;
-  device const real4* y1 = (device const real4*)(src1 + ncols);
-  device const real4* y2 = (device const real4*)(src1 + ncols * 2);
+  device const real4* y1 = (device const real4*)(src1 + vector_row_stride);
+  device const real4* y2 = (device const real4*)(src1 + vector_row_stride * 2);
   threadgroup float partials[6][32];
 
   float sum00 = 0;
@@ -429,8 +429,8 @@ kernel void int8_gemv(
   }
   shader += R"(
       dst[rb + 0] = (real)value0;
-      dst[nrows + rb + 0] = (real)value1;
-      dst[nrows * 2 + rb + 0] = (real)value2;
+      dst[output_row_stride + rb + 0] = (real)value1;
+      dst[output_row_stride * 2 + rb + 0] = (real)value2;
     }
     if (tiisg == 1 && active1) {
       const float scale = (float)scales[rb + 1];
@@ -448,8 +448,8 @@ kernel void int8_gemv(
   }
   shader += R"(
       dst[rb + 1] = (real)value0;
-      dst[nrows + rb + 1] = (real)value1;
-      dst[nrows * 2 + rb + 1] = (real)value2;
+      dst[output_row_stride + rb + 1] = (real)value1;
+      dst[output_row_stride * 2 + rb + 1] = (real)value2;
     }
   }
 }
@@ -495,7 +495,7 @@ kernel void int8_gemv(
   const uint rb = tgpig * ROWS;
   const bool active1 = rb + 1 < nrows;
   device const real4* y0 = (device const real4*)src1;
-  device const real4* y1 = (device const real4*)(src1 + ncols);
+  device const real4* y1 = (device const real4*)(src1 + vector_row_stride);
   threadgroup float partials[4][32];
 
   float sum00 = 0;
@@ -589,7 +589,7 @@ kernel void int8_gemv(
   }
   shader += R"(
       dst[rb + 0] = (real)value0;
-      dst[nrows + rb + 0] = (real)value1;
+      dst[output_row_stride + rb + 0] = (real)value1;
     }
     if (tiisg == 1 && active1) {
       const float scale = (float)scales[rb + 1];
@@ -605,7 +605,7 @@ kernel void int8_gemv(
   }
   shader += R"(
       dst[rb + 1] = (real)value0;
-      dst[nrows + rb + 1] = (real)value1;
+      dst[output_row_stride + rb + 1] = (real)value1;
     }
   }
 }
@@ -904,7 +904,7 @@ kernel void int8_gemv(
   shader += "][32];\n";
   for (uint32_t m = 0; m < mrows; ++m) {
     const std::string i = std::to_string(m);
-    shader += "  device const real4* y" + i + " = (device const real4*)(src1 + ncols * " + i + ");\n";
+    shader += "  device const real4* y" + i + " = (device const real4*)(src1 + vector_row_stride * " + i + ");\n";
     shader += "  float sum" + i + "0 = 0;\n  float sum" + i + "1 = 0;\n";
   }
   shader += R"(
@@ -973,7 +973,7 @@ kernel void int8_gemv(
     if (fusedBias)
       shader += "      const float biasv = (float)bias[rb + " + row + "];\n";
     for (uint32_t m = 0; m < mrows; ++m) {
-      const std::string offset = m == 0 ? "" : (m == 1 ? "nrows + " : "nrows * 2 + ");
+      const std::string offset = m == 0 ? "" : (m == 1 ? "output_row_stride + " : "output_row_stride * 2 + ");
       shader += "      dst[" + offset + "rb + " + row + "] = (real)(all_sum" + std::to_string(m) + row + " * scale" + (fusedBias ? " + biasv" : "") + ");\n";
     }
     shader += "    }\n";
@@ -989,7 +989,8 @@ Int8GemvKernel::Int8GemvKernel(Int8GemvKernelDescriptor descriptor, MTL::Device*
   batched = descriptor.batched;
   format = descriptor.format;
   memoryPrecision = descriptor.memoryPrecision;
-  CCV_NNC_MFA_PRECONDITION(!batched || (mrows == 1 && !fusedBias));
+  CCV_NNC_MFA_PRECONDITION(!batched || !fusedBias);
+  CCV_NNC_MFA_PRECONDITION(mrows <= 3 || format == 0 || format == CCV_NNC_QX_8I_ROWWISE_Q5_K || format == CCV_NNC_QX_8I_ROWWISE_Q6_K);
 
   source = createSource();
   if (batched)
@@ -1006,6 +1007,142 @@ Int8GemvKernel::Int8GemvKernel(Int8GemvKernelDescriptor descriptor, MTL::Device*
 std::string Int8GemvKernel::createSource() const noexcept {
   std::string shader = createConstants() + "\n";
   if (format != 0) {
+    if (mrows > 3) {
+      // Q5_K and Q6_K weights against 4 to 8 activation rows. The multiplies outweigh the weight
+      // reads, so each lane decodes 16 weights of its row once and takes them against every
+      // activation row in compile-time loops. Half a SIMD group owns each weight row, so a short
+      // row still keeps the lanes busy: a full SIMD group per row was 1.2x slower at K = 1280 and
+      // 1.5x slower for FP32 activations at K = 2304 (M5 Max).
+      CCV_NNC_MFA_PRECONDITION(format == CCV_NNC_QX_8I_ROWWISE_Q5_K || format == CCV_NNC_QX_8I_ROWWISE_Q6_K);
+      shader += R"(
+#include <metal_stdlib>
+using namespace metal;
+)";
+      if (format == CCV_NNC_QX_8I_ROWWISE_Q5_K) {
+        shader += R"(
+// One 11-byte group: sixteen 5-bit values, a 3-bit multiplier and a 5-bit offset.
+constant uint unit_bytes = 11;
+constant uint units_per_row = groups_per_row;
+
+inline void decode16(device const uchar* p, thread float4& w0, thread float4& w1, thread float4& w2, thread float4& w3)
+{
+  const uint x = (uint)p[0] | ((uint)p[1] << 8) | ((uint)p[2] << 16) | ((uint)p[3] << 24);
+  const uint y = (uint)p[4] | ((uint)p[5] << 8) | ((uint)p[6] << 16) | ((uint)p[7] << 24);
+  const uint z = (uint)p[8] | ((uint)p[9] << 8) | ((uint)p[10] << 16);
+  const float m = (float)(((z >> 16) & 7u) + 1);
+  const float4 o = float4((float)((int)((z >> 19) & 31u) - 16) - 16.0f * m);
+  w0 = fma(float4(m), float4(uint4(x, x >> 5, x >> 10, x >> 15) & 31u), o);
+  w1 = fma(float4(m), float4(uint4(x >> 20, x >> 25, (x >> 30) | (y << 2), y >> 3) & 31u), o);
+  w2 = fma(float4(m), float4(uint4(y >> 8, y >> 13, y >> 18, y >> 23) & 31u), o);
+  w3 = fma(float4(m), float4(uint4((y >> 28) | (z << 4), z >> 1, z >> 6, z >> 11) & 31u), o);
+}
+)";
+      } else {
+        shader += R"(
+// Two 52-bit groups in 13 bytes: eight signed 6-bit values, a 2-bit multiplier and a 2-bit
+// offset each. Groups per row are even as K is a multiple of 256.
+constant uint unit_bytes = 13;
+constant uint units_per_row = groups_per_row / 2;
+
+inline float q6_offset(const uint meta)
+{
+  const uint q = (meta >> 2) & 3u;
+  return (q & 2u) ? (float)((int)q - 4) : (float)q;
+}
+
+inline void decode16(device const uchar* p, thread float4& w0, thread float4& w1, thread float4& w2, thread float4& w3)
+{
+  const uint a0 = (uint)p[0] | ((uint)p[1] << 8) | ((uint)p[2] << 16) | ((uint)p[3] << 24);
+  const uint b0 = (uint)p[4] | ((uint)p[5] << 8) | ((uint)p[6] << 16);
+  const uint a1 = ((uint)p[6] >> 4) | ((uint)p[7] << 4) | ((uint)p[8] << 12) | ((uint)p[9] << 20) | ((uint)p[10] << 28);
+  const uint b1 = ((uint)p[10] >> 4) | ((uint)p[11] << 4) | ((uint)p[12] << 12);
+  const uint meta0 = (b0 >> 16) & 15u;
+  const uint meta1 = (b1 >> 16) & 15u;
+  const float4 m0 = float4((float)((meta0 & 3u) + 1));
+  const float4 m1 = float4((float)((meta1 & 3u) + 1));
+  const float4 o0 = float4(q6_offset(meta0));
+  const float4 o1 = float4(q6_offset(meta1));
+  w0 = fma(float4(int4(uint4(a0 << 26, a0 << 20, a0 << 14, a0 << 8)) >> 26), m0, o0);
+  w1 = fma(float4(int4(uint4(a0 << 2, ((a0 >> 30) | (b0 << 2)) << 26, b0 << 22, b0 << 16)) >> 26), m0, o0);
+  w2 = fma(float4(int4(uint4(a1 << 26, a1 << 20, a1 << 14, a1 << 8)) >> 26), m1, o1);
+  w3 = fma(float4(int4(uint4(a1 << 2, ((a1 >> 30) | (b1 << 2)) << 26, b1 << 22, b1 << 16)) >> 26), m1, o1);
+}
+)";
+      }
+      shader += R"(
+kernel void int8_gemv(
+  device const uchar *src0 [[buffer(0)]],
+  device const real *src1 [[buffer(1)]],
+  device real *dst [[buffer(2)]],
+  device const real *scales [[buffer(3)]],
+)";
+      if (fusedBias) {
+        shader += R"(
+  device const real *bias [[buffer(4)]],
+)";
+      }
+      shader += R"(
+  uint tgpig [[threadgroup_position_in_grid]],
+  uint sgitg [[simdgroup_index_in_threadgroup]],
+  uint tiisg [[thread_index_in_simdgroup]]
+) {
+  constexpr uint ROWS = )";
+      shader += std::to_string(kInt8GemvSIMDGroupsPerThreadgroup * 2);
+      shader += R"(;
+  constexpr uint M = )";
+      shader += std::to_string(mrows);
+      shader += R"(;
+  const uint rb = tgpig * ROWS;
+  const uint row = rb + sgitg * 2 + (tiisg >> 4);
+  const uint lane = tiisg & 15u;
+  // Rows start on byte boundaries. A row past the end reads the last row and writes nothing.
+  device const uchar* weights = src0 + (ulong)min(row, nrows - 1) * (units_per_row * unit_bytes);
+
+  float sum[M];
+  for (uint m = 0; m < M; m++)
+    sum[m] = 0;
+  for (uint u = lane; u < units_per_row; u += 16) {
+    float4 w0, w1, w2, w3;
+    decode16(weights + u * unit_bytes, w0, w1, w2, w3);
+    for (uint m = 0; m < M; m++) {
+      device const real4* y = (device const real4*)(src1 + (ulong)vector_row_stride * m) + u * 4;
+      sum[m] += dot(w0, float4(y[0])) + dot(w1, float4(y[1])) + dot(w2, float4(y[2])) + dot(w3, float4(y[3]));
+    }
+  }
+
+  for (uint m = 0; m < M; m++) {
+    float value = sum[m];
+    value += simd_shuffle_xor(value, 8);
+    value += simd_shuffle_xor(value, 4);
+    value += simd_shuffle_xor(value, 2);
+    value += simd_shuffle_xor(value, 1);
+    sum[m] = value;
+  }
+  if (lane == 0 && row < nrows) {
+    const float scale = (float)scales[row];
+)";
+      if (fusedBias) {
+        shader += R"(
+    const float biasv = (float)bias[row];
+)";
+      }
+      shader += R"(
+    for (uint m = 0; m < M; m++) {
+      float value = sum[m] * scale;
+)";
+      if (fusedBias) {
+        shader += R"(
+      value += biasv;
+)";
+      }
+      shader += R"(
+      dst[output_row_stride * m + row] = (real)value;
+    }
+  }
+}
+)";
+      return shader;
+    }
     if (format == CCV_NNC_QX_8I_ROWWISE_Q6_K) {
       append_q6_helpers(shader);
       if (mrows == 3)
@@ -1565,7 +1702,7 @@ kernel void int8_gemv(
   const uint rb = tgpig * ROWS;
   const bool active1 = rb + 1 < nrows;
   device const real4* y0 = (device const real4*)src1;
-  device const real4* y1 = (device const real4*)(src1 + ncols);
+  device const real4* y1 = (device const real4*)(src1 + vector_row_stride);
   threadgroup float partials[4][32];
 
   float sum00 = 0;
@@ -1650,7 +1787,7 @@ kernel void int8_gemv(
         }
         shader += R"(
       dst[rb + 0] = (real)value0;
-      dst[nrows + rb + 0] = (real)value1;
+      dst[output_row_stride + rb + 0] = (real)value1;
     }
     if (tiisg == 1 && active1) {
       const float scale = (float)scales[rb + 1];
@@ -1666,7 +1803,7 @@ kernel void int8_gemv(
         }
         shader += R"(
       dst[rb + 1] = (real)value0;
-      dst[nrows + rb + 1] = (real)value1;
+      dst[output_row_stride + rb + 1] = (real)value1;
     }
   }
 }
@@ -1827,7 +1964,7 @@ kernel void int8_gemv(
   const uint rb = tgpig * ROWS;
   const bool active1 = rb + 1 < nrows;
   device const real4* y0 = (device const real4*)src1;
-  device const real4* y1 = (device const real4*)(src1 + ncols);
+  device const real4* y1 = (device const real4*)(src1 + vector_row_stride);
   threadgroup float partials[4][32];
 
   float sum00 = 0;
@@ -1910,7 +2047,7 @@ kernel void int8_gemv(
         }
         shader += R"(
       dst[rb + 0] = (real)value0;
-      dst[nrows + rb + 0] = (real)value1;
+      dst[output_row_stride + rb + 0] = (real)value1;
     }
     if (tiisg == 1 && active1) {
       const float scale = (float)scales[rb + 1];
@@ -1926,7 +2063,7 @@ kernel void int8_gemv(
         }
         shader += R"(
       dst[rb + 1] = (real)value0;
-      dst[nrows + rb + 1] = (real)value1;
+      dst[output_row_stride + rb + 1] = (real)value1;
     }
   }
 }
@@ -2095,7 +2232,7 @@ kernel void int8_gemv(
   const uint rb = tgpig * ROWS;
   const bool active1 = rb + 1 < nrows;
   device const real4* y0 = (device const real4*)src1;
-  device const real4* y1 = (device const real4*)(src1 + ncols);
+  device const real4* y1 = (device const real4*)(src1 + vector_row_stride);
   threadgroup float partials[4][32];
 
   float sum00 = 0;
@@ -2180,7 +2317,7 @@ kernel void int8_gemv(
         }
         shader += R"(
       dst[rb + 0] = (real)value0;
-      dst[nrows + rb + 0] = (real)value1;
+      dst[output_row_stride + rb + 0] = (real)value1;
     }
     if (tiisg == 1 && active1) {
       const float scale = (float)scales[rb + 1];
@@ -2196,7 +2333,7 @@ kernel void int8_gemv(
         }
         shader += R"(
       dst[rb + 1] = (real)value0;
-      dst[nrows + rb + 1] = (real)value1;
+      dst[output_row_stride + rb + 1] = (real)value1;
     }
   }
 }
@@ -2371,7 +2508,7 @@ kernel void int8_gemv(
   const uint rb = tgpig * ROWS;
   const bool active1 = rb + 1 < nrows;
   device const real4* y0 = (device const real4*)src1;
-  device const real4* y1 = (device const real4*)(src1 + ncols);
+  device const real4* y1 = (device const real4*)(src1 + vector_row_stride);
   threadgroup float partials[4][32];
 
   float sum00 = 0;
@@ -2456,7 +2593,7 @@ kernel void int8_gemv(
         }
         shader += R"(
       dst[rb + 0] = (real)value0;
-      dst[nrows + rb + 0] = (real)value1;
+      dst[output_row_stride + rb + 0] = (real)value1;
     }
     if (tiisg == 1 && active1) {
       const float scale = (float)scales[rb + 1];
@@ -2472,7 +2609,7 @@ kernel void int8_gemv(
         }
         shader += R"(
       dst[rb + 1] = (real)value0;
-      dst[nrows + rb + 1] = (real)value1;
+      dst[output_row_stride + rb + 1] = (real)value1;
     }
   }
 }
@@ -2649,7 +2786,7 @@ kernel void int8_gemv(
   const bool active1 = rb + 1 < nrows;
   const uint pairs_per_row = groups_per_row >> 1;
   device const real4* y0 = (device const real4*)src1;
-  device const real4* y1 = (device const real4*)(src1 + ncols);
+  device const real4* y1 = (device const real4*)(src1 + vector_row_stride);
   threadgroup float partials[4][32];
 
   float sum00 = 0;
@@ -2706,7 +2843,7 @@ kernel void int8_gemv(
         }
         shader += R"(
       dst[rb + 0] = (real)value0;
-      dst[nrows + rb + 0] = (real)value1;
+      dst[output_row_stride + rb + 0] = (real)value1;
     }
     if (tiisg == 1 && active1) {
       const float scale = (float)scales[rb + 1];
@@ -2722,7 +2859,7 @@ kernel void int8_gemv(
         }
         shader += R"(
       dst[rb + 1] = (real)value0;
-      dst[nrows + rb + 1] = (real)value1;
+      dst[output_row_stride + rb + 1] = (real)value1;
     }
   }
 }
@@ -3100,7 +3237,7 @@ kernel void int8_gemv(
   const uint rb = tgpig * ROWS;
   const bool active1 = rb + 1 < nrows;
   device const real4* y0 = (device const real4*)src1;
-  device const real4* y1 = (device const real4*)(src1 + ncols);
+  device const real4* y1 = (device const real4*)(src1 + vector_row_stride);
   threadgroup float partials[4][32];
 
   float sum00 = 0;
@@ -3157,7 +3294,7 @@ kernel void int8_gemv(
         }
         shader += R"(
       dst[rb + 0] = (real)value0;
-      dst[nrows + rb + 0] = (real)value1;
+      dst[output_row_stride + rb + 0] = (real)value1;
     }
     if (tiisg == 1 && active1) {
       const float scale = (float)scales[rb + 1];
@@ -3173,7 +3310,7 @@ kernel void int8_gemv(
         }
         shader += R"(
       dst[rb + 1] = (real)value0;
-      dst[nrows + rb + 1] = (real)value1;
+      dst[output_row_stride + rb + 1] = (real)value1;
     }
   }
 }
@@ -3414,7 +3551,7 @@ kernel void int8_gemv(
     const float4 q1 = float4(x1[i]);
     const float4 q1b = float4(x1[i + 1]);
     for (uint m = 0; m < M; m++) {
-      device const real4* y = (device const real4*)(src1 + (ulong)ncols * m);
+      device const real4* y = (device const real4*)(src1 + (ulong)vector_row_stride * m);
       const float4 yv0 = float4(y[i]);
       const float4 yv1 = float4(y[i + 1]);
       sum0[m] += dot(q0, yv0);
@@ -3427,7 +3564,7 @@ kernel void int8_gemv(
     const float4 q0 = float4(x0[i]);
     const float4 q1 = float4(x1[i]);
     for (uint m = 0; m < M; m++) {
-      device const real4* y = (device const real4*)(src1 + (ulong)ncols * m);
+      device const real4* y = (device const real4*)(src1 + (ulong)vector_row_stride * m);
       const float4 yv = float4(y[i]);
       sum0[m] += dot(q0, yv);
       sum1[m] += dot(q1, yv);
@@ -3477,7 +3614,7 @@ kernel void int8_gemv(
 )";
     }
     shader += R"(
-        dst[nrows * m + rb + 0] = (real)value;
+        dst[output_row_stride * m + rb + 0] = (real)value;
       }
     }
     if (tiisg == 1 && active1) {
@@ -3498,7 +3635,7 @@ kernel void int8_gemv(
 )";
     }
     shader += R"(
-        dst[nrows * m + rb + 1] = (real)value;
+        dst[output_row_stride * m + rb + 1] = (real)value;
       }
     }
   }
@@ -3534,8 +3671,8 @@ kernel void int8_gemv(
   const uint rb = tgpig * ROWS;
   const bool active1 = rb + 1 < nrows;
   device const real4* y0 = (device const real4*)src1;
-  device const real4* y1 = (device const real4*)(src1 + ncols);
-  device const real4* y2 = (device const real4*)(src1 + ncols * 2);
+  device const real4* y1 = (device const real4*)(src1 + vector_row_stride);
+  device const real4* y2 = (device const real4*)(src1 + vector_row_stride * 2);
   threadgroup float partials[6][32];
   device const char4* x0 = (device const char4*)((device const char*)src0 + (ulong)(rb + 0) * ncols);
   device const char4* x1 = (device const char4*)((device const char*)src0 + (ulong)(rb + 1) * ncols);
@@ -3638,8 +3775,8 @@ kernel void int8_gemv(
     }
     shader += R"(
       dst[rb + 0] = (real)value0;
-      dst[nrows + rb + 0] = (real)value1;
-      dst[nrows * 2 + rb + 0] = (real)value2;
+      dst[output_row_stride + rb + 0] = (real)value1;
+      dst[output_row_stride * 2 + rb + 0] = (real)value2;
     }
     if (tiisg == 1 && active1) {
       const float scale = (float)scales[rb + 1];
@@ -3657,8 +3794,8 @@ kernel void int8_gemv(
     }
     shader += R"(
       dst[rb + 1] = (real)value0;
-      dst[nrows + rb + 1] = (real)value1;
-      dst[nrows * 2 + rb + 1] = (real)value2;
+      dst[output_row_stride + rb + 1] = (real)value1;
+      dst[output_row_stride * 2 + rb + 1] = (real)value2;
     }
   }
 }
@@ -3693,7 +3830,7 @@ kernel void int8_gemv(
   const uint rb = tgpig * ROWS;
   const bool active1 = rb + 1 < nrows;
   device const real4* y0 = (device const real4*)src1;
-  device const real4* y1 = (device const real4*)(src1 + ncols);
+  device const real4* y1 = (device const real4*)(src1 + vector_row_stride);
   threadgroup float partials[4][32];
   device const char4* x0 = (device const char4*)((device const char*)src0 + (ulong)(rb + 0) * ncols);
   device const char4* x1 = (device const char4*)((device const char*)src0 + (ulong)(rb + 1) * ncols);
@@ -3775,7 +3912,7 @@ kernel void int8_gemv(
     }
     shader += R"(
       dst[rb + 0] = (real)value0;
-      dst[nrows + rb + 0] = (real)value1;
+      dst[output_row_stride + rb + 0] = (real)value1;
     }
     if (tiisg == 1 && active1) {
       const float scale = (float)scales[rb + 1];
@@ -3791,7 +3928,7 @@ kernel void int8_gemv(
     }
     shader += R"(
       dst[rb + 1] = (real)value0;
-      dst[nrows + rb + 1] = (real)value1;
+      dst[output_row_stride + rb + 1] = (real)value1;
     }
   }
 }
@@ -3943,6 +4080,10 @@ std::string Int8GemvKernel::createConstants() const noexcept {
   defines += "constant uint ncols [[function_constant(0)]];";
   defines += "\n";
   defines += "constant uint nrows [[function_constant(1)]];";
+  defines += "\n";
+  defines += "constant uint vector_row_stride [[function_constant(9)]];";
+  defines += "\n";
+  defines += "constant uint output_row_stride [[function_constant(10)]];";
   defines += "\n";
   if (format != 0) {
     defines += "constant uint group_size [[function_constant(3)]];";

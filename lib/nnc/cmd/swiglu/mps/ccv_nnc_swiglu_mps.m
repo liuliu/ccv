@@ -87,10 +87,14 @@ static int _ccv_nnc_swiglu_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hi
 
 	// A few rows, as a speculative verify runs, read the weights once in the GEMV-style kernel.
 	// Past 6 rows its per-row sums make it slower than the matrix paths on wide FFNs (M5 Max).
-	if (rowwise_weights && gate_format == 0 && M <= 6)
+	// Q5_K and Q6_K weights take it too: their matrix paths decode both whole weights first.
+	// It loads activations four elements at a time, so a view must start on that boundary.
+	if (rowwise_weights && (gate_format == 0 || gate_format == CCV_NNC_QX_8I_ROWWISE_Q5_K || gate_format == CCV_NNC_QX_8I_ROWWISE_Q6_K) && M <= 6 &&
+		(a->dataof % (4 * CCV_GET_DATA_TYPE_SIZE(a->info.datatype))) == 0)
 	{
 		const ccv_nnc_mfa_int8_swiglu_params_t params = {
 			.data_type = mtl_datatype,
+			.format = gate_format,
 			.M = M,
 			.N = N,
 			.K = K,

@@ -43,6 +43,12 @@ struct Int8GemvDescriptor {
 
   uint32_t ncols;
 
+  // Element strides between activation rows and between output rows: ncols and nrows unless
+  // the rows interleave with other batches.
+  uint32_t vectorRowStride;
+
+  uint32_t outputRowStride;
+
   std::optional<simd::uint4> batchStrides;
 
   bool operator==(const Int8GemvDescriptor& rhs) const;
@@ -50,6 +56,8 @@ struct Int8GemvDescriptor {
   uint32_t groupSize() const noexcept;
   uint32_t groupsPerRow() const noexcept;
   uint32_t groupBits() const noexcept;
+  // Weight rows each threadgroup computes.
+  uint32_t rowsPerThreadgroup() const noexcept;
 	  uint64_t inputScaleOffset() const noexcept;
 
   std::pair<Int8GemvKernelDescriptor, PipelineValue<Int8GemvKernel>*> findKernel(MTL::Device* const device, const DeviceProperties& dprops, NS::Array* const binaryArchivesToRead, MTL::BinaryArchive* const binaryArchiveToWrite, const std::string& pathToWrite, std::unordered_map<Int8GemvKernelDescriptor, std::unique_ptr<Int8GemvKernel>> *const libraryCache) const noexcept;

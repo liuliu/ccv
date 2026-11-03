@@ -14,6 +14,8 @@ typedef struct {
   // Rows of a shared expert's int8 rowwise gate / up weights over the same K, evaluated in the
   // same dispatch for one shared activation row. Zero without a shared expert. IQ2_XXS only.
   uint32_t shared_rows;
+  // The shared expert's weights: 0 for Q8_0, or CCV_NNC_QX_8I_ROWWISE_Q5_K / Q6_K.
+  uint32_t shared_format;
 } ccv_nnc_mfa_segmented_int8_swiglu_params_t;
 
 #ifdef __cplusplus

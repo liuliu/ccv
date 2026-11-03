@@ -523,7 +523,153 @@ kernel void segmented_int8_swiglu(
     simdgroup_index, lane);
 }
 )";
-  if (descriptor.sharedFused) {
+  if (descriptor.sharedFused && descriptor.sharedFormat != 0) {
+    // The shared expert's Q5_K or Q6_K SwiGLU, as Int8SwiGLUKernel computes it for one row: half
+    // a SIMD group owns each weight row, eight rows per threadgroup. Keep the arithmetic the same,
+    // so the fused rows match SWIGLU_FORWARD bit for bit.
+    shader += "constant uint shared_nrows [[function_constant(9)]];\n";
+    shader += "constant uint routed_threadgroups [[function_constant(10)]];\n";
+    shader += "constexpr constant uint shared_rows_per_threadgroup = 8;\n";
+    if (descriptor.sharedFormat == CCV_NNC_QX_8I_ROWWISE_Q5_K) {
+      shader += R"(
+// One 11-byte group: sixteen 5-bit values, a 3-bit multiplier and a 5-bit offset.
+constant uint shared_unit_bytes = 11;
+
+inline void shared_decode16(device const uchar* p, thread float4& w0, thread float4& w1, thread float4& w2, thread float4& w3)
+{
+  const uint x = (uint)p[0] | ((uint)p[1] << 8) | ((uint)p[2] << 16) | ((uint)p[3] << 24);
+  const uint y = (uint)p[4] | ((uint)p[5] << 8) | ((uint)p[6] << 16) | ((uint)p[7] << 24);
+  const uint z = (uint)p[8] | ((uint)p[9] << 8) | ((uint)p[10] << 16);
+  const float m = (float)(((z >> 16) & 7u) + 1);
+  const float4 o = float4((float)((int)((z >> 19) & 31u) - 16) - 16.0f * m);
+  w0 = fma(float4(m), float4(uint4(x, x >> 5, x >> 10, x >> 15) & 31u), o);
+  w1 = fma(float4(m), float4(uint4(x >> 20, x >> 25, (x >> 30) | (y << 2), y >> 3) & 31u), o);
+  w2 = fma(float4(m), float4(uint4(y >> 8, y >> 13, y >> 18, y >> 23) & 31u), o);
+  w3 = fma(float4(m), float4(uint4((y >> 28) | (z << 4), z >> 1, z >> 6, z >> 11) & 31u), o);
+}
+)";
+    } else {
+      CCV_NNC_MFA_PRECONDITION(descriptor.sharedFormat == CCV_NNC_QX_8I_ROWWISE_Q6_K);
+      shader += R"(
+// Two 52-bit groups in 13 bytes: eight signed 6-bit values, a 2-bit multiplier and a 2-bit
+// offset each.
+constant uint shared_unit_bytes = 13;
+
+inline float shared_q6_offset(const uint meta)
+{
+  const uint q = (meta >> 2) & 3u;
+  return (q & 2u) ? (float)((int)q - 4) : (float)q;
+}
+
+inline void shared_decode16(device const uchar* p, thread float4& w0, thread float4& w1, thread float4& w2, thread float4& w3)
+{
+  const uint a0 = (uint)p[0] | ((uint)p[1] << 8) | ((uint)p[2] << 16) | ((uint)p[3] << 24);
+  const uint b0 = (uint)p[4] | ((uint)p[5] << 8) | ((uint)p[6] << 16);
+  const uint a1 = ((uint)p[6] >> 4) | ((uint)p[7] << 4) | ((uint)p[8] << 12) | ((uint)p[9] << 20) | ((uint)p[10] << 28);
+  const uint b1 = ((uint)p[10] >> 4) | ((uint)p[11] << 4) | ((uint)p[12] << 12);
+  const uint meta0 = (b0 >> 16) & 15u;
+  const uint meta1 = (b1 >> 16) & 15u;
+  const float4 m0 = float4((float)((meta0 & 3u) + 1));
+  const float4 m1 = float4((float)((meta1 & 3u) + 1));
+  const float4 o0 = float4(shared_q6_offset(meta0));
+  const float4 o1 = float4(shared_q6_offset(meta1));
+  w0 = fma(float4(int4(uint4(a0 << 26, a0 << 20, a0 << 14, a0 << 8)) >> 26), m0, o0);
+  w1 = fma(float4(int4(uint4(a0 << 2, ((a0 >> 30) | (b0 << 2)) << 26, b0 << 22, b0 << 16)) >> 26), m0, o0);
+  w2 = fma(float4(int4(uint4(a1 << 26, a1 << 20, a1 << 14, a1 << 8)) >> 26), m1, o1);
+  w3 = fma(float4(int4(uint4(a1 << 2, ((a1 >> 30) | (b1 << 2)) << 26, b1 << 22, b1 << 16)) >> 26), m1, o1);
+}
+)";
+    }
+    shader += R"(
+inline void segmented_int8_swiglu_shared_rows(
+  device const uchar* gate_weights,
+  device const uchar* up_weights,
+  device const real* activation,
+  device real* destination,
+  device const real* gate_scales,
+  device const real* up_scales,
+  uint threadgroup_position,
+  uint simdgroup_index,
+  uint lane)
+{
+  const uint units_per_row = ncols / 16;
+  const uint row = threadgroup_position * shared_rows_per_threadgroup + simdgroup_index * 2 + (lane >> 4);
+  const uint unit_lane = lane & 15u;
+  const ulong row_offset = (ulong)min(row, shared_nrows - 1) * (units_per_row * shared_unit_bytes);
+  device const uchar* gate = gate_weights + row_offset;
+  device const uchar* up = up_weights + row_offset;
+
+  float gate_sum = 0;
+  float up_sum = 0;
+  for (uint u = unit_lane; u < units_per_row; u += 16) {
+    float4 g0, g1, g2, g3;
+    float4 u0, u1, u2, u3;
+    shared_decode16(gate + u * shared_unit_bytes, g0, g1, g2, g3);
+    shared_decode16(up + u * shared_unit_bytes, u0, u1, u2, u3);
+    device const real4* y = (device const real4*)activation + u * 4;
+    const float4 y0 = float4(y[0]);
+    const float4 y1 = float4(y[1]);
+    const float4 y2 = float4(y[2]);
+    const float4 y3 = float4(y[3]);
+    gate_sum += dot(g0, y0) + dot(g1, y1) + dot(g2, y2) + dot(g3, y3);
+    up_sum += dot(u0, y0) + dot(u1, y1) + dot(u2, y2) + dot(u3, y3);
+  }
+
+  for (uint offset = 8; offset > 0; offset >>= 1) {
+    gate_sum += simd_shuffle_xor(gate_sum, offset);
+    up_sum += simd_shuffle_xor(up_sum, offset);
+  }
+  if (unit_lane == 0 && row < shared_nrows) {
+    float gate = gate_sum * (float)gate_scales[row];
+    float up = up_sum * (float)up_scales[row];
+)";
+    if (descriptor.clamp)
+      shader += R"(
+    gate = min(gate, clamp_limit);
+    up = clamp(up, -clamp_limit, clamp_limit);
+)";
+    shader += R"(
+    destination[row] = (real)(up * gate * stable_sigmoid(gate));
+  }
+}
+
+kernel void segmented_int8_swiglu_shared(
+  device const uchar* gate_weights [[buffer(0)]],
+  device const uchar* up_weights [[buffer(1)]],
+  device const real* activation [[buffer(2)]],
+  device real* destination [[buffer(3)]],
+  device const real* gate_scales [[buffer(4)]],
+  device const real* up_scales [[buffer(5)]],
+  device const int* indices [[buffer(6)]],
+  device const int* counts [[buffer(7)]],
+  device const real* route_weights [[buffer(8)]],
+  device const uchar* shared_gate_weights [[buffer(9)]],
+  device const uchar* shared_up_weights [[buffer(10)]],
+  device const real* shared_activation [[buffer(11)]],
+  device real* shared_destination [[buffer(12)]],
+  device const real* shared_gate_scales [[buffer(13)]],
+  device const real* shared_up_scales [[buffer(14)]],
+  uint threadgroup_position [[threadgroup_position_in_grid]],
+  uint simdgroup_index [[simdgroup_index_in_threadgroup]],
+  uint lane [[thread_index_in_simdgroup]])
+{
+  threadgroup int route_expert;
+  // Spread the shared threadgroups evenly through the grid, as the Q8_0 shared rows do.
+  const uint shared_threadgroups = (shared_nrows + shared_rows_per_threadgroup - 1u) / shared_rows_per_threadgroup;
+  const uint total = routed_threadgroups + shared_threadgroups;
+  const uint shared_before = (uint)((ulong)threadgroup_position * shared_threadgroups / total);
+  if ((uint)((ulong)(threadgroup_position + 1) * shared_threadgroups / total) != shared_before)
+    segmented_int8_swiglu_shared_rows(
+      shared_gate_weights, shared_up_weights, shared_activation, shared_destination,
+      shared_gate_scales, shared_up_scales, shared_before, simdgroup_index, lane);
+  else
+    segmented_int8_swiglu_routes(
+      gate_weights, up_weights, activation, destination, gate_scales, up_scales,
+      indices, counts, route_weights, route_expert, threadgroup_position - shared_before,
+      simdgroup_index, lane);
+}
+)";
+  } else if (descriptor.sharedFused) {
     // The shared expert's int8 SwiGLU, two rows per threadgroup as in Int8SwiGLUKernel. Its
     // threadgroups interleave with the routed ones: the routed rows are ALU bound on the packed
     // decode and the shared rows bandwidth bound, so the GPU overlaps the two.

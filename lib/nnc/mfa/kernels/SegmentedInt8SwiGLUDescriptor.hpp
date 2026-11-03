@@ -20,6 +20,8 @@ struct SegmentedInt8SwiGLUDescriptor {
   // interleave with. Zero without a shared expert.
   uint32_t sharedRows = 0;
   uint32_t routedThreadgroups = 0;
+  // The shared expert's weights: 0 for Q8_0, or Q5_K / Q6_K.
+  uint32_t sharedFormat = 0;
 
   bool operator==(const SegmentedInt8SwiGLUDescriptor& rhs) const;
   uint32_t groupSize() const noexcept;
