@@ -8,7 +8,7 @@ GemvKernel::GemvKernel(GemvKernelDescriptor descriptor, MTL::Device* const devic
   cooperative = descriptor.cooperative;
   memoryPrecision = descriptor.memoryPrecision;
   CCV_NNC_MFA_PRECONDITION(!batched || (mrows == 1 && !fusedBias));
-  CCV_NNC_MFA_PRECONDITION(!cooperative || (!batched && mrows == 1));
+  CCV_NNC_MFA_PRECONDITION(!cooperative || (!batched && mrows >= 1 && mrows <= 8));
 
   source = createSource();
 
@@ -43,34 +43,46 @@ kernel void gemv(
   uint tiisg [[thread_index_in_simdgroup]]
 ) {
   constexpr uint ROWS_PER_THREADGROUP = 2;
+  constexpr uint M = )";
+    shader += std::to_string((uint32_t)mrows);
+    shader += R"(;
   const uint rowBase = tgpig * ROWS_PER_THREADGROUP;
   const uint row0 = rowBase;
   const uint row1 = rowBase + 1;
   const uint vectorCount = ncols / 4;
   device const real4* matrix = (device const real4*)src0;
-  device const real4* vector = (device const real4*)src1;
 
-  float sum0 = 0;
-  float sum1 = 0;
-  for (uint i = sgitg * 32 + tiisg; i < vectorCount; i += SIMD_GROUPS * 32) {
-    const float4 v = float4(vector[i]);
-    if (row0 < nrows)
-      sum0 += dot(float4(matrix[(ulong)row0 * vectorCount + i]), v);
-    if (row1 < nrows)
-      sum1 += dot(float4(matrix[(ulong)row1 * vectorCount + i]), v);
+  // The activation rows run in compile-time loops, so the accumulators stay in registers.
+  float sum0[M];
+  float sum1[M];
+  for (uint m = 0; m < M; m++) {
+    sum0[m] = 0;
+    sum1[m] = 0;
   }
-  sum0 = simd_sum(sum0);
-  sum1 = simd_sum(sum1);
+  for (uint i = sgitg * 32 + tiisg; i < vectorCount; i += SIMD_GROUPS * 32) {
+    const float4 x0 = row0 < nrows ? float4(matrix[(ulong)row0 * vectorCount + i]) : float4(0);
+    const float4 x1 = row1 < nrows ? float4(matrix[(ulong)row1 * vectorCount + i]) : float4(0);
+    for (uint m = 0; m < M; m++) {
+      const float4 v = float4(((device const real4*)src1)[(ulong)m * vectorCount + i]);
+      sum0[m] += dot(x0, v);
+      sum1[m] += dot(x1, v);
+    }
+  }
 
-  threadgroup float partials[ROWS_PER_THREADGROUP * 32];
-  if (tiisg == 0) {
-    partials[sgitg] = sum0;
-    partials[32 + sgitg] = sum1;
+  threadgroup float partials[ROWS_PER_THREADGROUP * M * 32];
+  for (uint m = 0; m < M; m++) {
+    const float lane0 = simd_sum(sum0[m]);
+    const float lane1 = simd_sum(sum1[m]);
+    if (tiisg == 0) {
+      partials[(m * 2) * 32 + sgitg] = lane0;
+      partials[(m * 2 + 1) * 32 + sgitg] = lane1;
+    }
   }
   threadgroup_barrier(mem_flags::mem_threadgroup);
 
-  if (sgitg == 0 && tiisg < ROWS_PER_THREADGROUP) {
-    const uint row = rowBase + tiisg;
+  if (sgitg == 0 && tiisg < ROWS_PER_THREADGROUP * M) {
+    const uint m = tiisg / ROWS_PER_THREADGROUP;
+    const uint row = rowBase + tiisg % ROWS_PER_THREADGROUP;
     if (row < nrows) {
       float sum = 0;
       for (uint i = 0; i < SIMD_GROUPS; i++)
@@ -78,11 +90,11 @@ kernel void gemv(
 )";
     if (fusedBias) {
       shader += R"(
-      dst[row] = bias[row] + (real)sum;
+      dst[(ulong)m * nrows + row] = bias[row] + (real)sum;
 )";
     } else {
       shader += R"(
-      dst[row] = (real)sum;
+      dst[(ulong)m * nrows + row] = (real)sum;
 )";
     }
     shader += R"(

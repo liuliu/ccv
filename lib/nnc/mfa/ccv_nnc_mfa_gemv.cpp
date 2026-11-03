@@ -19,7 +19,7 @@ void ccv_nnc_mfa_encode_gemv(ccv_nnc_mfa_context_t* context, ccv_nnc_mfa_gemv_pa
   }
   CCV_NNC_MFA_PRECONDITION(num_tensors == 3 || num_tensors == 4);
   CCV_NNC_MFA_PRECONDITION((params.fused_bias && num_tensors == 4) || (!params.fused_bias && num_tensors == 3));
-  CCV_NNC_MFA_PRECONDITION(params.mrows == 1 || params.mrows == 2 || params.mrows == 3);
+  CCV_NNC_MFA_PRECONDITION(params.mrows >= 1 && params.mrows <= 8);
   const uint32_t batchDimension = params.batch_dimension > 1 ? params.batch_dimension : 1;
   if (batchDimension > 1) {
     CCV_NNC_MFA_PRECONDITION(params.mrows == 1);
@@ -36,10 +36,12 @@ void ccv_nnc_mfa_encode_gemv(ccv_nnc_mfa_context_t* context, ccv_nnc_mfa_gemv_pa
   // accumulates in FP32 for every input precision.
   const size_t element_size = params.data_type == MTL::DataTypeFloat ? sizeof(float) : sizeof(uint16_t);
   descriptor.cooperative =
-    batchDimension == 1 && params.mrows == 1 && params.nrows <= 64 &&
+    batchDimension == 1 && params.nrows <= 512 &&
     params.ncols >= 512 && params.ncols % 4 == 0 &&
     tensor_offsets[0] % (element_size * 4) == 0 &&
     tensor_offsets[1] % (element_size * 4) == 0;
+  // Only this kernel takes more than three activation rows.
+  CCV_NNC_MFA_PRECONDITION(descriptor.cooperative || params.mrows <= 3);
   if (params.data_type == MTL::DataTypeFloat) {
     descriptor.memoryPrecision = GEMMOperandPrecision::FP32;
   } else if (params.data_type == MTL::DataTypeBFloat) {

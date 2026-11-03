@@ -2834,6 +2834,191 @@ TEST_CASE("mps generic fp32 gemm with runtime rows and read-only parameters")
 		}
 }
 
+TEST_CASE("mps forward gemm with a few rows over short, long weights")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_MPS));
+	// Up to 512 outputs over at least 512 inputs run the cooperative GEMV for up to 8 rows when
+	// the operands are aligned. The shapes straddle each limit and each SIMD group count, and the
+	// offsets keep 4 to 8 rows out of the vector kernel but not 1 to 3.
+	static const struct {
+		int n;
+		int k;
+		int with_bias;
+		int a_ofs;
+		int w_ofs;
+	} shapes[] = {
+		{1, 4096, 0, 0, 0},
+		{24, 16384, 1, 0, 0},
+		{63, 512, 0, 0, 0},
+		{64, 1000, 1, 0, 0},
+		{65, 3072, 0, 0, 0},
+		{128, 4096, 1, 0, 0},
+		{288, 4096, 0, 0, 0},
+		{511, 2052, 1, 0, 0},
+		{512, 16384, 0, 0, 0},
+		{513, 1024, 1, 0, 0},
+		{288, 508, 1, 0, 0},
+		{128, 4096, 1, 1, 0},
+		{128, 4096, 0, 0, 2},
+		{128, 4096, 1, 4, 0},
+	};
+	const int datatypes[] = {CCV_32F, CCV_16F, CCV_16BF};
+	const float tolerances[] = {1e-4, 4e-3, 3e-2};
+	// Shapes past the vector kernel run the matrix paths, whose neural accelerators round FP32
+	// like TF32. The vector kernel does not use them.
+	const uint64_t old_flags = ccv_nnc_flags();
+	ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS);
+	dsfmt_t dsfmt;
+	dsfmt_init_gen_rand(&dsfmt, 0);
+	int d, s, rows, i;
+	for (d = 0; d < 3; d++)
+		for (s = 0; s < sizeof(shapes) / sizeof(shapes[0]); s++)
+			for (rows = 1; rows <= 9; rows++)
+			{
+				const int datatype = datatypes[d];
+				const int n = shapes[s].n;
+				const int k = shapes[s].k;
+				const int a_ofs = shapes[s].a_ofs;
+				const int w_ofs = shapes[s].w_ofs;
+				const size_t element_size = CCV_GET_DATA_TYPE_SIZE(datatype);
+				ccv_nnc_tensor_t* const ha = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, k), 0);
+				ccv_nnc_tensor_t* const hw = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, n, k), 0);
+				ccv_nnc_tensor_t* const hbias = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, n), 0);
+				for (i = 0; i < rows * k; i++)
+					ha->data.f32[i] = dsfmt_genrand_open_close(&dsfmt) * 2 - 1;
+				for (i = 0; i < n * k; i++)
+					hw->data.f32[i] = (dsfmt_genrand_open_close(&dsfmt) * 2 - 1) / sqrtf(k);
+				for (i = 0; i < n; i++)
+					hbias->data.f32[i] = dsfmt_genrand_open_close(&dsfmt) - 0.5;
+				ccv_nnc_tensor_param_t ta_params = ha->info, tw_params = hw->info, tbias_params = hbias->info;
+				ta_params.datatype = tw_params.datatype = tbias_params.datatype = datatype;
+				ccv_nnc_tensor_t* const ta = ccv_nnc_tensor_new(0, ta_params, 0);
+				ccv_nnc_tensor_t* const tw = ccv_nnc_tensor_new(0, tw_params, 0);
+				ccv_nnc_tensor_t* const tbias = ccv_nnc_tensor_new(0, tbias_params, 0);
+				ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha, hw, hbias), TENSOR_LIST(ta, tw, tbias), 0);
+				// The CPU reference multiplies the operands as stored.
+				ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ta, tw, tbias), TENSOR_LIST(ha, hw, hbias), 0);
+				const ccv_nnc_cmd_t cmd = CMD_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(0, 1));
+				ccv_nnc_tensor_t* const expected = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, n), 0);
+				ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(ha, hw, shapes[s].with_bias ? hbias : 0), TENSOR_LIST(expected), 0);
+				// Each operand sits after its offset in a larger buffer.
+				ccv_nnc_tensor_param_t sa_params = CPU_TENSOR_NHWC(32F, a_ofs + rows * k);
+				ccv_nnc_tensor_param_t sw_params = CPU_TENSOR_NHWC(32F, w_ofs + n * k);
+				sa_params.datatype = sw_params.datatype = datatype;
+				ccv_nnc_tensor_t* const sa = ccv_nnc_tensor_new(0, sa_params, 0);
+				ccv_nnc_tensor_t* const sw = ccv_nnc_tensor_new(0, sw_params, 0);
+				memset(sa->data.u8, 0, element_size * a_ofs);
+				memset(sw->data.u8, 0, element_size * w_ofs);
+				memcpy(sa->data.u8 + element_size * a_ofs, ta->data.u8, element_size * rows * k);
+				memcpy(sw->data.u8 + element_size * w_ofs, tw->data.u8, element_size * n * k);
+				sa_params.type = sw_params.type = tbias_params.type = CCV_TENSOR_GPU_MEMORY;
+				ccv_nnc_tensor_t* const ga_storage = ccv_nnc_tensor_new(0, sa_params, 0);
+				ccv_nnc_tensor_t* const gw_storage = ccv_nnc_tensor_new(0, sw_params, 0);
+				ccv_nnc_tensor_t* const gbias = ccv_nnc_tensor_new(0, tbias_params, 0);
+				ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(sa, sw, tbias), TENSOR_LIST(ga_storage, gw_storage, gbias), 0);
+				ccv_nnc_tensor_param_t ga_params = ta_params, gw_params = tw_params;
+				ga_params.type = gw_params.type = CCV_TENSOR_GPU_MEMORY;
+				ccv_nnc_tensor_view_t* const ga = ccv_nnc_tensor_view_new(ga_storage, ga_params, DIM_ALLOC(0, a_ofs), DIM_ALLOC(k, 1));
+				ccv_nnc_tensor_view_t* const gw = ccv_nnc_tensor_view_new(gw_storage, gw_params, DIM_ALLOC(0, w_ofs), DIM_ALLOC(k, 1));
+				ccv_nnc_tensor_param_t tb_params = expected->info;
+				tb_params.datatype = datatype;
+				ccv_nnc_tensor_t* const tb = ccv_nnc_tensor_new(0, tb_params, 0);
+				tb_params.type = CCV_TENSOR_GPU_MEMORY;
+				ccv_nnc_tensor_t* const gb = ccv_nnc_tensor_new(0, tb_params, 0);
+				const int status = ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST((ccv_nnc_tensor_t*)ga, (ccv_nnc_tensor_t*)gw, shapes[s].with_bias ? gbias : 0), TENSOR_LIST(gb), 0);
+				REQUIRE_EQ(status, CCV_NNC_EXEC_SUCCESS, "GEMM should run: datatype=%d n=%d k=%d rows=%d", datatype, n, k, rows);
+				ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(gb), TENSOR_LIST(tb), 0);
+				ccv_nnc_tensor_t* const actual = ccv_nnc_tensor_new(0, expected->info, 0);
+				ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(tb), TENSOR_LIST(actual), 0);
+				REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, actual->data.f32, expected->data.f32, rows * n, tolerances[d],
+					"should match CPU GEMM: datatype=%d n=%d k=%d rows=%d bias=%d a_ofs=%d w_ofs=%d", datatype, n, k, rows, shapes[s].with_bias, a_ofs, w_ofs);
+				ccv_nnc_tensor_view_free(ga);
+				ccv_nnc_tensor_view_free(gw);
+				ccv_nnc_tensor_free(ha);
+				ccv_nnc_tensor_free(hw);
+				ccv_nnc_tensor_free(hbias);
+				ccv_nnc_tensor_free(ta);
+				ccv_nnc_tensor_free(tw);
+				ccv_nnc_tensor_free(tbias);
+				ccv_nnc_tensor_free(sa);
+				ccv_nnc_tensor_free(sw);
+				ccv_nnc_tensor_free(ga_storage);
+				ccv_nnc_tensor_free(gw_storage);
+				ccv_nnc_tensor_free(gbias);
+				ccv_nnc_tensor_free(expected);
+				ccv_nnc_tensor_free(tb);
+				ccv_nnc_tensor_free(gb);
+				ccv_nnc_tensor_free(actual);
+			}
+	if (!(old_flags & CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS))
+		ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS);
+}
+
+TEST_CASE("mps forward gemm with many rows over one long weight column")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_MPS));
+	// With one weight column, the GEMV takes the activations as its matrix, cooperatively up to
+	// 512 rows. The column is either [K, 1] or [1, K] transposed.
+	const int row_counts[] = {64, 65, 300, 512, 513};
+	const int input_counts[] = {512, 4096};
+	const int datatypes[] = {CCV_32F, CCV_16F, CCV_16BF};
+	const float tolerances[] = {1e-4, 4e-3, 3e-2};
+	dsfmt_t dsfmt;
+	dsfmt_init_gen_rand(&dsfmt, 1);
+	int d, transpose_w, r, c, i;
+	for (d = 0; d < 3; d++)
+		for (transpose_w = 0; transpose_w < 2; transpose_w++)
+			for (r = 0; r < sizeof(row_counts) / sizeof(row_counts[0]); r++)
+				for (c = 0; c < sizeof(input_counts) / sizeof(input_counts[0]); c++)
+				{
+					const int datatype = datatypes[d];
+					const int m = row_counts[r];
+					const int k = input_counts[c];
+					ccv_nnc_tensor_t* const ha = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, m, k), 0);
+					ccv_nnc_tensor_t* const hw = ccv_nnc_tensor_new(0, transpose_w ? CPU_TENSOR_NHWC(32F, 1, k) : CPU_TENSOR_NHWC(32F, k, 1), 0);
+					for (i = 0; i < m * k; i++)
+						ha->data.f32[i] = dsfmt_genrand_open_close(&dsfmt) * 2 - 1;
+					for (i = 0; i < k; i++)
+						hw->data.f32[i] = (dsfmt_genrand_open_close(&dsfmt) * 2 - 1) / sqrtf(k);
+					ccv_nnc_tensor_param_t ta_params = ha->info, tw_params = hw->info;
+					ta_params.datatype = tw_params.datatype = datatype;
+					ccv_nnc_tensor_t* const ta = ccv_nnc_tensor_new(0, ta_params, 0);
+					ccv_nnc_tensor_t* const tw = ccv_nnc_tensor_new(0, tw_params, 0);
+					ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha, hw), TENSOR_LIST(ta, tw), 0);
+					ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ta, tw), TENSOR_LIST(ha, hw), 0);
+					const ccv_nnc_cmd_t cmd = transpose_w ? CMD_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(0, 1)) : CMD_GEMM_FORWARD();
+					ccv_nnc_tensor_t* const expected = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, m, 1), 0);
+					ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(ha, hw), TENSOR_LIST(expected), 0);
+					ccv_nnc_tensor_param_t ga_params = ta_params, gw_params = tw_params;
+					ga_params.type = gw_params.type = CCV_TENSOR_GPU_MEMORY;
+					ccv_nnc_tensor_t* const ga = ccv_nnc_tensor_new(0, ga_params, 0);
+					ccv_nnc_tensor_t* const gw = ccv_nnc_tensor_new(0, gw_params, 0);
+					ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ta, tw), TENSOR_LIST(ga, gw), 0);
+					ccv_nnc_tensor_param_t tb_params = expected->info;
+					tb_params.datatype = datatype;
+					ccv_nnc_tensor_t* const tb = ccv_nnc_tensor_new(0, tb_params, 0);
+					tb_params.type = CCV_TENSOR_GPU_MEMORY;
+					ccv_nnc_tensor_t* const gb = ccv_nnc_tensor_new(0, tb_params, 0);
+					const int status = ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(ga, gw), TENSOR_LIST(gb), 0);
+					REQUIRE_EQ(status, CCV_NNC_EXEC_SUCCESS, "GEMM should run: datatype=%d m=%d k=%d transpose_w=%d", datatype, m, k, transpose_w);
+					ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(gb), TENSOR_LIST(tb), 0);
+					ccv_nnc_tensor_t* const actual = ccv_nnc_tensor_new(0, expected->info, 0);
+					ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(tb), TENSOR_LIST(actual), 0);
+					REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, actual->data.f32, expected->data.f32, m, tolerances[d],
+						"should match CPU GEMM: datatype=%d m=%d k=%d transpose_w=%d", datatype, m, k, transpose_w);
+					ccv_nnc_tensor_free(ha);
+					ccv_nnc_tensor_free(hw);
+					ccv_nnc_tensor_free(ta);
+					ccv_nnc_tensor_free(tw);
+					ccv_nnc_tensor_free(expected);
+					ccv_nnc_tensor_free(ga);
+					ccv_nnc_tensor_free(gw);
+					ccv_nnc_tensor_free(tb);
+					ccv_nnc_tensor_free(gb);
+					ccv_nnc_tensor_free(actual);
+				}
+}
+
 TEST_CASE("mps forward gemm with loadM flag")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_MPS));

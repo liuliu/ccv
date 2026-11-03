@@ -388,7 +388,16 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 
 		ccv_nnc_mfa_context_t* context = ccv_nnc_default_mfa_context();
 		const int load_m = !!(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M);
+		// A few activation rows over short, long weights, as mHC mixes and MoE routers in a
+		// speculative verify, stay in the vector kernel: the matrix path costs over a hundred
+		// microseconds a call here.
+		const int is_mfa_few_rows_gemv =
+			!is_batched && a_rows >= 4 && a_rows <= 8 && !is_transpose_a && is_transpose_w &&
+			(a_datatype == CCV_32F || a_datatype == CCV_16F) && w_cols <= 512 && w_rows >= 512 && (w_rows % 4) == 0 &&
+			CCV_GET_DATA_TYPE(a->info.datatype) != CCV_QX && CCV_GET_DATA_TYPE(w->info.datatype) != CCV_QX &&
+			(mpgetoffset((ccv_nnc_tensor_t*)a) % 16) == 0 && (mpgetoffset((ccv_nnc_tensor_t*)w) % 16) == 0;
 		const int is_mfa_gemv =
+			is_mfa_few_rows_gemv ||
 			(!is_batched && ((((a_rows == 1) || (!is_transpose_a && (a_rows == 2 || a_rows == 3))) && is_transpose_w && (w_rows % 4) == 0) || (!is_transpose_a && w_cols == 1 && (a_cols % 4) == 0))) ||
 			(is_interleaved_batched_dense_gemv && (w_rows % 4) == 0);
 		const int is_downcast = ((cmd.info.blas.flags & CCV_NNC_GEMM_16F) && (a_datatype == CCV_16F || a_datatype == CCV_16BF));
@@ -783,7 +792,7 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 			{
 				// This is GEMV, use GEMV kernel.
 				ccv_nnc_mfa_gemv_params_t params;
-				if ((a_rows == 1 || a_rows == 2 || a_rows == 3) && is_transpose_w)
+				if ((a_rows == 1 || a_rows == 2 || a_rows == 3 || is_mfa_few_rows_gemv) && is_transpose_w)
 				{
 					params = (ccv_nnc_mfa_gemv_params_t){
 						.data_type = mtl_data_type,
@@ -836,7 +845,7 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 					b->dataof, // C offset
 					bias ? bias->dataof : 0, // D offset
 				};
-				if ((a_rows == 1 || a_rows == 2 || a_rows == 3) && is_transpose_w)
+				if ((a_rows == 1 || a_rows == 2 || a_rows == 3 || is_mfa_few_rows_gemv) && is_transpose_w)
 				{
 					tensors[0] = w_data;
 					tensors[1] = a_data;
