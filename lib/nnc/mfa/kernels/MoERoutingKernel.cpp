@@ -97,6 +97,12 @@ kernel void moe_routing_t1(
 		// Ties go to the lowest expert index, as in the threadgroup-wide search below. Experts out
 		// of range or already selected are masked rather than scored -INFINITY, so experts whose
 		// score is -INFINITY (or NaN, scored as -INFINITY) stay selectable, as on the CPU.
+		// Meanwhile the other SIMD groups gather a single token's activation.
+		if (simd_group != 0 && single_input_token)
+		{
+			for (uint index = tid - 32; index < hidden; index += ntg - 32)
+				gathered[index] = activation[index];
+		}
 		if (simd_group == 0)
 		{
 			float scores[16];
@@ -157,14 +163,17 @@ kernel void moe_routing_t1(
 	}
 	threadgroup_barrier(mem_flags::mem_threadgroup);
 
-	if (tid == 0)
+	if (simd_group == 0)
 	{
+		// The sum stays serial, in slot order; the slots' lanes write them.
 		float selected_sum = 0.0f;
-		for (uint slot = 0; slot < kth; slot++)
-			selected_sum += probabilities[top_experts[slot]];
+		if (lane == 0)
+			for (uint slot = 0; slot < kth; slot++)
+				selected_sum += probabilities[top_experts[slot]];
+		selected_sum = simd_broadcast_first(selected_sum);
 		const float denominator = normalization_epsilon > 0 ? selected_sum + normalization_epsilon : max(selected_sum, 6.103515625e-5f);
 		const float selected_scale = weight_scale / denominator;
-		for (uint slot = 0; slot < kth; slot++)
+		for (uint slot = lane; slot < kth; slot += 32)
 		{
 			const uint expert = top_experts[slot];
 			route_weights[slot] = probabilities[expert] * selected_scale;
@@ -174,6 +183,9 @@ kernel void moe_routing_t1(
 		}
 	}
 
+	// The single SIMD group search gathered a single token's activation above.
+	if (single_input_token && !preselected && expert_count <= 32 * 16 && ntg > 32)
+		return;
 	if (single_input_token)
 	{
 		for (uint index = tid; index < hidden; index += ntg)
