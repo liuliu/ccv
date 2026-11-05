@@ -229,9 +229,9 @@ kernel void hyper_connection_mix_partials(
 // Mix split: one SIMD group per row. Lane k holds mix value k, scaled by the residual's RMS
 // reciprocal, so the gates and the combination Sinkhorn run in parallel. Row and column sums visit
 // the same elements in the same order as the serial split.
-inline void hyper_connection_mix_split_row(
+inline void hyper_connection_mix_split_row_squares(
 	device const float* dots,
-	device const float* squares,
+	const float sum_squares,
 	device const float* scale,
 	device const float* base,
 	device float* pre_out,
@@ -241,9 +241,6 @@ inline void hyper_connection_mix_split_row(
 	const ushort lane)
 {
 	const uint mix_dim = 2 * hc + hc * hc;
-	float sum_squares = 0;
-	for (uint s = 0; s < dot_splits; s++)
-		sum_squares += squares[row * dot_splits + s];
 	const float rstd = rsqrt(sum_squares / float(hc * hidden) + norm_epsilon);
 	float mix = 0;
 	if (lane < mix_dim)
@@ -286,6 +283,23 @@ inline void hyper_connection_mix_split_row(
 	}
 	if (is_comb)
 		comb_out[row * hc * hc + k] = v;
+}
+
+inline void hyper_connection_mix_split_row(
+	device const float* dots,
+	device const float* squares,
+	device const float* scale,
+	device const float* base,
+	device float* pre_out,
+	device float* post_out,
+	device float* comb_out,
+	const uint row,
+	const ushort lane)
+{
+	float sum_squares = 0;
+	for (uint s = 0; s < dot_splits; s++)
+		sum_squares += squares[row * dot_splits + s];
+	hyper_connection_mix_split_row_squares(dots, sum_squares, scale, base, pre_out, post_out, comb_out, row, lane);
 }
 
 // Mix with many rows: the split after the projection GEMM.
@@ -466,6 +480,152 @@ constant uint ROW_THREADS = 1024;
 		if (d < hidden)
 			output[(ulong)row * hidden + d] = values[t] * rstd * norm_scale[d];
 	}
+}
+
+// Mix with its own pre, decode, at most 4 streams. Step 1 splits the hidden columns: threadgroup
+// (pair, split) streams two projection rows over MIX_THREADS columns of every stream, and pair k
+// also returns entry k of the chunk's Gram matrix of the streams (the upper triangle, row by row),
+// which spreads its reductions over the pairs.
+// Its trace is the residual's sum of squares, and sum_ij pre_i pre_j G_ij is the collapse's for any
+// pre, so step 2 needs no reduction over the collapse.
+inline uint hyper_connection_gram_diagonal(const uint i)
+{
+	return i * hc - i * (i - 1) / 2;
+}
+
+kernel void hyper_connection_mix_partials_gram(
+	device const float* residual [[buffer(0)]],
+	device const float* projection [[buffer(1)]],
+	device float* dots [[buffer(2)]],
+	device float* grams [[buffer(3)]],
+	uint2 tgid [[threadgroup_position_in_grid]],
+	uint tid [[thread_index_in_threadgroup]],
+	ushort sgid [[simdgroup_index_in_threadgroup]],
+	ushort lane [[thread_index_in_simdgroup]])
+{
+	threadgroup float sums[3][MIX_THREADS / 32];
+	const uint row = tgid.y;
+	const uint mix_dim = 2 * hc + hc * hc;
+	const uint flat = hc * hidden;
+	const uint gram_count = hc * (hc + 1) / 2;
+	const uint pair = tgid.x / dot_splits;
+	const uint split = tgid.x - pair * dot_splits;
+	const uint r0 = pair * 2;
+	const uint r1 = min(r0 + 1, mix_dim - 1);
+	const uint d = split * MIX_THREADS + tid;
+	device const float* x = residual + (ulong)row * flat;
+	// This pair's Gram entry (gi, gj).
+	uint gi = 0, gj = 0;
+	{
+		uint k = 0;
+		for (uint i = 0; i < hc; i++)
+			for (uint j = i; j < hc; j++, k++)
+				if (k == pair)
+					gi = i, gj = j;
+	}
+	float v[3] = { 0, 0, 0 };
+	if (d < hidden)
+	{
+		for (uint i = 0; i < hc; i++)
+		{
+			const float xi = x[i * hidden + d];
+			v[0] += projection[(ulong)r0 * flat + i * hidden + d] * xi;
+			v[1] += projection[(ulong)r1 * flat + i * hidden + d] * xi;
+		}
+		v[2] = x[gi * hidden + d] * x[gj * hidden + d];
+	}
+	const uint values = pair < gram_count ? 3 : 2;
+	for (uint k = 0; k < values; k++)
+	{
+		const float total = simd_sum(v[k]);
+		if (lane == 0)
+			sums[k][sgid] = total;
+	}
+	threadgroup_barrier(mem_flags::mem_threadgroup);
+	if (tid < values)
+	{
+		float total = 0;
+		for (uint s = 0; s < MIX_THREADS / 32; s++)
+			total += sums[tid][s];
+		if (tid == 0)
+			dots[(row * dot_splits + split) * mix_dim + r0] = total;
+		else if (tid == 1) {
+			if (r0 + 1 < mix_dim)
+				dots[(row * dot_splits + split) * mix_dim + r0 + 1] = total;
+		} else
+			grams[(row * dot_splits + split) * gram_count + pair] = total;
+	}
+}
+
+// Step 2: threadgroup 0 splits the row; each of the others derives the same pre, the collapse's
+// RMS from the Gram matrix, and collapses and normalizes MIX_THREADS hidden columns.
+kernel void hyper_connection_mix_finish_gram(
+	device const float* dots [[buffer(0)]],
+	device const float* grams [[buffer(1)]],
+	device const float* scale [[buffer(2)]],
+	device const float* base [[buffer(3)]],
+	device float* pre_out [[buffer(4)]],
+	device float* post_out [[buffer(5)]],
+	device float* comb_out [[buffer(6)]],
+	device const float* residual [[buffer(7)]],
+	device const float* norm_scale [[buffer(8)]],
+	device float* output [[buffer(9)]],
+	uint2 tgid [[threadgroup_position_in_grid]],
+	uint tid [[thread_index_in_threadgroup]],
+	ushort sgid [[simdgroup_index_in_threadgroup]],
+	ushort lane [[thread_index_in_simdgroup]])
+{
+	const uint row = tgid.y;
+	const uint gram_count = hc * (hc + 1) / 2;
+	threadgroup float shared_pre[4];
+	threadgroup float shared_rstd;
+	if (sgid == 0)
+	{
+		float sum_squares = 0;
+		for (uint s = 0; s < dot_splits; s++)
+			for (uint i = 0; i < hc; i++)
+				sum_squares += grams[(row * dot_splits + s) * gram_count + hyper_connection_gram_diagonal(i)];
+		if (tgid.x == 0)
+		{
+			hyper_connection_mix_split_row_squares(dots, sum_squares, scale, base, pre_out, post_out, comb_out, row, lane);
+			return;
+		}
+		const uint mix_dim = 2 * hc + hc * hc;
+		const float rstd = rsqrt(sum_squares / float(hc * hidden) + norm_epsilon);
+		// The pre the split writes, computed the same way.
+		float mix = 0;
+		if (lane < hc)
+		{
+			for (uint s = 0; s < dot_splits; s++)
+				mix += dots[(row * dot_splits + s) * mix_dim + lane];
+			mix *= rstd;
+		}
+		const float pre = lane < hc ? 1.0f / (1.0f + exp(-(mix * scale[0] + base[lane]))) + epsilon : 0.0f;
+		float gram = 0;
+		if (lane < gram_count)
+			for (uint s = 0; s < dot_splits; s++)
+				gram += grams[(row * dot_splits + s) * gram_count + lane];
+		float collapsed_squares = 0;
+		uint k = 0;
+		for (uint i = 0; i < hc; i++)
+			for (uint j = i; j < hc; j++, k++)
+				collapsed_squares += (i == j ? 1.0f : 2.0f) * simd_shuffle(pre, ushort(i)) * simd_shuffle(pre, ushort(j)) * simd_shuffle(gram, ushort(k));
+		if (lane < hc)
+			shared_pre[lane] = pre;
+		if (lane == 0)
+			shared_rstd = rsqrt(max(collapsed_squares, 0.0f) / float(hidden) + norm_epsilon);
+	}
+	if (tgid.x == 0)
+		return;
+	threadgroup_barrier(mem_flags::mem_threadgroup);
+	const uint d = (tgid.x - 1) * MIX_THREADS + tid;
+	if (d >= hidden)
+		return;
+	device const float* x = residual + (ulong)row * hc * hidden;
+	float value = 0;
+	for (uint i = 0; i < hc; i++)
+		value += x[i * hidden + d] * shared_pre[i];
+	output[(ulong)row * hidden + d] = value * shared_rstd * norm_scale[d];
 }
 
 // Mix with many rows: the squares the split reads, before the projection GEMM.

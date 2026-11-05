@@ -48,11 +48,15 @@ static int _ccv_nnc_hyper_connection_mix_forw(const ccv_nnc_cmd_t cmd, ccv_nnc_t
 		return CCV_NNC_EXEC_INVALID;
 	const uint32_t rows = (uint32_t)row_count;
 	const int decode = rows <= 16;
-	const uint32_t dot_splits = decode ? (flat + CCV_NNC_MFA_HYPER_CONNECTION_MIX_CHUNK - 1) / CCV_NNC_MFA_HYPER_CONNECTION_MIX_CHUNK : 1;
+	// Decode with its own pre and at most 4 streams splits hidden columns and keeps the streams'
+	// Gram matrix, so the collapse normalizes across threadgroups without another reduction.
+	const int gram = decode && own_pre && hc <= 4;
+	const uint32_t gram_count = gram ? hc * (hc + 1) / 2 : 1;
+	const uint32_t dot_splits = gram ? (hidden + CCV_NNC_MFA_HYPER_CONNECTION_MIX_THREADS - 1) / CCV_NNC_MFA_HYPER_CONNECTION_MIX_THREADS : decode ? (flat + CCV_NNC_MFA_HYPER_CONNECTION_MIX_CHUNK - 1) / CCV_NNC_MFA_HYPER_CONNECTION_MIX_CHUNK : 1;
 	const uint32_t collapse_splits = decode && !own_pre ? (hidden + CCV_NNC_MFA_HYPER_CONNECTION_MIX_THREADS - 1) / CCV_NNC_MFA_HYPER_CONNECTION_MIX_THREADS : 0;
 	const size_t dots_offset = 0;
 	const size_t squares_offset = _ccv_nnc_hyper_connection_align(dots_offset + (size_t)rows * dot_splits * mix_dim * sizeof(float));
-	const size_t collapsed_offset = _ccv_nnc_hyper_connection_align(squares_offset + (size_t)rows * dot_splits * sizeof(float));
+	const size_t collapsed_offset = _ccv_nnc_hyper_connection_align(squares_offset + (size_t)rows * dot_splits * gram_count * sizeof(float));
 	const size_t collapsed_squares_offset = _ccv_nnc_hyper_connection_align(collapsed_offset + (decode && !own_pre ? (size_t)rows * hidden * sizeof(float) : 0));
 	const size_t scratch_size = collapsed_squares_offset + (size_t)rows * collapse_splits * sizeof(float);
 	@autoreleasepool {
@@ -75,8 +79,29 @@ static int _ccv_nnc_hyper_connection_mix_forw(const ccv_nnc_cmd_t cmd, ccv_nnc_t
 			.collapse_splits = collapse_splits,
 		};
 		mtl_command_batch_t* const command_batch = ccv_nnc_stream_context_start_command_batch(stream_context);
-		if (decode)
+		if (gram)
 		{
+			params.operation = 9;
+			mtl_buffer_t* partial_tensors[5] = {
+				mpgetbuffer(inputs[0]), mpgetbuffer(inputs[2]), scratch, scratch, NULL,
+			};
+			size_t partial_offsets[4] = {
+				inputs[0]->dataof, inputs[2]->dataof, dots_offset, squares_offset,
+			};
+			ccv_nnc_mfa_encode_hyper_connection(context, params, command_batch, partial_tensors, partial_offsets);
+			params.operation = 10;
+			mtl_buffer_t* finish_tensors[11] = {
+				scratch, scratch, mpgetbuffer(inputs[3]), mpgetbuffer(inputs[4]),
+				mpgetbuffer(outputs[0]), mpgetbuffer(outputs[1]), mpgetbuffer(outputs[2]),
+				mpgetbuffer(inputs[0]), mpgetbuffer(inputs[5]), mpgetbuffer(collapsed), NULL,
+			};
+			size_t finish_offsets[10] = {
+				dots_offset, squares_offset, inputs[3]->dataof, inputs[4]->dataof,
+				outputs[0]->dataof, outputs[1]->dataof, outputs[2]->dataof,
+				inputs[0]->dataof, inputs[5]->dataof, collapsed->dataof,
+			};
+			ccv_nnc_mfa_encode_hyper_connection(context, params, command_batch, finish_tensors, finish_offsets);
+		} else if (decode) {
 			params.operation = 3;
 			// With no collapse threadgroups in the partials, the incoming pre and collapse slots stay
 			// unread. Their regions are empty then, so they bind at offsets inside their buffers.
@@ -110,7 +135,7 @@ static int _ccv_nnc_hyper_connection_mix_forw(const ccv_nnc_cmd_t cmd, ccv_nnc_t
 			};
 			ccv_nnc_mfa_encode_hyper_connection(context, params, command_batch, row_tensors, row_offsets);
 		}
-		if (!decode)
+		if (!decode && !gram)
 		{
 			// Project the raw residual; the split scales the result by the residual's RMS reciprocal.
 			const ccv_nnc_mfa_gemm_params_t gemm_params = {
@@ -136,8 +161,9 @@ static int _ccv_nnc_hyper_connection_mix_forw(const ccv_nnc_cmd_t cmd, ccv_nnc_t
 			};
 			ccv_nnc_mfa_encode_gemm(context, gemm_params, command_batch, gemm_tensors, gemm_offsets);
 		}
-		if (own_pre)
-		{
+		if (gram) {
+			// Both stages are encoded above.
+		} else if (own_pre) {
 			params.operation = 7;
 			mtl_buffer_t* finish_tensors[11] = {
 				scratch, scratch, mpgetbuffer(inputs[3]), mpgetbuffer(inputs[4]),
