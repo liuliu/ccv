@@ -34,6 +34,8 @@
 #define CMD_ROTATE_HALF_FORWARD() ccv_nnc_cmd(CCV_NNC_ROTATE_HALF_FORWARD, 0, (ccv_nnc_cmd_param_t){.size={.dim={1,1,1}}}, 0)
 // CCV_NNC_ROTATE_HALF_BACKWARD
 #define CMD_ROTATE_HALF_BACKWARD() ccv_nnc_cmd(CCV_NNC_ROTATE_HALF_BACKWARD, 0, (ccv_nnc_cmd_param_t){.size={.dim={1,1,1}}}, 0)
+// CCV_NNC_CAUSAL_CONVOLUTION_FORWARD
+#define CMD_CAUSAL_CONVOLUTION_FORWARD(_silu, _state_checkpoint_count) ccv_nnc_cmd(CCV_NNC_CAUSAL_CONVOLUTION_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.causal_convolution={.silu=(_silu),.state_checkpoint_count=(_state_checkpoint_count)}}), 0)
 // CCV_NNC_COMM_ALLREDUCE_FORWARD
 #define CMD_COMM_ALLREDUCE_FORWARD() ccv_nnc_cmd(CCV_NNC_COMM_ALLREDUCE_FORWARD, 0, ccv_nnc_cmd_auto, 0)
 // CCV_NNC_COMM_ALLREDUCE_BACKWARD

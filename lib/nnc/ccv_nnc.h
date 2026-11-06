@@ -307,6 +307,10 @@ typedef struct {
 			int sigmoid_beta; /**< [gated_delta.sigmoid_beta] If 1, beta is sigmoid(input 4). */
 		} gated_delta;
 		struct {
+			int silu; /**< [causal_convolution.silu] If 1, the output is SiLU of the convolution. */
+			int state_checkpoint_count; /**< [causal_convolution.state_checkpoint_count] Number of rows past kernel_size - 1 the next rows keep, so the rows before each of the last tokens are kept too. */
+		} causal_convolution;
+		struct {
 			float min; /**< [clamp.min] The minimum, NaN is no min. */
 			float max; /**< [clamp.max] The maximum, NaN is no max. */
 		} clamp;
@@ -5018,6 +5022,20 @@ CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_hyper_connection(const int count, co
  * @return A model that can be applied with one input, and generate output that is the input with the last dimension rotated by half.
  */
 CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_rotate_half(const char* const name);
+/**
+ * A depthwise causal convolution along the token axis that carries its previous rows, as the short
+ * convolution before linear attention. Inputs are x [B, T, C] and the previous kernel_size - 1 rows
+ * of x [B, kernel_size - 1, C]; outputs are y [B, T, C], optionally SiLU, and the next rows
+ * [B, kernel_size - 1 + state_checkpoint_count, C], the last rows of the previous rows followed by x.
+ * The model owns its weights [C, 1, kernel_size, 1].
+ * @param kernel_size The number of taps, at least 2.
+ * @param silu If 1, apply SiLU to the output.
+ * @param state_checkpoint_count Number of extra next rows, so the rows before each of the last tokens are kept too.
+ * @param is_trainable Whether the weights are trainable.
+ * @param name The unique name of the model.
+ * @return A model that is applied with two inputs and generates two outputs.
+ */
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_causal_convolution(const int kernel_size, const int silu, const int state_checkpoint_count, const int is_trainable, const char* const name);
 /**
  * Apply the gated delta recurrent update.
  * Inputs are (q, k, v, decay / log_decay, beta, state_in), and outputs are (y, state_out).

@@ -32,6 +32,8 @@ SRCS += ccv_nnc_mfa_clamp.cpp kernels/ClampDescriptor.cpp kernels/ClampKernel.cp
 
 SRCS += ccv_nnc_mfa_signed_sqrt.cpp kernels/SignedSqrtDescriptor.cpp kernels/SignedSqrtKernel.cpp
 
+SRCS += ccv_nnc_mfa_causal_convolution.cpp kernels/CausalConvolutionDescriptor.cpp kernels/CausalConvolutionKernel.cpp
+
 SRCS += ccv_nnc_mfa_fill_if_less_than.cpp kernels/FillIfLessThanDescriptor.cpp kernels/FillIfLessThanKernel.cpp
 
 SRCS += ccv_nnc_mfa_transpose.cpp kernels/TransposeDescriptor.cpp kernels/TransposeKernel.cpp
