@@ -13,7 +13,9 @@ bool SegmentedInt8GemvDescriptor::operator==(const SegmentedInt8GemvDescriptor& 
     format == rhs.format &&
     memoryPrecision == rhs.memoryPrecision &&
     useBias == rhs.useBias &&
-    broadcastInput == rhs.broadcastInput;
+    broadcastInput == rhs.broadcastInput &&
+    sharedRows == rhs.sharedRows &&
+    routedThreadgroups == rhs.routedThreadgroups;
 }
 
 std::size_t std::hash<SegmentedInt8GemvDescriptor>::operator()(
@@ -31,6 +33,8 @@ std::size_t std::hash<SegmentedInt8GemvDescriptor>::operator()(
     (uint8_t)hash.broadcastInput,
     0,
   }));
+  seed = combine_32(seed, hash.sharedRows);
+  seed = combine_32(seed, hash.routedThreadgroups);
   return seed;
 }
 
@@ -146,6 +150,7 @@ std::pair<
   SegmentedInt8GemvKernelDescriptor kernelDesc;
   kernelDesc.fusedBias = useBias;
   kernelDesc.mrows = 1;
+  kernelDesc.sharedFused = sharedRows > 0;
   kernelDesc.format = format;
   kernelDesc.memoryPrecision = memoryPrecision;
   SegmentedInt8GemvKernel* kernel;
@@ -179,9 +184,13 @@ std::pair<
   const uint32_t broadcastInputValue = broadcastInput;
   constants->setConstantValue(
     &broadcastInputValue, MTL::DataTypeUInt, NS::UInteger(8));
+  if (sharedRows > 0) {
+    constants->setConstantValue(&sharedRows, MTL::DataTypeUInt, NS::UInteger(9));
+    constants->setConstantValue(&routedThreadgroups, MTL::DataTypeUInt, NS::UInteger(10));
+  }
 
   NS::String* functionName = NS::String::string(
-    "segmented_int8_gemv", NS::UTF8StringEncoding);
+    sharedRows > 0 ? "segmented_int8_gemv_shared" : "segmented_int8_gemv", NS::UTF8StringEncoding);
   NS::Error* error = nil;
   auto function = NS::TransferPtr(
     kernel->library->newFunction(functionName, constants.get(), &error));
@@ -193,4 +202,9 @@ std::pair<
   PipelineValue<SegmentedInt8GemvKernel>* output =
     new PipelineValue<SegmentedInt8GemvKernel> { kernel, pipeline };
   return std::make_pair(kernelDesc, output);
+}
+
+uint32_t segmentedInt8GemvSIMDGroupsPerThreadgroup(const uint32_t format)
+{
+  return format == CCV_NNC_QX_8I_ROWWISE_Q2_K ? 4 : kSegmentedInt8GemvSIMDGroupsPerThreadgroup;
 }

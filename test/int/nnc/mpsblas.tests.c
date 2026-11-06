@@ -3088,6 +3088,161 @@ TEST_CASE("mps segmented int8 gemv with packed row-wise 8i-x weights")
 			CCV_16F, 0, 1, formats[i], 1, 2, 1, 0, 256, 256, &max_abs, &max_rel), 0, "packed segmented Int8 GEMV validation should run for format=%d", formats[i]);
 		REQUIRE(max_rel < 3e-3, "packed segmented Int8 GEMV should match the dense-A reference for format=%d, max_abs=%g max_rel=%g", formats[i], max_abs, max_rel);
 	}
+	// Decode routing as an MoE runs it: one row for each of 8 routed experts out of 11, in FP32 and FP16.
+	const int route_datatypes[] = { CCV_32F, CCV_16F };
+	for (i = 0; i < sizeof(route_datatypes) / sizeof(route_datatypes[0]); i++)
+	{
+		double max_abs = 0;
+		double max_rel = 0;
+		REQUIRE_EQ(_mps_segmented_scaled_gemm_validate_format_shape_experts_dims(
+			route_datatypes[i], 0, 1, CCV_NNC_QX_8I_ROWWISE_Q2_K, 8, 11, 8, 0, 512, 768, &max_abs, &max_rel), 0, "packed segmented Int8 GEMV validation should run for 8 routes, datatype=%d", route_datatypes[i]);
+		REQUIRE(max_rel < 3e-3, "packed segmented Int8 GEMV should match the dense-A reference for 8 routes, datatype=%d, max_abs=%g max_rel=%g", route_datatypes[i], max_abs, max_rel);
+	}
+}
+
+TEST_CASE("mps segmented gemm fuses a shared expert's q8_0 rows into q2_k decode")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SEGMENTED_GEMM_FORWARD, CCV_NNC_BACKEND_MPS));
+	const int E = 11, M = 8, N = 512, K = 768;
+	// FP32 as GLM-5.3 runs its MoE, and FP16 with an odd number of shared rows, so the last shared
+	// threadgroup has one row.
+	const int datatypes[] = { CCV_32F, CCV_16F };
+	const int shared_rows[] = { 384, 383 };
+	int c;
+	for (c = 0; c < 2; c++)
+	{
+		const int datatype = datatypes[c];
+		const int SN = shared_rows[c];
+		dsfmt_t dsfmt;
+		dsfmt_init_gen_rand(&dsfmt, 7 + c);
+		ccv_nnc_tensor_param_t hw_params = CPU_TENSOR_NHWC(32F, E, N, K);
+		hw_params.datatype = datatype;
+		ccv_nnc_tensor_t* const hwq = ccv_nnc_tensor_new(0, ccv_nnc_tensor_8i_rowwise_x(hw_params, CCV_NNC_QX_8I_ROWWISE_Q2_K), 0);
+		_mps_segmented_packed_weights(&dsfmt, CCV_NNC_QX_8I_ROWWISE_Q2_K, datatype, (size_t)E * N * K, K, hwq->data.u8);
+		ccv_nnc_tensor_param_t hs_params = CPU_TENSOR_NHWC(32F, SN, K);
+		hs_params.datatype = datatype;
+		ccv_nnc_tensor_param_t ha_params = CPU_TENSOR_NHWC(32F, M, K);
+		ha_params.datatype = datatype;
+		ccv_nnc_tensor_param_t hsa_params = CPU_TENSOR_NHWC(32F, 1, K);
+		hsa_params.datatype = datatype;
+		ccv_nnc_tensor_t* const hs = ccv_nnc_tensor_new(0, hs_params, 0);
+		ccv_nnc_tensor_t* const ha = ccv_nnc_tensor_new(0, ha_params, 0);
+		ccv_nnc_tensor_t* const hsa = ccv_nnc_tensor_new(0, hsa_params, 0);
+		float* const s_values = (float*)ccmalloc(sizeof(float) * SN * K);
+		float* const a_values = (float*)ccmalloc(sizeof(float) * M * K);
+		float* const sa_values = (float*)ccmalloc(sizeof(float) * K);
+		int i, j;
+		for (i = 0; i < SN * K; i++)
+			s_values[i] = dsfmt_genrand_open_close(&dsfmt) - 0.5;
+		for (i = 0; i < M * K; i++)
+			a_values[i] = dsfmt_genrand_open_close(&dsfmt) - 0.5;
+		for (i = 0; i < K; i++)
+			sa_values[i] = dsfmt_genrand_open_close(&dsfmt) - 0.5;
+		if (datatype == CCV_16F)
+		{
+			ccv_float_to_half_precision(s_values, (uint16_t*)hs->data.u8, SN * K);
+			ccv_float_to_half_precision(a_values, (uint16_t*)ha->data.u8, M * K);
+			ccv_float_to_half_precision(sa_values, (uint16_t*)hsa->data.u8, K);
+			// The reference reads the activation as the GPU does.
+			ccv_half_precision_to_float((uint16_t*)hsa->data.u8, sa_values, K);
+		} else {
+			memcpy(hs->data.f32, s_values, sizeof(float) * SN * K);
+			memcpy(ha->data.f32, a_values, sizeof(float) * M * K);
+			memcpy(hsa->data.f32, sa_values, sizeof(float) * K);
+		}
+		ccv_nnc_tensor_t* const hsq = ccv_nnc_tensor_new(0, ccv_nnc_tensor_8i_rowwise(hs_params), 0);
+		const size_t hsq_size = ccv_nnc_tensor_data_size_without_padding(hsq->info);
+		REQUIRE_EQ(ccv_nnc_quantize_8i_rowwise(hs->data.u8, datatype, CCV_TENSOR_CPU_MEMORY, (size_t)SN * K, K, 0, 0, hsq->data.u8, hsq_size), hsq_size, "the shared expert should quantize to its declared size");
+		// The CPU reference for the shared rows: the dequantized Q8_0 weights by the activation.
+		ccv_nnc_tensor_t* const hsd = ccv_nnc_tensor_new(0, hs_params, 0);
+		ccv_nnc_dequantize_8i_rowwise(hsq->data.u8, datatype, CCV_TENSOR_CPU_MEMORY, hsq_size, K, hsd->data.u8, (size_t)SN * K);
+		if (datatype == CCV_16F)
+			ccv_half_precision_to_float((uint16_t*)hsd->data.u8, s_values, SN * K);
+		else
+			memcpy(s_values, hsd->data.f32, sizeof(float) * SN * K);
+		float* const shared_reference = (float*)ccmalloc(sizeof(float) * SN);
+		for (i = 0; i < SN; i++)
+		{
+			double sum = 0;
+			for (j = 0; j < K; j++)
+				sum += (double)s_values[i * K + j] * sa_values[j];
+			shared_reference[i] = (float)sum;
+		}
+		ccv_nnc_tensor_t* const hindices = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, M), 0);
+		ccv_nnc_tensor_t* const hcounts = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, M), 0);
+		for (i = 0; i < M; i++)
+			hindices->data.i32[i] = (i * 3 + 1) % E, hcounts->data.i32[i] = 1;
+		ccv_nnc_tensor_param_t gw_params = hwq->info;
+		gw_params.type = CCV_TENSOR_GPU_MEMORY;
+		ccv_nnc_tensor_param_t gs_params = hsq->info;
+		gs_params.type = CCV_TENSOR_GPU_MEMORY;
+		ccv_nnc_tensor_param_t ga_params = ha_params;
+		ga_params.type = CCV_TENSOR_GPU_MEMORY;
+		ccv_nnc_tensor_param_t gsa_params = hsa_params;
+		gsa_params.type = CCV_TENSOR_GPU_MEMORY;
+		ccv_nnc_tensor_param_t gb_params = GPU_TENSOR_NHWC(000, 32F, M, N);
+		gb_params.datatype = datatype;
+		ccv_nnc_tensor_param_t gsb_params = GPU_TENSOR_NHWC(000, 32F, 1, SN);
+		gsb_params.datatype = datatype;
+		ccv_nnc_tensor_t* const w = ccv_nnc_tensor_new(0, gw_params, 0);
+		ccv_nnc_tensor_t* const sw = ccv_nnc_tensor_new(0, gs_params, 0);
+		ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, ga_params, 0);
+		ccv_nnc_tensor_t* const sa = ccv_nnc_tensor_new(0, gsa_params, 0);
+		ccv_nnc_tensor_t* const indices = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32S, M), 0);
+		ccv_nnc_tensor_t* const counts = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32S, M), 0);
+		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(hwq, hsq, ha, hsa, hindices, hcounts), TENSOR_LIST(w, sw, a, sa, indices, counts), 0);
+		ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, gb_params, 0);
+		ccv_nnc_tensor_t* const sb = ccv_nnc_tensor_new(0, gsb_params, 0);
+		ccv_nnc_tensor_t* const b2 = ccv_nnc_tensor_new(0, gb_params, 0);
+		ccv_nnc_tensor_t* const sb2 = ccv_nnc_tensor_new(0, gsb_params, 0);
+		ccv_nnc_cmd_t cmd = CMD_SEGMENTED_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(1, 2));
+		cmd.backend = CCV_NNC_BACKEND_MPS;
+		REQUIRE_EQ(ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(a, indices, counts, w, 0, sa, sw), TENSOR_LIST(b, sb), 0), CCV_NNC_EXEC_SUCCESS, "fused segmented gemm should execute");
+		REQUIRE_EQ(ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(a, indices, counts, w), TENSOR_LIST(b2), 0), CCV_NNC_EXEC_SUCCESS, "segmented gemm should execute");
+		ccv_nnc_cmd_t gemm = CMD_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(0, 1));
+		gemm.backend = CCV_NNC_BACKEND_MPS;
+		REQUIRE_EQ(ccv_nnc_cmd_exec(gemm, ccv_nnc_no_hint, 0, TENSOR_LIST(sa, sw), TENSOR_LIST(sb2), 0), CCV_NNC_EXEC_SUCCESS, "shared gemm should execute");
+		ccv_nnc_tensor_param_t hb_params = CPU_TENSOR_NHWC(32F, M, N);
+		hb_params.datatype = datatype;
+		ccv_nnc_tensor_param_t hsb_params = CPU_TENSOR_NHWC(32F, 1, SN);
+		hsb_params.datatype = datatype;
+		ccv_nnc_tensor_t* const hb = ccv_nnc_tensor_new(0, hb_params, 0);
+		ccv_nnc_tensor_t* const hsb = ccv_nnc_tensor_new(0, hsb_params, 0);
+		ccv_nnc_tensor_t* const hb2 = ccv_nnc_tensor_new(0, hb_params, 0);
+		ccv_nnc_tensor_t* const hsb2 = ccv_nnc_tensor_new(0, hsb_params, 0);
+		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(b, sb, b2, sb2), TENSOR_LIST(hb, hsb, hb2, hsb2), 0);
+		// The routed rows run the same code with or without the shared rows beside them.
+		REQUIRE(memcmp(hb->data.u8, hb2->data.u8, (size_t)M * N * CCV_GET_DATA_TYPE_SIZE(datatype)) == 0, "fused routed rows should match the plain kernel exactly for datatype=%d", datatype);
+		float* const fused_shared = (float*)ccmalloc(sizeof(float) * SN);
+		float* const plain_shared = (float*)ccmalloc(sizeof(float) * SN);
+		if (datatype == CCV_16F)
+		{
+			ccv_half_precision_to_float((uint16_t*)hsb->data.u8, fused_shared, SN);
+			ccv_half_precision_to_float((uint16_t*)hsb2->data.u8, plain_shared, SN);
+		} else {
+			memcpy(fused_shared, hsb->data.f32, sizeof(float) * SN);
+			memcpy(plain_shared, hsb2->data.f32, sizeof(float) * SN);
+		}
+		double fused_rel = 0, plain_rel = 0;
+		for (i = 0; i < SN; i++)
+		{
+			const double scale = ccv_max(fabs(shared_reference[i]), 1);
+			fused_rel = ccv_max(fused_rel, fabs(fused_shared[i] - shared_reference[i]) / scale);
+			plain_rel = ccv_max(plain_rel, fabs(plain_shared[i] - shared_reference[i]) / scale);
+		}
+		const double tolerance = datatype == CCV_16F ? 2e-3 : 1e-5;
+		REQUIRE(fused_rel < tolerance, "fused shared rows should match the CPU reference for datatype=%d, SN=%d, max_rel=%g", datatype, SN, fused_rel);
+		REQUIRE(plain_rel < tolerance, "the Q8_0 GEMM should match the CPU reference for datatype=%d, SN=%d, max_rel=%g", datatype, SN, plain_rel);
+		ccfree(plain_shared);
+		ccfree(fused_shared);
+		ccfree(shared_reference);
+		ccfree(sa_values);
+		ccfree(a_values);
+		ccfree(s_values);
+		ccv_nnc_tensor_t* tensors[] = { hwq, hs, hsq, hsd, ha, hsa, hindices, hcounts, w, sw, a, sa, indices, counts, b, sb, b2, sb2, hb, hsb, hb2, hsb2 };
+		for (i = 0; i < sizeof(tensors) / sizeof(tensors[0]); i++)
+			ccv_nnc_tensor_free(tensors[i]);
+	}
 }
 
 TEST_CASE("mps segmented gemm with row-wise 8i weight NA")

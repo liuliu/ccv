@@ -1597,7 +1597,7 @@ TEST_CASE("segmented gemm compare batched gemm with model")
 	ccv_nnc_tensor_t* at0 = ccv_nnc_tensor_new(a->data.f32, CPU_TENSOR_NHWC(32F, 20, 128), 0);
 	ccv_nnc_tensor_t* at1 = ccv_nnc_tensor_new(a->data.f32 + 20 * 128, CPU_TENSOR_NHWC(32F, 25, 128), 0);
 	ccv_nnc_tensor_t* at2 = ccv_nnc_tensor_new(a->data.f32 + 45 * 128, CPU_TENSOR_NHWC(32F, 35, 128), 0);
-	ccv_cnnp_model_t* const segmented_dense = ccv_cnnp_segmented_dense(3, 64, 1, 0, 0, 0, "segmented_dense");
+	ccv_cnnp_model_t* const segmented_dense = ccv_cnnp_segmented_dense(3, 64, 1, 0, 0, 0, 0, "segmented_dense");
 	ccv_cnnp_model_compile(segmented_dense, TENSOR_PARAM_LIST(a->info, indices->info, counts->info), CMD_NOOP(), CMD_NOOP());
 	ccv_cnnp_model_set_parameter(segmented_dense, ccv_cnnp_model_parameters(segmented_dense, ALL_PARAMETERS, 0), w);
 	ccv_cnnp_model_evaluate(segmented_dense, (ccv_cnnp_evaluate_param_t){
@@ -1635,6 +1635,57 @@ TEST_CASE("segmented gemm compare batched gemm with model")
 	ccv_cnnp_model_free(segmented_dense);
 }
 
+TEST_CASE("segmented dense model with a shared expert matches the separate projections")
+{
+	dsfmt_t dsfmt;
+	dsfmt_init_gen_rand(&dsfmt, 0);
+	// Six routed rows over three bins, and a shared expert over two rows of its own, narrower width.
+	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 6, 128), 0);
+	ccv_nnc_tensor_t* const indices = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, 3), 0);
+	ccv_nnc_tensor_t* const counts = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, 3), 0);
+	ccv_nnc_tensor_t* const sa = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 96), 0);
+	ccv_nnc_tensor_t* const w = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 3, 64, 128), 0);
+	ccv_nnc_tensor_t* const sw = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 64, 96), 0);
+	int i;
+	for (i = 0; i < 3; i++)
+		indices->data.i32[i] = 2 - i, counts->data.i32[i] = 2;
+	for (i = 0; i < 6 * 128; i++)
+		a->data.f32[i] = dsfmt_genrand_open_close(&dsfmt);
+	for (i = 0; i < 2 * 96; i++)
+		sa->data.f32[i] = dsfmt_genrand_open_close(&dsfmt);
+	for (i = 0; i < 3 * 64 * 128; i++)
+		w->data.f32[i] = dsfmt_genrand_open_close(&dsfmt) / (64 * 128);
+	for (i = 0; i < 64 * 96; i++)
+		sw->data.f32[i] = dsfmt_genrand_open_close(&dsfmt) / (64 * 96);
+	ccv_cnnp_model_t* const segmented_dense = ccv_cnnp_segmented_dense(3, 64, 1, 0, 0, 1, 0, "segmented_dense");
+	ccv_cnnp_model_compile(segmented_dense, TENSOR_PARAM_LIST(a->info, indices->info, counts->info, sa->info), CMD_NOOP(), CMD_NOOP());
+	REQUIRE_EQ(ccv_cnnp_model_parameter_count(segmented_dense), 2, "the shared expert's weights follow the routed ones");
+	ccv_cnnp_model_set_parameter(segmented_dense, ccv_cnnp_model_parameters(segmented_dense, ALL_PARAMETERS, 0), w);
+	ccv_cnnp_model_set_parameter(segmented_dense, ccv_cnnp_model_parameters(segmented_dense, ALL_PARAMETERS, 1), sw);
+	ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 6, 64), 0);
+	ccv_nnc_tensor_t* const sb = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 64), 0);
+	ccv_cnnp_model_evaluate(segmented_dense, (ccv_cnnp_evaluate_param_t){
+		.requires_grad = 0,
+	}, TENSOR_LIST(a, indices, counts, sa), TENSOR_LIST(b, sb), 0, 0);
+	ccv_nnc_tensor_t* const bt = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 6, 64), 0);
+	ccv_nnc_tensor_t* const sbt = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 64), 0);
+	ccv_nnc_cmd_exec(CMD_SEGMENTED_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(1, 2)), ccv_nnc_no_hint, 0, TENSOR_LIST(a, indices, counts, w), TENSOR_LIST(bt), 0);
+	ccv_nnc_cmd_exec(CMD_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(0, 1)), ccv_nnc_no_hint, 0, TENSOR_LIST(sa, sw), TENSOR_LIST(sbt), 0);
+	REQUIRE_TENSOR_EQ(b, bt, "the routed output should match segmented gemm alone");
+	REQUIRE_TENSOR_EQ(sb, sbt, "the shared output should match its own gemm");
+	ccv_nnc_tensor_free(a);
+	ccv_nnc_tensor_free(indices);
+	ccv_nnc_tensor_free(counts);
+	ccv_nnc_tensor_free(sa);
+	ccv_nnc_tensor_free(w);
+	ccv_nnc_tensor_free(sw);
+	ccv_nnc_tensor_free(b);
+	ccv_nnc_tensor_free(sb);
+	ccv_nnc_tensor_free(bt);
+	ccv_nnc_tensor_free(sbt);
+	ccv_cnnp_model_free(segmented_dense);
+}
+
 TEST_CASE("segmented gemm with bias compare batched gemm with model")
 {
 	// This is a particular batched gemm which treat every dimensions other than the last two as batching.
@@ -1666,7 +1717,7 @@ TEST_CASE("segmented gemm with bias compare batched gemm with model")
 	ccv_nnc_tensor_t* at0 = ccv_nnc_tensor_new(a->data.f32, CPU_TENSOR_NHWC(32F, 20, 128), 0);
 	ccv_nnc_tensor_t* at1 = ccv_nnc_tensor_new(a->data.f32 + 20 * 128, CPU_TENSOR_NHWC(32F, 25, 128), 0);
 	ccv_nnc_tensor_t* at2 = ccv_nnc_tensor_new(a->data.f32 + 45 * 128, CPU_TENSOR_NHWC(32F, 35, 128), 0);
-	ccv_cnnp_model_t* const segmented_dense = ccv_cnnp_segmented_dense(3, 64, 0, 0, 0, 0, "segmented_dense");
+	ccv_cnnp_model_t* const segmented_dense = ccv_cnnp_segmented_dense(3, 64, 0, 0, 0, 0, 0, "segmented_dense");
 	ccv_cnnp_model_compile(segmented_dense, TENSOR_PARAM_LIST(a->info, indices->info, counts->info), CMD_NOOP(), CMD_NOOP());
 	ccv_cnnp_model_set_parameter(segmented_dense, ccv_cnnp_model_parameters(segmented_dense, ALL_PARAMETERS, 0), w);
 	ccv_cnnp_model_set_parameter(segmented_dense, ccv_cnnp_model_parameters(segmented_dense, ALL_PARAMETERS, 1), bias);
@@ -1735,7 +1786,7 @@ TEST_CASE("functional segmented dense model uses supplied weights")
 		weights->data.f32[i] = dsfmt_genrand_open_close(&dsfmt) / 20;
 	ccv_nnc_cmd_exec(CMD_SEGMENTED_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(1, 2)), ccv_nnc_no_hint, 0,
 		TENSOR_LIST(a, indices, counts, weights), TENSOR_LIST(expected), 0);
-	ccv_cnnp_model_t* const segmented_dense = ccv_cnnp_segmented_dense(3, 4, 1, 0, 1, 0, "segmented_dense");
+	ccv_cnnp_model_t* const segmented_dense = ccv_cnnp_segmented_dense(3, 4, 1, 0, 1, 0, 0, "segmented_dense");
 	ccv_cnnp_model_compile(segmented_dense, TENSOR_PARAM_LIST(a->info, indices->info, counts->info, weights->info), CMD_NOOP(), CMD_NOOP());
 	ccv_cnnp_model_evaluate(segmented_dense, (ccv_cnnp_evaluate_param_t){
 		.requires_grad = 0,

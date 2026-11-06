@@ -5634,22 +5634,25 @@ static ccv_cnnp_model_t* _ccv_cnnp_scatter_add_copy(const ccv_cnnp_model_t* cons
 
 typedef struct {
 	ccv_cnnp_model_t super;
-	ccv_nnc_tensor_symbol_t output;
+	ccv_nnc_tensor_symbol_t outputs[2];
 	ccv_nnc_tensor_symbol_t weights;
 	ccv_nnc_tensor_symbol_t bias;
+	ccv_nnc_tensor_symbol_t shared_weights;
 	int segments;
 	int count;
 	int no_bias;
 	int flags;
 	int functional;
+	int shared_expert;
 } ccv_cnnp_model_segmented_dense_t;
 
 static void _ccv_cnnp_segmented_dense_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
 {
 	ccv_cnnp_model_segmented_dense_t* const self = (ccv_cnnp_model_segmented_dense_t*)super;
 	PRINT(CCV_CLI_VERBOSE, "[cnnp_segmented_dense_build] -\n");
-	assert(input_size == (self->functional ? 4 + !self->no_bias : 3));
-	assert(output_size == 1);
+	assert(input_size == (self->functional ? 4 + !self->no_bias : 3 + !!self->shared_expert));
+	assert(output_size == 1 + !!self->shared_expert);
+	assert(!self->shared_expert || !self->functional);
 	const ccv_nnc_tensor_param_t params = ccv_nnc_tensor_symbol_params(graph, inputs[0]);
 	const ccv_nnc_tensor_param_t indices_params = ccv_nnc_tensor_symbol_params(graph, inputs[1]);
 	const ccv_nnc_tensor_param_t counts_params = ccv_nnc_tensor_symbol_params(graph, inputs[2]);
@@ -5705,6 +5708,36 @@ static void _ccv_cnnp_segmented_dense_build(ccv_cnnp_model_t* const super, ccv_n
 			bias_params,
 		}, 4 + !self->no_bias, ccv_nnc_no_hint, &output_params, 1);
 	const ccv_nnc_tensor_symbol_t output = ccv_nnc_tensor_symbol_new(graph, output_params, 0);
+	if (self->shared_expert)
+	{
+		// The shared expert is count rows over its own activation's width.
+		const ccv_nnc_tensor_param_t shared_params = ccv_nnc_tensor_symbol_params(graph, inputs[3]);
+		const int shared_params_nd = ccv_nnc_tensor_nd(shared_params.dim);
+		ccv_nnc_tensor_param_t shared_weights_params = shared_params;
+		memset(shared_weights_params.dim, 0, sizeof(shared_weights_params.dim));
+		if (shared_params_nd > 0)
+		{
+			shared_weights_params.dim[0] = self->count;
+			shared_weights_params.dim[1] = shared_params.dim[shared_params_nd - 1];
+		}
+		if (!self->shared_weights.graph)
+			self->shared_weights = ccv_nnc_tensor_symbol_new(graph, shared_weights_params, "shared.weight");
+		assert(self->shared_weights.graph == graph);
+		const ccv_nnc_tensor_symbol_t shared_weights = ccv_cnnp_model_get_symbol(super, self->shared_weights);
+		ccv_nnc_tensor_param_t shared_output_params[2];
+		ccv_nnc_hint_tensor_auto(cmd, (ccv_nnc_tensor_param_t []){
+				params, indices_params, counts_params,
+				weights_params,
+				bias_params,
+				shared_params,
+				shared_weights_params,
+			}, 7, ccv_nnc_no_hint, shared_output_params, 2);
+		const ccv_nnc_tensor_symbol_t shared_output = ccv_nnc_tensor_symbol_new(graph, shared_output_params[1], 0);
+		ccv_nnc_graph_exec_symbol_new(graph, cmd, TENSOR_SYMBOL_LIST(inputs[0], inputs[1], inputs[2], weights, self->no_bias ? NO_TENSOR_SYMBOL : bias, inputs[3], shared_weights), TENSOR_SYMBOL_LIST(output, shared_output), "segmented_dense");
+		outputs[0] = output;
+		outputs[1] = shared_output;
+		return;
+	}
 	if (self->no_bias)
 		ccv_nnc_graph_exec_symbol_new(graph, cmd, TENSOR_SYMBOL_LIST(inputs[0], inputs[1], inputs[2], weights), TENSOR_SYMBOL_LIST(output), "segmented_dense");
 	else
@@ -5724,6 +5757,12 @@ static void _ccv_cnnp_segmented_dense_init_states(ccv_cnnp_model_t* const super,
 	initializer(context, CMD_RANDOM_UNIFORM_FORWARD(-bound, bound), ccv_nnc_no_hint, 0, 0, self->weights);
 	if (self->bias.graph)
 		initializer(context, CMD_SET_FORWARD(0), ccv_nnc_no_hint, 0, 0, self->bias);
+	if (self->shared_weights.graph)
+	{
+		const ccv_nnc_tensor_param_t shared_params = ccv_nnc_tensor_symbol_params(graph, self->shared_weights);
+		const float shared_bound = sqrtf(3) * sqrtf(2) / sqrtf(shared_params.dim[1]);
+		initializer(context, CMD_RANDOM_UNIFORM_FORWARD(-shared_bound, shared_bound), ccv_nnc_no_hint, 0, 0, self->shared_weights);
+	}
 }
 
 static void _ccv_cnnp_segmented_dense_add_to_parameter(ccv_cnnp_model_t* const super, const ccv_cnnp_add_to_array_f add_to_array, void* const parameters, const int is_trainable)
@@ -5734,6 +5773,8 @@ static void _ccv_cnnp_segmented_dense_add_to_parameter(ccv_cnnp_model_t* const s
 	add_to_array(parameters, self->weights, is_trainable);
 	if (self->bias.graph)
 		add_to_array(parameters, self->bias, is_trainable);
+	if (self->shared_weights.graph)
+		add_to_array(parameters, self->shared_weights, is_trainable);
 }
 
 static ccv_cnnp_model_t* _ccv_cnnp_segmented_dense_copy(const ccv_cnnp_model_t* const super, void* const context);
@@ -5745,19 +5786,23 @@ static const ccv_cnnp_model_vtab_t ccv_cnnp_segmented_dense_isa = {
 	.copy = _ccv_cnnp_segmented_dense_copy,
 };
 
-ccv_cnnp_model_t* ccv_cnnp_segmented_dense(const int segments, const int count, const int no_bias, const int flags, const int functional, const int is_trainable, const char* const name)
+ccv_cnnp_model_t* ccv_cnnp_segmented_dense(const int segments, const int count, const int no_bias, const int flags, const int functional, const int shared_expert, const int is_trainable, const char* const name)
 {
+	assert(!shared_expert || !functional);
 	ccv_cnnp_model_segmented_dense_t* const model_segmented_dense = (ccv_cnnp_model_segmented_dense_t*)cccalloc(1, sizeof(ccv_cnnp_model_segmented_dense_t));
 	model_segmented_dense->super.isa = &ccv_cnnp_segmented_dense_isa;
-	model_segmented_dense->super.input_size = functional ? 4 + !no_bias : 3;
-	model_segmented_dense->super.outputs = &model_segmented_dense->output;
-	model_segmented_dense->super.output_size = 1;
+	model_segmented_dense->super.input_size = functional ? 4 + !no_bias : 3 + !!shared_expert;
+	model_segmented_dense->super.outputs = model_segmented_dense->outputs;
+	model_segmented_dense->super.output_size = 1 + !!shared_expert;
 	model_segmented_dense->super.is_trainable = is_trainable;
 	ccv_cnnp_model_copy_name(&model_segmented_dense->super, name);
 	model_segmented_dense->weights.d = CCV_NNC_NO_TENSOR_SYMBOL;
 	model_segmented_dense->weights.graph = 0;
 	model_segmented_dense->bias.d = CCV_NNC_NO_TENSOR_SYMBOL;
 	model_segmented_dense->bias.graph = 0;
+	model_segmented_dense->shared_weights.d = CCV_NNC_NO_TENSOR_SYMBOL;
+	model_segmented_dense->shared_weights.graph = 0;
+	model_segmented_dense->shared_expert = shared_expert;
 	model_segmented_dense->segments = segments;
 	model_segmented_dense->count = count;
 	model_segmented_dense->no_bias = no_bias;
@@ -5769,7 +5814,7 @@ ccv_cnnp_model_t* ccv_cnnp_segmented_dense(const int segments, const int count, 
 static ccv_cnnp_model_t* _ccv_cnnp_segmented_dense_copy(const ccv_cnnp_model_t* const super, void* const context)
 {
 	const ccv_cnnp_model_segmented_dense_t* const self = (const ccv_cnnp_model_segmented_dense_t*)super;
-	return ccv_cnnp_segmented_dense(self->segments, self->count, self->no_bias, self->flags, self->functional, self->super.is_trainable, self->super.name);
+	return ccv_cnnp_segmented_dense(self->segments, self->count, self->no_bias, self->flags, self->functional, self->shared_expert, self->super.is_trainable, self->super.name);
 }
 
 // MARK - SwiGLU Layer

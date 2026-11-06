@@ -14,9 +14,14 @@ constexpr uint32_t kSegmentedInt8GemvRowsPerThreadgroup =
   kSegmentedInt8GemvRowsPerSIMDGroup *
   kSegmentedInt8GemvSIMDGroupsPerThreadgroup;
 
+// The Q2_K kernel shares each activation group across a threadgroup's rows, with its SIMD groups
+// splitting the groups, so it takes more SIMD groups (and rows) per threadgroup.
+uint32_t segmentedInt8GemvSIMDGroupsPerThreadgroup(const uint32_t format);
+
 struct SegmentedInt8GemvKernelDescriptor {
   uint8_t fusedBias;
   uint8_t mrows;
+  uint8_t sharedFused;
   uint32_t format;
   GEMMOperandPrecision memoryPrecision;
 
@@ -25,6 +30,7 @@ struct SegmentedInt8GemvKernelDescriptor {
     return
       fusedBias == rhs.fusedBias &&
       mrows == rhs.mrows &&
+      sharedFused == rhs.sharedFused &&
       format == rhs.format &&
       memoryPrecision == rhs.memoryPrecision;
   }
@@ -38,6 +44,7 @@ struct std::hash<SegmentedInt8GemvKernelDescriptor>
     return std::hash<uint64_t>()(
       (uint64_t)hash.fusedBias |
       ((uint64_t)hash.mrows << 8) |
+      ((uint64_t)hash.sharedFused << 12) |
       ((uint64_t)hash.memoryPrecision.value << 16) |
       ((uint64_t)hash.format << 32));
   }
@@ -56,6 +63,11 @@ struct SegmentedInt8GemvDescriptor {
 
   bool useBias;
   bool broadcastInput;
+
+  // Shared expert rows interleaved with the routed threadgroups (Q2_K only), and how many routed
+  // threadgroups the grid starts with.
+  uint32_t sharedRows;
+  uint32_t routedThreadgroups;
 
   bool operator==(const SegmentedInt8GemvDescriptor& rhs) const;
 

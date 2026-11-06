@@ -105,7 +105,20 @@ static void _ccv_nnc_mfa_encode_qx_decode(ccv_nnc_mfa_context_t* const context, 
 	}
 }
 
-static int _ccv_nnc_segmented_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
+// The shared expert (activation, weights and output) when it does not join the routed dispatch.
+static int _ccv_nnc_segmented_gemm_shared_forw(ccv_nnc_tensor_t* const* const shared, ccv_nnc_stream_context_t* const stream_context)
+{
+	ccv_nnc_cmd_t gemm = CMD_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(0, 1));
+	gemm.backend = CCV_NNC_BACKEND_MPS;
+	gemm.algorithm = 0;
+	return ccv_nnc_cmd_exec(gemm, ccv_nnc_no_hint, 0, TENSOR_LIST(shared[0], shared[1]), TENSOR_LIST(shared[2]), stream_context);
+}
+
+// With shared (a shared expert's activation, weights and output), the one-row Q2_K kernel can take
+// the shared expert's Q8_0 rows in the same dispatch; *shared_done says whether the shared expert ran.
+// The shared expert needs no routed weights, so when streamed routed weights wait for their load it
+// runs first instead, as in segmented SwiGLU.
+static int _ccv_nnc_segmented_gemm_routed_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context, ccv_nnc_tensor_t* const* shared, int* const shared_done)
 {
 	assert(input_size >= 4);
 	assert(output_size == 1);
@@ -121,6 +134,14 @@ static int _ccv_nnc_segmented_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_h
 	const int weight_resolved = ccv_nnc_mps_moe_weights_resolve(inputs[3], &weight_view);
 	if (weight_resolved < 0)
 		return CCV_NNC_EXEC_INVALID;
+	if (shared && weight_resolved > 0 && weight_view.readiness_value)
+	{
+		const int status = _ccv_nnc_segmented_gemm_shared_forw(shared, stream_context);
+		if (status != CCV_NNC_EXEC_SUCCESS)
+			return status;
+		*shared_done = 1;
+		shared = 0;
+	}
 	ccv_nnc_tensor_view_t resolved_weight;
 	if (weight_resolved)
 	{
@@ -378,6 +399,18 @@ static int _ccv_nnc_segmented_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_h
 		assert(is_mfa_supported);
 		if (use_segmented_int8_gemv)
 		{
+			// The shared expert fuses when it is Q8_0 rows over one activation row of the same width
+			// and datatype, contiguous, with the activation aligned for its real4 loads.
+			const ccv_nnc_tensor_view_t* const shared_a = shared ? (const ccv_nnc_tensor_view_t*)shared[0] : 0;
+			const ccv_nnc_tensor_view_t* const shared_w = shared ? (const ccv_nnc_tensor_view_t*)shared[1] : 0;
+			const ccv_nnc_tensor_view_t* const shared_b = shared ? (const ccv_nnc_tensor_view_t*)shared[2] : 0;
+			const int fuse_shared = shared && !bias && w_8i_rowwise_x_format == CCV_NNC_QX_8I_ROWWISE_Q2_K &&
+				CCV_GET_DATA_TYPE(shared_w->info.datatype) == CCV_QX && (shared_w->info.datatype & 0xf00) == CCV_NNC_QX_8I_ROWWISE &&
+				((shared_w->info.datatype & 0xff) << 12) == a->info.datatype && shared_a->info.datatype == a->info.datatype && shared_b->info.datatype == a->info.datatype &&
+				ccv_nnc_tensor_nd(shared_w->info.dim) == 2 && shared_w->info.dim[1] == w_rows &&
+				ccv_nnc_tensor_count(shared_a->info) == (size_t)w_rows && ccv_nnc_tensor_count(shared_b->info) == (size_t)shared_w->info.dim[0] &&
+				CCV_IS_TENSOR_CONTIGUOUS(shared_a) && CCV_IS_TENSOR_CONTIGUOUS(shared_w) && CCV_IS_TENSOR_CONTIGUOUS(shared_b) &&
+				(w_rows % 4) == 0 && (shared_a->dataof % (4 * CCV_GET_DATA_TYPE_SIZE(a->info.datatype))) == 0;
 			ccv_nnc_mfa_segmented_int8_gemv_params_t params = {
 				.data_type = mtl_data_type,
 				.format = w_8i_rowwise_x_format,
@@ -387,6 +420,7 @@ static int _ccv_nnc_segmented_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_h
 				.fused_bias = (bias ? 1 : 0),
 				.expert_count = (uint32_t)w_batch_size,
 				.bincount = (uint32_t)bincount,
+				.shared_rows = fuse_shared ? (uint32_t)shared_w->info.dim[0] : 0,
 			};
 			ccv_nnc_mfa_prepare_segmented_int8_gemv(context, params);
 			mtl_command_batch_t* command_batch = ccv_nnc_stream_context_start_command_batch(stream_context);
@@ -394,7 +428,7 @@ static int _ccv_nnc_segmented_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_h
 			mtl_buffer_t* bias_buffer = NULL;
 			if (bias)
 				bias_buffer = mpgetbuffer((ccv_nnc_tensor_t*)bias);
-			mtl_buffer_t* tensors[7] = {
+			mtl_buffer_t* tensors[10] = {
 				mpgetbuffer((ccv_nnc_tensor_t*)a),
 				mpgetbuffer((ccv_nnc_tensor_t*)indices),
 				mpgetbuffer((ccv_nnc_tensor_t*)counts),
@@ -402,15 +436,24 @@ static int _ccv_nnc_segmented_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_h
 				mpgetbuffer((ccv_nnc_tensor_t*)b),
 				bias_buffer,
 				NULL,
+				fuse_shared ? mpgetbuffer((ccv_nnc_tensor_t*)shared_w) : NULL,
+				fuse_shared ? mpgetbuffer((ccv_nnc_tensor_t*)shared_a) : NULL,
+				fuse_shared ? mpgetbuffer((ccv_nnc_tensor_t*)shared_b) : NULL,
 			};
-			size_t tensor_offsets[6] = {
+			size_t tensor_offsets[10] = {
 				a->dataof,
 				indices->dataof,
 				counts->dataof,
 				w->dataof,
 				b->dataof,
 				bias ? bias->dataof : 0,
+				0,
+				fuse_shared ? shared_w->dataof : 0,
+				fuse_shared ? shared_a->dataof : 0,
+				fuse_shared ? shared_b->dataof : 0,
 			};
+			if (fuse_shared)
+				*shared_done = 1;
 			ccv_nnc_mfa_encode_segmented_int8_gemv(context, params, command_batch, tensors, tensor_offsets);
 			ccv_nnc_mps_moe_weights_finish_command_batch(inputs + 3, 1, stream_context, command_batch);
 			return CCV_NNC_EXEC_SUCCESS;
@@ -573,6 +616,21 @@ static int _ccv_nnc_segmented_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_h
 		ccv_nnc_mps_moe_weights_finish_command_batch(inputs + 3, 1, stream_context, command_batch);
 	}
 	return CCV_NNC_EXEC_SUCCESS;
+}
+
+static int _ccv_nnc_segmented_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
+{
+	if (output_size == 1)
+		return _ccv_nnc_segmented_gemm_routed_forw(cmd, hint, flags, inputs, input_size, outputs, 1, stream_context, 0, 0);
+	// A shared expert's activation and weights follow the optional bias; its product is output 1.
+	if (input_size != 7 || output_size != 2)
+		return CCV_NNC_EXEC_INVALID;
+	ccv_nnc_tensor_t* const shared[3] = { inputs[5], inputs[6], outputs[1] };
+	int shared_done = 0;
+	const int status = _ccv_nnc_segmented_gemm_routed_forw(cmd, hint, flags, inputs, inputs[4] ? 5 : 4, outputs, 1, stream_context, outputs[1]->info.dim[0] > 0 ? shared : 0, &shared_done);
+	if (status != CCV_NNC_EXEC_SUCCESS || shared_done || outputs[1]->info.dim[0] == 0)
+		return status;
+	return _ccv_nnc_segmented_gemm_shared_forw(shared, stream_context);
 }
 
 REGISTER_COMMAND_BACKEND(CCV_NNC_SEGMENTED_GEMM_FORWARD, CCV_NNC_BACKEND_MPS)(ccv_nnc_cmd_backend_registry_t* const registry)

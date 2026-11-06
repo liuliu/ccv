@@ -1076,6 +1076,7 @@ kernel void segmented_int8_gemv(
 SegmentedInt8GemvKernel::SegmentedInt8GemvKernel(SegmentedInt8GemvKernelDescriptor descriptor, MTL::Device* const device) {
   fusedBias = descriptor.fusedBias;
   mrows = descriptor.mrows;
+  sharedFused = descriptor.sharedFused;
   format = descriptor.format;
   memoryPrecision = descriptor.memoryPrecision;
   CCV_NNC_MFA_PRECONDITION(mrows == 1);
@@ -2736,35 +2737,37 @@ kernel void segmented_int8_gemv(
 }
 )";
       } else {
+        // Q2_K, one activation row per route. ROWS and S name the threadgroup's shape at file
+        // scope, so the routed rows can also run inside the kernel that interleaves a shared
+        // expert's Q8_0 rows (bandwidth bound) with them (ALU bound).
+        shader += "constant constexpr uint ROWS = " + std::to_string(kSegmentedInt8GemvRowsPerSIMDGroup) + ";\n";
+        shader += "constant constexpr uint S = " + std::to_string(segmentedInt8GemvSIMDGroupsPerThreadgroup(format)) + ";\n";
+        shader += "constant constexpr uint TG_ROWS = ROWS * S;\n";
         shader += R"(
-kernel void segmented_int8_gemv(
-  device const uchar *src0 [[buffer(0)]],
-  device const real *src1 [[buffer(1)]],
-  device real *dst [[buffer(2)]],
-  device const real *scales [[buffer(3)]],
+inline void segmented_q2k_routes(
+  device const uchar *src0,
+  device const real *src1,
+  device real *dst,
+  device const real *scales,
 )";
         if (fusedBias) {
           shader += R"(
-  device const real *bias [[buffer(4)]],
+  device const real *bias,
 )";
         }
         shader += R"(
-  device const int *indices [[buffer(5)]],
-  device const int *counts [[buffer(6)]],
-  uint tgpig_position [[threadgroup_position_in_grid]],
-  uint sgitg [[simdgroup_index_in_threadgroup]],
-  uint tiisg [[thread_index_in_simdgroup]]
+  device const int *indices,
+  device const int *counts,
+  threadgroup int& route_expert,
+  threadgroup float (&partials)[TG_ROWS][S],
+  uint tgpig_position,
+  uint sgitg,
+  uint tiisg
 ) {
-  constexpr uint ROWS = )";
-        shader += std::to_string(kSegmentedInt8GemvRowsPerSIMDGroup);
-        shader += R"(;
-  constexpr uint S = )";
-        shader += std::to_string(kSegmentedInt8GemvSIMDGroupsPerThreadgroup);
-        shader += R"(;
-  const uint rows_per_threadgroup = ROWS * S;
+)";
+        shader += R"(  const uint rows_per_threadgroup = ROWS * S;
   const uint threadgroups_per_route = (nrows + rows_per_threadgroup - 1u) / rows_per_threadgroup;
   const uint route = tgpig_position / threadgroups_per_route;
-  threadgroup int route_expert;
   if (sgitg == 0 && tiisg == 0) {
     route_expert = -1;
     uint row_offset = 0;
@@ -2790,71 +2793,173 @@ kernel void segmented_int8_gemv(
   dst += (ulong)route * nrows;
   scales += (ulong)expert * nrows;
   const uint tgpig = tgpig_position - route * threadgroups_per_route;
-  const uint rb = (tgpig * S + sgitg) * ROWS;
-  if (rb >= nrows)
-    return;
-  const bool active1 = rb + 1 < nrows;
+  // All S SIMD groups take all of the threadgroup's rows, each over 1 / S of the groups, so the
+  // activation work below is shared by TG_ROWS rows instead of ROWS.
+  const uint rb = tgpig * TG_ROWS;
   device const real4* y4 = (device const real4*)src1;
 
-  float sum0 = 0;
-  float sum1 = 0;
-  for (uint g = tiisg; g < groups_per_row; g += 32) {
+  float sums[TG_ROWS];
+  for (uint r = 0; r < TG_ROWS; r++)
+    sums[r] = 0;
+  // Value i of a group sits at bits 2i of its 32-bit codes. Masking it in place leaves value * 4^i,
+  // so the activations carry 4^-i instead (exact: both are powers of two) and no code shifts.
+  const uint4 mask0 = uint4(0x3u, 0xcu, 0x30u, 0xc0u);
+  const float4 scale0 = float4(1.0f, 0x1p-2f, 0x1p-4f, 0x1p-6f);
+  for (uint g = sgitg * 32 + tiisg; g < groups_per_row; g += S * 32) {
     const uint yv_base = g * 4;
     const float4 y0 = float4(y4[yv_base + 0]);
     const float4 y1 = float4(y4[yv_base + 1]);
     const float4 y2 = float4(y4[yv_base + 2]);
     const float4 y3 = float4(y4[yv_base + 3]);
     const float ysum = vec_sum(y0) + vec_sum(y1) + vec_sum(y2) + vec_sum(y3);
-    const ulong payload0 = q2_payload(src0, (ulong)(rb + 0) * groups_per_row + g);
-    const uint qbits0 = (uint)payload0;
-    const uint m0 = (uint)((payload0 >> 32) & 63u) + 1;
-    const uint z0 = (uint)((payload0 >> 38) & 15u) << 3;
-    const float m0f = (float)m0;
-    sum0 += m0f * dot(q2_values(qbits0, 0), y0);
-    sum0 += m0f * dot(q2_values(qbits0, 8), y1);
-    sum0 += m0f * dot(q2_values(qbits0, 16), y2);
-    sum0 += m0f * dot(q2_values(qbits0, 24), y3);
-    sum0 -= (float)z0 * ysum;
-    if (active1) {
-      const ulong payload1 = q2_payload(src0, (ulong)(rb + 1) * groups_per_row + g);
-      const uint qbits1 = (uint)payload1;
-      const uint m1 = (uint)((payload1 >> 32) & 63u) + 1;
-      const uint z1 = (uint)((payload1 >> 38) & 15u) << 3;
-      const float m1f = (float)m1;
-      sum1 += m1f * dot(q2_values(qbits1, 0), y0);
-      sum1 += m1f * dot(q2_values(qbits1, 8), y1);
-      sum1 += m1f * dot(q2_values(qbits1, 16), y2);
-      sum1 += m1f * dot(q2_values(qbits1, 24), y3);
-      sum1 -= (float)z1 * ysum;
+    const float4 p0 = y0 * scale0;
+    const float4 p1 = y1 * (scale0 * 0x1p-8f);
+    const float4 p2 = y2 * (scale0 * 0x1p-16f);
+    const float4 p3 = y3 * (scale0 * 0x1p-24f);
+    for (uint r = 0; r < TG_ROWS; r++) {
+      if (rb + r < nrows) {
+        const ulong payload = q2_payload(src0, (ulong)(rb + r) * groups_per_row + g);
+        const uint4 qbits = uint4((uint)payload);
+        const uint m = (uint)((payload >> 32) & 63u) + 1;
+        const uint z = (uint)((payload >> 38) & 15u) << 3;
+        float4 d = float4(qbits & mask0) * p0;
+        d = fma(float4(qbits & (mask0 << 8)), p1, d);
+        d = fma(float4(qbits & (mask0 << 16)), p2, d);
+        d = fma(float4(qbits & (mask0 << 24)), p3, d);
+        sums[r] += (float)m * vec_sum(d) - (float)z * ysum;
+      }
     }
   }
 
-  const float row_sum0 = simd_sum(sum0);
-  const float row_sum1 = simd_sum(sum1);
-  if (tiisg == 0) {
-    float value = row_sum0 * (float)scales[rb + 0];
-)";
-        if (fusedBias) {
-          shader += R"(
-      value += (float)bias[(ulong)expert * nrows + rb + 0];
-)";
-        }
-        shader += R"(
-    dst[rb + 0] = (real)value;
+  for (uint r = 0; r < TG_ROWS; r++) {
+    const float row_sum = simd_sum(sums[r]);
+    if (tiisg == 0)
+      partials[r][sgitg] = row_sum;
   }
-  if (tiisg == 1 && active1) {
-    float value = row_sum1 * (float)scales[rb + 1];
+  threadgroup_barrier(mem_flags::mem_threadgroup);
+  if (sgitg == 0 && tiisg < TG_ROWS && rb + tiisg < nrows) {
+    float value = 0;
+    for (uint t = 0; t < S; t++)
+      value += partials[tiisg][t];
+    value *= (float)scales[rb + tiisg];
 )";
         if (fusedBias) {
           shader += R"(
-      value += (float)bias[(ulong)expert * nrows + rb + 1];
+    value += (float)bias[(ulong)expert * nrows + rb + tiisg];
 )";
         }
         shader += R"(
-    dst[rb + 1] = (real)value;
+    dst[rb + tiisg] = (real)value;
   }
 }
 )";
+        if (sharedFused) {
+          shader += R"(
+constant uint shared_nrows [[function_constant(9)]];
+constant uint routed_threadgroups [[function_constant(10)]];
+
+// Two Q8_0 rows of the shared expert, as Int8GemvKernel's one-row kernel computes them.
+inline void segmented_q2k_shared_rows(
+  device const char *weights,
+  device const real *activation,
+  device real *destination,
+  device const real *row_scales,
+  threadgroup float (&partials)[TG_ROWS][S],
+  uint shared_threadgroup,
+  uint sgitg,
+  uint tiisg
+) {
+  const uint rb = shared_threadgroup * 2;
+  const bool active1 = rb + 1 < shared_nrows;
+  device const real4* y4 = (device const real4*)activation;
+  device const char4* x0 = (device const char4*)(weights + (ulong)(rb + 0) * ncols);
+  device const char4* x1 = (device const char4*)(weights + (ulong)(rb + 1) * ncols);
+  float sum0 = 0;
+  float sum1 = 0;
+  const uint nvecs = ncols / 4;
+  const uint stride = S * 64;
+  uint i = sgitg * 64 + tiisg * 2;
+  for (; i + 1 < nvecs; i += stride) {
+    const float4 yv0 = float4(y4[i]);
+    const float4 yv1 = float4(y4[i + 1]);
+    sum0 += dot(float4(x0[i]), yv0) + dot(float4(x0[i + 1]), yv1);
+    if (active1)
+      sum1 += dot(float4(x1[i]), yv0) + dot(float4(x1[i + 1]), yv1);
+  }
+  if (i < nvecs) {
+    const float4 yv = float4(y4[i]);
+    sum0 += dot(float4(x0[i]), yv);
+    if (active1)
+      sum1 += dot(float4(x1[i]), yv);
+  }
+  const float lane_sum0 = simd_sum(sum0);
+  const float lane_sum1 = simd_sum(sum1);
+  if (tiisg == 0) {
+    partials[0][sgitg] = lane_sum0;
+    partials[1][sgitg] = lane_sum1;
+  }
+  threadgroup_barrier(mem_flags::mem_threadgroup);
+  if (sgitg == 0 && tiisg < 2 && rb + tiisg < shared_nrows) {
+    float value = 0;
+    for (uint t = 0; t < S; t++)
+      value += partials[tiisg][t];
+    destination[rb + tiisg] = (real)(value * (float)row_scales[rb + tiisg]);
+  }
+}
+
+kernel void segmented_int8_gemv_shared(
+  device const uchar *src0 [[buffer(0)]],
+  device const real *src1 [[buffer(1)]],
+  device real *dst [[buffer(2)]],
+  device const real *scales [[buffer(3)]],
+  device const int *indices [[buffer(5)]],
+  device const int *counts [[buffer(6)]],
+  device const char *shared_weights [[buffer(7)]],
+  device const real *shared_activation [[buffer(8)]],
+  device real *shared_destination [[buffer(9)]],
+  device const real *shared_scales [[buffer(10)]],
+  uint tgpig_position [[threadgroup_position_in_grid]],
+  uint sgitg [[simdgroup_index_in_threadgroup]],
+  uint tiisg [[thread_index_in_simdgroup]]
+) {
+  threadgroup int route_expert;
+  threadgroup float partials[TG_ROWS][S];
+  // Spread the shared threadgroups evenly through the grid.
+  const uint shared_threadgroups = (shared_nrows + 1u) / 2u;
+  const uint total = routed_threadgroups + shared_threadgroups;
+  const uint shared_before = (uint)((ulong)tgpig_position * shared_threadgroups / total);
+  if ((uint)((ulong)(tgpig_position + 1) * shared_threadgroups / total) != shared_before)
+    segmented_q2k_shared_rows(shared_weights, shared_activation, shared_destination, shared_scales, partials, shared_before, sgitg, tiisg);
+  else
+    segmented_q2k_routes(src0, src1, dst, scales, indices, counts, route_expert, partials, tgpig_position - shared_before, sgitg, tiisg);
+}
+)";
+        } else {
+          shader += R"(
+kernel void segmented_int8_gemv(
+  device const uchar *src0 [[buffer(0)]],
+  device const real *src1 [[buffer(1)]],
+  device real *dst [[buffer(2)]],
+  device const real *scales [[buffer(3)]],
+)";
+          if (fusedBias) {
+            shader += R"(
+  device const real *bias [[buffer(4)]],
+)";
+          }
+          shader += R"(
+  device const int *indices [[buffer(5)]],
+  device const int *counts [[buffer(6)]],
+  uint tgpig_position [[threadgroup_position_in_grid]],
+  uint sgitg [[simdgroup_index_in_threadgroup]],
+  uint tiisg [[thread_index_in_simdgroup]]
+) {
+  threadgroup int route_expert;
+  threadgroup float partials[TG_ROWS][S];
+  segmented_q2k_routes(src0, src1, dst, scales, )" + std::string(fusedBias ? "bias, " : "") + R"(indices, counts, route_expert, partials, tgpig_position, sgitg, tiisg);
+}
+)";
+        }
       }
       return shader;
     }

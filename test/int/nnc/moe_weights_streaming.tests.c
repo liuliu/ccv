@@ -96,29 +96,33 @@ static int _moe_weights_streaming_run_case(
 		route_values[i] = (float)(i + 1) / (row_count + 1);
 	ccv_float_to_half_precision(route_values, (uint16_t*)host_route_weights->data.f16, row_count);
 	ccfree(route_values);
-	// With a shared expert, the streamed command also evaluates one on the same activation, encoded
-	// ahead of the routed experts' readiness wait. It must match SWIGLU_FORWARD exactly.
-	ccv_nnc_tensor_t* shared_weights[2] = {};
+	// With a shared expert, the streamed commands also evaluate one on the same activation, encoded
+	// ahead of the routed experts' readiness wait. It must match SWIGLU_FORWARD and GEMM_FORWARD exactly.
+	ccv_nnc_tensor_t* shared_weights[3] = {};
 	ccv_nnc_tensor_t* const reference_shared = with_shared ? ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, row_count, n), 0) : 0;
 	ccv_nnc_tensor_t* const streamed_shared = with_shared ? ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, row_count, n), 0) : 0;
 	ccv_nnc_tensor_t* const host_shared = with_shared ? ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, 2, row_count, n), 0) : 0;
+	ccv_nnc_tensor_t* const reference_shared_down = with_shared ? ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, row_count, k), 0) : 0;
+	ccv_nnc_tensor_t* const streamed_shared_down = with_shared ? ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, row_count, k), 0) : 0;
+	ccv_nnc_tensor_t* const host_shared_down = with_shared ? ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, 2, row_count, k), 0) : 0;
 	if (with_shared)
 	{
 		ccv_nnc_tensor_t* const host_shared_weights = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, n, k), 0);
-		const ccv_nnc_tensor_param_t shared_params = ccv_nnc_tensor_8i_rowwise(host_shared_weights->info);
-		ccv_nnc_tensor_t* const host_quantized = ccv_nnc_tensor_new(0, shared_params, 0);
-		ccv_nnc_tensor_param_t gpu_shared_params = shared_params;
-		gpu_shared_params.type = CCV_TENSOR_GPU_MEMORY | 000;
-		for (i = 0; i < 2; i++)
+		for (i = 0; i < 3; i++)
 		{
+			// Gate and up are n rows of k, down is k rows of n.
+			const ccv_nnc_tensor_param_t shared_params = ccv_nnc_tensor_8i_rowwise(i < 2 ? CPU_TENSOR_NHWC(16F, n, k) : CPU_TENSOR_NHWC(16F, k, n));
+			ccv_nnc_tensor_t* const host_quantized = ccv_nnc_tensor_new(0, shared_params, 0);
+			ccv_nnc_tensor_param_t gpu_shared_params = shared_params;
+			gpu_shared_params.type = CCV_TENSOR_GPU_MEMORY | 000;
 			_moe_weights_streaming_fill_half(host_shared_weights->data.f16, (size_t)n * k, case_seed + 41 + i);
-			if (ccv_nnc_quantize_8i_rowwise(host_shared_weights->data.u8, CCV_16F, CCV_TENSOR_CPU_MEMORY, (size_t)n * k, k, 0, 0,
+			if (ccv_nnc_quantize_8i_rowwise(host_shared_weights->data.u8, CCV_16F, CCV_TENSOR_CPU_MEMORY, (size_t)n * k, i < 2 ? k : n, 0, 0,
 				host_quantized->data.u8, ccv_nnc_tensor_data_size_without_padding(shared_params)) != ccv_nnc_tensor_data_size_without_padding(shared_params))
 				status = CCV_NNC_EXEC_INVALID;
 			shared_weights[i] = ccv_nnc_tensor_new(0, gpu_shared_params, 0);
 			ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(host_quantized), TENSOR_LIST(shared_weights[i]), 0);
+			ccv_nnc_tensor_free(host_quantized);
 		}
-		ccv_nnc_tensor_free(host_quantized);
 		ccv_nnc_tensor_free(host_shared_weights);
 	}
 	ccv_nnc_stream_context_t* const stream = ccv_nnc_stream_context_new(CCV_STREAM_CONTEXT_GPU);
@@ -143,6 +147,11 @@ static int _moe_weights_streaming_run_case(
 		shared_swiglu.backend = CCV_NNC_BACKEND_MPS;
 		status = ccv_nnc_cmd_exec(shared_swiglu, ccv_nnc_no_hint, 0,
 			TENSOR_LIST(activation, shared_weights[0], shared_weights[1]), TENSOR_LIST(reference_shared), stream);
+		ccv_nnc_cmd_t shared_down = CMD_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(0, 1));
+		shared_down.backend = CCV_NNC_BACKEND_MPS;
+		if (status == CCV_NNC_EXEC_SUCCESS)
+			status = ccv_nnc_cmd_exec(shared_down, ccv_nnc_no_hint, 0,
+				TENSOR_LIST(reference_shared, shared_weights[2]), TENSOR_LIST(reference_shared_down), stream);
 	}
 	ccv_nnc_cmd_t streaming = CMD_MOE_WEIGHTS_STREAMING_FORWARD(resident_slots, 1);
 	streaming.backend = CCV_NNC_BACKEND_MPS;
@@ -177,9 +186,13 @@ static int _moe_weights_streaming_run_case(
 				TENSOR_LIST(activation, streamed[0], streamed[1], streamed[3], streamed[4], streamed[2]),
 				TENSOR_LIST(streamed_hidden), stream);
 	if (status == CCV_NNC_EXEC_SUCCESS)
-		status = ccv_nnc_cmd_exec(gemm, ccv_nnc_no_hint, 0,
-			TENSOR_LIST(streamed_hidden, streamed[0], streamed[1], streamed[5]),
-			TENSOR_LIST(streamed_output), stream);
+		status = with_shared ?
+			ccv_nnc_cmd_exec(gemm, ccv_nnc_no_hint, 0,
+				TENSOR_LIST(streamed_hidden, streamed[0], streamed[1], streamed[5], 0, streamed_shared, shared_weights[2]),
+				TENSOR_LIST(streamed_output, streamed_shared_down), stream) :
+			ccv_nnc_cmd_exec(gemm, ccv_nnc_no_hint, 0,
+				TENSOR_LIST(streamed_hidden, streamed[0], streamed[1], streamed[5]),
+				TENSOR_LIST(streamed_output), stream);
 	if (status == CCV_NNC_EXEC_SUCCESS)
 		status = ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0,
 			TENSOR_LIST(reference_output, streamed_output, streamed[0]),
@@ -190,10 +203,16 @@ static int _moe_weights_streaming_run_case(
 		ccv_nnc_tensor_t streamed_view = ccv_nnc_tensor(host_shared->data.f16 + (size_t)row_count * n, CPU_TENSOR_NHWC(16F, row_count, n), 0);
 		status = ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0,
 			TENSOR_LIST(reference_shared, streamed_shared), TENSOR_LIST(&reference_view, &streamed_view), stream);
+		ccv_nnc_tensor_t reference_down_view = ccv_nnc_tensor(host_shared_down->data.f16, CPU_TENSOR_NHWC(16F, row_count, k), 0);
+		ccv_nnc_tensor_t streamed_down_view = ccv_nnc_tensor(host_shared_down->data.f16 + (size_t)row_count * k, CPU_TENSOR_NHWC(16F, row_count, k), 0);
+		if (status == CCV_NNC_EXEC_SUCCESS)
+			status = ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0,
+				TENSOR_LIST(reference_shared_down, streamed_shared_down), TENSOR_LIST(&reference_down_view, &streamed_down_view), stream);
 	}
 	ccv_nnc_stream_context_wait(stream);
 	if (status == CCV_NNC_EXEC_SUCCESS && with_shared &&
-		memcmp(host_shared->data.f16, host_shared->data.f16 + (size_t)row_count * n, sizeof(ccv_float16_t) * row_count * n) != 0)
+		(memcmp(host_shared->data.f16, host_shared->data.f16 + (size_t)row_count * n, sizeof(ccv_float16_t) * row_count * n) != 0 ||
+		 memcmp(host_shared_down->data.f16, host_shared_down->data.f16 + (size_t)row_count * k, sizeof(ccv_float16_t) * row_count * k) != 0))
 		status = CCV_NNC_EXEC_INVALID;
 	if (status == CCV_NNC_EXEC_SUCCESS && row_count > 1)
 	{
@@ -235,9 +254,13 @@ static int _moe_weights_streaming_run_case(
 	{
 		ccv_nnc_tensor_free(shared_weights[0]);
 		ccv_nnc_tensor_free(shared_weights[1]);
+		ccv_nnc_tensor_free(shared_weights[2]);
 		ccv_nnc_tensor_free(reference_shared);
 		ccv_nnc_tensor_free(streamed_shared);
 		ccv_nnc_tensor_free(host_shared);
+		ccv_nnc_tensor_free(reference_shared_down);
+		ccv_nnc_tensor_free(streamed_shared_down);
+		ccv_nnc_tensor_free(host_shared_down);
 	}
 	ccv_nnc_tensor_free(host_streamed);
 	ccv_nnc_tensor_free(host_reference);

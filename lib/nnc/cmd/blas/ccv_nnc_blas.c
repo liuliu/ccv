@@ -296,6 +296,10 @@ static int _ccv_nnc_segmented_gemm_forw_bitmask(const ccv_nnc_cmd_param_t cmd, c
 	// No bias is OK.
 	if (input_size == 4 && (input_bitmasks[0] & 15u) == ((1u << 0) | (1u << 1) | (1u << 2) | (1u << 3)) && output_bitmasks[0] == 1u)
 		return 1;
+	// A shared expert's activation and weights follow the optional bias, and its product is the
+	// second output.
+	if (input_size == 7 && (input_bitmasks[0] & 0x6fu) == 0x6fu && output_bitmasks[0] == 3u)
+		return 1;
 	return 0;
 }
 
@@ -324,7 +328,15 @@ static int _ccv_nnc_segmented_gemm_back_bitmask(const ccv_nnc_cmd_param_t cmd, c
 
 static void _ccv_nnc_segmented_gemm_tensor_auto_forw(const ccv_nnc_cmd_param_t cmd, const ccv_nnc_tensor_param_t* const inputs, const int input_size, const ccv_nnc_hint_t hint, ccv_nnc_tensor_param_t* const outputs, const int output_size)
 {
-	assert(output_size == 1);
+	assert(output_size == 1 || (output_size == 2 && input_size == 7));
+	if (output_size == 2)
+	{
+		// The shared expert's product: its activation rows by its weight rows.
+		const int shared_nd = ccv_nnc_tensor_nd(inputs[5].dim);
+		outputs[1] = inputs[5];
+		if (shared_nd > 0)
+			outputs[1].dim[shared_nd - 1] = inputs[6].dim[0];
+	}
 	if (inputs[0].dim[0] == 0)
 	{
 		outputs[0] = inputs[0];
