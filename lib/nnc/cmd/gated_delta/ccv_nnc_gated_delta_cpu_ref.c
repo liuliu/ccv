@@ -6,9 +6,46 @@
 #include <math.h>
 #include <string.h>
 
+static inline float _ccv_nnc_gated_delta_sigmoid(const float x)
+{
+	return 1 / (1 + expf(-x));
+}
+
+// Elements between consecutive tokens (dimension 1).
+static size_t _ccv_nnc_gated_delta_row_stride(const ccv_nnc_tensor_t* const tensor)
+{
+	const int nd = ccv_nnc_tensor_nd(tensor->info.dim);
+	if (CCV_IS_TENSOR_VIEW(tensor))
+		return ((const ccv_nnc_tensor_view_t*)tensor)->stride[1];
+	size_t stride = 1;
+	int i;
+	for (i = 2; i < nd; i++)
+		stride *= tensor->info.dim[i];
+	return stride;
+}
+
+// Everything below a token row is packed, and batches follow each other row by row.
+static int _ccv_nnc_gated_delta_rows_are_packed(const ccv_nnc_tensor_t* const tensor)
+{
+	if (!CCV_IS_TENSOR_VIEW(tensor) || CCV_IS_TENSOR_CONTIGUOUS(tensor))
+		return 1;
+	const ccv_nnc_tensor_view_t* const view = (const ccv_nnc_tensor_view_t*)tensor;
+	const int nd = ccv_nnc_tensor_nd(tensor->info.dim);
+	int i;
+	int stride = 1;
+	for (i = nd - 1; i >= 2; i--)
+	{
+		if (view->stride[i] != stride)
+			return 0;
+		stride *= tensor->info.dim[i];
+	}
+	return view->stride[1] >= stride && (tensor->info.dim[0] == 1 || view->stride[0] == view->stride[1] * tensor->info.dim[1]);
+}
+
 static int _ccv_nnc_gated_delta_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
 {
-	assert(input_size == 6);
+	const int sigmoid_gate = cmd.info.gated_delta.sigmoid_gate;
+	assert(input_size == (sigmoid_gate ? 8 : 6));
 	assert(output_size == 2);
 	const ccv_nnc_tensor_t* const q = inputs[0];
 	const ccv_nnc_tensor_t* const k = inputs[1];
@@ -18,11 +55,12 @@ static int _ccv_nnc_gated_delta_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint
 	const ccv_nnc_tensor_t* const state_in = inputs[5];
 	ccv_nnc_tensor_t* const y = outputs[0];
 	ccv_nnc_tensor_t* const state_out = outputs[1];
-	assert(CCV_IS_TENSOR_CONTIGUOUS(q));
-	assert(CCV_IS_TENSOR_CONTIGUOUS(k));
-	assert(CCV_IS_TENSOR_CONTIGUOUS(v));
-	assert(CCV_IS_TENSOR_CONTIGUOUS(log_decay));
-	assert(CCV_IS_TENSOR_CONTIGUOUS(beta));
+	// q, k, v, the decay and beta may stride their token rows; everything below a row is packed.
+	assert(_ccv_nnc_gated_delta_rows_are_packed(q));
+	assert(_ccv_nnc_gated_delta_rows_are_packed(k));
+	assert(_ccv_nnc_gated_delta_rows_are_packed(v));
+	assert(_ccv_nnc_gated_delta_rows_are_packed(log_decay));
+	assert(_ccv_nnc_gated_delta_rows_are_packed(beta));
 	assert(CCV_IS_TENSOR_CONTIGUOUS(state_in));
 	assert(CCV_IS_TENSOR_CONTIGUOUS(y));
 	assert(CCV_IS_TENSOR_CONTIGUOUS(state_out));
@@ -95,7 +133,28 @@ static int _ccv_nnc_gated_delta_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint
 	assert(state_out->info.dim[3] == Dk);
 	assert(Hv % Hk == 0);
 	const int log_decay_input = cmd.info.gated_delta.log_decay;
+	const int qk_l2norm = cmd.info.gated_delta.qk_l2norm;
+	// FLA's KDA L2 norm, x / sqrt(sum(x^2) + 1e-6).
+	const float l2norm_epsilon = 1e-6;
+	const float q_scale = cmd.info.gated_delta.q_scale;
+	const float gate_lower_bound = cmd.info.gated_delta.gate_lower_bound;
+	const int sigmoid_beta = cmd.info.gated_delta.sigmoid_beta;
+	assert(!sigmoid_gate || (log_decay_input && channel_decay));
+	const float* const gate_bias = sigmoid_gate ? inputs[6]->data.f32 : 0;
+	const float* const gate_scale = sigmoid_gate ? inputs[7]->data.f32 : 0;
+	if (sigmoid_gate)
+	{
+		assert(inputs[6]->info.datatype == CCV_32F && CCV_IS_TENSOR_CONTIGUOUS(inputs[6]) && ccv_nnc_tensor_count(inputs[6]->info) == Hv * Dk);
+		assert(inputs[7]->info.datatype == CCV_32F && CCV_IS_TENSOR_CONTIGUOUS(inputs[7]) && ccv_nnc_tensor_count(inputs[7]->info) == Hv);
+	}
+	const size_t q_row_stride = _ccv_nnc_gated_delta_row_stride(q);
+	const size_t k_row_stride = _ccv_nnc_gated_delta_row_stride(k);
+	const size_t v_row_stride = _ccv_nnc_gated_delta_row_stride(v);
+	const size_t gate_row_stride = _ccv_nnc_gated_delta_row_stride(log_decay);
+	const size_t beta_row_stride = _ccv_nnc_gated_delta_row_stride(beta);
 	const int hv_per_hk = Hv / Hk;
+	float* const q_row = (float*)ccmalloc(sizeof(float) * Dk * 2);
+	float* const k_row = q_row + Dk;
 	const float* const qp = q->data.f32;
 	const float* const kp = k->data.f32;
 	const float* const vp = v->data.f32;
@@ -118,22 +177,47 @@ static int _ccv_nnc_gated_delta_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint
 				float* const state_row = state_outp + final_state_offset;
 				for (t = 0; t < T; t++)
 				{
-					const size_t qk_offset = (((size_t)b * T + t) * Hk + hk) * Dk;
-					const float* const q_row = qp + qk_offset;
-					const float* const k_row = kp + qk_offset;
-					const size_t gate_offset = ((size_t)b * T + t) * Hv + hv;
-					const float* const decay_row = gp + (channel_decay ? gate_offset * Dk : gate_offset);
+					const size_t row = (size_t)b * T + t;
+					const float* const q_in = qp + row * q_row_stride + (size_t)hk * Dk;
+					const float* const k_in = kp + row * k_row_stride + (size_t)hk * Dk;
+					float q_sum = 0, k_sum = 0;
+					for (dk = 0; dk < Dk; dk++)
+					{
+						q_row[dk] = q_in[dk];
+						k_row[dk] = k_in[dk];
+						q_sum += q_row[dk] * q_row[dk];
+						k_sum += k_row[dk] * k_row[dk];
+					}
+					if (qk_l2norm)
+					{
+						const float q_norm = q_scale / sqrtf(q_sum + l2norm_epsilon);
+						const float k_norm = 1 / sqrtf(k_sum + l2norm_epsilon);
+						for (dk = 0; dk < Dk; dk++)
+						{
+							q_row[dk] *= q_norm;
+							k_row[dk] *= k_norm;
+						}
+					}
+					const float* const decay_row = gp + row * gate_row_stride + (size_t)hv * (channel_decay ? Dk : 1);
 					const float head_decay = channel_decay ? 0 : (log_decay_input ? expf(decay_row[0]) : decay_row[0]);
 					float memory = 0;
 					for (dk = 0; dk < Dk; dk++)
 					{
-						const float decay = channel_decay ? (log_decay_input ? expf(decay_row[dk]) : decay_row[dk]) : head_decay;
+						float decay = head_decay;
+						// Only a per key channel decay has Dk values per head.
+						if (channel_decay)
+						{
+							const float gate = sigmoid_gate ? gate_lower_bound * _ccv_nnc_gated_delta_sigmoid(gate_scale[hv] * (decay_row[dk] + gate_bias[(size_t)hv * Dk + dk])) : decay_row[dk];
+							decay = log_decay_input ? expf(gate) : gate;
+						}
 						const float decayed = state_row[dk] * decay;
 						state_row[dk] = decayed;
 						memory += decayed * k_row[dk];
 					}
 					const size_t v_offset = (((size_t)b * T + t) * Hv + hv) * Dv + dv;
-					const float delta = (vp[v_offset] - memory) * betap[gate_offset];
+					const float v_in = vp[row * v_row_stride + (size_t)hv * Dv + dv];
+					const float beta_in = betap[row * beta_row_stride + hv];
+					const float delta = (v_in - memory) * (sigmoid_beta ? _ccv_nnc_gated_delta_sigmoid(beta_in) : beta_in);
 					float out = 0;
 					for (dk = 0; dk < Dk; dk++)
 					{
@@ -151,6 +235,7 @@ static int _ccv_nnc_gated_delta_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint
 				}
 			}
 		}
+	ccfree(q_row);
 	return CCV_NNC_EXEC_SUCCESS;
 }
 

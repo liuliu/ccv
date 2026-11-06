@@ -57,6 +57,7 @@ extern "C" {
 #include "ccv_nnc_mfa_mul.hpp"
 #include "ccv_nnc_mfa_fast_fence.hpp"
 #include "ccv_nnc_mfa_rotate_half.hpp"
+#include "ccv_nnc_mfa_causal_convolution.hpp"
 #include "ccv_nnc_mfa_scaled_dot_product_arg_partition.hpp"
 #include "ccv_nnc_mfa_sparse_indexed_attention.hpp"
 #include "ccv_nnc_mfa_walsh_hadamard_transform.hpp"

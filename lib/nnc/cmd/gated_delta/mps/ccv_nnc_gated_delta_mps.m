@@ -11,9 +11,41 @@ enum {
 	CCV_NNC_MFA_MTL_DATA_TYPE_BFLOAT = 121,
 };
 
+// Elements between consecutive tokens (dimension 1).
+static uint32_t _ccv_nnc_gated_delta_row_stride(const ccv_nnc_tensor_view_t* const tensor)
+{
+	const int nd = ccv_nnc_tensor_nd(tensor->info.dim);
+	if (CCV_IS_TENSOR_VIEW(tensor))
+		return (uint32_t)tensor->stride[1];
+	uint32_t stride = 1;
+	int i;
+	for (i = 2; i < nd; i++)
+		stride *= tensor->info.dim[i];
+	return stride;
+}
+
+// The kernels stride token rows only: everything below a row is packed, and batches follow
+// each other row by row.
+static int _ccv_nnc_gated_delta_rows_are_packed(const ccv_nnc_tensor_view_t* const tensor)
+{
+	if (!CCV_IS_TENSOR_VIEW(tensor) || CCV_IS_TENSOR_CONTIGUOUS(tensor))
+		return 1;
+	const int nd = ccv_nnc_tensor_nd(tensor->info.dim);
+	int i;
+	int stride = 1;
+	for (i = nd - 1; i >= 2; i--)
+	{
+		if (tensor->stride[i] != stride)
+			return 0;
+		stride *= tensor->info.dim[i];
+	}
+	return tensor->stride[1] >= stride && (tensor->info.dim[0] == 1 || tensor->stride[0] == tensor->stride[1] * tensor->info.dim[1]);
+}
+
 static int _ccv_nnc_gated_delta_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
 {
-	assert(input_size == 6);
+	const int sigmoid_gate = cmd.info.gated_delta.sigmoid_gate;
+	assert(input_size == (sigmoid_gate ? 8 : 6));
 	assert(output_size == 2);
 	const ccv_nnc_tensor_view_t* const q = (const ccv_nnc_tensor_view_t*)inputs[0];
 	const ccv_nnc_tensor_view_t* const k = (const ccv_nnc_tensor_view_t*)inputs[1];
@@ -80,15 +112,25 @@ static int _ccv_nnc_gated_delta_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint
 		if (!ccv_nnc_mfa_context_supported(context) || (ccv_nnc_flags() & CCV_NNC_DISABLE_MFA))
 			return CCV_NNC_EXEC_INVALID;
 		const int input_datatype = q->info.datatype;
+		// A raw sigmoid gate may come straight from a projection in the input datatype.
 		if ((input_datatype != CCV_32F && input_datatype != CCV_16F && input_datatype != CCV_16BF) ||
 			k->info.datatype != input_datatype || v->info.datatype != input_datatype ||
-			log_decay->info.datatype != CCV_32F || (beta->info.datatype != CCV_32F && beta->info.datatype != input_datatype) ||
+			(log_decay->info.datatype != CCV_32F && !(sigmoid_gate && log_decay->info.datatype == input_datatype)) || (beta->info.datatype != CCV_32F && beta->info.datatype != input_datatype) ||
 			state_in->info.datatype != CCV_32F || y->info.datatype != input_datatype || state_out->info.datatype != CCV_32F)
 			return CCV_NNC_EXEC_INVALID;
-		if (!CCV_IS_TENSOR_CONTIGUOUS(q) || !CCV_IS_TENSOR_CONTIGUOUS(k) || !CCV_IS_TENSOR_CONTIGUOUS(v) ||
-			!CCV_IS_TENSOR_CONTIGUOUS(log_decay) || !CCV_IS_TENSOR_CONTIGUOUS(beta) ||
+		if (!_ccv_nnc_gated_delta_rows_are_packed(q) || !_ccv_nnc_gated_delta_rows_are_packed(k) || !_ccv_nnc_gated_delta_rows_are_packed(v) ||
+			!_ccv_nnc_gated_delta_rows_are_packed(log_decay) || !_ccv_nnc_gated_delta_rows_are_packed(beta) ||
 			!CCV_IS_TENSOR_CONTIGUOUS(state_in) || !CCV_IS_TENSOR_CONTIGUOUS(y) || !CCV_IS_TENSOR_CONTIGUOUS(state_out))
 			return CCV_NNC_EXEC_INVALID;
+		if (sigmoid_gate)
+		{
+			const ccv_nnc_tensor_view_t* const gate_bias = (const ccv_nnc_tensor_view_t*)inputs[6];
+			const ccv_nnc_tensor_view_t* const gate_scale = (const ccv_nnc_tensor_view_t*)inputs[7];
+			if (!cmd.info.gated_delta.log_decay || log_decay_nd != 4 ||
+				gate_bias->info.datatype != CCV_32F || !CCV_IS_TENSOR_CONTIGUOUS(gate_bias) || ccv_nnc_tensor_count(gate_bias->info) != Hv * Dk ||
+				gate_scale->info.datatype != CCV_32F || !CCV_IS_TENSOR_CONTIGUOUS(gate_scale) || ccv_nnc_tensor_count(gate_scale->info) != Hv)
+				return CCV_NNC_EXEC_INVALID;
+		}
 		ccv_nnc_mfa_gated_delta_params_t params = {
 			.batch_size = (uint32_t)B,
 			.sequence_length = (uint32_t)T,
@@ -99,13 +141,25 @@ static int _ccv_nnc_gated_delta_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint
 			.data_type = input_datatype == CCV_16F ? CCV_NNC_MFA_MTL_DATA_TYPE_HALF : (input_datatype == CCV_16BF ? CCV_NNC_MFA_MTL_DATA_TYPE_BFLOAT : CCV_NNC_MFA_MTL_DATA_TYPE_FLOAT),
 			.beta_data_type = beta->info.datatype == CCV_16F ? CCV_NNC_MFA_MTL_DATA_TYPE_HALF : (beta->info.datatype == CCV_16BF ? CCV_NNC_MFA_MTL_DATA_TYPE_BFLOAT : CCV_NNC_MFA_MTL_DATA_TYPE_FLOAT),
 			.state_checkpoint_count = (uint32_t)state_checkpoint_count,
+			.decay_data_type = log_decay->info.datatype == CCV_16F ? CCV_NNC_MFA_MTL_DATA_TYPE_HALF : (log_decay->info.datatype == CCV_16BF ? CCV_NNC_MFA_MTL_DATA_TYPE_BFLOAT : CCV_NNC_MFA_MTL_DATA_TYPE_FLOAT),
+			.q_row_stride = _ccv_nnc_gated_delta_row_stride(q),
+			.k_row_stride = _ccv_nnc_gated_delta_row_stride(k),
+			.v_row_stride = _ccv_nnc_gated_delta_row_stride(v),
+			.decay_row_stride = _ccv_nnc_gated_delta_row_stride(log_decay),
+			.beta_row_stride = _ccv_nnc_gated_delta_row_stride(beta),
+			.q_scale = cmd.info.gated_delta.q_scale,
+			.gate_lower_bound = cmd.info.gated_delta.gate_lower_bound,
 			.log_decay = cmd.info.gated_delta.log_decay != 0,
 			.channel_decay = log_decay_nd == 4,
 			.loadM = !!(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M),
+			.qk_l2norm = cmd.info.gated_delta.qk_l2norm != 0,
+			.sigmoid_gate = sigmoid_gate != 0,
+			.sigmoid_beta = cmd.info.gated_delta.sigmoid_beta != 0,
 		};
 		ccv_nnc_mfa_prepare_gated_delta(context, params);
 		mtl_command_batch_t* command_batch = ccv_nnc_stream_context_start_command_batch(stream_context);
-		mtl_buffer_t* tensors[9] = {
+		// The sigmoid gate's bias and scale follow at 9 and 10; without the gate, the decay stands in.
+		mtl_buffer_t* tensors[11] = {
 			mpgetbuffer(inputs[0]),
 			mpgetbuffer(inputs[1]),
 			mpgetbuffer(inputs[2]),
@@ -115,8 +169,10 @@ static int _ccv_nnc_gated_delta_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint
 			mpgetbuffer(outputs[0]),
 			mpgetbuffer(outputs[1]),
 			NULL,
+			mpgetbuffer(inputs[sigmoid_gate ? 6 : 3]),
+			mpgetbuffer(inputs[sigmoid_gate ? 7 : 3]),
 		};
-		size_t tensor_offsets[8] = {
+		size_t tensor_offsets[11] = {
 			q->dataof,
 			k->dataof,
 			v->dataof,
@@ -125,6 +181,9 @@ static int _ccv_nnc_gated_delta_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint
 			state_in->dataof,
 			y->dataof,
 			state_out->dataof,
+			0,
+			sigmoid_gate ? ((const ccv_nnc_tensor_view_t*)inputs[6])->dataof : log_decay->dataof,
+			sigmoid_gate ? ((const ccv_nnc_tensor_view_t*)inputs[7])->dataof : log_decay->dataof,
 		};
 		ccv_nnc_mfa_encode_gated_delta(context, params, command_batch, tensors, tensor_offsets);
 		ccv_nnc_stream_context_finish_command_batch(stream_context, command_batch);

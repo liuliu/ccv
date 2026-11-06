@@ -4,9 +4,11 @@
 
 static int _ccv_nnc_gated_delta_forw_bitmask(const ccv_nnc_cmd_param_t cmd, const int input_size, const int output_size, const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size)
 {
-	// Inputs: q, k, v, decay / log_decay ([B, T, Hv] per head or [B, T, Hv, Dk] per key channel), beta, state_in.
-	// Outputs: y, state_out.
-	if (input_size == 6 && output_size == 2 && (input_bitmasks[0] & 63u) == 63u && (output_bitmasks[0] & 3u) == 3u)
+	// Inputs: q, k, v, decay / log_decay ([B, T, Hv] per head or [B, T, Hv, Dk] per key channel), beta, state_in,
+	// then with a sigmoid gate its bias and per head scale. Outputs: y, state_out.
+	const int expected_input_size = cmd.gated_delta.sigmoid_gate ? 8 : 6;
+	const uint64_t input_mask = (1u << expected_input_size) - 1;
+	if (input_size == expected_input_size && output_size == 2 && (input_bitmasks[0] & input_mask) == input_mask && (output_bitmasks[0] & 3u) == 3u)
 		return 1;
 	return 0;
 }
@@ -25,7 +27,7 @@ static int _ccv_nnc_gated_delta_allow_inplace(const ccv_nnc_cmd_param_t cmd, con
 
 static void _ccv_nnc_gated_delta_tensor_auto_forw(const ccv_nnc_cmd_param_t cmd, const ccv_nnc_tensor_param_t* const inputs, const int input_size, const ccv_nnc_hint_t hint, ccv_nnc_tensor_param_t* const outputs, const int output_size)
 {
-	assert(input_size == 6);
+	assert(input_size == (cmd.gated_delta.sigmoid_gate ? 8 : 6));
 	assert(output_size == 2);
 	const int q_nd = ccv_nnc_tensor_nd(inputs[0].dim);
 	const int k_nd = ccv_nnc_tensor_nd(inputs[1].dim);

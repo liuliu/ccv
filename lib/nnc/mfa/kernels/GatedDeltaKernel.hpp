@@ -22,6 +22,8 @@ struct GatedDeltaKernel {
 
   GEMMOperandPrecision betaMemoryPrecision;
 
+  GEMMOperandPrecision decayMemoryPrecision;
+
   bool loadM;
 
   bool blocked;

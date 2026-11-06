@@ -2772,6 +2772,96 @@ static ccv_cnnp_model_t* _ccv_cnnp_hyper_connection_copy(const ccv_cnnp_model_t*
 	return ccv_cnnp_hyper_connection(self->count, self->sinkhorn_iterations, self->epsilon, self->norm_epsilon, self->operation, self->super.name);
 }
 
+// MARK - Causal Convolution Layer
+
+typedef struct {
+	ccv_cnnp_model_t super;
+	ccv_nnc_tensor_symbol_t outputs[2];
+	ccv_nnc_tensor_symbol_t weights;
+	int kernel_size;
+	int silu;
+	int state_checkpoint_count;
+} ccv_cnnp_model_causal_convolution_t;
+
+static void _ccv_cnnp_causal_convolution_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
+{
+	PRINT(CCV_CLI_VERBOSE, "[cnnp_causal_convolution_build] -\n");
+	assert(input_size == 2);
+	assert(output_size == 2);
+	ccv_cnnp_model_causal_convolution_t* const self = (ccv_cnnp_model_causal_convolution_t*)super;
+	const ccv_nnc_tensor_param_t params = ccv_nnc_tensor_symbol_params(graph, inputs[0]);
+	const int channels = params.dim[ccv_nnc_tensor_nd(params.dim) - 1];
+	// The depthwise convolution's weight layout, so its checkpoints load as they are.
+	ccv_nnc_tensor_param_t weights_params = params;
+	memset(weights_params.dim, 0, sizeof(weights_params.dim));
+	weights_params.format = CCV_TENSOR_FORMAT_NCHW;
+	weights_params.dim[0] = channels;
+	weights_params.dim[1] = 1;
+	weights_params.dim[2] = self->kernel_size;
+	weights_params.dim[3] = 1;
+	if (!self->weights.graph)
+		self->weights = ccv_nnc_tensor_symbol_new(graph, weights_params, "weights");
+	const ccv_nnc_tensor_symbol_t weights = ccv_cnnp_model_get_symbol(super, self->weights);
+	const ccv_nnc_cmd_t cmd = CMD_CAUSAL_CONVOLUTION_FORWARD(self->silu, self->state_checkpoint_count);
+	ccv_nnc_tensor_param_t output_params[2];
+	ccv_nnc_hint_tensor_auto(cmd, (ccv_nnc_tensor_param_t []){
+			params,
+			ccv_nnc_tensor_symbol_params(graph, inputs[1]),
+			weights_params,
+		}, 3, ccv_nnc_no_hint, output_params, 2);
+	outputs[0] = ccv_nnc_tensor_symbol_new(graph, output_params[0], 0);
+	outputs[1] = ccv_nnc_tensor_symbol_new(graph, output_params[1], 0);
+	ccv_nnc_graph_exec_symbol_new(graph, cmd, TENSOR_SYMBOL_LIST(inputs[0], inputs[1], weights), outputs, output_size, "causal_convolution");
+}
+
+static void _ccv_cnnp_causal_convolution_init_states(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_cnnp_state_initializer_f initializer, void* const context)
+{
+	ccv_cnnp_model_causal_convolution_t* const self = (ccv_cnnp_model_causal_convolution_t*)super;
+	// Each channel's fan-in is its taps.
+	const float bound = sqrtf(3) * sqrtf(2) / sqrtf(self->kernel_size);
+	initializer(context, CMD_RANDOM_UNIFORM_FORWARD(-bound, bound), ccv_nnc_no_hint, 0, 0, self->weights);
+}
+
+static void _ccv_cnnp_causal_convolution_add_to_parameter(ccv_cnnp_model_t* const super, const ccv_cnnp_add_to_array_f add_to_array, void* const parameters, const int is_trainable)
+{
+	ccv_cnnp_model_causal_convolution_t* const self = (ccv_cnnp_model_causal_convolution_t*)super;
+	add_to_array(parameters, self->weights, is_trainable);
+}
+
+static ccv_cnnp_model_t* _ccv_cnnp_causal_convolution_copy(const ccv_cnnp_model_t* const self, void* const context);
+
+static const ccv_cnnp_model_vtab_t ccv_cnnp_causal_convolution_isa = {
+	.build = _ccv_cnnp_causal_convolution_build,
+	.init_states = _ccv_cnnp_causal_convolution_init_states,
+	.add_to_parameter = _ccv_cnnp_causal_convolution_add_to_parameter,
+	.copy = _ccv_cnnp_causal_convolution_copy,
+};
+
+ccv_cnnp_model_t* ccv_cnnp_causal_convolution(const int kernel_size, const int silu, const int state_checkpoint_count, const int is_trainable, const char* const name)
+{
+	// One tap has no previous rows to carry.
+	assert(kernel_size >= 2);
+	ccv_cnnp_model_causal_convolution_t* const model_causal_convolution = (ccv_cnnp_model_causal_convolution_t*)cccalloc(1, sizeof(ccv_cnnp_model_causal_convolution_t));
+	model_causal_convolution->super.isa = &ccv_cnnp_causal_convolution_isa;
+	model_causal_convolution->super.input_size = 2;
+	model_causal_convolution->super.outputs = model_causal_convolution->outputs;
+	model_causal_convolution->super.output_size = 2;
+	model_causal_convolution->super.is_trainable = is_trainable;
+	model_causal_convolution->weights.d = CCV_NNC_NO_TENSOR_SYMBOL;
+	model_causal_convolution->weights.graph = 0;
+	model_causal_convolution->kernel_size = kernel_size;
+	model_causal_convolution->silu = silu;
+	model_causal_convolution->state_checkpoint_count = state_checkpoint_count;
+	ccv_cnnp_model_copy_name(&model_causal_convolution->super, name);
+	return (ccv_cnnp_model_t*)model_causal_convolution;
+}
+
+static ccv_cnnp_model_t* _ccv_cnnp_causal_convolution_copy(const ccv_cnnp_model_t* const super, void* const context)
+{
+	const ccv_cnnp_model_causal_convolution_t* const self = (const ccv_cnnp_model_causal_convolution_t*)super;
+	return ccv_cnnp_causal_convolution(self->kernel_size, self->silu, self->state_checkpoint_count, self->super.is_trainable, super->name);
+}
+
 // MARK - Gated Delta Layer
 
 typedef struct {
@@ -2779,21 +2869,31 @@ typedef struct {
 	ccv_nnc_tensor_symbol_t outputs[2];
 	int log_decay;
 	int state_checkpoint_count;
+	int qk_l2norm;
+	float q_scale;
+	int sigmoid_gate;
+	float gate_lower_bound;
+	int sigmoid_beta;
 } ccv_cnnp_model_gated_delta_t;
 
 static void _ccv_cnnp_gated_delta_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
 {
 	PRINT(CCV_CLI_VERBOSE, "[cnnp_gated_delta_build] -\n");
 	ccv_cnnp_model_gated_delta_t* const self = (ccv_cnnp_model_gated_delta_t*)super;
-	assert(input_size == 6);
+	assert(input_size == (self->sigmoid_gate ? 8 : 6));
 	assert(output_size == 2);
-	ccv_nnc_tensor_param_t input_params[6];
+	ccv_nnc_tensor_param_t input_params[8];
 	int i;
-	for (i = 0; i < 6; i++)
+	for (i = 0; i < input_size; i++)
 		input_params[i] = ccv_nnc_tensor_symbol_params(graph, inputs[i]);
 	ccv_nnc_tensor_param_t output_params[2];
-	const ccv_nnc_cmd_t gated_delta = CMD_GATED_DELTA_FORWARD(self->log_decay, self->state_checkpoint_count);
-	ccv_nnc_hint_tensor_auto(gated_delta, input_params, 6, ccv_nnc_no_hint, output_params, 2);
+	ccv_nnc_cmd_t gated_delta = CMD_GATED_DELTA_FORWARD(self->log_decay, self->state_checkpoint_count);
+	gated_delta.info.gated_delta.qk_l2norm = self->qk_l2norm;
+	gated_delta.info.gated_delta.q_scale = self->q_scale;
+	gated_delta.info.gated_delta.sigmoid_gate = self->sigmoid_gate;
+	gated_delta.info.gated_delta.gate_lower_bound = self->gate_lower_bound;
+	gated_delta.info.gated_delta.sigmoid_beta = self->sigmoid_beta;
+	ccv_nnc_hint_tensor_auto(gated_delta, input_params, input_size, ccv_nnc_no_hint, output_params, 2);
 	for (i = 0; i < 2; i++)
 		outputs[i] = ccv_nnc_tensor_symbol_new(graph, output_params[i], 0);
 	ccv_nnc_graph_exec_symbol_new(graph, gated_delta, inputs, input_size, outputs, output_size, "gated_delta");
@@ -2806,15 +2906,20 @@ static const ccv_cnnp_model_vtab_t ccv_cnnp_gated_delta_isa = {
 	.copy = _ccv_cnnp_gated_delta_copy,
 };
 
-ccv_cnnp_model_t* ccv_cnnp_gated_delta(const int log_decay, const int state_checkpoint_count, const char* const name)
+ccv_cnnp_model_t* ccv_cnnp_gated_delta(const int log_decay, const int state_checkpoint_count, const int qk_l2norm, const float q_scale, const int sigmoid_gate, const float gate_lower_bound, const int sigmoid_beta, const char* const name)
 {
 	ccv_cnnp_model_gated_delta_t* const model_gated_delta = (ccv_cnnp_model_gated_delta_t*)cccalloc(1, sizeof(ccv_cnnp_model_gated_delta_t));
 	model_gated_delta->super.isa = &ccv_cnnp_gated_delta_isa;
-	model_gated_delta->super.input_size = 6;
+	model_gated_delta->super.input_size = sigmoid_gate ? 8 : 6;
 	model_gated_delta->super.outputs = model_gated_delta->outputs;
 	model_gated_delta->super.output_size = 2;
 	model_gated_delta->log_decay = log_decay;
 	model_gated_delta->state_checkpoint_count = state_checkpoint_count;
+	model_gated_delta->qk_l2norm = qk_l2norm;
+	model_gated_delta->q_scale = q_scale;
+	model_gated_delta->sigmoid_gate = sigmoid_gate;
+	model_gated_delta->gate_lower_bound = gate_lower_bound;
+	model_gated_delta->sigmoid_beta = sigmoid_beta;
 	ccv_cnnp_model_copy_name(&model_gated_delta->super, name);
 	return (ccv_cnnp_model_t*)model_gated_delta;
 }
@@ -2822,7 +2927,7 @@ ccv_cnnp_model_t* ccv_cnnp_gated_delta(const int log_decay, const int state_chec
 static ccv_cnnp_model_t* _ccv_cnnp_gated_delta_copy(const ccv_cnnp_model_t* const super, void* const context)
 {
 	const ccv_cnnp_model_gated_delta_t* const self = (const ccv_cnnp_model_gated_delta_t*)super;
-	return ccv_cnnp_gated_delta(self->log_decay, self->state_checkpoint_count, super->name);
+	return ccv_cnnp_gated_delta(self->log_decay, self->state_checkpoint_count, self->qk_l2norm, self->q_scale, self->sigmoid_gate, self->gate_lower_bound, self->sigmoid_beta, super->name);
 }
 
 // MARK - Cmul Layer

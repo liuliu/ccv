@@ -15,6 +15,17 @@ bool GatedDeltaDescriptor::operator==(const GatedDeltaDescriptor& rhs) const {
   stateCheckpointCount == rhs.stateCheckpointCount &&
   inputMemoryPrecision == rhs.inputMemoryPrecision &&
   betaMemoryPrecision == rhs.betaMemoryPrecision &&
+  decayMemoryPrecision == rhs.decayMemoryPrecision &&
+  qRowStride == rhs.qRowStride &&
+  kRowStride == rhs.kRowStride &&
+  vRowStride == rhs.vRowStride &&
+  decayRowStride == rhs.decayRowStride &&
+  betaRowStride == rhs.betaRowStride &&
+  qkL2Norm == rhs.qkL2Norm &&
+  qScale == rhs.qScale &&
+  sigmoidGate == rhs.sigmoidGate &&
+  gateLowerBound == rhs.gateLowerBound &&
+  sigmoidBeta == rhs.sigmoidBeta &&
   logDecay == rhs.logDecay &&
   channelDecay == rhs.channelDecay &&
   blocked == rhs.blocked;
@@ -29,6 +40,13 @@ std::size_t std::hash<GatedDeltaDescriptor>::operator()(const GatedDeltaDescript
   seed = combine_64(seed, hash.stateCheckpointCount);
   seed = combine_64(seed, hash.inputMemoryPrecision.value);
   seed = combine_64(seed, hash.betaMemoryPrecision.value);
+  seed = combine_64(seed, hash.decayMemoryPrecision.value);
+  seed = combine_64(seed, pack_64(simd::uint2 { hash.qRowStride, hash.kRowStride }));
+  seed = combine_64(seed, pack_64(simd::uint2 { hash.vRowStride, hash.decayRowStride }));
+  seed = combine_64(seed, hash.betaRowStride);
+  seed = combine_64(seed, *(const uint32_t*)&hash.qScale);
+  seed = combine_64(seed, *(const uint32_t*)&hash.gateLowerBound);
+  seed = combine_64(seed, (hash.qkL2Norm ? 2 : 0) | (hash.sigmoidGate ? 4 : 0) | (hash.sigmoidBeta ? 8 : 0));
   seed = combine_64(seed, hash.logDecay ? 1 : 0);
   seed = combine_64(seed, hash.channelDecay ? 1 : 0);
   seed = combine_64(seed, hash.loadM ? 1 : 0);
@@ -55,6 +73,7 @@ std::pair<GatedDeltaKernelDescriptor, PipelineValue<GatedDeltaKernel> *> GatedDe
   kernelDesc.stateCheckpointing = stateCheckpointCount > 0;
   kernelDesc.inputMemoryPrecision = inputMemoryPrecision;
   kernelDesc.betaMemoryPrecision = betaMemoryPrecision;
+  kernelDesc.decayMemoryPrecision = decayMemoryPrecision;
   kernelDesc.loadM = loadM;
   kernelDesc.channelDecay = blocked && channelDecay;
   // Four value columns per SIMD group. Wider threadgroups share each staged timestep with
@@ -66,7 +85,8 @@ std::pair<GatedDeltaKernelDescriptor, PipelineValue<GatedDeltaKernel> *> GatedDe
     // Each staged step holds q, k, the decay, v, y and beta (see createBlockedSource). FP32
     // inputs, or 256-wide keys with per key channel decay, exceed 32 KB at 16 steps.
     const unsigned inputBytes = (unsigned)inputMemoryPrecision.size();
-    const unsigned stepBytes = 2 * keyDim * inputBytes + (channelDecay ? keyDim : 1) * 4 + 2 * 4 * kernelDesc.simdGroups * inputBytes + 4;
+    // Plus the step's q and k norms.
+    const unsigned stepBytes = 2 * keyDim * inputBytes + (channelDecay ? keyDim : 1) * 4 + 2 * 4 * kernelDesc.simdGroups * inputBytes + 4 + 8;
     while (kernelDesc.timeBlock > 4 && kernelDesc.timeBlock * stepBytes > device->maxThreadgroupMemoryLength())
       kernelDesc.timeBlock /= 2;
   }
@@ -89,6 +109,16 @@ std::pair<GatedDeltaKernelDescriptor, PipelineValue<GatedDeltaKernel> *> GatedDe
     if (stateCheckpointCount > 0)
       constants->setConstantValue(&stateCheckpointCount, MTL::DataTypeUInt, NS::UInteger(9));
     constants->setConstantValue(&channelDecay, MTL::DataTypeBool, NS::UInteger(10));
+    constants->setConstantValue(&qRowStride, MTL::DataTypeUInt, NS::UInteger(11));
+    constants->setConstantValue(&kRowStride, MTL::DataTypeUInt, NS::UInteger(12));
+    constants->setConstantValue(&vRowStride, MTL::DataTypeUInt, NS::UInteger(13));
+    constants->setConstantValue(&decayRowStride, MTL::DataTypeUInt, NS::UInteger(14));
+    constants->setConstantValue(&betaRowStride, MTL::DataTypeUInt, NS::UInteger(15));
+    constants->setConstantValue(&qkL2Norm, MTL::DataTypeBool, NS::UInteger(16));
+    constants->setConstantValue(&qScale, MTL::DataTypeFloat, NS::UInteger(17));
+    constants->setConstantValue(&sigmoidGate, MTL::DataTypeBool, NS::UInteger(18));
+    constants->setConstantValue(&gateLowerBound, MTL::DataTypeFloat, NS::UInteger(19));
+    constants->setConstantValue(&sigmoidBeta, MTL::DataTypeBool, NS::UInteger(20));
 
     NS::String* swiftName = NS::String::string("gated_delta", NS::UTF8StringEncoding);
     NS::Error* error = nil;

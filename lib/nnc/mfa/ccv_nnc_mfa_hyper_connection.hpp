@@ -14,7 +14,8 @@ typedef struct {
 	uint8_t expand_addend;
 	// Mix stages: 3 decode partials, 4 split, 5 decode split and collapse normalization, 6 collapse
 	// and normalization per row, 7 split, collapse with that pre and normalization per row, 8 the
-	// residual's squares per row.
+	// residual's squares per row, 9 decode partials over hidden columns with the streams' Gram
+	// matrix, 10 decode split, collapse with that pre and normalization from the Gram matrix.
 	float norm_epsilon;
 	uint32_t dot_splits;
 	uint32_t collapse_splits;

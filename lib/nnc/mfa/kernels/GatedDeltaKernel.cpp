@@ -6,6 +6,7 @@ GatedDeltaKernel::GatedDeltaKernel(GatedDeltaKernelDescriptor descriptor, MTL::D
   stateCheckpointing = descriptor.stateCheckpointing;
   inputMemoryPrecision = descriptor.inputMemoryPrecision;
   betaMemoryPrecision = descriptor.betaMemoryPrecision;
+  decayMemoryPrecision = descriptor.decayMemoryPrecision;
   loadM = descriptor.loadM;
   blocked = descriptor.blocked;
   channelDecay = descriptor.channelDecay;
@@ -78,6 +79,7 @@ using namespace metal;
 
 typedef )" + inputMemoryPrecision.name() + R"( input_t;
 typedef )" + betaMemoryPrecision.name() + R"( beta_t;
+typedef )" + decayMemoryPrecision.name() + R"( decay_t;
 
 constant uint B [[function_constant(0)]];
 )" + sequenceLengthConstant + R"(constant uint Hk [[function_constant(2)]];
@@ -89,6 +91,23 @@ constant bool key_dim_multiple_of_32 [[function_constant(7)]];
 constant bool value_dim_multiple_of_4 [[function_constant(8)]];
 constant bool channel_decay [[function_constant(10)]];
 constant uint decay_stride = channel_decay ? Dk : 1;
+constant uint q_row_stride [[function_constant(11)]];
+constant uint k_row_stride [[function_constant(12)]];
+constant uint v_row_stride [[function_constant(13)]];
+constant uint decay_row_stride [[function_constant(14)]];
+constant uint beta_row_stride [[function_constant(15)]];
+constant bool qk_l2norm [[function_constant(16)]];
+constant float l2norm_epsilon = 1e-6;
+constant float q_scale [[function_constant(17)]];
+constant bool sigmoid_gate [[function_constant(18)]];
+constant float gate_lower_bound [[function_constant(19)]];
+constant bool sigmoid_beta [[function_constant(20)]];
+
+inline float gated_delta_sigmoid(float x) {
+  return 1.0f / (1.0f + precise::exp(-x));
+}
+
+// q, k and v may be the raw outputs of a causal convolution.
 )" + checkpointConstants + R"(constant uint hv_per_hk = Hv / Hk;
 constant uint dv_per_threadgroup = 4;
 )" + historyCountConstant + R"(
@@ -96,12 +115,13 @@ kernel void gated_delta(
   device const input_t* q [[buffer(0)]],
   device const input_t* k [[buffer(1)]],
   device const input_t* v [[buffer(2)]],
-  device const float* log_decay [[buffer(3)]],
+  device const decay_t* log_decay [[buffer(3)]],
   device const beta_t* beta [[buffer(4)]],
   device const float* state_in [[buffer(5)]],
   device input_t* y [[buffer(6)]],
   device float* state_out [[buffer(7)]],
-)" + loadMArgument + R"(
+)" + loadMArgument + R"(  device const float* gate_bias [[buffer(9)]],
+  device const float* gate_scale [[buffer(10)]],
   uint3 group [[threadgroup_position_in_grid]],
   uint3 tid [[thread_position_in_threadgroup]],
   ushort lane_id [[thread_index_in_simdgroup]]
@@ -122,46 +142,78 @@ kernel void gated_delta(
     state[i] = (key_dim_multiple_of_32 || dk < Dk) ? state_in[)" + stateInputOffset + R"( + dk] : 0.0f;
   }
 
-  device const input_t* q_ptr = q + (b * T * Hk + hk) * Dk;
-  device const input_t* k_ptr = k + (b * T * Hk + hk) * Dk;
-  device const input_t* v_ptr = v + (b * T * Hv + hv) * Dv + dv;
-  device const float* decay_ptr = log_decay + (b * T * Hv + hv) * decay_stride;
-  device const beta_t* beta_ptr = beta + (b * T * Hv + hv);
+  device const input_t* q_ptr = q + b * T * q_row_stride + hk * Dk;
+  device const input_t* k_ptr = k + b * T * k_row_stride + hk * Dk;
+  device const input_t* v_ptr = v + b * T * v_row_stride + hv * Dv + dv;
+  device const decay_t* decay_ptr = log_decay + b * T * decay_row_stride + hv * decay_stride;
+  device const beta_t* beta_ptr = beta + b * T * beta_row_stride + hv;
   device input_t* y_ptr = y + (b * T * Hv + hv) * Dv + dv;
+  // The sigmoid gate's bias for the keys this lane owns, and the head's scale.
+  float gate_bias_lane[state_elements_per_lane];
+  const float head_gate_scale = sigmoid_gate ? gate_scale[hv] : 0.0f;
+  for (uint i = 0; i < state_elements_per_lane; i++) {
+    const uint dk = state_elements_per_lane * lane_id + i;
+    gate_bias_lane[i] = (sigmoid_gate && (key_dim_multiple_of_32 || dk < Dk)) ? gate_bias[hv * Dk + dk] : 0.0f;
+  }
 
   for (uint t = 0; t < T; t++) {
-    const float head_decay = channel_decay ? 0.0f : (log_decay_input ? simd_broadcast_first((lane_id == 0) ? precise::exp(decay_ptr[0]) : 0.0f) : decay_ptr[0]);
+    float keys[state_elements_per_lane];
+    float queries[state_elements_per_lane];
+    for (uint i = 0; i < state_elements_per_lane; i++) {
+      const uint dk = state_elements_per_lane * lane_id + i;
+      const bool valid = key_dim_multiple_of_32 || dk < Dk;
+      keys[i] = valid ? static_cast<float>(k_ptr[dk]) : 0.0f;
+      queries[i] = valid ? static_cast<float>(q_ptr[dk]) : 0.0f;
+    }
+    float key_norm = 1.0f;
+    float query_norm = 1.0f;
+    if (qk_l2norm) {
+      float key_squares = 0.0f;
+      float query_squares = 0.0f;
+      for (uint i = 0; i < state_elements_per_lane; i++) {
+        key_squares += keys[i] * keys[i];
+        query_squares += queries[i] * queries[i];
+      }
+      key_norm = rsqrt(simd_sum(key_squares) + l2norm_epsilon);
+      query_norm = rsqrt(simd_sum(query_squares) + l2norm_epsilon) * q_scale;
+    }
+    const float head_decay = channel_decay ? 0.0f : (log_decay_input ? simd_broadcast_first((lane_id == 0) ? precise::exp(static_cast<float>(decay_ptr[0])) : 0.0f) : static_cast<float>(decay_ptr[0]));
     float memory = 0.0f;
     for (uint i = 0; i < state_elements_per_lane; i++) {
       const uint dk = state_elements_per_lane * lane_id + i;
       if (key_dim_multiple_of_32 || dk < Dk) {
         // Per key channel decay (KDA) gives each lane its own gates for the state slice it owns.
-        state[i] *= channel_decay ? (log_decay_input ? precise::exp(decay_ptr[dk]) : decay_ptr[dk]) : head_decay;
-        memory += state[i] * static_cast<float>(k_ptr[dk]);
+        float gate = channel_decay ? static_cast<float>(decay_ptr[dk]) : 0.0f;
+        if (sigmoid_gate) {
+          gate = gate_lower_bound * gated_delta_sigmoid(head_gate_scale * (gate + gate_bias_lane[i]));
+        }
+        state[i] *= channel_decay ? (log_decay_input ? precise::exp(gate) : gate) : head_decay;
+        memory += state[i] * keys[i];
       }
     }
-    memory = simd_sum(memory);
+    // The normalized key is key_norm * keys, so the reductions take the norm once.
+    memory = simd_sum(memory) * key_norm;
 
-    const float delta = (static_cast<float>(v_ptr[0]) - memory) * static_cast<float>(beta_ptr[0]);
+    const float beta_value = sigmoid_beta ? gated_delta_sigmoid(static_cast<float>(beta_ptr[0])) : static_cast<float>(beta_ptr[0]);
+    const float delta = (static_cast<float>(v_ptr[0]) - memory) * beta_value * key_norm;
     float out = 0.0f;
     for (uint i = 0; i < state_elements_per_lane; i++) {
       const uint dk = state_elements_per_lane * lane_id + i;
       if (key_dim_multiple_of_32 || dk < Dk) {
-        const float k_value = static_cast<float>(k_ptr[dk]);
-        state[i] += delta * k_value;
-        out += state[i] * static_cast<float>(q_ptr[dk]);
+        state[i] += delta * keys[i];
+        out += state[i] * queries[i];
       }
     }
-    out = simd_sum(out);
+    out = simd_sum(out) * query_norm;
     if (lane_id == 0) {
       y_ptr[0] = static_cast<input_t>(out);
     }
-)" + checkpointStore + R"(    q_ptr += Hk * Dk;
-    k_ptr += Hk * Dk;
-    v_ptr += Hv * Dv;
+)" + checkpointStore + R"(    q_ptr += q_row_stride;
+    k_ptr += k_row_stride;
+    v_ptr += v_row_stride;
     y_ptr += Hv * Dv;
-    decay_ptr += Hv * decay_stride;
-    beta_ptr += Hv;
+    decay_ptr += decay_row_stride;
+    beta_ptr += beta_row_stride;
   }
 )" + finalStateStore + R"(
 }
@@ -209,12 +261,30 @@ using namespace metal;
 typedef )" + inputMemoryPrecision.name() + R"( input_t;
 typedef vec<input_t, 4> input4_t;
 typedef )" + betaMemoryPrecision.name() + R"( beta_t;
+typedef )" + decayMemoryPrecision.name() + R"( decay_t;
 
 constant uint B [[function_constant(0)]];
 )" + sequenceLengthConstant + R"(constant uint Hk [[function_constant(2)]];
 constant uint Hv [[function_constant(3)]];
 constant uint Dv [[function_constant(5)]];
 constant bool log_decay_input [[function_constant(6)]];
+constant uint q_row_stride [[function_constant(11)]];
+constant uint k_row_stride [[function_constant(12)]];
+constant uint v_row_stride [[function_constant(13)]];
+constant uint decay_row_stride [[function_constant(14)]];
+constant uint beta_row_stride [[function_constant(15)]];
+constant bool qk_l2norm [[function_constant(16)]];
+constant float l2norm_epsilon = 1e-6;
+constant float q_scale [[function_constant(17)]];
+constant bool sigmoid_gate [[function_constant(18)]];
+constant float gate_lower_bound [[function_constant(19)]];
+constant bool sigmoid_beta [[function_constant(20)]];
+
+inline float gated_delta_sigmoid(float x) {
+  return 1.0f / (1.0f + precise::exp(-x));
+}
+
+// q, k and v may be the raw outputs of a causal convolution.
 )" + checkpointConstants + R"(constant uint hv_per_hk = Hv / Hk;
 
 #define DK )" + std::to_string(keyDim) + R"(
@@ -223,17 +293,19 @@ constant bool log_decay_input [[function_constant(6)]];
 #define COLUMNS )" + std::to_string(columns) + R"(
 #define THREADS )" + std::to_string(threads) + R"(
 #define DECAY_WIDTH )" + std::to_string(decayWidth) + R"(
+#define SIMD_GROUPS )" + std::to_string((unsigned)simdGroups) + R"(
 
 kernel void gated_delta(
   device const input_t* q [[buffer(0)]],
   device const input_t* k [[buffer(1)]],
   device const input_t* v [[buffer(2)]],
-  device const float* decay [[buffer(3)]],
+  device const decay_t* decay [[buffer(3)]],
   device const beta_t* beta [[buffer(4)]],
   device const float* state_in [[buffer(5)]],
   device input_t* y [[buffer(6)]],
   device float* state_out [[buffer(7)]],
-)" + loadMArgument + R"(
+)" + loadMArgument + R"(  device const float* gate_bias [[buffer(9)]],
+  device const float* gate_scale [[buffer(10)]],
   uint3 group [[threadgroup_position_in_grid]],
   ushort sg [[simdgroup_index_in_threadgroup]],
   ushort lane [[thread_index_in_simdgroup]],
@@ -245,6 +317,8 @@ kernel void gated_delta(
   threadgroup input_t tv[TB * COLUMNS];
   threadgroup float tbeta[TB];
   threadgroup input_t ty[TB * COLUMNS];
+  threadgroup float tquery_norm[TB];
+  threadgroup float tkey_norm[TB];
 
   const uint n = group.z;
   const uint b = n / Hv;
@@ -275,9 +349,9 @@ kernel void gated_delta(
       input_t q_value = 0;
       input_t k_value = 0;
       if (tt < steps) {
-        const uint offset = ((b * T + t0 + tt) * Hk + hk) * DK + d;
-        q_value = q[offset];
-        k_value = k[offset];
+        const uint row = b * T + t0 + tt;
+        q_value = q[row * q_row_stride + hk * DK + d];
+        k_value = k[row * k_row_stride + hk * DK + d];
       }
       q_stage[i] = q_value;
       k_stage[i] = k_value;
@@ -285,17 +359,42 @@ kernel void gated_delta(
     for (uint i = tid; i < TB * DECAY_WIDTH; i += THREADS) {
       const uint tt = i / DECAY_WIDTH;
       const uint d = i - tt * DECAY_WIDTH;
-      const float g = tt < steps ? decay[((b * T + t0 + tt) * Hv + hv) * DECAY_WIDTH + d] : 0.0f;
+      float g = tt < steps ? static_cast<float>(decay[(b * T + t0 + tt) * decay_row_stride + hv * DECAY_WIDTH + d]) : 0.0f;
+      if (sigmoid_gate) {
+        g = gate_lower_bound * gated_delta_sigmoid(gate_scale[hv] * (g + gate_bias[hv * DECAY_WIDTH + d]));
+      }
       decay_stage[i] = log_decay_input ? precise::exp(g) : g;
     }
     for (uint i = tid; i < TB * COLUMNS; i += THREADS) {
       const uint tt = i / COLUMNS;
       const uint c = i - tt * COLUMNS;
-      tv[i] = (tt < steps && dv_base + c < Dv) ? v[((b * T + t0 + tt) * Hv + hv) * Dv + dv_base + c] : input_t(0);
+      tv[i] = (tt < steps && dv_base + c < Dv) ? v[(b * T + t0 + tt) * v_row_stride + hv * Dv + dv_base + c] : input_t(0);
     }
-    if (tid < TB)
-      tbeta[tid] = tid < steps ? static_cast<float>(beta[(b * T + t0 + tid) * Hv + hv]) : 0.0f;
+    if (tid < TB) {
+      const float beta_value = tid < steps ? static_cast<float>(beta[(b * T + t0 + tid) * beta_row_stride + hv]) : 0.0f;
+      tbeta[tid] = (sigmoid_beta && tid < steps) ? gated_delta_sigmoid(beta_value) : beta_value;
+    }
     threadgroup_barrier(mem_flags::mem_threadgroup);
+    if (qk_l2norm) {
+      // A SIMD group per staged step reduces the norms of its query and key.
+      for (uint tt = sg; tt < TB; tt += SIMD_GROUPS) {
+        float query_squares = 0.0f;
+        float key_squares = 0.0f;
+        for (uint d = lane; d < DK; d += 32) {
+          const float q_value = static_cast<float>(q_stage[tt * DK + d]);
+          const float k_value = static_cast<float>(k_stage[tt * DK + d]);
+          query_squares += q_value * q_value;
+          key_squares += k_value * k_value;
+        }
+        query_squares = simd_sum(query_squares);
+        key_squares = simd_sum(key_squares);
+        if (lane == 0) {
+          tquery_norm[tt] = rsqrt(query_squares + l2norm_epsilon) * q_scale;
+          tkey_norm[tt] = rsqrt(key_squares + l2norm_epsilon);
+        }
+      }
+      threadgroup_barrier(mem_flags::mem_threadgroup);
+    }
 
     for (uint tt = 0; tt < steps; tt++) {
       float4 keys[CHUNKS];
@@ -308,7 +407,10 @@ kernel void gated_delta(
       memory += simd_shuffle_xor(memory, 1);
       memory += simd_shuffle_xor(memory, 2);
       memory += simd_shuffle_xor(memory, 4);
-      const float delta = (static_cast<float>(tv[tt * COLUMNS + column]) - memory) * tbeta[tt];
+      // The normalized key is the key norm times the staged key, so the reductions take it once.
+      const float key_norm = qk_l2norm ? tkey_norm[tt] : 1.0f;
+      memory *= key_norm;
+      const float delta = (static_cast<float>(tv[tt * COLUMNS + column]) - memory) * tbeta[tt] * key_norm;
       float out = 0.0f;
       for (uint c = 0; c < CHUNKS; c++) {
         state[c] += delta * keys[c];
@@ -317,6 +419,8 @@ kernel void gated_delta(
       out += simd_shuffle_xor(out, 1);
       out += simd_shuffle_xor(out, 2);
       out += simd_shuffle_xor(out, 4);
+      if (qk_l2norm)
+        out *= tquery_norm[tt];
       if (j == 0)
         ty[tt * COLUMNS + column] = static_cast<input_t>(out);
 )" + checkpointStore + R"(    }

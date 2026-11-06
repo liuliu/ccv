@@ -12,6 +12,7 @@ struct GatedDeltaKernelDescriptor {
   bool stateCheckpointing;
   GEMMOperandPrecision inputMemoryPrecision;
   GEMMOperandPrecision betaMemoryPrecision;
+  GEMMOperandPrecision decayMemoryPrecision;
   bool loadM;
   // Blocked kernel: SIMD groups of four value columns (eight lanes each) over timestep
   // blocks staged in threadgroup memory. stateElementsPerLane is then keyDim / 8.
@@ -19,13 +20,13 @@ struct GatedDeltaKernelDescriptor {
   bool channelDecay;
   uint8_t timeBlock;
   uint8_t simdGroups;
-  constexpr bool operator==(const GatedDeltaKernelDescriptor& rhs) const { return stateElementsPerLane == rhs.stateElementsPerLane && stateCheckpointing == rhs.stateCheckpointing && inputMemoryPrecision == rhs.inputMemoryPrecision && betaMemoryPrecision == rhs.betaMemoryPrecision && loadM == rhs.loadM && blocked == rhs.blocked && channelDecay == rhs.channelDecay && timeBlock == rhs.timeBlock && simdGroups == rhs.simdGroups; }
+  constexpr bool operator==(const GatedDeltaKernelDescriptor& rhs) const { return stateElementsPerLane == rhs.stateElementsPerLane && stateCheckpointing == rhs.stateCheckpointing && inputMemoryPrecision == rhs.inputMemoryPrecision && betaMemoryPrecision == rhs.betaMemoryPrecision && decayMemoryPrecision == rhs.decayMemoryPrecision && loadM == rhs.loadM && blocked == rhs.blocked && channelDecay == rhs.channelDecay && timeBlock == rhs.timeBlock && simdGroups == rhs.simdGroups; }
 };
 
 template<>
 struct std::hash<GatedDeltaKernelDescriptor>
 {
-  std::size_t operator()(const GatedDeltaKernelDescriptor& hash) const noexcept { return (size_t)hash.stateElementsPerLane | ((size_t)hash.inputMemoryPrecision.value << 8) | ((size_t)hash.betaMemoryPrecision.value << 16) | ((size_t)hash.stateCheckpointing << 24) | ((size_t)hash.loadM << 25) | ((size_t)hash.blocked << 26) | ((size_t)hash.channelDecay << 27) | ((size_t)hash.timeBlock << 32) | ((size_t)hash.simdGroups << 40); }
+  std::size_t operator()(const GatedDeltaKernelDescriptor& hash) const noexcept { return (size_t)hash.stateElementsPerLane | ((size_t)hash.inputMemoryPrecision.value << 8) | ((size_t)hash.betaMemoryPrecision.value << 16) | ((size_t)hash.stateCheckpointing << 24) | ((size_t)hash.loadM << 25) | ((size_t)hash.blocked << 26) | ((size_t)hash.channelDecay << 27) | ((size_t)hash.timeBlock << 32) | ((size_t)hash.simdGroups << 40) | ((size_t)hash.decayMemoryPrecision.value << 48); }
 };
 
 struct GatedDeltaKernel;
@@ -48,6 +49,31 @@ struct GatedDeltaDescriptor {
   GEMMOperandPrecision inputMemoryPrecision;
 
   GEMMOperandPrecision betaMemoryPrecision;
+
+  GEMMOperandPrecision decayMemoryPrecision;
+
+  // Elements between consecutive tokens of each input.
+  uint32_t qRowStride;
+
+  uint32_t kRowStride;
+
+  uint32_t vRowStride;
+
+  uint32_t decayRowStride;
+
+  uint32_t betaRowStride;
+
+  // q and k are L2-normalized per head, then q scaled by qScale.
+  bool qkL2Norm;
+
+  float qScale;
+
+  // Log decay gateLowerBound * sigmoid(scale[head] * (gate + bias)) from a raw gate.
+  bool sigmoidGate;
+
+  float gateLowerBound;
+
+  bool sigmoidBeta;
 
   bool logDecay;
 

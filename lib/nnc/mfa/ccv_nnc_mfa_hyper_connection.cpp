@@ -39,6 +39,17 @@ static void _ccv_nnc_mfa_encode_hyper_connection_mix_stage(ccv_nnc_mfa_context_t
 			threads = CCV_NNC_MFA_HYPER_CONNECTION_MIX_THREADS;
 			grid = MTL::Size(1 + params.collapse_splits, params.row_count, 1);
 			break;
+		case 9:
+			stage_tensors = 4;
+			threads = CCV_NNC_MFA_HYPER_CONNECTION_MIX_THREADS;
+			grid = MTL::Size((mix_dim + 1) / 2 * params.dot_splits, params.row_count, 1);
+			break;
+		case 10:
+			// The split's threadgroup, then a threadgroup per MIX_THREADS hidden columns.
+			stage_tensors = 10;
+			threads = CCV_NNC_MFA_HYPER_CONNECTION_MIX_THREADS;
+			grid = MTL::Size(1 + params.dot_splits, params.row_count, 1);
+			break;
 		case 6:
 		case 7:
 		case 8:

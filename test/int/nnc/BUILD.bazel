@@ -195,6 +195,16 @@ cc_binary(
 )
 
 cc_binary(
+	name = "causal_convolution.tests",
+	srcs = ["causal_convolution.tests.c"],
+	copts = ccv_default_copts(),
+	deps = [
+		"//test:case",
+		"//lib:nnc"
+	]
+)
+
+cc_binary(
 	name = "gated_delta.tests",
 	srcs = ["gated_delta.tests.c"],
 	copts = ccv_default_copts(),
