@@ -563,9 +563,12 @@ inline void multiply_register(const device int8_t* A, const device uchar* B, dec
       for (short i = 0; i < 8; ++i) {
         const short row = m * 16 + (i / 4) * 8;
         const short col = n * 16 + i % 4;
-        if (full_rows || row < rows - origin.y)
-          C[size_t(row) * N + col] = ({{IO_TYPE}})(float(accum.fragments[m * 2 + n][i]) *
-            float(A_scale[origin.y + row]) * float(B_scale[origin.x + col]));
+        if (full_rows || row < rows - origin.y) {
+#pragma METAL fp math_mode(safe)
+          // Fixed (acc * a) * b order: fast-math must not reassociate the dequantization.
+          C[size_t(row) * N + col] = ({{IO_TYPE}})((float(accum.fragments[m * 2 + n][i]) *
+            float(A_scale[origin.y + row])) * float(B_scale[origin.x + col]));
+        }
       }
     }
   }
@@ -734,8 +737,10 @@ kernel void segmented_scaled_gemm(
       const auto idx = cT.get_multidimensional_index(i);
       const uint row = (uint)idx[1];
       const uint col = (uint)idx[0];
-      if (row < m_count && col < n_count)
-        C_buf[row * N + col] = ({{IO_TYPE}})((float)cT[i] * (float)A_scale_buf[row] * (float)B_scale_buf[col]);
+      if (row < m_count && col < n_count) {
+#pragma METAL fp math_mode(safe)
+        C_buf[row * N + col] = ({{IO_TYPE}})(((float)cT[i] * (float)A_scale_buf[row]) * (float)B_scale_buf[col]);
+      }
     }
   }
 }
@@ -830,7 +835,11 @@ kernel void segmented_scaled_gemm(
         auto idx = cT.get_multidimensional_index(i);
         const uint row = (uint)idx[1];
         const uint col = (uint)idx[0];
-        float value = (float)cT[i] * (float)A_scale_buf[row] * (float)B_scale_buf[col];
+        float value;
+        {
+#pragma METAL fp math_mode(safe)
+          value = ((float)cT[i] * (float)A_scale_buf[row]) * (float)B_scale_buf[col];
+        }
 )";
   if (useBias) {
     source += R"(
@@ -867,7 +876,11 @@ kernel void segmented_scaled_gemm(
         const uint row = (uint)idx[1];
         const uint col = (uint)idx[0];
         if (row < M_dynamic && col < N_dynamic) {
-          float value = (float)cT[i] * (float)A_scale_buf[row] * (float)B_scale_buf[col];
+          float value;
+          {
+#pragma METAL fp math_mode(safe)
+            value = ((float)cT[i] * (float)A_scale_buf[row]) * (float)B_scale_buf[col];
+          }
 )";
   if (useBias) {
     source += R"(
