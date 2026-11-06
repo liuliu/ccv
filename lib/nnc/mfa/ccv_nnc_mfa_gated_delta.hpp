@@ -11,9 +11,21 @@ typedef struct {
   uint32_t data_type;
   uint32_t beta_data_type;
   uint32_t state_checkpoint_count;
+  uint32_t decay_data_type;
+  // Elements between consecutive tokens.
+  uint32_t q_row_stride;
+  uint32_t k_row_stride;
+  uint32_t v_row_stride;
+  uint32_t decay_row_stride;
+  uint32_t beta_row_stride;
+  float q_scale;
+  float gate_lower_bound;
   uint8_t log_decay;
   uint8_t channel_decay;
   uint8_t loadM;
+  uint8_t qk_l2norm;
+  uint8_t sigmoid_gate;
+  uint8_t sigmoid_beta;
 } ccv_nnc_mfa_gated_delta_params_t;
 
 #ifdef __cplusplus

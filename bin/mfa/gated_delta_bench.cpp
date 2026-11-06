@@ -141,6 +141,19 @@ GatedDeltaDescriptor create_descriptor(const GatedDeltaCase& bench, const Benchm
   descriptor.stateCheckpointCount = config.state_checkpoint_count;
   descriptor.inputMemoryPrecision = GEMMOperandPrecision::FP32;
   descriptor.betaMemoryPrecision = GEMMOperandPrecision::FP32;
+  descriptor.decayMemoryPrecision = GEMMOperandPrecision::FP32;
+  // Packed inputs: consecutive tokens are one row apart.
+  descriptor.qRowStride = bench.Hk * bench.Dk;
+  descriptor.kRowStride = bench.Hk * bench.Dk;
+  descriptor.vRowStride = bench.Hv * bench.Dv;
+  descriptor.decayRowStride = bench.Hv * (config.channel_decay ? bench.Dk : 1);
+  descriptor.betaRowStride = bench.Hv;
+  // The plain op: no L2 norm, no sigmoid gate, beta as given.
+  descriptor.qkL2Norm = false;
+  descriptor.qScale = 1;
+  descriptor.sigmoidGate = false;
+  descriptor.gateLowerBound = 0;
+  descriptor.sigmoidBeta = false;
   descriptor.logDecay = config.log_decay_input;
   descriptor.channelDecay = config.channel_decay;
   descriptor.loadM = false;
@@ -194,6 +207,9 @@ double run_once(
   encoder->setBuffer(buffers.state_in.get(), 0, 5);
   encoder->setBuffer(buffers.y.get(), 0, 6);
   encoder->setBuffer(buffers.state_out.get(), 0, 7);
+  // The sigmoid gate's bias and scale; without the gate, the decay stands in, as in the encoder.
+  encoder->setBuffer(buffers.log_decay.get(), 0, 9);
+  encoder->setBuffer(buffers.log_decay.get(), 0, 10);
   const uint32_t columns = pipeline_value->kernel->columnsPerThreadgroup;
   const MTL::Size grid_size(1, (bench.Dv + columns - 1) / columns, bench.B * bench.Hv);
   for (int i = 0; i < config.duplicated_dispatches; ++i)

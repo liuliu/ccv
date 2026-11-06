@@ -27,11 +27,23 @@ void ccv_nnc_mfa_encode_gated_delta(ccv_nnc_mfa_context_t* context, ccv_nnc_mfa_
   descriptor.keyDim = params.key_dim;
   descriptor.valueDim = params.value_dim;
   descriptor.stateCheckpointCount = params.state_checkpoint_count;
+  descriptor.qRowStride = params.q_row_stride;
+  descriptor.kRowStride = params.k_row_stride;
+  descriptor.vRowStride = params.v_row_stride;
+  descriptor.decayRowStride = params.decay_row_stride;
+  descriptor.betaRowStride = params.beta_row_stride;
+  descriptor.qkL2Norm = params.qk_l2norm != 0;
+  descriptor.qScale = params.qk_l2norm ? params.q_scale : 1;
+  descriptor.sigmoidGate = params.sigmoid_gate != 0;
+  descriptor.gateLowerBound = params.sigmoid_gate ? params.gate_lower_bound : 0;
+  descriptor.sigmoidBeta = params.sigmoid_beta != 0;
   CCV_NNC_MFA_PRECONDITION(params.data_type == MTL::DataTypeFloat || params.data_type == MTL::DataTypeHalf || params.data_type == MTL::DataTypeBFloat);
   CCV_NNC_MFA_PRECONDITION(params.beta_data_type == MTL::DataTypeFloat || params.beta_data_type == MTL::DataTypeHalf || params.beta_data_type == MTL::DataTypeBFloat);
   CCV_NNC_MFA_PRECONDITION(params.state_checkpoint_count < params.sequence_length);
   descriptor.inputMemoryPrecision = params.data_type == MTL::DataTypeHalf ? GEMMOperandPrecision::FP16 : (params.data_type == MTL::DataTypeBFloat ? GEMMOperandPrecision::BF16 : GEMMOperandPrecision::FP32);
   descriptor.betaMemoryPrecision = params.beta_data_type == MTL::DataTypeHalf ? GEMMOperandPrecision::FP16 : (params.beta_data_type == MTL::DataTypeBFloat ? GEMMOperandPrecision::BF16 : GEMMOperandPrecision::FP32);
+  CCV_NNC_MFA_PRECONDITION(params.decay_data_type == MTL::DataTypeFloat || params.decay_data_type == MTL::DataTypeHalf || params.decay_data_type == MTL::DataTypeBFloat);
+  descriptor.decayMemoryPrecision = params.decay_data_type == MTL::DataTypeHalf ? GEMMOperandPrecision::FP16 : (params.decay_data_type == MTL::DataTypeBFloat ? GEMMOperandPrecision::BF16 : GEMMOperandPrecision::FP32);
   descriptor.logDecay = params.log_decay != 0;
   descriptor.channelDecay = params.channel_decay != 0;
   descriptor.loadM = params.loadM != 0;
@@ -52,6 +64,11 @@ void ccv_nnc_mfa_encode_gated_delta(ccv_nnc_mfa_context_t* context, ccv_nnc_mfa_
     encoder->setBytes(&params.sequence_length, sizeof(params.sequence_length), 8);
   }
   encoder->setThreadgroupMemoryLength(kernel->threadgroupMemoryAllocation, 0);
+  // The sigmoid gate's bias and per head scale; the caller binds the decay there without it.
+  encoder->setBuffer(tensors[9], tensor_offsets[9], NS::UInteger(9));
+  encoder->setBuffer(tensors[10], tensor_offsets[10], NS::UInteger(10));
+  encoder->useResource(tensors[9], MTL::ResourceUsageRead);
+  encoder->useResource(tensors[10], MTL::ResourceUsageRead);
   int i;
   for (i = 0; i < 6; i++) {
     encoder->useResource(tensors[i], MTL::ResourceUsageRead);

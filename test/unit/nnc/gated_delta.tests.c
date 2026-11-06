@@ -406,7 +406,7 @@ TEST_CASE("ccv_cnnp gated delta forward")
 	const ccv_cnnp_model_io_t log_decay_input = ccv_cnnp_input();
 	const ccv_cnnp_model_io_t beta_input = ccv_cnnp_input();
 	const ccv_cnnp_model_io_t state_input = ccv_cnnp_input();
-	ccv_cnnp_model_io_t outputs = ccv_cnnp_model_apply(ccv_cnnp_gated_delta(1, 0, "gated_delta"), MODEL_IO_LIST(q_input, k_input, v_input, log_decay_input, beta_input, state_input));
+	ccv_cnnp_model_io_t outputs = ccv_cnnp_model_apply(ccv_cnnp_gated_delta(1, 0, 0, 0, 0, 0, 0, "gated_delta"), MODEL_IO_LIST(q_input, k_input, v_input, log_decay_input, beta_input, state_input));
 	ccv_cnnp_model_t* const model = ccv_cnnp_model_new(MODEL_IO_LIST(q_input, k_input, v_input, log_decay_input, beta_input, state_input), MODEL_IO_LIST(outputs), 0, "gated_delta");
 	const ccv_cnnp_model_io_t q_decay_input = ccv_cnnp_input();
 	const ccv_cnnp_model_io_t k_decay_input = ccv_cnnp_input();
@@ -414,7 +414,7 @@ TEST_CASE("ccv_cnnp gated delta forward")
 	const ccv_cnnp_model_io_t decay_input = ccv_cnnp_input();
 	const ccv_cnnp_model_io_t beta_decay_input = ccv_cnnp_input();
 	const ccv_cnnp_model_io_t state_decay_input = ccv_cnnp_input();
-	ccv_cnnp_model_io_t decay_outputs = ccv_cnnp_model_apply(ccv_cnnp_gated_delta(0, 0, "gated_delta_decay"), MODEL_IO_LIST(q_decay_input, k_decay_input, v_decay_input, decay_input, beta_decay_input, state_decay_input));
+	ccv_cnnp_model_io_t decay_outputs = ccv_cnnp_model_apply(ccv_cnnp_gated_delta(0, 0, 0, 0, 0, 0, 0, "gated_delta_decay"), MODEL_IO_LIST(q_decay_input, k_decay_input, v_decay_input, decay_input, beta_decay_input, state_decay_input));
 	ccv_cnnp_model_t* const decay_model = ccv_cnnp_model_new(MODEL_IO_LIST(q_decay_input, k_decay_input, v_decay_input, decay_input, beta_decay_input, state_decay_input), MODEL_IO_LIST(decay_outputs), 0, "gated_delta_decay");
 	ccv_nnc_tensor_param_t q_params = CPU_TENSOR_NHWC(32F, B, T, Hk, Dk);
 	ccv_nnc_tensor_param_t k_params = CPU_TENSOR_NHWC(32F, B, T, Hk, Dk);

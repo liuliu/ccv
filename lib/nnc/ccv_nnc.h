@@ -300,6 +300,11 @@ typedef struct {
 		struct {
 			int log_decay; /**< [gated_delta.log_decay] If 1, input 3 is log-decay and should be exponentiated. If 0, input 3 is precomputed decay. */
 			int state_checkpoint_count; /**< [gated_delta.state_checkpoint_count] Number of pre-final states to append after the final recurrent state. */
+			int qk_l2norm; /**< [gated_delta.qk_l2norm] If 1, q and k are L2-normalized per head, x / sqrt(sum(x^2) + 1e-6) as in FLA, and q is then scaled by q_scale. */
+			float q_scale; /**< [gated_delta.q_scale] Scale of the L2-normalized q. */
+			int sigmoid_gate; /**< [gated_delta.sigmoid_gate] If 1, input 3 is a raw per key channel gate, inputs 6 and 7 are an FP32 bias [Hv * Dk] and an FP32 per head scale [Hv], and the log decay is gate_lower_bound * sigmoid(scale * (input 3 + bias)). Needs log_decay. */
+			float gate_lower_bound; /**< [gated_delta.gate_lower_bound] Lower bound of the sigmoid gate's log decay. */
+			int sigmoid_beta; /**< [gated_delta.sigmoid_beta] If 1, beta is sigmoid(input 4). */
 		} gated_delta;
 		struct {
 			float min; /**< [clamp.min] The minimum, NaN is no min. */
@@ -5017,11 +5022,19 @@ CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_rotate_half(const char* const name);
  * Apply the gated delta recurrent update.
  * Inputs are (q, k, v, decay / log_decay, beta, state_in), and outputs are (y, state_out).
  * decay / log_decay is either [B, T, Hv] (one gate per head) or [B, T, Hv, Dk] (one gate per key channel, as in Kimi Delta Attention).
+ * q, k, v, the decay and beta may be views whose token rows are strided, such as slices of one projection.
+ * With sigmoid_gate, two more inputs follow: the FP32 gate bias [Hv * Dk] and the FP32 per head gate scale [Hv].
  * @param log_decay If 1, the fourth input is log-decay and should be exponentiated. If 0, the fourth input is precomputed decay.
+ * @param state_checkpoint_count Number of pre-final states to append after the final recurrent state.
+ * @param qk_l2norm If 1, q and k are L2-normalized per head, and q is then scaled by q_scale.
+ * @param q_scale Scale of the L2-normalized q.
+ * @param sigmoid_gate If 1, the fourth input is a raw per key channel gate, and the log decay is gate_lower_bound * sigmoid(scale * (gate + bias)).
+ * @param gate_lower_bound Lower bound of the sigmoid gate's log decay.
+ * @param sigmoid_beta If 1, beta is sigmoid of the fifth input.
  * @param name The unique name of the model.
- * @return A model that can be applied with six inputs and generates output plus updated recurrent state.
+ * @return A model that can be applied with six (eight with sigmoid_gate) inputs and generates output plus updated recurrent state.
  */
-CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_gated_delta(const int log_decay, const int state_checkpoint_count, const char* const name);
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_gated_delta(const int log_decay, const int state_checkpoint_count, const int qk_l2norm, const float q_scale, const int sigmoid_gate, const float gate_lower_bound, const int sigmoid_beta, const char* const name);
 /**
  * Multiply two input tensors together as if these are complex numbers.
  * @param conjugate Whether to conjugate the right-hand input before multiplication.
