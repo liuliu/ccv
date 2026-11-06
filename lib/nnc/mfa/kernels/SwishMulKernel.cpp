@@ -194,13 +194,13 @@ inline float stable_swish_gradient(float z)
     if (clamp_enabled)
       shader += "  av = metal::clamp(av, (float4)(-clamp_limit), (float4)(clamp_limit));\n  bv = min(bv, (float4)(clamp_limit));\n";
     if (beta_is_one)
-      shader += "  float4 result = av * bv * stable_sigmoid(bv);\n";
+      shader += "  const float4 sigmoid_b = stable_sigmoid(bv);\n  float4 result;\n  {\n#pragma METAL fp math_mode(safe)\n    result = (av * bv) * sigmoid_b;\n  }\n";
     else
-      shader += "  float4 result = av * bv * stable_sigmoid(beta * bv);\n";
+      shader += "  const float4 sigmoid_b = stable_sigmoid(beta * bv);\n  float4 result;\n  {\n#pragma METAL fp math_mode(safe)\n    result = (av * bv) * sigmoid_b;\n  }\n";
     if (!scale_is_one)
-      shader += "  result *= scale;\n";
+      shader += "  {\n#pragma METAL fp math_mode(safe)\n    result = result * scale;\n  }\n";
     if (weighted)
-      shader += "  result *= (float)(weight[(idx * 4) / row_width]);\n";
+      shader += "  {\n#pragma METAL fp math_mode(safe)\n    // Weight last, as written: fast-math must not reassociate the products.\n    result = result * (float)(weight[(idx * 4) / row_width]);\n  }\n";
     shader += R"(
   destination[idx] = (realA4)result;
 }
@@ -223,13 +223,13 @@ inline float stable_swish_gradient(float z)
     if (clamp_enabled)
       shader += "  av = metal::clamp(av, -clamp_limit, clamp_limit);\n  bv = min(bv, clamp_limit);\n";
     if (beta_is_one)
-      shader += "  float result = av * bv * stable_sigmoid(bv);\n";
+      shader += "  const float sigmoid_b = stable_sigmoid(bv);\n  float result;\n  {\n#pragma METAL fp math_mode(safe)\n    result = (av * bv) * sigmoid_b;\n  }\n";
     else
-      shader += "  float result = av * bv * stable_sigmoid(beta * bv);\n";
+      shader += "  const float sigmoid_b = stable_sigmoid(beta * bv);\n  float result;\n  {\n#pragma METAL fp math_mode(safe)\n    result = (av * bv) * sigmoid_b;\n  }\n";
     if (!scale_is_one)
-      shader += "  result *= scale;\n";
+      shader += "  {\n#pragma METAL fp math_mode(safe)\n    result = result * scale;\n  }\n";
     if (weighted)
-      shader += "  result *= (float)(weight[idx / row_width]);\n";
+      shader += "  {\n#pragma METAL fp math_mode(safe)\n    // Weight last, as written: fast-math must not reassociate the products.\n    result = result * (float)(weight[idx / row_width]);\n  }\n";
     shader += R"(
   destination[idx] = (realA)result;
 }
