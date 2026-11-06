@@ -180,7 +180,10 @@ inline uint2 morton_decode_rectangular_2d(uint code,
   source.SetValue("MEMORY_NAME_B", memoryName('B'));
   source.SetValue("MEMORY_NAME_C", memoryName('C'));
   source.SetValue("MEMORY_NAME_BIAS", memoryName('S'));
-  if (registerPrecisions.C.value == GEMMOperandPrecision::FP32 && memoryPrecisions.C.value != GEMMOperandPrecision::FP32) {
+  // Relaxed precision lets the neural accelerators truncate FP32 operands to a 10-bit mantissa
+  // toward zero, so FP32 operands keep full precision.
+  if ((registerPrecisions.C.value == GEMMOperandPrecision::FP32 && memoryPrecisions.C.value != GEMMOperandPrecision::FP32) ||
+      memoryPrecisions.A.value == GEMMOperandPrecision::FP32 || memoryPrecisions.B.value == GEMMOperandPrecision::FP32) {
     source.SetValue("RELAXED_PRECISION", "false");
   } else {
     source.SetValue("RELAXED_PRECISION", "true");

@@ -67,6 +67,8 @@ std::string NAMatMulSmallMKernel::createSource() const noexcept
   source.SetValue("MEMORY_NAME_B", memoryName('B'));
   source.SetValue("MEMORY_NAME_C", memoryName('C'));
   source.SetValue("MEMORY_NAME_BIAS", memoryName('S'));
+  // FP32 operands keep full precision; relaxed lets the neural accelerators truncate them.
+  source.SetValue("RELAXED_PRECISION", (memoryPrecisions.A.value == GEMMOperandPrecision::FP32 || memoryPrecisions.B.value == GEMMOperandPrecision::FP32) ? "false" : "true");
   source.SetValue("BLOCK_DIMENSIONS_M", std::to_string(blockDimensions[0]));
   source.SetValue("BLOCK_DIMENSIONS_N", std::to_string(blockDimensions[1]));
   source.SetValue("BLOCK_DIMENSIONS_K", std::to_string(blockDimensions[2]));
@@ -134,7 +136,7 @@ kernel void matmul_small_m_block_view(device {{MEMORY_NAME_B}}* A_buf [[buffer(0
         {{BLOCK_DIMENSIONS_K}},
         false,
         true,
-        true,
+        {{RELAXED_PRECISION}},
         matmul2d_descriptor::mode::multiply_accumulate);
     matmul2d<matmul_descriptor, execution_simdgroups<{{EXECUTION_SIMD_GROUPS}}>> matmul_op;
     auto cT = matmul_op.get_destination_cooperative_tensor<decltype(A), decltype(B), {{MEMORY_NAME_C}}>();
@@ -157,7 +159,7 @@ kernel void matmul_small_m_block_view(device {{MEMORY_NAME_B}}* A_buf [[buffer(0
           dynamic_length_v<int>,
           false,
           true,
-          true,
+          {{RELAXED_PRECISION}},
           matmul2d_descriptor::mode::multiply_accumulate);
       matmul2d<residual_descriptor, execution_simdgroups<{{EXECUTION_SIMD_GROUPS}}>> residual_op;
       auto mAr = A.slice<dynamic_extent, {{BLOCK_DIMENSIONS_M}}>(KPACK / {{BLOCK_DIMENSIONS_K}} * {{BLOCK_DIMENSIONS_K}}, row_block);
@@ -188,7 +190,7 @@ kernel void matmul_small_m_block_view(device {{MEMORY_NAME_B}}* A_buf [[buffer(0
         dynamic_length_v<int>,
         false,
         true,
-        true,
+        {{RELAXED_PRECISION}},
         matmul2d_descriptor::mode::multiply_accumulate);
     matmul2d<matmul_descriptor, execution_simdgroups<{{EXECUTION_SIMD_GROUPS}}>> matmul_op;
     auto mA = A.slice(0, row_block);
