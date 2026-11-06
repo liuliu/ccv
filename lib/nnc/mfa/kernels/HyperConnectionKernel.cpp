@@ -69,13 +69,13 @@ kernel void hyper_connection(
 	{
 		for (uint i = 0; i < hc; i++)
 		{
-			const float v = 1.0f / (1.0f + exp(-(row_mix[i] * scale[0] + base[i]))) + epsilon;
+			const float v = precise::divide(1.0f, 1.0f + precise::exp(-(row_mix[i] * scale[0] + base[i]))) + epsilon;
 			if (!has_residual)
 				pre_out[row * hc + i] = v;
 			pre[i] = v;
 		}
 		for (uint i = 0; i < hc; i++)
-			post_out[row * hc + i] = 2.0f / (1.0f + exp(-(row_mix[hc + i] * scale[1] + base[hc + i])));
+			post_out[row * hc + i] = precise::divide(2.0f, 1.0f + precise::exp(-(row_mix[hc + i] * scale[1] + base[hc + i])));
 		float comb[256];
 		for (uint i = 0; i < hc; i++)
 		{
@@ -90,11 +90,11 @@ kernel void hyper_connection(
 			for (uint j = 0; j < hc; j++)
 			{
 				const uint k = i * hc + j;
-				comb[k] = exp(comb[k] - row_max);
+				comb[k] = precise::exp(comb[k] - row_max);
 				row_sum += comb[k];
 			}
 			for (uint j = 0; j < hc; j++)
-				comb[i * hc + j] = comb[i * hc + j] / row_sum + epsilon;
+				comb[i * hc + j] = precise::divide(comb[i * hc + j], row_sum) + epsilon;
 		}
 		for (uint j = 0; j < hc; j++)
 		{
@@ -102,7 +102,7 @@ kernel void hyper_connection(
 			for (uint i = 0; i < hc; i++)
 				sum += comb[i * hc + j];
 			for (uint i = 0; i < hc; i++)
-				comb[i * hc + j] /= sum + epsilon;
+				comb[i * hc + j] = precise::divide(comb[i * hc + j], sum + epsilon);
 		}
 		for (uint iter = 1; iter < sinkhorn_iterations; iter++)
 		{
@@ -112,7 +112,7 @@ kernel void hyper_connection(
 				for (uint j = 0; j < hc; j++)
 					sum += comb[i * hc + j];
 				for (uint j = 0; j < hc; j++)
-					comb[i * hc + j] /= sum + epsilon;
+					comb[i * hc + j] = precise::divide(comb[i * hc + j], sum + epsilon);
 			}
 			for (uint j = 0; j < hc; j++)
 			{
@@ -120,7 +120,7 @@ kernel void hyper_connection(
 				for (uint i = 0; i < hc; i++)
 					sum += comb[i * hc + j];
 				for (uint i = 0; i < hc; i++)
-					comb[i * hc + j] /= sum + epsilon;
+					comb[i * hc + j] = precise::divide(comb[i * hc + j], sum + epsilon);
 			}
 		}
 		for (uint i = 0; i < hc * hc; i++)
@@ -244,7 +244,7 @@ inline void hyper_connection_mix_split_row(
 	float sum_squares = 0;
 	for (uint s = 0; s < dot_splits; s++)
 		sum_squares += squares[row * dot_splits + s];
-	const float rstd = rsqrt(sum_squares / float(hc * hidden) + norm_epsilon);
+	const float rstd = rsqrt(precise::divide(sum_squares, float(hc * hidden)) + norm_epsilon);
 	float mix = 0;
 	if (lane < mix_dim)
 	{
@@ -253,9 +253,9 @@ inline void hyper_connection_mix_split_row(
 		mix *= rstd;
 	}
 	if (lane < hc)
-		pre_out[row * hc + lane] = 1.0f / (1.0f + exp(-(mix * scale[0] + base[lane]))) + epsilon;
+		pre_out[row * hc + lane] = precise::divide(1.0f, 1.0f + precise::exp(-(mix * scale[0] + base[lane]))) + epsilon;
 	else if (lane < 2 * hc)
-		post_out[row * hc + lane - hc] = 2.0f / (1.0f + exp(-(mix * scale[1] + base[lane])));
+		post_out[row * hc + lane - hc] = precise::divide(2.0f, 1.0f + precise::exp(-(mix * scale[1] + base[lane])));
 	const bool is_comb = lane >= 2 * hc && lane < mix_dim;
 	const uint k = is_comb ? lane - 2 * hc : 0;
 	const ushort row_lane = 2 * hc + (k / hc) * hc;
@@ -264,25 +264,25 @@ inline void hyper_connection_mix_split_row(
 	float row_max = -INFINITY;
 	for (uint t = 0; t < hc; t++)
 		row_max = max(row_max, simd_shuffle(v, ushort(row_lane + t)));
-	v = exp(v - row_max);
+	v = precise::exp(v - row_max);
 	float row_sum = 0;
 	for (uint t = 0; t < hc; t++)
 		row_sum += simd_shuffle(v, ushort(row_lane + t));
-	v = v / row_sum + epsilon;
+	v = precise::divide(v, row_sum) + epsilon;
 	float column_sum = 0;
 	for (uint t = 0; t < hc; t++)
 		column_sum += simd_shuffle(v, ushort(column_lane + t * hc));
-	v /= column_sum + epsilon;
+	v = precise::divide(v, column_sum + epsilon);
 	for (uint iteration = 1; iteration < sinkhorn_iterations; iteration++)
 	{
 		row_sum = 0;
 		for (uint t = 0; t < hc; t++)
 			row_sum += simd_shuffle(v, ushort(row_lane + t));
-		v /= row_sum + epsilon;
+		v = precise::divide(v, row_sum + epsilon);
 		column_sum = 0;
 		for (uint t = 0; t < hc; t++)
 			column_sum += simd_shuffle(v, ushort(column_lane + t * hc));
-		v /= column_sum + epsilon;
+		v = precise::divide(v, column_sum + epsilon);
 	}
 	if (is_comb)
 		comb_out[row * hc * hc + k] = v;
@@ -336,7 +336,7 @@ kernel void hyper_connection_mix_finish(
 	float sum = 0;
 	for (uint q = 0; q < collapse_splits; q++)
 		sum += collapsed_squares[row * collapse_splits + q];
-	const float rstd = rsqrt(sum / float(hidden) + norm_epsilon);
+	const float rstd = rsqrt(precise::divide(sum, float(hidden)) + norm_epsilon);
 	output[(ulong)row * hidden + d] = collapsed[(ulong)row * hidden + d] * rstd * norm_scale[d];
 }
 
@@ -392,7 +392,7 @@ constant uint ROW_THREADS = 1024;
 		if (lane == 0)
 		{
 			squares[row] = square;
-			sums[1][0] = rsqrt(collapsed_square / float(hidden) + norm_epsilon);
+			sums[1][0] = rsqrt(precise::divide(collapsed_square, float(hidden)) + norm_epsilon);
 		}
 	}
 	threadgroup_barrier(mem_flags::mem_threadgroup);
@@ -455,7 +455,7 @@ constant uint ROW_THREADS = 1024;
 	{
 		collapsed_square = simd_sum(sums[lane]);
 		if (lane == 0)
-			sums[0] = rsqrt(collapsed_square / float(hidden) + norm_epsilon);
+			sums[0] = rsqrt(precise::divide(collapsed_square, float(hidden)) + norm_epsilon);
 	}
 	threadgroup_barrier(mem_flags::mem_threadgroup);
 	const float rstd = sums[0];
