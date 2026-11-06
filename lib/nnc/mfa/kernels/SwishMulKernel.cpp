@@ -66,7 +66,7 @@ using namespace metal;
       shader += R"(
 inline float4 stable_sigmoid(float4 z)
 {
-  const float4 tail = 1.0f / (1.0f + exp(abs(z)));
+  const float4 tail = metal::precise::divide(1.0f, 1.0f + metal::precise::exp(abs(z)));
   const float4 positive = step(0.0f, z);
   return tail + positive * (1.0f - 2.0f * tail);
 }
@@ -75,7 +75,7 @@ inline float4 stable_sigmoid(float4 z)
       shader += R"(
 inline float stable_sigmoid(float z)
 {
-  const float tail = 1.0f / (1.0f + exp(abs(z)));
+  const float tail = metal::precise::divide(1.0f, 1.0f + metal::precise::exp(abs(z)));
   const float positive = step(0.0f, z);
   return tail + positive * (1.0f - 2.0f * tail);
 }
@@ -86,8 +86,8 @@ inline float stable_sigmoid(float z)
       shader += R"(
 inline float4 stable_swish_gradient(float4 z)
 {
-  const float4 t = exp(-abs(z));
-  const float4 tail = t / (1.0f + t); // min(sigmoid, 1 - sigmoid)
+  const float4 t = metal::precise::exp(-abs(z));
+  const float4 tail = metal::precise::divide(t, 1.0f + t); // min(sigmoid, 1 - sigmoid)
   const float4 sigmoid = tail + step(0.0f, z) * (1.0f - 2.0f * tail);
   const float4 slope = tail * ((float4)(1.0f) - tail);
   const float4 correction = select((float4)(0.0f), z * slope, isfinite(z));
@@ -98,8 +98,8 @@ inline float4 stable_swish_gradient(float4 z)
       shader += R"(
 inline float stable_swish_gradient(float z)
 {
-  const float t = exp(-abs(z));
-  const float tail = t / (1.0f + t); // min(sigmoid, 1 - sigmoid)
+  const float t = metal::precise::exp(-abs(z));
+  const float tail = metal::precise::divide(t, 1.0f + t); // min(sigmoid, 1 - sigmoid)
   const float sigmoid = tail + step(0.0f, z) * (1.0f - 2.0f * tail);
   const float slope = tail * (1.0f - tail);
   const float correction = isfinite(z) ? (z * slope) : 0.0f;
