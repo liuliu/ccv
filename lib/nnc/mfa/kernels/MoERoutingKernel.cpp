@@ -362,6 +362,19 @@ kernel void moe_routing_many_select(
 	}
 }
 
+// Among the 32 lanes' experts: how many lanes before this one, and after it, hold the same expert.
+inline void moe_routing_lane_rank(const uint expert, const uint lane, thread uint& before, thread uint& after)
+{
+	before = 0;
+	after = 0;
+	for (ushort l = 0; l < 32; l++)
+	{
+		const uint other = simd_shuffle(expert, l);
+		before += (l < lane && other == expert) ? 1 : 0;
+		after += (l > lane && other == expert) ? 1 : 0;
+	}
+}
+
 kernel void moe_routing_many_group(
 	device const char* gathered [[buffer(3)]],
 	device float* route_weights [[buffer(4)]],
@@ -370,20 +383,59 @@ kernel void moe_routing_many_group(
 	device int* expert_counts [[buffer(7)]],
 	constant uint& tokens [[buffer(8)]],
 	uint tid [[thread_index_in_threadgroup]],
-	uint ntg [[threads_per_threadgroup]])
+	uint ntg [[threads_per_threadgroup]],
+	uint lane [[thread_index_in_simdgroup]],
+	uint simd_group [[simdgroup_index_in_threadgroup]],
+	uint simd_groups [[simdgroups_per_threadgroup]])
 {
-	threadgroup uint counts[512];
+	// SIMD group c owns the c-th contiguous range of pairs. A pair's position is its expert's offset,
+	// plus that expert's pairs in the ranges before c, plus those before it in range c, so the pairs
+	// keep (expert, token, slot) order. chunk_counts[c][e] holds range c's count of expert e, then
+	// expert e's write cursor in range c, relative to the expert's offset. Each range is read 32 pairs
+	// at a time, four such batches loaded ahead.
+	threadgroup uint chunk_counts[12][512];
 	threadgroup uint offsets[512];
-	threadgroup uint groups[513];
+	threadgroup uint group_total;
 	const uint pair_count = tokens * kth;
 	device const int* const pair_experts = (device const int*)gathered;
 	device const float* const pair_weights = (device const float*)(gathered + (size_t)pair_count * sizeof(int));
+	const uint chunks = min(simd_groups, 12u);
+	const uint chunk_size = (pair_count + chunks - 1) / chunks;
+	const uint chunk_begin = min(simd_group * chunk_size, pair_count);
+	const uint chunk_end = min(chunk_begin + chunk_size, pair_count);
+	for (uint i = tid; i < chunks * 512; i += ntg)
+		chunk_counts[i / 512][i % 512] = 0;
+	threadgroup_barrier(mem_flags::mem_threadgroup);
+	if (simd_group < chunks)
+		for (uint base = chunk_begin; base < chunk_end; base += 128)
+		{
+			uint experts[4];
+			for (uint j = 0; j < 4; j++)
+			{
+				const uint pair = base + j * 32 + lane;
+				experts[j] = pair < chunk_end ? (uint)pair_experts[pair] : 0xffffffffu;
+			}
+			for (uint j = 0; j < 4; j++)
+			{
+				uint before, after;
+				moe_routing_lane_rank(experts[j], lane, before, after);
+				// The last lane of each expert adds the batch's count.
+				if (experts[j] < expert_count && after == 0)
+					chunk_counts[simd_group][experts[j]] += before + 1;
+				simdgroup_barrier(mem_flags::mem_threadgroup);
+			}
+		}
+	threadgroup_barrier(mem_flags::mem_threadgroup);
 	for (uint expert = tid; expert < expert_count; expert += ntg)
 	{
-		uint count = 0;
-		for (uint pair = 0; pair < pair_count; pair++)
-			count += pair_experts[pair] == (int)expert ? 1 : 0;
-		counts[expert] = count;
+		uint total = 0;
+		for (uint c = 0; c < chunks; c++)
+		{
+			const uint count = chunk_counts[c][expert];
+			chunk_counts[c][expert] = total;
+			total += count;
+		}
+		offsets[expert] = total;
 	}
 	threadgroup_barrier(mem_flags::mem_threadgroup);
 	if (tid == 0)
@@ -392,31 +444,52 @@ kernel void moe_routing_many_group(
 		uint group = 0;
 		for (uint expert = 0; expert < expert_count; expert++)
 		{
+			const uint count = offsets[expert];
 			offsets[expert] = offset;
-			groups[expert] = group;
-			offset += counts[expert];
-			group += counts[expert] > 0 ? 1 : 0;
+			if (count > 0)
+			{
+				expert_indices[group] = (int)expert;
+				expert_counts[group] = (int)count;
+			}
+			offset += count;
+			group += count > 0 ? 1 : 0;
 		}
-		groups[512] = group;
+		group_total = group;
 	}
 	threadgroup_barrier(mem_flags::mem_threadgroup);
-	for (uint expert = tid; expert < expert_count; expert += ntg)
-	{
-		if (counts[expert] == 0)
-			continue;
-		expert_indices[groups[expert]] = (int)expert;
-		expert_counts[groups[expert]] = (int)counts[expert];
-		uint position = offsets[expert];
-		for (uint pair = 0; pair < pair_count; pair++)
-			if (pair_experts[pair] == (int)expert)
+	if (simd_group < chunks)
+		for (uint base = chunk_begin; base < chunk_end; base += 128)
+		{
+			uint experts[4];
+			float weights[4];
+			for (uint j = 0; j < 4; j++)
 			{
-				route_weights[position] = pair_weights[pair];
-				token_indices[position] = (int)(pair / kth);
-				position++;
+				const uint pair = base + j * 32 + lane;
+				experts[j] = pair < chunk_end ? (uint)pair_experts[pair] : 0xffffffffu;
+				weights[j] = pair < chunk_end ? pair_weights[pair] : 0.0f;
 			}
-	}
+			for (uint j = 0; j < 4; j++)
+			{
+				const uint pair = base + j * 32 + lane;
+				const uint expert = experts[j];
+				uint before, after;
+				moe_routing_lane_rank(expert, lane, before, after);
+				const bool valid = expert < expert_count;
+				const uint cursor = valid ? chunk_counts[simd_group][expert] : 0;
+				if (valid)
+				{
+					const uint position = offsets[expert] + cursor + before;
+					route_weights[position] = weights[j];
+					token_indices[position] = (int)(pair / kth);
+				}
+				simdgroup_barrier(mem_flags::mem_threadgroup);
+				if (valid && after == 0)
+					chunk_counts[simd_group][expert] = cursor + before + 1;
+				simdgroup_barrier(mem_flags::mem_threadgroup);
+			}
+		}
 	const uint group_count = min(pair_count, expert_count);
-	for (uint group = groups[512] + tid; group < group_count; group += ntg)
+	for (uint group = group_total + tid; group < group_count; group += ntg)
 	{
 		expert_indices[group] = -1;
 		expert_counts[group] = 0;

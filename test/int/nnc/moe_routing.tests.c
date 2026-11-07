@@ -1136,4 +1136,90 @@ TEST_CASE("single-token moe routing selects distinct experts when biases are -IN
 	REQUIRE_EQ(_moe_routing_infinite_bias_case(384, 6, 1, finite_experts + 1), 1, "-INFINITY experts across many lanes should stay selectable");
 }
 
+// The pairs come out sorted by (expert, token, slot), as the CPU reference writes them, not only as
+// the same set: compare token indices, groups and gathered rows by position. Preselected experts
+// repeat often within any run of 32 pairs, which exercises the grouping's order inside a SIMD group.
+static int _moe_routing_many_order_case(const int token_count, const int kth, const int preselected)
+{
+	const int expert_count = 384, hidden = 8;
+	const int pair_count = token_count * kth;
+	const int group_count = ccv_min(pair_count, expert_count);
+	ccv_nnc_tensor_t* const hlogits = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, token_count, expert_count), 0);
+	ccv_nnc_tensor_t* const hroute = preselected ? ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, token_count, kth), 0) : ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, expert_count), 0);
+	ccv_nnc_tensor_t* const hactivation = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, token_count, hidden), 0);
+	int i;
+	for (i = 0; i < token_count * expert_count; i++)
+		hlogits->data.f32[i] = (float)(((i % expert_count) * 37 + (i / expert_count) % 5 * 11) % 97) * 0.0625f - 3;
+	if (preselected)
+		for (i = 0; i < token_count * kth; i++)
+			hroute->data.i32[i] = ((i % kth) * 41 + (i / kth) % 3) % expert_count;
+	else
+		for (i = 0; i < expert_count; i++)
+			hroute->data.f32[i] = (float)i * 0.00001f;
+	for (i = 0; i < token_count * hidden; i++)
+		hactivation->data.f32[i] = (float)i;
+	ccv_nnc_tensor_t* const logits = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, token_count, expert_count), 0);
+	ccv_nnc_tensor_param_t route_params = hroute->info;
+	route_params.type = CCV_TENSOR_GPU_MEMORY;
+	ccv_nnc_tensor_t* const route = ccv_nnc_tensor_new(0, route_params, 0);
+	ccv_nnc_tensor_t* const activation = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, token_count, hidden), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(hlogits, hroute, hactivation), TENSOR_LIST(logits, route, activation), 0);
+	ccv_nnc_tensor_t* expected[5];
+	ccv_nnc_tensor_t* outputs[5];
+	ccv_nnc_tensor_t* actual[5];
+	const ccv_nnc_tensor_param_t params[5] = {
+		CPU_TENSOR_NHWC(32F, pair_count, hidden), CPU_TENSOR_NHWC(32F, pair_count), CPU_TENSOR_NHWC(32S, pair_count), CPU_TENSOR_NHWC(32S, group_count), CPU_TENSOR_NHWC(32S, group_count),
+	};
+	for (i = 0; i < 5; i++)
+	{
+		expected[i] = ccv_nnc_tensor_new(0, params[i], 0);
+		actual[i] = ccv_nnc_tensor_new(0, params[i], 0);
+		ccv_nnc_tensor_param_t gpu_params = params[i];
+		gpu_params.type = CCV_TENSOR_GPU_MEMORY;
+		outputs[i] = ccv_nnc_tensor_new(0, gpu_params, 0);
+	}
+	ccv_nnc_cmd_t cmd = CMD_MOE_ROUTING_FORWARD_FLAGS(kth, 1.5f, preselected, 0);
+	cmd.info.moe_routing.normalization_epsilon = 1e-20f;
+	cmd.backend = CCV_NNC_BACKEND_CPU_REF;
+	int status = ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(hlogits, hroute, hactivation), expected, 5, 0);
+	cmd.backend = CCV_NNC_BACKEND_MPS;
+	if (status == CCV_NNC_EXEC_SUCCESS)
+		status = ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(logits, route, activation), outputs, 5, 0);
+	int match = status == CCV_NNC_EXEC_SUCCESS;
+	if (match)
+	{
+		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, outputs, 5, actual, 5, 0);
+		match = memcmp(actual[2]->data.i32, expected[2]->data.i32, sizeof(int) * pair_count) == 0 &&
+			memcmp(actual[3]->data.i32, expected[3]->data.i32, sizeof(int) * group_count) == 0 &&
+			memcmp(actual[4]->data.i32, expected[4]->data.i32, sizeof(int) * group_count) == 0 &&
+			memcmp(actual[0]->data.f32, expected[0]->data.f32, sizeof(float) * pair_count * hidden) == 0;
+	}
+	for (i = 0; i < 5; i++)
+	{
+		ccv_nnc_tensor_free(outputs[i]);
+		ccv_nnc_tensor_free(actual[i]);
+		ccv_nnc_tensor_free(expected[i]);
+	}
+	ccv_nnc_tensor_free(activation);
+	ccv_nnc_tensor_free(route);
+	ccv_nnc_tensor_free(logits);
+	ccv_nnc_tensor_free(hactivation);
+	ccv_nnc_tensor_free(hroute);
+	ccv_nnc_tensor_free(hlogits);
+	return status != CCV_NNC_EXEC_SUCCESS ? -1 : match;
+}
+
+TEST_CASE("many-token moe routing MFA keeps the CPU's (expert, token, slot) order")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_MOE_ROUTING_FORWARD, CCV_NNC_BACKEND_MPS));
+	const int token_counts[] = {17, 257, 4097, 8192};
+	int i, preselected;
+	for (i = 0; i < sizeof(token_counts) / sizeof(token_counts[0]); i++)
+		for (preselected = 0; preselected < 2; preselected++)
+		{
+			REQUIRE_EQ(_moe_routing_many_order_case(token_counts[i], 6, preselected), 1, "tokens=%d kth=6 preselected=%d should match the CPU order", token_counts[i], preselected);
+			REQUIRE_EQ(_moe_routing_many_order_case(token_counts[i], 8, preselected), 1, "tokens=%d kth=8 preselected=%d should match the CPU order", token_counts[i], preselected);
+		}
+}
+
 #include "case_main.h"
