@@ -666,6 +666,136 @@ TEST_CASE("few-token moe routing MFA kernel matches CPU")
 			}
 }
 
+TEST_CASE("many-token moe routing MFA kernels match CPU")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_MOE_ROUTING_FORWARD, CCV_NNC_BACKEND_MPS));
+	// Past 16 tokens, MFA routes in three stages with the few-token kernel's selection.
+	const int token_counts[] = {17, 40, 257};
+	const int kths[] = {6, 8};
+	int i, j, preselected;
+	for (i = 0; i < sizeof(token_counts) / sizeof(token_counts[0]); i++)
+		for (j = 0; j < sizeof(kths) / sizeof(kths[0]); j++)
+			for (preselected = 0; preselected < 2; preselected++)
+			{
+				const moe_routing_mps_result_t result = _moe_routing_mps_case(token_counts[i], 384, kths[j], 5120, preselected, 0, CCV_16F, CCV_32F, 0, 1e-20f, 0);
+				REQUIRE_EQ(result.status, CCV_NNC_EXEC_SUCCESS, "many-token MFA routing should execute");
+				REQUIRE(result.metadata_match, "many-token MFA grouping should match CPU for tokens=%d kth=%d preselected=%d", token_counts[i], kths[j], preselected);
+				REQUIRE(result.gathered_match, "many-token MFA gathered rows should match CPU exactly");
+				REQUIRE(result.max_weight_difference <= 5e-4f, "many-token MFA weights should match CPU");
+			}
+}
+
+static int _moe_routing_tied_run(const int token_count, int* const experts_out, float* const weights_out)
+{
+	const int expert_count = 384, kth = 6, hidden = 8;
+	const int pair_count = token_count * kth;
+	const int group_count = ccv_min(pair_count, expert_count);
+	ccv_nnc_tensor_t* const hlogits = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, token_count, expert_count), 0);
+	ccv_nnc_tensor_t* const hbias = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, expert_count), 0);
+	ccv_nnc_tensor_t* const hactivation = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, token_count, hidden), 0);
+	int i;
+	// Negative logits score through log1p's compensated branch. Experts 186, 239, 270 and 337 tie
+	// at the top, then everyone else ties.
+	for (i = 0; i < token_count * expert_count; i++)
+	{
+		const int expert = i % expert_count;
+		const float logit = (expert == 186 || expert == 239 || expert == 270 || expert == 337) ? -1.5f : -3.0f;
+		ccv_float_to_half_precision(&logit, (uint16_t*)hlogits->data.f16 + i, 1);
+	}
+	for (i = 0; i < expert_count; i++)
+		hbias->data.f32[i] = 0;
+	memset(hactivation->data.u8, 0, sizeof(uint16_t) * token_count * hidden);
+	ccv_nnc_tensor_t* const logits = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, token_count, expert_count), 0);
+	ccv_nnc_tensor_t* const bias = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, expert_count), 0);
+	ccv_nnc_tensor_t* const activation = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, token_count, hidden), 0);
+	ccv_nnc_tensor_t* const gathered = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, pair_count, hidden), 0);
+	ccv_nnc_tensor_t* const weights = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, pair_count), 0);
+	ccv_nnc_tensor_t* const tokens = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32S, pair_count), 0);
+	ccv_nnc_tensor_t* const experts = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32S, group_count), 0);
+	ccv_nnc_tensor_t* const counts = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32S, group_count), 0);
+	ccv_nnc_tensor_t* const htokens = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, pair_count), 0);
+	ccv_nnc_tensor_t* const hweights = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, pair_count), 0);
+	ccv_nnc_tensor_t* const hexperts = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, group_count), 0);
+	ccv_nnc_tensor_t* const hcounts = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, group_count), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(hlogits, hbias, hactivation), TENSOR_LIST(logits, bias, activation), 0);
+	ccv_nnc_cmd_t cmd = CMD_MOE_ROUTING_FORWARD_FLAGS(kth, 1.5f, 0, 0);
+	cmd.backend = CCV_NNC_BACKEND_MPS;
+	cmd.info.moe_routing.normalization_epsilon = 1e-20f;
+	int status = ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(logits, bias, activation), TENSOR_LIST(gathered, weights, tokens, experts, counts), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(weights, tokens, experts, counts), TENSOR_LIST(hweights, htokens, hexperts, hcounts), 0);
+	// Experts and weights per (token, slot) in selection order: grouped by expert, so slot order is
+	// expert order (the tied experts' lowest indices first).
+	int group, position = 0;
+	int filled[1024] = {0};
+	for (group = 0; group < group_count && hexperts->data.i32[group] >= 0; group++)
+	{
+		int c;
+		for (c = 0; c < hcounts->data.i32[group]; c++, position++)
+		{
+			const int token = htokens->data.i32[position];
+			experts_out[token * kth + filled[token]] = hexperts->data.i32[group];
+			weights_out[token * kth + filled[token]] = hweights->data.f32[position];
+			filled[token]++;
+		}
+	}
+	if (position != pair_count)
+		status = CCV_NNC_EXEC_INVALID;
+	// One token's groups come in selection order, several tokens' in expert order: sort by expert.
+	for (i = 0; i < token_count; i++)
+	{
+		int a, b;
+		for (a = 1; a < kth; a++)
+			for (b = a; b > 0 && experts_out[i * kth + b - 1] > experts_out[i * kth + b]; b--)
+			{
+				const int e = experts_out[i * kth + b]; experts_out[i * kth + b] = experts_out[i * kth + b - 1]; experts_out[i * kth + b - 1] = e;
+				const float w = weights_out[i * kth + b]; weights_out[i * kth + b] = weights_out[i * kth + b - 1]; weights_out[i * kth + b - 1] = w;
+			}
+	}
+	ccv_nnc_tensor_free(hcounts);
+	ccv_nnc_tensor_free(hexperts);
+	ccv_nnc_tensor_free(hweights);
+	ccv_nnc_tensor_free(htokens);
+	ccv_nnc_tensor_free(counts);
+	ccv_nnc_tensor_free(experts);
+	ccv_nnc_tensor_free(tokens);
+	ccv_nnc_tensor_free(weights);
+	ccv_nnc_tensor_free(gathered);
+	ccv_nnc_tensor_free(activation);
+	ccv_nnc_tensor_free(bias);
+	ccv_nnc_tensor_free(logits);
+	ccv_nnc_tensor_free(hactivation);
+	ccv_nnc_tensor_free(hbias);
+	ccv_nnc_tensor_free(hlogits);
+	return status;
+}
+
+TEST_CASE("moe routing breaks ties by lowest expert and weighs alike at every token count on MPS")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_MOE_ROUTING_FORWARD, CCV_NNC_BACKEND_MPS));
+	const int token_counts[] = {1, 16, 17, 100};
+	const int expected[] = {0, 1, 186, 239, 270, 337};
+	int reference_experts[6];
+	float reference_weights[6];
+	REQUIRE_EQ(_moe_routing_tied_run(1, reference_experts, reference_weights), CCV_NNC_EXEC_SUCCESS, "tied routing should execute");
+	REQUIRE_ARRAY_EQ(int, reference_experts, expected, 6, "ties should go to the lowest expert index");
+	int i;
+	for (i = 1; i < sizeof(token_counts) / sizeof(token_counts[0]); i++)
+	{
+		const int token_count = token_counts[i];
+		int* const experts = (int*)malloc(sizeof(int) * token_count * 6);
+		float* const weights = (float*)malloc(sizeof(float) * token_count * 6);
+		REQUIRE_EQ(_moe_routing_tied_run(token_count, experts, weights), CCV_NNC_EXEC_SUCCESS, "tied routing should execute for tokens=%d", token_count);
+		int token;
+		for (token = 0; token < token_count; token++)
+		{
+			REQUIRE_ARRAY_EQ(int, experts + token * 6, expected, 6, "ties should go to the lowest expert index for tokens=%d", token_count);
+			REQUIRE(memcmp(weights + token * 6, reference_weights, sizeof(float) * 6) == 0, "weights should match one token's bit for bit for tokens=%d", token_count);
+		}
+		free(weights);
+		free(experts);
+	}
+}
+
 TEST_CASE("moe routing additive epsilon preserves legacy normalization and rejects invalid values on CPU")
 {
 	const int expert_count = 384;
