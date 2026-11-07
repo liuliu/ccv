@@ -17,7 +17,8 @@ bool NAMatMulKernelDescriptor::operator==(const NAMatMulKernelDescriptor& rhs) c
   (loadM == rhs.loadM) &&
   (useLeadingDimensions == rhs.useLeadingDimensions) &&
   (groupM == rhs.groupM) &&
-  (groupN == rhs.groupN);
+  (groupN == rhs.groupN) &&
+  (fp32Accumulation == rhs.fp32Accumulation);
 }
 
 std::size_t std::hash<NAMatMulKernelDescriptor>::operator()(const NAMatMulKernelDescriptor& hash) const noexcept {
@@ -28,7 +29,7 @@ std::size_t std::hash<NAMatMulKernelDescriptor>::operator()(const NAMatMulKernel
   seed = combine_64(seed, pack_64(simd::ushort4 { hash.registerPrecisions.A.value, hash.registerPrecisions.B.value, hash.registerPrecisions.C.value, hash.registerPrecisions.bias.value }));
   seed = combine_64(seed, pack_64(simd::ushort4 { hash.splitK, hash.executionSIMDGroups, uint16_t(hash.threadBarrierOverK), 0 }));
   seed = combine_32(seed, pack_32(simd::uchar4 { hash.transposeState[0], hash.transposeState[1], hash.transposeState[2], hash.useBias }));
-  seed = combine_32(seed, pack_32(simd::uchar4 { hash.loadM, hash.useLeadingDimensions, 0, 0 }));
+  seed = combine_32(seed, pack_32(simd::uchar4 { hash.loadM, hash.useLeadingDimensions, hash.fp32Accumulation, 0 }));
   seed = combine_32(seed, hash.groupM);
   seed = combine_32(seed, hash.groupN);
   return seed;
@@ -36,7 +37,7 @@ std::size_t std::hash<NAMatMulKernelDescriptor>::operator()(const NAMatMulKernel
 
 // MARK: - Initializer
 
-NAMatMulKernelDescriptor::NAMatMulKernelDescriptor(simd::ushort3 blockDimensions, GEMMOperandPrecisions memoryPrecisions, GEMMOperandPrecisions registerPrecisions, uint16_t splitK, uint16_t executionSIMDGroups, bool threadBarrierOverK, simd::uchar3 transposeState, bool useBias, bool loadM, uint32_t groupM, uint32_t groupN, bool useLeadingDimensions) noexcept {
+NAMatMulKernelDescriptor::NAMatMulKernelDescriptor(simd::ushort3 blockDimensions, GEMMOperandPrecisions memoryPrecisions, GEMMOperandPrecisions registerPrecisions, uint16_t splitK, uint16_t executionSIMDGroups, bool threadBarrierOverK, simd::uchar3 transposeState, bool useBias, bool loadM, uint32_t groupM, uint32_t groupN, bool useLeadingDimensions, bool fp32Accumulation) noexcept {
   this->blockDimensions = blockDimensions;
   this->memoryPrecisions = memoryPrecisions;
   this->registerPrecisions = registerPrecisions;
@@ -49,4 +50,5 @@ NAMatMulKernelDescriptor::NAMatMulKernelDescriptor(simd::ushort3 blockDimensions
   this->useLeadingDimensions = useLeadingDimensions;
   this->groupM = groupM;
   this->groupN = groupN;
+  this->fp32Accumulation = fp32Accumulation;
 }
