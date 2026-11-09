@@ -51,7 +51,7 @@ static int _ccv_nnc_softmax_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t h
 				MPSGraphTensor* mps_input_a;
 				MPSGraphTensor* mps_a = ccv_nnc_mps_graph_tensor_input(graph, b, b->info.dim, b->stride, &mps_input_a);
 				[inputTensors addObject:mps_input_a];
-				MPSGraphShapedType* mps_a_shape = ccv_nnc_mps_graph_tensor_input_shape(a, a->info.dim, a->stride);
+				MPSGraphShapedType* mps_a_shape = ccv_nnc_mps_graph_tensor_input_shape(b, b->info.dim, b->stride);
 				[inputShapedTypes addObject:mps_a_shape];
 				MPSGraphTensor* mps_min = [graph constantWithScalar:0 dataType:ccv_nnc_mps_datatype(b->info.datatype)];
 				MPSGraphTensor* mps_b = [graph maximumWithPrimaryTensor:mps_a secondaryTensor:mps_min name:nil];
