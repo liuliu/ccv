@@ -61,6 +61,14 @@ static bool _ccv_nnc_mfa_gemm_memory_precisions(const ccv_nnc_mfa_gemm_params_t 
   return true;
 }
 
+// The element size of NAMatMul's split-K partial sums. FP16 with an FP32
+// register precision keeps the partials in FP32 (NAMatMulKernel::fp32Accumulation);
+// the reserved size and the encoded request must agree on it.
+static size_t _ccv_nnc_mfa_na_matmul_split_k_partial_size(const ccv_nnc_mfa_gemm_params_t params, const size_t datatype_size) noexcept
+{
+  return (params.data_type == MTL::DataTypeHalf && params.register_float) ? sizeof(float) : datatype_size;
+}
+
 static bool _ccv_nnc_mfa_use_na_matmul_small_m(const ccv_nnc_mfa_gemm_params_t params) noexcept
 {
   // This variant targets small M over transposed weights:
@@ -95,6 +103,7 @@ static NAMatMulSmallMDescriptor _ccv_nnc_mfa_make_na_matmul_small_m_descriptor(c
   desc.useBias = params.fused_bias;
   desc.batchDimension = params.batch_dimension;
   desc.loadM = params.loadM;
+  desc.fp32Accumulation = params.data_type == MTL::DataTypeHalf && params.register_float;
   return desc;
 }
 
@@ -243,7 +252,7 @@ size_t ccv_nnc_mfa_gemm_reserved_scratch_size(ccv_nnc_mfa_gemm_params_t params)
     } else {
       gemmDesc.batchStrides = std::nullopt;
     }
-    return datatype_size * params.M * params.N * gemmDesc.splitK() * params.batch_dimension;
+    return _ccv_nnc_mfa_na_matmul_split_k_partial_size(params, datatype_size) * params.M * params.N * gemmDesc.splitK() * params.batch_dimension;
   } else {
     return 0;
   }
@@ -357,7 +366,9 @@ void ccv_nnc_mfa_encode_gemm(mfa::context* context, ccv_nnc_mfa_gemm_params_t pa
     encoder->useResource(tensors[1], MTL::ResourceUsageRead);
     MTL::Buffer *scratch = NULL;
     if (kernel->splitK > 1) {
-      scratch = context->request_scratch(datatype_size * params.M * params.N * kernel->splitK * params.batch_dimension);
+      const size_t partial_size = kernel->splitKPartialElementSize();
+      CCV_NNC_MFA_PRECONDITION(partial_size == _ccv_nnc_mfa_na_matmul_split_k_partial_size(params, datatype_size));
+      scratch = context->request_scratch(partial_size * params.M * params.N * kernel->splitK * params.batch_dimension);
       encoder->useResource(scratch, MTL::ResourceUsageWrite);
     } else {
       encoder->useResource(tensors[2], MTL::ResourceUsageWrite);

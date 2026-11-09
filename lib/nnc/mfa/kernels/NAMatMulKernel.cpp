@@ -58,6 +58,7 @@ NAMatMulKernel::NAMatMulKernel(NAMatMulKernelDescriptor descriptor, MTL::Device 
   useLeadingDimensions = descriptor.useLeadingDimensions;
   groupM = descriptor.groupM;
   groupN = descriptor.groupN;
+  fp32Accumulation = descriptor.fp32Accumulation;
 
   /// The number of threads per group.
   source = createSource();
@@ -71,6 +72,10 @@ NAMatMulKernel::NAMatMulKernel(NAMatMulKernelDescriptor descriptor, MTL::Device 
     options->setLanguageVersion(MTL::LanguageVersion(0x40000));
   library = NS::TransferPtr(device->newLibrary(string, options.get(), &error));
   CCV_NNC_MFA_CHECK_ERROR(error);
+}
+
+size_t NAMatMulKernel::splitKPartialElementSize() const noexcept {
+  return fp32Accumulation ? sizeof(float) : memoryPrecisions.C.size();
 }
 
 uint16_t NAMatMulKernel::threadgroupSize(MTL::ComputePipelineState *const pipelineState, const NAMatMulDescriptor &descriptor) const noexcept {
@@ -180,13 +185,22 @@ inline uint2 morton_decode_rectangular_2d(uint code,
   source.SetValue("MEMORY_NAME_B", memoryName('B'));
   source.SetValue("MEMORY_NAME_C", memoryName('C'));
   source.SetValue("MEMORY_NAME_BIAS", memoryName('S'));
-  if (registerPrecisions.C.value == GEMMOperandPrecision::FP32 && memoryPrecisions.C.value != GEMMOperandPrecision::FP32) {
+  // Relaxed precision lets the neural accelerators truncate FP32 operands to a 10-bit mantissa
+  // toward zero, so FP32 operands keep full precision.
+  if ((registerPrecisions.C.value == GEMMOperandPrecision::FP32 && memoryPrecisions.C.value != GEMMOperandPrecision::FP32) ||
+      memoryPrecisions.A.value == GEMMOperandPrecision::FP32 || memoryPrecisions.B.value == GEMMOperandPrecision::FP32) {
     source.SetValue("RELAXED_PRECISION", "false");
   } else {
     source.SetValue("RELAXED_PRECISION", "true");
   }
   source.SetValue("EXECUTION_SIMD_GROUPS", std::to_string(executionSIMDGroups));
-  source.SetValue("REGISTER_NAME_C", memoryName('C'));
+  // The accumulator type. With fp32Accumulation it stays FP32 over the whole K
+  // reduction, and the result rounds to the output type once when stored.
+  const std::string registerNameC = fp32Accumulation ? "float" : memoryName('C');
+  // The element type of C_buf: split-K partial sums keep the accumulator type.
+  const std::string partialNameC = (fp32Accumulation && splitK > 1) ? "float" : memoryName('C');
+  source.SetValue("REGISTER_NAME_C", registerNameC);
+  source.SetValue("PARTIAL_NAME_C", partialNameC);
 
   source += R"(
 
@@ -212,7 +226,7 @@ inline uint2 morton_decode_rectangular_2d(uint code,
 
 kernel void matmul(device {{MEMORY_NAME_A}} *A_buf [[buffer(0)]],
                    device {{MEMORY_NAME_B}} *B_buf [[buffer(1)]],
-                   device {{MEMORY_NAME_C}} *C_buf [[buffer(2)]],
+                   device {{PARTIAL_NAME_C}} *C_buf [[buffer(2)]],
 )";
   if (useBias) {
     source += R"(
@@ -449,7 +463,7 @@ kernel void matmul(device {{MEMORY_NAME_A}} *A_buf [[buffer(0)]],
 )";
   }
   source += R"(
-{{C_STRIDE_DECLARATION}}  auto C = tensor<device {{MEMORY_NAME_C}},  dextents<int32_t, 2>, tensor_inline>(C_buf, dextents<int32_t, 2>(N * {{SPLIT_K}}, M_group_size){{C_TENSOR_STRIDES}});
+{{C_STRIDE_DECLARATION}}  auto C = tensor<device {{PARTIAL_NAME_C}},  dextents<int32_t, 2>, tensor_inline>(C_buf, dextents<int32_t, 2>(N * {{SPLIT_K}}, M_group_size){{C_TENSOR_STRIDES}});
 )";
   if (useBias) {
     if (transposeState[2]) {
@@ -561,11 +575,28 @@ kernel void matmul(device {{MEMORY_NAME_A}} *A_buf [[buffer(0)]],
 )";
   source += R"(
 )";
-  source += R"(
+  if (registerNameC == partialNameC) {
+    source += R"(
     auto mC = C.slice<{{BLOCK_DIMENSIONS_N}}, {{BLOCK_DIMENSIONS_M}}>({{SPLIT_K_STORE_OFFSET}}, M_group_offset);
 )";
-  source += R"(
+    source += R"(
     cT.store(mC);
+)";
+  } else {
+    // cooperative_tensor::store requires the destination element type to match,
+    // so round the FP32 accumulator to the output type element by element.
+    source += R"(
+    auto mC = C_buf + {{EDGE_C_BASE_OFFSET}} + {{SPLIT_K_STORE_OFFSET}};
+    #pragma clang loop unroll(full)
+    for (unsigned short k = 0; k < cT.get_capacity(); ++k) {
+      if(cT.is_valid_element(k)) {
+        auto idx = cT.get_multidimensional_index(k);
+        mC[idx[1] * {{EDGE_C_ROW_STRIDE}} + idx[0]] = {{PARTIAL_NAME_C}}(cT[k]);
+      }
+    }
+)";
+  }
+  source += R"(
   } else {
     // Use dynamic slice for this edge case.
     // descriptor to create matmul operation that does {{BLOCK_DIMENSIONS_K}}x{{BLOCK_DIMENSIONS_M}} times {{BLOCK_DIMENSIONS_N}}x{{BLOCK_DIMENSIONS_K}} producing {{BLOCK_DIMENSIONS_N}}x{{BLOCK_DIMENSIONS_M}}
@@ -576,7 +607,7 @@ kernel void matmul(device {{MEMORY_NAME_A}} *A_buf [[buffer(0)]],
 
     auto mA = A.slice({{A_TILE_0_SIZE}});
     auto mB = B.slice({{B_TILE_0_SIZE}});
-    auto cT = matmul_op.get_destination_cooperative_tensor<decltype(mA), decltype(mB), {{MEMORY_NAME_C}}>();
+    auto cT = matmul_op.get_destination_cooperative_tensor<decltype(mA), decltype(mB), {{REGISTER_NAME_C}}>();
 {{INITIALIZE_C}}
 )";
   if (splitK > 1) {
@@ -604,7 +635,7 @@ kernel void matmul(device {{MEMORY_NAME_A}} *A_buf [[buffer(0)]],
       if(cT.is_valid_element(k)) {
         auto idx = cT.get_multidimensional_index(k);
         if (idx[0] < N_edge && idx[1] < M_edge) {
-          mC[idx[1] * {{EDGE_C_ROW_STRIDE}} + idx[0]] = cT[k];
+          mC[idx[1] * {{EDGE_C_ROW_STRIDE}} + idx[0]] = {{PARTIAL_NAME_C}}(cT[k]);
         }
       }
     }
@@ -616,8 +647,12 @@ kernel void matmul(device {{MEMORY_NAME_A}} *A_buf [[buffer(0)]],
     source.SetValue("BLOCK_DIMENSIONS_N_DIV_2", std::to_string(blockDimensions[1] / 2));
     source.SetValue("BLOCK_DIMENSIONS_N_DIV_2_SPLIT_K", std::to_string(blockDimensions[1] / 2 * splitK));
     source.SetValue("BLOCK_DIMENSIONS_N_SPLIT_K", std::to_string(blockDimensions[1] * splitK));
+    // Partial sums add in segment order in their own type; the sum rounds to
+    // the output type once.
+    source.SetValue("REDUCE_SUM_2_VALUE", fp32Accumulation ? memoryName('C') + "2(val)" : "val");
+    source.SetValue("REDUCE_SUM_VALUE", fp32Accumulation ? memoryName('C') + "(val)" : "val");
     source += R"(
-kernel void reduce_sum_2(device {{MEMORY_NAME_C}}2 *A_buf [[buffer(0)]],
+kernel void reduce_sum_2(device {{PARTIAL_NAME_C}}2 *A_buf [[buffer(0)]],
                          device {{MEMORY_NAME_C}}2 *B_buf [[buffer(1)]],
 )";
     if (loadM) {
@@ -643,15 +678,15 @@ kernel void reduce_sum_2(device {{MEMORY_NAME_C}}2 *A_buf [[buffer(0)]],
     B_buf = B_buf + C_batch_stride / 2 * tpig.y;
   }
   A_buf += tpig.x / {{BLOCK_DIMENSIONS_N_DIV_2}} * {{BLOCK_DIMENSIONS_N_DIV_2_SPLIT_K}} + tpig.x % {{BLOCK_DIMENSIONS_N_DIV_2}};
-  {{MEMORY_NAME_C}}2 val = A_buf[0];
+  {{PARTIAL_NAME_C}}2 val = A_buf[0];
   #pragma clang loop unroll(full)
   for (unsigned int k = 1; k < {{SPLIT_K}}; k++) {
     val += A_buf[k * {{BLOCK_DIMENSIONS_N_DIV_2}}];
   }
-  {{REDUCE_SUM_2_DESTINATION}} = val;
+  {{REDUCE_SUM_2_DESTINATION}} = {{REDUCE_SUM_2_VALUE}};
 }
 
-kernel void reduce_sum(device {{MEMORY_NAME_C}} *A_buf [[buffer(0)]],
+kernel void reduce_sum(device {{PARTIAL_NAME_C}} *A_buf [[buffer(0)]],
                        device {{MEMORY_NAME_C}} *B_buf [[buffer(1)]],
 )";
     if (loadM) {
@@ -677,12 +712,12 @@ kernel void reduce_sum(device {{MEMORY_NAME_C}} *A_buf [[buffer(0)]],
     B_buf = B_buf + C_batch_stride * tpig.y;
   }
   A_buf += tpig.x / {{BLOCK_DIMENSIONS_N}} * {{BLOCK_DIMENSIONS_N_SPLIT_K}} + tpig.x % {{BLOCK_DIMENSIONS_N}};
-  {{MEMORY_NAME_C}} val = A_buf[0];
+  {{PARTIAL_NAME_C}} val = A_buf[0];
   #pragma clang loop unroll(full)
   for (unsigned int k = 1; k < {{SPLIT_K}}; k++) {
     val += A_buf[k * {{BLOCK_DIMENSIONS_N}}];
   }
-  {{REDUCE_SUM_DESTINATION}} = val;
+  {{REDUCE_SUM_DESTINATION}} = {{REDUCE_SUM_VALUE}};
 }
 )";
   }

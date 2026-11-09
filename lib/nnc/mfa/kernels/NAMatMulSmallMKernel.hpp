@@ -18,6 +18,7 @@ struct NAMatMulSmallMKernel {
   uint16_t executionSIMDGroups;
   bool useBias;
   bool loadM;
+  bool fp32Accumulation;
 
   uint16_t threadgroupSize(MTL::ComputePipelineState* const pipelineState) const noexcept;
   MTL::Size threadgroupsPerGrid(const NAMatMulSmallMDescriptor& descriptor) const noexcept;

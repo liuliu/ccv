@@ -240,7 +240,12 @@ kernel void reduce_diagonal(device const int32_t* src [[buffer(0)]],
       sum += src[(split_id * M * {{PACK}} + m * {{PACK}} + p) * N + n];
     }
   }
-  float value = (float)sum * (float)A_scale_buf[m] * (float)B_scale_buf[n];
+  float value;
+  {
+#pragma METAL fp math_mode(safe)
+    // Fixed (acc * a) * b order, as in NAInt8MatMul: fast-math must not reassociate the dequantization.
+    value = ((float)sum * (float)A_scale_buf[m]) * (float)B_scale_buf[n];
+  }
 )";
   if (useBias) {
     source += R"(

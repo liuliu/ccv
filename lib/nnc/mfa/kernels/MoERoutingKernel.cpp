@@ -48,6 +48,8 @@ constant uint token_count [[function_constant(8)]];
 
 inline float stable_log1p(float x)
 {
+	// Fast-math folds (1 + x) - 1 back to x, which drops the compensation.
+#pragma METAL fp math_mode(safe)
 	const float xp1 = 1.0f + x;
 	if (xp1 == 1.0f)
 		return x;
@@ -60,6 +62,54 @@ inline float routing_probability(float x)
 		return 1.0f / (1.0f + precise::exp(-x));
 	const float positive = x > 0.0f ? x : 0.0f;
 	return sqrt(positive + stable_log1p(precise::exp(-abs(x))));
+}
+
+// One SIMD group routes one token: lane l scores experts l, l + 32, ... Ties go to the lowest expert
+// index. The weights' sum stays serial, in slot order. Every lane gets the slots' experts and weights.
+inline void route_token(device const routing_t* logits, device const char* route, const uint token, const uint lane, thread uint* selected_experts, thread float* selected_weights)
+{
+	float probabilities[16];
+	float scores[16];
+	uint taken = 0;
+	for (uint i = 0; i < 16; i++)
+	{
+		const uint expert = i * 32 + lane;
+		const float probability = expert < expert_count ? routing_probability((float)logits[token * expert_count + expert]) : 0.0f;
+		probabilities[i] = probability;
+		const float score = expert < expert_count ? probability + (preselected ? 0.0f : (float)((device const bias_t*)route)[expert]) : -INFINITY;
+		scores[i] = isnan(score) ? -INFINITY : score;
+		if (expert >= expert_count)
+			taken |= 1u << i;
+	}
+	float selected_sum = 0.0f;
+	for (uint slot = 0; slot < kth; slot++)
+	{
+		uint selected;
+		if (preselected)
+			selected = (uint)((device const int*)route)[token * kth + slot];
+		else {
+			float best_score = -INFINITY;
+			uint best_expert = 0xffffffffu;
+			for (uint i = 0; i < 16; i++)
+				if (!(taken & (1u << i)) && (best_expert == 0xffffffffu || scores[i] > best_score))
+				{
+					best_score = scores[i];
+					best_expert = i * 32 + lane;
+				}
+			const float simd_score = simd_max(best_score);
+			selected = simd_min(best_score == simd_score ? best_expert : 0xffffffffu);
+			if (selected % 32 == lane)
+				taken |= 1u << (selected / 32);
+		}
+		const float probability = simd_shuffle(probabilities[selected / 32], (ushort)(selected % 32));
+		selected_experts[slot] = selected;
+		selected_weights[slot] = probability;
+		selected_sum += probability;
+	}
+	const float denominator = normalization_epsilon > 0 ? selected_sum + normalization_epsilon : max(selected_sum, 6.103515625e-5f);
+	const float selected_scale = weight_scale / denominator;
+	for (uint slot = 0; slot < kth; slot++)
+		selected_weights[slot] = selected_weights[slot] * selected_scale;
 }
 
 kernel void moe_routing_t1(
@@ -222,53 +272,14 @@ kernel void moe_routing_tn(
 	if (simd_group < token_count)
 	{
 		const uint token = simd_group;
-		float probabilities[16];
-		float scores[16];
-		uint taken = 0;
-		for (uint i = 0; i < 16; i++)
-		{
-			const uint expert = i * 32 + lane;
-			const float probability = expert < expert_count ? routing_probability((float)logits[token * expert_count + expert]) : 0.0f;
-			probabilities[i] = probability;
-			const float score = expert < expert_count ? probability + (preselected ? 0.0f : (float)((device const bias_t*)route)[expert]) : -INFINITY;
-			scores[i] = isnan(score) ? -INFINITY : score;
-			if (expert >= expert_count)
-				taken |= 1u << i;
-		}
 		uint selected_experts[8];
-		float selected_probabilities[8];
-		float selected_sum = 0.0f;
-		for (uint slot = 0; slot < kth; slot++)
-		{
-			uint selected;
-			if (preselected)
-				selected = (uint)((device const int*)route)[token * kth + slot];
-			else {
-				float best_score = -INFINITY;
-				uint best_expert = 0xffffffffu;
-				for (uint i = 0; i < 16; i++)
-					if (!(taken & (1u << i)) && (best_expert == 0xffffffffu || scores[i] > best_score))
-					{
-						best_score = scores[i];
-						best_expert = i * 32 + lane;
-					}
-				const float simd_score = simd_max(best_score);
-				selected = simd_min(best_score == simd_score ? best_expert : 0xffffffffu);
-				if (selected % 32 == lane)
-					taken |= 1u << (selected / 32);
-			}
-			const float probability = simd_shuffle(probabilities[selected / 32], (ushort)(selected % 32));
-			selected_experts[slot] = selected;
-			selected_probabilities[slot] = probability;
-			selected_sum += probability;
-		}
-		const float denominator = normalization_epsilon > 0 ? selected_sum + normalization_epsilon : max(selected_sum, 6.103515625e-5f);
-		const float selected_scale = weight_scale / denominator;
+		float selected_weights[8];
+		route_token(logits, route, token, lane, selected_experts, selected_weights);
 		if (lane == 0)
 			for (uint slot = 0; slot < kth; slot++)
 			{
 				pair_keys[token * kth + slot] = (selected_experts[slot] << 16) | (token << 8) | slot;
-				pair_weights[token * kth + slot] = selected_probabilities[slot] * selected_scale;
+				pair_weights[token * kth + slot] = selected_weights[slot];
 			}
 	}
 	threadgroup_barrier(mem_flags::mem_threadgroup);
@@ -320,6 +331,182 @@ kernel void moe_routing_tn(
 		const uint token = (sorted_keys[row] >> 8) & 0xffu;
 		gathered[index] = activation[token * hidden + (index - row * hidden)];
 	}
+}
+
+// Any number of tokens of up to 8 experts each, in three dispatches so every token count routes as the
+// few-token kernel does. The pairs' experts and weights go through `gathered`, which the last dispatch
+// overwrites: 1. SIMD group t selects token t's experts with route_token. 2. One threadgroup groups the
+// pairs by (expert, token, slot). 3. Every thread gathers the pairs' rows.
+kernel void moe_routing_many_select(
+	device const routing_t* logits [[buffer(0)]],
+	device const char* route [[buffer(1)]],
+	device char* gathered [[buffer(3)]],
+	constant uint& tokens [[buffer(8)]],
+	uint group [[threadgroup_position_in_grid]],
+	uint lane [[thread_index_in_simdgroup]],
+	uint simd_group [[simdgroup_index_in_threadgroup]],
+	uint simd_groups [[simdgroups_per_threadgroup]])
+{
+	const uint token = group * simd_groups + simd_group;
+	if (token >= tokens)
+		return;
+	uint selected_experts[8];
+	float selected_weights[8];
+	route_token(logits, route, token, lane, selected_experts, selected_weights);
+	device int* const pair_experts = (device int*)gathered;
+	device float* const pair_weights = (device float*)(gathered + (size_t)tokens * kth * sizeof(int));
+	if (lane < kth)
+	{
+		pair_experts[token * kth + lane] = (int)selected_experts[lane];
+		pair_weights[token * kth + lane] = selected_weights[lane];
+	}
+}
+
+// Among the 32 lanes' experts: how many lanes before this one, and after it, hold the same expert.
+inline void moe_routing_lane_rank(const uint expert, const uint lane, thread uint& before, thread uint& after)
+{
+	before = 0;
+	after = 0;
+	for (ushort l = 0; l < 32; l++)
+	{
+		const uint other = simd_shuffle(expert, l);
+		before += (l < lane && other == expert) ? 1 : 0;
+		after += (l > lane && other == expert) ? 1 : 0;
+	}
+}
+
+kernel void moe_routing_many_group(
+	device const char* gathered [[buffer(3)]],
+	device float* route_weights [[buffer(4)]],
+	device int* token_indices [[buffer(5)]],
+	device int* expert_indices [[buffer(6)]],
+	device int* expert_counts [[buffer(7)]],
+	constant uint& tokens [[buffer(8)]],
+	uint tid [[thread_index_in_threadgroup]],
+	uint ntg [[threads_per_threadgroup]],
+	uint lane [[thread_index_in_simdgroup]],
+	uint simd_group [[simdgroup_index_in_threadgroup]],
+	uint simd_groups [[simdgroups_per_threadgroup]])
+{
+	// SIMD group c owns the c-th contiguous range of pairs. A pair's position is its expert's offset,
+	// plus that expert's pairs in the ranges before c, plus those before it in range c, so the pairs
+	// keep (expert, token, slot) order. chunk_counts[c][e] holds range c's count of expert e, then
+	// expert e's write cursor in range c, relative to the expert's offset. Each range is read 32 pairs
+	// at a time, four such batches loaded ahead.
+	threadgroup uint chunk_counts[12][512];
+	threadgroup uint offsets[512];
+	threadgroup uint group_total;
+	const uint pair_count = tokens * kth;
+	device const int* const pair_experts = (device const int*)gathered;
+	device const float* const pair_weights = (device const float*)(gathered + (size_t)pair_count * sizeof(int));
+	const uint chunks = min(simd_groups, 12u);
+	const uint chunk_size = (pair_count + chunks - 1) / chunks;
+	const uint chunk_begin = min(simd_group * chunk_size, pair_count);
+	const uint chunk_end = min(chunk_begin + chunk_size, pair_count);
+	for (uint i = tid; i < chunks * 512; i += ntg)
+		chunk_counts[i / 512][i % 512] = 0;
+	threadgroup_barrier(mem_flags::mem_threadgroup);
+	if (simd_group < chunks)
+		for (uint base = chunk_begin; base < chunk_end; base += 128)
+		{
+			uint experts[4];
+			for (uint j = 0; j < 4; j++)
+			{
+				const uint pair = base + j * 32 + lane;
+				experts[j] = pair < chunk_end ? (uint)pair_experts[pair] : 0xffffffffu;
+			}
+			for (uint j = 0; j < 4; j++)
+			{
+				uint before, after;
+				moe_routing_lane_rank(experts[j], lane, before, after);
+				// The last lane of each expert adds the batch's count.
+				if (experts[j] < expert_count && after == 0)
+					chunk_counts[simd_group][experts[j]] += before + 1;
+				simdgroup_barrier(mem_flags::mem_threadgroup);
+			}
+		}
+	threadgroup_barrier(mem_flags::mem_threadgroup);
+	for (uint expert = tid; expert < expert_count; expert += ntg)
+	{
+		uint total = 0;
+		for (uint c = 0; c < chunks; c++)
+		{
+			const uint count = chunk_counts[c][expert];
+			chunk_counts[c][expert] = total;
+			total += count;
+		}
+		offsets[expert] = total;
+	}
+	threadgroup_barrier(mem_flags::mem_threadgroup);
+	if (tid == 0)
+	{
+		uint offset = 0;
+		uint group = 0;
+		for (uint expert = 0; expert < expert_count; expert++)
+		{
+			const uint count = offsets[expert];
+			offsets[expert] = offset;
+			if (count > 0)
+			{
+				expert_indices[group] = (int)expert;
+				expert_counts[group] = (int)count;
+			}
+			offset += count;
+			group += count > 0 ? 1 : 0;
+		}
+		group_total = group;
+	}
+	threadgroup_barrier(mem_flags::mem_threadgroup);
+	if (simd_group < chunks)
+		for (uint base = chunk_begin; base < chunk_end; base += 128)
+		{
+			uint experts[4];
+			float weights[4];
+			for (uint j = 0; j < 4; j++)
+			{
+				const uint pair = base + j * 32 + lane;
+				experts[j] = pair < chunk_end ? (uint)pair_experts[pair] : 0xffffffffu;
+				weights[j] = pair < chunk_end ? pair_weights[pair] : 0.0f;
+			}
+			for (uint j = 0; j < 4; j++)
+			{
+				const uint pair = base + j * 32 + lane;
+				const uint expert = experts[j];
+				uint before, after;
+				moe_routing_lane_rank(expert, lane, before, after);
+				const bool valid = expert < expert_count;
+				const uint cursor = valid ? chunk_counts[simd_group][expert] : 0;
+				if (valid)
+				{
+					const uint position = offsets[expert] + cursor + before;
+					route_weights[position] = weights[j];
+					token_indices[position] = (int)(pair / kth);
+				}
+				simdgroup_barrier(mem_flags::mem_threadgroup);
+				if (valid && after == 0)
+					chunk_counts[simd_group][expert] = cursor + before + 1;
+				simdgroup_barrier(mem_flags::mem_threadgroup);
+			}
+		}
+	const uint group_count = min(pair_count, expert_count);
+	for (uint group = group_total + tid; group < group_count; group += ntg)
+	{
+		expert_indices[group] = -1;
+		expert_counts[group] = 0;
+	}
+}
+
+kernel void moe_routing_many_gather(
+	device const activation_t* activation [[buffer(2)]],
+	device activation_t* gathered [[buffer(3)]],
+	device const int* token_indices [[buffer(5)]],
+	constant uint& tokens [[buffer(8)]],
+	uint index [[thread_position_in_grid]])
+{
+	const uint row = index / hidden;
+	if (row >= tokens * kth)
+		return;
+	gathered[index] = activation[(uint)token_indices[row] * hidden + (index - row * hidden)];
 }
 )";
 	const std::string shader = source.ToString();

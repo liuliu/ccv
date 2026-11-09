@@ -27,6 +27,9 @@ struct NAMatMulSmallMDescriptor {
   GEMMOperandPrecisions memoryPrecisions;
   bool useBias;
   bool loadM = false;
+  // FP16 output with an FP32 register precision: accumulate, store and reduce
+  // the packed partial sums in FP32, and round to FP16 once.
+  bool fp32Accumulation = false;
 
   bool operator==(const NAMatMulSmallMDescriptor& rhs) const;
 

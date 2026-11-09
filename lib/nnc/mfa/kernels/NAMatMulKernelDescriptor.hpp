@@ -189,12 +189,16 @@ struct NAMatMulKernelDescriptor {
   /// Rebase transposed B to shared N-column groups. 0 disables grouping.
   uint32_t groupN;
 
+  /// Keep the FP16 output's accumulator and split-K partial sums in FP32, and
+  /// round to the output type once after the whole K reduction.
+  bool fp32Accumulation;
+
   // MARK: - Functionality from GEMMDescriptor
   
   NAMatMulKernelDescriptor() = delete;
   
   /// Initialize the kernel descriptor.
-  NAMatMulKernelDescriptor(simd::ushort3 blockDimensions, GEMMOperandPrecisions memoryPrecisions, GEMMOperandPrecisions registerPrecisions, uint16_t splitK, uint16_t executionSIMDGroups, bool threadBarrierOverK, simd::uchar3 transposeState, bool useBias, bool loadM, uint32_t groupM, uint32_t groupN, bool useLeadingDimensions = false) noexcept;
+  NAMatMulKernelDescriptor(simd::ushort3 blockDimensions, GEMMOperandPrecisions memoryPrecisions, GEMMOperandPrecisions registerPrecisions, uint16_t splitK, uint16_t executionSIMDGroups, bool threadBarrierOverK, simd::uchar3 transposeState, bool useBias, bool loadM, uint32_t groupM, uint32_t groupN, bool useLeadingDimensions = false, bool fp32Accumulation = false) noexcept;
   
   bool operator==(const NAMatMulKernelDescriptor& rhs) const;
 };

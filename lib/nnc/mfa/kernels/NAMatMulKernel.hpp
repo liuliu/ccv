@@ -44,6 +44,12 @@ struct NAMatMulKernel {
 
   uint32_t groupN;
 
+  /// Accumulate in FP32 and keep split-K partial sums in FP32 (FP16 output only).
+  bool fp32Accumulation;
+
+  /// The element size of the split-K partial-sum scratch.
+  size_t splitKPartialElementSize() const noexcept;
+
   /// The number of threads per group.
   uint16_t threadgroupSize(MTL::ComputePipelineState *const pipelineState, const NAMatMulDescriptor &descriptor) const noexcept;
 
