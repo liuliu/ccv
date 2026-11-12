@@ -504,6 +504,9 @@ inline void segmented_int8_swiglu_routes(
 static void appendSegmentedSwiGLUKernels(
   std::string& shader, const SegmentedInt8SwiGLUKernelDescriptor& descriptor)
 {
+  // TMCQ: gate and up partial sums of each K split, then the half2 pair table (512 floats' worth).
+  const std::string scratch = segmentedTMCQRate(descriptor.format) ?
+    "2 * TMCQ_K_SPLITS * 16 + 512" : "2 * 4 * 16";
   shader += R"(
 kernel void segmented_int8_swiglu(
   device const uchar* gate_weights [[buffer(0)]],
@@ -520,8 +523,9 @@ kernel void segmented_int8_swiglu(
   uint lane [[thread_index_in_simdgroup]])
 {
   threadgroup int route_expert;
-  // Cross-SIMD-group partial sums for the formats that split K (TMCQ); the others leave it unused.
-  threadgroup float route_scratch[2 * 4 * 16];
+  // Cross-SIMD-group partial sums for the formats that split K (TMCQ, followed by its threadgroup
+  // copy of the pair table); the others leave it unused.
+  threadgroup float route_scratch[)" + scratch + R"(];
   segmented_int8_swiglu_routes(
     gate_weights, up_weights, activation, destination, gate_scales, up_scales,
     indices, counts, route_weights, route_expert, route_scratch, threadgroup_position,
@@ -659,8 +663,9 @@ kernel void segmented_int8_swiglu_shared(
   uint lane [[thread_index_in_simdgroup]])
 {
   threadgroup int route_expert;
-  // Cross-SIMD-group partial sums for the formats that split K (TMCQ); the others leave it unused.
-  threadgroup float route_scratch[2 * 4 * 16];
+  // Cross-SIMD-group partial sums for the formats that split K (TMCQ, followed by its threadgroup
+  // copy of the pair table); the others leave it unused.
+  threadgroup float route_scratch[)" + scratch + R"(];
   // Spread the shared threadgroups evenly through the grid, as the Q8_0 shared rows do.
   const uint shared_threadgroups = (shared_nrows + shared_rows_per_threadgroup - 1u) / shared_rows_per_threadgroup;
   const uint total = routed_threadgroups + shared_threadgroups;
@@ -811,8 +816,9 @@ kernel void segmented_int8_swiglu_shared(
   uint lane [[thread_index_in_simdgroup]])
 {
   threadgroup int route_expert;
-  // Cross-SIMD-group partial sums for the formats that split K (TMCQ); the others leave it unused.
-  threadgroup float route_scratch[2 * 4 * 16];
+  // Cross-SIMD-group partial sums for the formats that split K (TMCQ, followed by its threadgroup
+  // copy of the pair table); the others leave it unused.
+  threadgroup float route_scratch[)" + scratch + R"(];
   threadgroup float partials[4][32];
   // Spread the shared threadgroups evenly through the grid: grouping them at either end leaves
   // most of the routed work without bandwidth-bound neighbors.
@@ -1202,11 +1208,12 @@ inline float stable_sigmoid(const float value)
   return shader;
 }
 
-// TMCQ routes: each SIMD group owns one 16-row tile row of the routed expert's gate and up weights
-// (64 rows per threadgroup), with the lane mapping of the segmented TMCQ GEMV: lanes 0-15 take
-// rows 0-15 of the even tiles along K, lanes 16-31 those of the odd tiles, and the 16 lanes of a
-// half share each activation load. Gate and up each finish their whole dot product and take their
-// row scale before the clamp and SiLU, as the other formats do.
+// TMCQ routes: each threadgroup owns one 16-row tile row of the routed expert's gate and up weights,
+// and its SIMD groups split K. Each SIMD group uses the lane mapping of the segmented TMCQ GEMV:
+// lanes 0-15 take rows 0-15 of the even tiles of its K streams, lanes 16-31 those of the odd tiles,
+// and the 16 lanes of a half share each activation load. The codes come from a threadgroup half2
+// copy of the pair table. Gate and up each finish their whole dot product and take their row scale
+// before the clamp and SiLU, as the other formats do.
 static std::string buildTMCQShader(
   const SegmentedInt8SwiGLUKernelDescriptor& descriptor, const uint32_t rate)
 {
@@ -1234,7 +1241,11 @@ constant ulong weight_expert_stride [[function_constant(7)]];
 using namespace metal;
 )";
   shader += ccv_nnc_mfa_tmcq_decode_source();
+  shader += ccv_nnc_mfa_tmcq_w2_source();
   shader += "constant constexpr uint TMCQ_N = " + std::to_string(rate) + ";\n";
+  shader += "constant constexpr uint TMCQ_K_SPLITS = " + std::to_string(kSegmentedInt8SwiGLUTMCQSIMDGroups) + ";\n";
+  shader += "constant constexpr uint TMCQ_K_SIMDGROUPS = " +
+    std::to_string(segmentedInt8SwiGLUTMCQSIMDGroups(descriptor.sharedFused)) + ";\n";
   shader += "constant constexpr uint TMCQ_TILE_WORDS = TMCQ_N / 2;\n";
   shader += R"(
 inline float stable_sigmoid(const float value)
@@ -1246,8 +1257,12 @@ inline float stable_sigmoid(const float value)
 )";
   appendRoutesSignature(shader);
   shader += R"(
-  // One threadgroup per 16-row tile row; its SIMD groups split K and add up in route_scratch.
-  constexpr uint k_simdgroups = )" + std::to_string(kSegmentedInt8SwiGLUTMCQSIMDGroups) + R"(;
+  // One threadgroup per 16-row tile row. K is split k_splits ways and the partial sums add up in
+  // route_scratch in split order. Each SIMD group takes splits simdgroup_index, + k_simdgroups, ...:
+  // one with eight SIMD groups, two with the four of a fused shared expert, which keeps the routed
+  // rows bit for bit the same either way.
+  constexpr uint k_splits = TMCQ_K_SPLITS;
+  constexpr uint k_simdgroups = TMCQ_K_SIMDGROUPS;
   const uint tile_rows = nrows / 16u;
   const uint threadgroups_per_route = tile_rows;
   const uint route = threadgroup_position / threadgroups_per_route;
@@ -1266,6 +1281,8 @@ inline float stable_sigmoid(const float value)
       row_offset = next_row_offset;
     }
   }
+  threadgroup half2* const table = (threadgroup half2*)(route_scratch + 2u * k_splits * 16u);
+  tmcq_w2_load_table(table, simdgroup_index * 32u + lane, 32u * k_simdgroups);
   threadgroup_barrier(mem_flags::mem_threadgroup);
   const int expert = route_expert;
   if (expert < 0 || expert >= (int)expert_count)
@@ -1294,37 +1311,39 @@ inline float stable_sigmoid(const float value)
   device const real4* activation4 = (device const real4*)activation;
 
   const uint r = lane & 15u;
-  float gate_sum = 0;
-  float up_sum = 0;
-  // ncols % 256 == 0, so every one of the 2 * k_simdgroups streams runs the same number of steps.
-  for (uint tc = simdgroup_index * 2u + (lane >> 4); tc < tiles_per_row; tc += 2u * k_simdgroups) {
-    const ulong tile_word = (ulong)tc * TMCQ_TILE_WORDS;
-    device const uint* gate_tile = gate_tiles + tile_word;
-    device const uint* up_tile = up_tiles + tile_word;
-    const float4 y0 = float4(activation4[tc * 4u + 0u]);
-    const float4 y1 = float4(activation4[tc * 4u + 1u]);
-    const float4 y2 = float4(activation4[tc * 4u + 2u]);
-    const float4 y3 = float4(activation4[tc * 4u + 3u]);
-    int4 g[4];
-    int4 u[4];
-    tmcq_decode_row16(gate_tile, TMCQ_N, r, g, tmcq_table);
-    tmcq_decode_row16(up_tile, TMCQ_N, r, u, tmcq_table);
-    gate_sum += dot(float4(g[0]), y0) + dot(float4(g[1]), y1) + dot(float4(g[2]), y2) + dot(float4(g[3]), y3);
-    up_sum += dot(float4(u[0]), y0) + dot(float4(u[1]), y1) + dot(float4(u[2]), y2) + dot(float4(u[3]), y3);
-  }
-  gate_sum += simd_shuffle_xor(gate_sum, 16);
-  up_sum += simd_shuffle_xor(up_sum, 16);
-  if (lane < 16) {
-    route_scratch[simdgroup_index * 16u + r] = gate_sum;
-    route_scratch[(k_simdgroups + simdgroup_index) * 16u + r] = up_sum;
+  for (uint split = simdgroup_index; split < k_splits; split += k_simdgroups) {
+    float gate_sum = 0;
+    float up_sum = 0;
+    // ncols % 256 == 0, so every one of the 2 * k_splits streams runs the same number of steps.
+    for (uint tc = split * 2u + (lane >> 4); tc < tiles_per_row; tc += 2u * k_splits) {
+      const ulong tile_word = (ulong)tc * TMCQ_TILE_WORDS;
+      device const uint* gate_tile = gate_tiles + tile_word;
+      device const uint* up_tile = up_tiles + tile_word;
+      const float4 y0 = float4(activation4[tc * 4u + 0u]);
+      const float4 y1 = float4(activation4[tc * 4u + 1u]);
+      const float4 y2 = float4(activation4[tc * 4u + 2u]);
+      const float4 y3 = float4(activation4[tc * 4u + 3u]);
+      half4 g[4];
+      half4 u[4];
+      tmcq_w2_decode_row16(gate_tile, TMCQ_N, r, g, table);
+      tmcq_w2_decode_row16(up_tile, TMCQ_N, r, u, table);
+      gate_sum += dot(float4(g[0]), y0) + dot(float4(g[1]), y1) + dot(float4(g[2]), y2) + dot(float4(g[3]), y3);
+      up_sum += dot(float4(u[0]), y0) + dot(float4(u[1]), y1) + dot(float4(u[2]), y2) + dot(float4(u[3]), y3);
+    }
+    gate_sum += simd_shuffle_xor(gate_sum, 16);
+    up_sum += simd_shuffle_xor(up_sum, 16);
+    if (lane < 16) {
+      route_scratch[split * 16u + r] = gate_sum;
+      route_scratch[(k_splits + split) * 16u + r] = up_sum;
+    }
   }
   threadgroup_barrier(mem_flags::mem_threadgroup);
   if (simdgroup_index == 0 && lane < 16) {
-    gate_sum = 0;
-    up_sum = 0;
-    for (uint s = 0; s < k_simdgroups; ++s) {
+    float gate_sum = 0;
+    float up_sum = 0;
+    for (uint s = 0; s < k_splits; ++s) {
       gate_sum += route_scratch[s * 16u + r];
-      up_sum += route_scratch[(k_simdgroups + s) * 16u + r];
+      up_sum += route_scratch[(k_splits + s) * 16u + r];
     }
     const uint row = tile_row * 16u + r;
     float gate0 = gate_sum * (float)gate_scales[row];

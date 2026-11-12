@@ -124,7 +124,10 @@ void ccv_nnc_mfa_encode_segmented_int8_swiglu(
   }
 
   const MTL::Size gridSize(routedThreadgroups + sharedThreadgroups, 1, 1);
-  const MTL::Size threadgroupSize(128, 1, 1);
+  // 128 threads, or for TMCQ one SIMD group per K split.
+  const NS::UInteger threadgroupThreads = segmentedTMCQRate(params.format) ?
+    32 * segmentedInt8SwiGLUTMCQSIMDGroups(params.shared_rows > 0) : 128;
+  const MTL::Size threadgroupSize(threadgroupThreads, 1, 1);
   encoder->dispatchThreadgroups(gridSize, threadgroupSize);
   commandBatch->finishCommand(encoder);
 }
