@@ -109,6 +109,7 @@ struct Pipelines {
   uint32_t gemv_rows_per_threadgroup = 0;
   // Packed direct GEMV rows per threadgroup: 2 for most formats, a 16-row tile row for TMCQ.
   uint32_t scaled_x_rows_per_threadgroup = kInt8GemvRowsPerThreadgroup;
+  uint32_t scaled_x_threads_per_threadgroup = kInt8GemvSIMDGroupsPerThreadgroup * 32;
 };
 
 constexpr FormatInfo kRowwiseFormat = { 0, "rowwise" };
@@ -125,7 +126,9 @@ constexpr FormatInfo kPackedFormats[] = {
   { CCV_NNC_QX_8I_ROWWISE_IQ3_S, "iq3_s" },
   { CCV_NNC_QX_8I_ROWWISE_IQ3_XXS, "iq3_xxs" },
   { CCV_NNC_QX_8I_ROWWISE_IQ1_S, "iq1_s" },
+  { CCV_NNC_QX_8I_ROWWISE_TMCQ_N18, "tmcq_n18" },
   { CCV_NNC_QX_8I_ROWWISE_TMCQ_N22, "tmcq_n22" },
+  { CCV_NNC_QX_8I_ROWWISE_TMCQ_N26, "tmcq_n26" },
 };
 
 bool is_tmcq_format(const uint32_t format)
@@ -455,6 +458,7 @@ Pipelines create_pipelines(
     scaled_x_desc.format = packed_format;
     scaled_x_desc.mrows = (uint8_t)mrows;
     pipelines.scaled_x_rows_per_threadgroup = scaled_x_desc.rowsPerThreadgroup();
+    pipelines.scaled_x_threads_per_threadgroup = scaled_x_desc.threadsPerThreadgroup();
   }
   pipelines.gemv_rows_per_threadgroup = GemvDescriptor::rowsPerThreadgroup(device);
   return pipelines;
@@ -604,7 +608,7 @@ void encode_scaled_x_gemv(
     encoder->setBuffer(bias, 0, 4);
   encoder->dispatchThreadgroups(
       MTL::Size(ceil_div(shape.rows, pipelines.scaled_x_rows_per_threadgroup), 1, 1),
-      MTL::Size(kInt8GemvSIMDGroupsPerThreadgroup * 32, 1, 1));
+      MTL::Size(pipelines.scaled_x_threads_per_threadgroup, 1, 1));
 }
 
 double run_raw_once(
@@ -1024,7 +1028,7 @@ int run_shape(
 void print_usage(const char* const argv0)
 {
   std::cerr << "usage: " << argv0 << " [--dtype fp16|bf16|fp32] "
-            << "[--format rowwise|q5_k|q6_k|q4_k|q3_k|q2_k|iq2_xxs|iq2_s|iq2_xs|iq3_s|iq3_xxs|iq1_s|tmcq_n22] [--all-formats] "
+            << "[--format rowwise|q5_k|q6_k|q4_k|q3_k|q2_k|iq2_xxs|iq2_s|iq2_xs|iq3_s|iq3_xxs|iq1_s|tmcq_n18|tmcq_n22|tmcq_n26] [--all-formats] "
             << "[--bias 0|1] [--mrows 1|2|3] [--shape rows cols] [--runs 20] [--warmup 3] "
             << "[--dispatches 5] [--sleep-ms 200]\n";
 }
