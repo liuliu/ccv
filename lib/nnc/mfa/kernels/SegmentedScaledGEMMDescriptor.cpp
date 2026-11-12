@@ -14,6 +14,8 @@ static void serializeBinaries(MTL::BinaryArchive* const binaryArchive, const std
 }
 
 // IQ2_XXS, Q2_K and IQ3_XXS expand weight fragments in registers for 32-row tiles at every M.
+// TMCQ is not among them: its 16 x 16 tiles map whole onto the threadgroup path's 128 x 128 weight
+// block (8 x 8 tiles), so it takes that path like the other packed formats.
 static bool usesRegisterTiles(const uint32_t format) noexcept
 {
   return format == CCV_NNC_QX_8I_ROWWISE_IQ2_XXS || format == CCV_NNC_QX_8I_ROWWISE_Q2_K || format == CCV_NNC_QX_8I_ROWWISE_IQ3_XXS;

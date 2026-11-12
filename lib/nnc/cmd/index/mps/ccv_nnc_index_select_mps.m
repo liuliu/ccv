@@ -48,6 +48,10 @@ static int _ccv_nnc_index_select_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hin
 	{
 		const int a_qx_subtype = a->info.datatype & 0xf00;
 		assert(a_qx_subtype == CCV_NNC_QX_8I_ROWWISE || a_qx_subtype == CCV_NNC_QX_8I_ROWWISE_X);
+		// TMCQ tiles span 16 rows, so a TMCQ table cannot be gathered row by row: TMCQ does not
+		// support IndexSelect (embeddings), reject it rather than decode garbage.
+		if (a_qx_subtype == CCV_NNC_QX_8I_ROWWISE_X && ccv_nnc_8i_rowwise_x_is_tmcq((int)a->info.reserved))
+			return CCV_NNC_EXEC_INVALID;
 		assert(a_nd == 2);
 		assert(b_nd == 2);
 		assert(indices->info.datatype == CCV_32S);

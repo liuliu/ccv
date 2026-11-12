@@ -1,4 +1,5 @@
 #include "Dequantize8iRowwiseXFPKernel.hpp"
+#include "TMCQDecodeSource.hpp"
 #include "../ccv_nnc_mfa.hpp"
 
 #include "../../ccv_nnc_8i_rowwise_packed_grids.inc"
@@ -148,6 +149,62 @@ inline void decode_group(device const uchar* source, const ulong group_index, th
 }
 }
 
+namespace {
+
+static bool is_tmcq(const uint32_t format)
+{
+	const uint32_t codec = format & CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK;
+	return codec >= CCV_NNC_QX_8I_ROWWISE_TMCQ_N16 && codec <= CCV_NNC_QX_8I_ROWWISE_TMCQ_N32;
+}
+
+// TMCQ fp decode, the fallback for paths that take floating-point weights. Same thread mapping
+// as the int8 decode in Dequantize8iRowwiseXKernel.cpp: one thread per row segment (16 weights of
+// one row inside one tile), consecutive threads on consecutive tile columns of the same row. The
+// weight is the exact float product q8 * scale (q8 has at most 8 significant bits), rounded once
+// to the output type like the CPU decode.
+static std::string create_tmcq_fp_source(const uint32_t format)
+{
+	const uint32_t n = 16 + 2 * ((format & CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK) - CCV_NNC_QX_8I_ROWWISE_TMCQ_N16);
+	std::string shader = R"(
+#include <metal_stdlib>
+using namespace metal;
+)";
+	shader += "constant uint tmcq_n = " + std::to_string(n) + ";\n";
+	shader += "constant uint tmcq_tile_words = " + std::to_string(n / 2) + ";\n";
+	shader += ccv_nnc_mfa_tmcq_decode_source();
+	shader += R"(
+kernel void dequantize_8i_rowwise_x_fp(
+  device const uchar* source [[buffer(0)]],
+  device uchar* destination [[buffer(1)]],
+  device const real* scales [[buffer(2)]],
+
+  uint3 tgid [[threadgroup_position_in_grid]],
+  ushort lid [[thread_index_in_threadgroup]]
+) {
+  const uint x = tgid.x * threadgroup_size + lid;
+  // total_groups tiles of 16 segments each.
+  if (x >= total_groups * 16u)
+    return;
+  const uint tiles_per_row = row_length >> 4;
+  const uint row = x / tiles_per_row;
+  const uint tc = x - row * tiles_per_row;
+  const ulong tile_index = (ulong)(row >> 4) * tiles_per_row + tc;
+  device const uint* tile = reinterpret_cast<device const uint*>(source) + tile_index * tmcq_tile_words;
+  int4 q[4];
+  tmcq_decode_row16(tile, tmcq_n, row & 15u, q, tmcq_table);
+  const float scale = (float)scales[row];
+  device vec<real, 4>* destination4 = reinterpret_cast<device vec<real, 4>*>(reinterpret_cast<device real*>(destination) + (ulong)row * row_length + (tc << 4));
+  destination4[0] = vec<real, 4>(float4(q[0]) * scale);
+  destination4[1] = vec<real, 4>(float4(q[1]) * scale);
+  destination4[2] = vec<real, 4>(float4(q[2]) * scale);
+  destination4[3] = vec<real, 4>(float4(q[3]) * scale);
+}
+)";
+	return shader;
+}
+
+}
+
 Dequantize8iRowwiseXFPKernel::Dequantize8iRowwiseXFPKernel(Dequantize8iRowwiseXFPKernelDescriptor descriptor, MTL::Device* const device)
 {
 	format = descriptor.format;
@@ -165,6 +222,9 @@ MTL::Size Dequantize8iRowwiseXFPKernel::gridSize(uint32_t groups, uint32_t group
 {
 	// Each SIMD group recovers one H256 block; ordinary decode uses one
 	// thread per packed group. Derive dispatch from the current descriptor.
+	// TMCQ uses 16 threads per tile (one per row segment), so 16 tiles per threadgroup.
+	if (is_tmcq(format))
+		return MTL::Size((groups + 15) / 16, 1, 1);
 	const uint32_t groupsPerThreadgroup = (format & CCV_NNC_QX_8I_ROWWISE_HADAMARD_256) ? 8 * (256 / groupSize) : 256;
 	return MTL::Size((groups + groupsPerThreadgroup - 1) / groupsPerThreadgroup, 1, 1);
 }
@@ -172,6 +232,8 @@ MTL::Size Dequantize8iRowwiseXFPKernel::gridSize(uint32_t groups, uint32_t group
 std::string Dequantize8iRowwiseXFPKernel::createSource() const noexcept
 {
 	const uint32_t codec = format & CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK;
+	if (is_tmcq(format))
+		return createConstants() + "\n" + create_tmcq_fp_source(format);
 	std::string shader = createConstants() + "\n";
 	if (codec == CCV_NNC_QX_8I_ROWWISE_IQ2_XXS) {
 		append_compact_grid(shader, "iq2xxs_grid", ccv_nnc_8i_rowwise_packed_iq2xxs_grid, 256, [](const uint16_t value) { return (uint32_t)value; });

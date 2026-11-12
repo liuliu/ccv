@@ -131,3 +131,51 @@ void ccv_nnc_mps_dequantize_8i_rowwise_x(const void* input, const int datatype, 
 	ccv_nnc_mfa_encode_dequantize_8i_rowwise_x_fp(context, params, command_batch, tensors, tensor_offsets);
 	ccv_nnc_stream_context_finish_command_batch(0, command_batch);
 }
+
+void ccv_nnc_mps_dequantize_8i_rowwise_x_to_8i_rowwise(const void* input, const int datatype, const size_t input_length, const size_t row_length, const int format, void* output, const size_t output_length, void* const command_buffer)
+{
+	(void)input_length;
+	(void)command_buffer;
+	uint32_t mtl_data_type = UINT32_MAX;
+	switch (datatype) {
+		case CCV_16F: {
+			mtl_data_type = 16;
+			break;
+		}
+		case CCV_16BF: {
+			mtl_data_type = 121;
+			break;
+		}
+		case CCV_32F: {
+			mtl_data_type = 3;
+			break;
+		}
+		default: {
+			break;
+		}
+	}
+	assert(mtl_data_type != UINT32_MAX);
+	assert(!(format & CCV_NNC_QX_8I_ROWWISE_HADAMARD_256));
+	ccv_nnc_mfa_dequantize_8i_rowwise_x_params_t params = {
+		.data_type = mtl_data_type,
+		.format = (uint32_t)format & CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK,
+		.row_length = row_length,
+		.length = output_length,
+	};
+	ccv_nnc_mfa_context_t* context = ccv_nnc_default_mfa_context();
+
+	ccv_nnc_mfa_prepare_dequantize_8i_rowwise_x(context, params);
+
+	mtl_command_batch_t* command_batch = ccv_nnc_stream_context_start_command_batch(0);
+	mtl_buffer_t* tensors[3] = {
+		(mtl_buffer_t*)input,
+		(mtl_buffer_t*)output,
+		NULL,
+	};
+	size_t tensor_offsets[2] = {
+		0,
+		0,
+	};
+	ccv_nnc_mfa_encode_dequantize_8i_rowwise_x(context, params, command_batch, tensors, tensor_offsets);
+	ccv_nnc_stream_context_finish_command_batch(0, command_batch);
+}
