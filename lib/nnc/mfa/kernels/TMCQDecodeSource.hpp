@@ -252,35 +252,52 @@ inline void tmcq_w2_load_table(threadgroup half2* table, uint index, uint count)
     table[i] = tmcq_w2_table[i];
 }
 
-// Codes of row r of a tile as q[0 .. 3] = columns 0-3, ..., 12-15: the same windows and table
-// entries as tmcq_decode_row16, from a half2 table (tmcq_w2_table or a tmcq_w2_load_table copy).
-template <typename Table>
-inline void tmcq_w2_decode_row16(device const uint* tile, uint n, uint r, thread half4* q, Table table)
+// Codes of rows r0 .. r0 + R - 1 of an n = N tile: q[4 * rr .. 4 * rr + 3] are row r0 + rr's columns
+// 0-3, ..., 12-15, with the same windows and table entries as tmcq_decode_row16, from a half2 table
+// (tmcq_w2_table or a tmcq_w2_load_table copy). The R rows are one run of consecutive tile words
+// (mod N / 2), loaded once for all of them: for N = 22 two rows take the same three words as one.
+// N and R are template parameters so that the word and funnel arrays have fixed sizes and stay in
+// registers.
+template <uint N, uint R, typename Table>
+inline void tmcq_w2_decode_rows(device const uint* tile, uint r0, thread half4* q, Table table)
 {
-  const int words = int(n >> 1);
-  const int first = int(r * n + (n >> 4)) - 15;
+  constexpr int words = int(N >> 1);
+  // Bits from the first window of row r0 to the end of row r0 + R - 1, in 32-bit funnels.
+  constexpr uint funnels = (R * N - (N >> 4) + 15u + 31u) >> 5;
+  const int first = int(r0 * N + (N >> 4)) - 15;
   const int w = first >> 5; // -1 only for row 0
   const uint s0 = uint(first) & 31u;
-  const int i0 = w < 0 ? w + words : w;
-  const int i1 = w + 1 >= words ? w + 1 - words : w + 1;
-  const int i2 = w + 2 >= words ? w + 2 - words : w + 2;
-  const uint w0 = tile[i0];
-  const uint w1 = tile[i1];
-  const uint w2 = tile[i2];
-  const uint a = tmcq_funnel(w0, w1, s0);
-  const uint b = tmcq_funnel(w1, w2, s0);
-  half2 c[8];
+  uint x[funnels + 1];
   #pragma clang loop unroll(full)
-  for (uint i = 0; i < 8u; ++i)
+  for (uint m = 0; m <= funnels; ++m)
   {
-    const uint k = (((2u * i + 2u) * n) >> 4) - (n >> 4);
-    const uint window = k + 15u <= 32u ? (a >> k) : ((a >> k) | (b << (32u - k)));
-    c[i] = table[((window & 0x7fffu) * 0x83DCD12Du) >> 23];
+    const int i = w + int(m);
+    x[m] = tile[i < 0 ? i + words : (i >= words ? i - words : i)];
   }
-  q[0] = half4(c[0], c[1]);
-  q[1] = half4(c[2], c[3]);
-  q[2] = half4(c[4], c[5]);
-  q[3] = half4(c[6], c[7]);
+  // One spare funnel so that the not taken arm of the window select below stays in bounds.
+  uint f[funnels + 1];
+  #pragma clang loop unroll(full)
+  for (uint m = 0; m < funnels; ++m)
+    f[m] = tmcq_funnel(x[m], x[m + 1], s0);
+  f[funnels] = 0;
+  #pragma clang loop unroll(full)
+  for (uint rr = 0; rr < R; ++rr)
+  {
+    half2 c[8];
+    #pragma clang loop unroll(full)
+    for (uint i = 0; i < 8u; ++i)
+    {
+      const uint k = rr * N + (((2u * i + 2u) * N) >> 4) - (N >> 4);
+      const uint fi = k >> 5;
+      const uint sub = k & 31u;
+      const uint window = sub + 15u <= 32u ? (f[fi] >> sub) : ((f[fi] >> sub) | (f[fi + 1] << (32u - sub)));
+      c[i] = table[((window & 0x7fffu) * 0x83DCD12Du) >> 23];
+    }
+    q[4 * rr + 0] = half4(c[0], c[1]);
+    q[4 * rr + 1] = half4(c[2], c[3]);
+    q[4 * rr + 2] = half4(c[4], c[5]);
+    q[4 * rr + 3] = half4(c[6], c[7]);
+  }
 }
 )";
 
