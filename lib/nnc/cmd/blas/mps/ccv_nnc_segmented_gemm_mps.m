@@ -277,6 +277,14 @@ static int _ccv_nnc_segmented_gemm_routed_forw(const ccv_nnc_cmd_t cmd, const cc
 		const int w_qx_subtype = w->info.datatype & 0xf00;
 		const int w_qx_8i_rowwise = (w_qx_subtype == CCV_NNC_QX_8I_ROWWISE || w_qx_subtype == CCV_NNC_QX_8I_ROWWISE_X);
 		const uint32_t w_8i_rowwise_x_format = w_qx_subtype == CCV_NNC_QX_8I_ROWWISE_X ? (uint32_t)w->info.reserved : 0;
+		// TMCQ weights are 16 x 16 tiles: each expert must be whole tile rows (N % 16) over whole
+		// 256-weight groups (K % 256), and no codec takes a Hadamard rotation with them. The GEMV
+		// decodes tiles in place; prefill decodes them per weight block or expands the selected experts.
+		const int w_tmcq = ccv_nnc_8i_rowwise_x_is_tmcq(w_8i_rowwise_x_format);
+		const int w_tmcq_supported = !w_tmcq ||
+			(!(w_8i_rowwise_x_format & CCV_NNC_QX_8I_ROWWISE_HADAMARD_256) && (b_cols % 16) == 0 && (w_rows % 256) == 0 &&
+			 // The kernels read tiles as 32-bit words.
+			 (w->dataof % 4) == 0);
 		const int a_datatype = CCV_GET_DATA_TYPE(a->info.datatype) == CCV_QX ? ((a->info.datatype & 0xff) << 12) : a->info.datatype;
 		const int w_datatype = CCV_GET_DATA_TYPE(w->info.datatype) == CCV_QX ? ((w->info.datatype & 0xff) << 12) : w->info.datatype;
 		const int is_same_dtype =
@@ -327,6 +335,7 @@ static int _ccv_nnc_segmented_gemm_routed_forw(const ccv_nnc_cmd_t cmd, const cc
 			ccv_nnc_tensor_count(b->info) <= UINT32_MAX;
 		const int use_segmented_scaled_gemm =
 			w_qx_8i_rowwise &&
+			w_tmcq_supported &&
 			(CCV_GET_DATA_TYPE(a->info.datatype) != CCV_QX) &&
 			(CCV_GET_DATA_TYPE(b->info.datatype) != CCV_QX) &&
 			(!bias || CCV_GET_DATA_TYPE(bias->info.datatype) != CCV_QX) &&
@@ -348,6 +357,7 @@ static int _ccv_nnc_segmented_gemm_routed_forw(const ccv_nnc_cmd_t cmd, const cc
 			((w_rows % 4) == 0) &&
 			(!w_8i_rowwise_x_format ||
 				((w_rows % 256) == 0 && (b_cols % 256) == 0)) &&
+			w_tmcq_supported &&
 			!is_transpose_a &&
 			is_transpose_w &&
 			is_contiguous &&

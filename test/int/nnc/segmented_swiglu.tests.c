@@ -8,6 +8,7 @@
 #include <3rdparty/dsfmt/dSFMT.h>
 #include <math.h>
 #include <string.h>
+#include <nnc/ccv_nnc_tmcq_table.inc>
 
 TEST_SETUP()
 {
@@ -466,11 +467,76 @@ TEST_CASE("MPS segmented SwiGLU executes grouped rowwise int8 prefill")
 	_segmented_swiglu_mps_rowwise_case(0, 0, 1, 10, "Q8_0 grouped prefill", __case_result__);
 }
 
+// TMCQ v1.2 reference decode, written from the codec definition (CCV_NNC_QX_8I_ROWWISE_TMCQ_N16)
+// rather than the library's CPU codec: weight t of a 16 x 16 tile reads the 15-bit LSB-first window of
+// weight t | 1, ending at bit E_{t|1} = (((t | 1) + 1) * n) >> 4 of the tile's 16n bits and wrapping
+// inside the tile, and takes half t & 1 of pair (cw * 0x83DCD12D) >> 23 of the frozen table.
+static int _segmented_swiglu_tmcq_q8(const uint32_t cw, const int half)
+{
+	return ccv_nnc_tmcq_p2_table[2 * ((cw * 0x83DCD12Du) >> 23) + half];
+}
+
+static void _segmented_swiglu_tmcq_decode(const uint8_t* const payload, const int rows, const int cols, const int n, int8_t* const codes)
+{
+	const size_t tile_bits = 16 * (size_t)n;
+	const int tiles_per_row = cols / 16;
+	int tr, tc, t, j;
+	for (tr = 0; tr < rows / 16; tr++)
+		for (tc = 0; tc < tiles_per_row; tc++)
+		{
+			const size_t base = ((size_t)tr * tiles_per_row + tc) * tile_bits;
+			for (t = 0; t < 256; t++)
+			{
+				const size_t end = ((size_t)((t | 1) + 1) * n) >> 4;
+				uint32_t cw = 0;
+				for (j = 0; j < 15; j++)
+				{
+					const size_t bit = base + (end + tile_bits - 15 + j) % tile_bits;
+					cw |= (uint32_t)((payload[bit >> 3] >> (bit & 7)) & 1) << j;
+				}
+				codes[(size_t)(16 * tr + t / 16) * cols + 16 * tc + t % 16] = (int8_t)_segmented_swiglu_tmcq_q8(cw, t & 1);
+			}
+		}
+}
+
+// Random TMCQ weights: any payload bit string is valid. Row scales are stored as `datatype`, and
+// dense gets row scale x code in FP32 from the stored (rounded) scale.
+static void _segmented_swiglu_tmcq_weights(dsfmt_t* const dsfmt, const int format, const int datatype, const int rows, const int k, uint8_t* const packed, float* const dense)
+{
+	const int n = ccv_nnc_8i_rowwise_x_tmcq_rate(format);
+	const size_t payload_size = (size_t)rows * k * n / 128;
+	const size_t scale_offset = (payload_size + 127) & ~(size_t)127;
+	size_t i;
+	for (i = 0; i < scale_offset; i++)
+		packed[i] = dsfmt_genrand_uint32(dsfmt) & 255;
+	float* const scales = (float*)ccmalloc(sizeof(float) * rows);
+	for (i = 0; i < rows; i++)
+		scales[i] = (1 + dsfmt_genrand_open_close(dsfmt)) / 2048;
+	if (datatype == CCV_16F)
+	{
+		ccv_float_to_half_precision(scales, (uint16_t*)(packed + scale_offset), rows);
+		ccv_half_precision_to_float((uint16_t*)(packed + scale_offset), scales, rows);
+	} else
+		memcpy(packed + scale_offset, scales, sizeof(float) * rows);
+	int8_t* const codes = (int8_t*)ccmalloc((size_t)rows * k);
+	_segmented_swiglu_tmcq_decode(packed, rows, k, n, codes);
+	for (i = 0; i < (size_t)rows * k; i++)
+		dense[i] = scales[i / k] * codes[i];
+	ccfree(codes);
+	ccfree(scales);
+}
+
 // Builds packed 8i row-wise X weights directly instead of fitting them with the quantizer, which
 // is slow in debug builds. Every IQ bit pattern decodes within INT8. K-quants scale each code by a
 // per-group multiplier, which is capped here so the decoded codes stay within INT8 as well.
 static void _segmented_swiglu_packed_weights(dsfmt_t* const dsfmt, const int format, const size_t count, const int k, uint8_t* const packed, const size_t packed_size, float* const dense)
 {
+	if (ccv_nnc_8i_rowwise_x_is_tmcq(format))
+	{
+		// The reference decodes TMCQ itself (see _segmented_swiglu_tmcq_decode).
+		_segmented_swiglu_tmcq_weights(dsfmt, format, CCV_32F, (int)(count / k), k, packed, dense);
+		return;
+	}
 	const size_t group_size = ccv_nnc_8i_rowwise_x_group_size(format);
 	const size_t group_bits = ccv_nnc_8i_rowwise_x_group_bits(format);
 	const size_t scale_offset = ((count / group_size * group_bits + 7) / 8 + 127) & ~(size_t)127;
@@ -510,9 +576,11 @@ static void _segmented_swiglu_packed_weights(dsfmt_t* const dsfmt, const int for
 	ccv_nnc_dequantize_8i_rowwise_x(packed, CCV_32F, CCV_TENSOR_CPU_MEMORY, packed_size, k, format, dense, count);
 }
 
-static void _segmented_swiglu_mps_float_rowwise_case(const int format, const int n, const int k, const int large_groups, const int use_neural_accelerators, int* const __case_result__)
+// rows_override > 0 replaces the default 97 / 389 rows: two rows on one expert and the rest split
+// over four more.
+static void _segmented_swiglu_mps_float_rowwise_rows_case(const int format, const int n, const int k, const int large_groups, const int use_neural_accelerators, const int rows_override, int* const __case_result__)
 {
-	const int rows = large_groups ? 389 : 97;
+	const int rows = rows_override > 0 ? rows_override : large_groups ? 389 : 97;
 	const int segments = 6;
 	const int experts = 8;
 	const float clamp = 10;
@@ -548,7 +616,16 @@ static void _segmented_swiglu_mps_float_rowwise_case(const int format, const int
 		hup->data.f32[i] = (float)(dsfmt_genrand_open_close(&dsfmt) - 0.5) / 8;
 	}
 	const int selected[] = { 7, 1, 5, 2, 6, 3 };
-	const int rows_per_segment[] = { 0, 2, large_groups ? 65 : 17, large_groups ? 111 : 31, large_groups ? 99 : 19, large_groups ? 112 : 28 };
+	int rows_per_segment[] = { 0, 2, large_groups ? 65 : 17, large_groups ? 111 : 31, large_groups ? 99 : 19, large_groups ? 112 : 28 };
+	if (rows_override > 0)
+	{
+		assert(rows_override >= 6);
+		const int rest = rows_override - 2;
+		rows_per_segment[2] = rest / 4;
+		rows_per_segment[3] = rest / 4;
+		rows_per_segment[4] = rest / 4;
+		rows_per_segment[5] = rest - 3 * (rest / 4);
+	}
 	memcpy(hindices->data.i32, selected, sizeof(selected));
 	memcpy(hcounts->data.i32, rows_per_segment, sizeof(rows_per_segment));
 	for (i = 0; i < rows; i++)
@@ -689,6 +766,11 @@ static void _segmented_swiglu_mps_float_rowwise_case(const int format, const int
 	ccv_nnc_tensor_free(hup);
 	ccv_nnc_tensor_free(hgate);
 	ccv_nnc_tensor_free(ha);
+}
+
+static void _segmented_swiglu_mps_float_rowwise_case(const int format, const int n, const int k, const int large_groups, const int use_neural_accelerators, int* const __case_result__)
+{
+	_segmented_swiglu_mps_float_rowwise_rows_case(format, n, k, large_groups, use_neural_accelerators, 0, __case_result__);
 }
 
 TEST_CASE("MPS segmented SwiGLU emulates int8 with normalized half values and float scales")
@@ -1000,6 +1082,188 @@ TEST_CASE("MPS segmented SwiGLU packed prefill with neural accelerators")
 	}
 }
 
+
+// TMCQ decode (one input row per routed row, or one broadcast row): the vector path decodes the
+// 16 x 16 tiles in place, one SIMD group per 16-row tile row.
+static void _segmented_swiglu_mps_tmcq_decode_shape_case(const int format, const int datatype, const int rows, const int broadcast_input, const float clamp, const int experts, const int k, int* const __case_result__)
+{
+	// One expert: a single bin holds every row. Otherwise 6 bins over 6 distinct experts.
+	const int segments = experts == 1 ? 1 : 6, n = 256;
+	const int activation_rows = broadcast_input ? 1 : rows;
+	dsfmt_t dsfmt;
+	dsfmt_init_gen_rand(&dsfmt, format * 31 + rows);
+	const ccv_nnc_tensor_param_t dense_params = { .type = CCV_TENSOR_CPU_MEMORY, .format = CCV_TENSOR_FORMAT_NHWC, .datatype = datatype, .dim = { experts, n, k } };
+	const ccv_nnc_tensor_param_t q_params = ccv_nnc_tensor_8i_rowwise_x(dense_params, format);
+	ccv_nnc_tensor_t* const hgate_q = ccv_nnc_tensor_new(0, q_params, 0);
+	ccv_nnc_tensor_t* const hup_q = ccv_nnc_tensor_new(0, q_params, 0);
+	ccv_nnc_tensor_t* const hgate = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, experts, n, k), 0);
+	ccv_nnc_tensor_t* const hup = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, experts, n, k), 0);
+	_segmented_swiglu_tmcq_weights(&dsfmt, format, datatype, experts * n, k, hgate_q->data.u8, hgate->data.f32);
+	_segmented_swiglu_tmcq_weights(&dsfmt, format, datatype, experts * n, k, hup_q->data.u8, hup->data.f32);
+	ccv_nnc_tensor_t* const ha_ref = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, k), 0);
+	ccv_nnc_tensor_t* const hroute_ref = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows), 0);
+	int i, j;
+	for (i = 0; i < activation_rows * k; i++)
+		ha_ref->data.f32[i] = (float)(dsfmt_genrand_open_close(&dsfmt) - 0.5);
+	for (i = 0; i < rows; i++)
+		hroute_ref->data.f32[i] = (float)(i + 1) / (rows + 1);
+	ccv_nnc_tensor_param_t a_params = CPU_TENSOR_NHWC(32F, activation_rows, k);
+	ccv_nnc_tensor_param_t route_params = CPU_TENSOR_NHWC(32F, rows);
+	ccv_nnc_tensor_param_t output_params = CPU_TENSOR_NHWC(32F, rows, n);
+	a_params.datatype = route_params.datatype = output_params.datatype = datatype;
+	ccv_nnc_tensor_t* const ha = ccv_nnc_tensor_new(0, a_params, 0);
+	ccv_nnc_tensor_t* const hroute = ccv_nnc_tensor_new(0, route_params, 0);
+	if (datatype == CCV_16F)
+	{
+		// The reference takes the rounded half inputs.
+		ccv_float_to_half_precision(ha_ref->data.f32, (uint16_t*)ha->data.f16, activation_rows * k);
+		ccv_half_precision_to_float((uint16_t*)ha->data.f16, ha_ref->data.f32, activation_rows * k);
+		ccv_float_to_half_precision(hroute_ref->data.f32, (uint16_t*)hroute->data.f16, rows);
+		ccv_half_precision_to_float((uint16_t*)hroute->data.f16, hroute_ref->data.f32, rows);
+	} else {
+		memcpy(ha->data.f32, ha_ref->data.f32, sizeof(float) * activation_rows * k);
+		memcpy(hroute->data.f32, hroute_ref->data.f32, sizeof(float) * rows);
+	}
+	// The CPU reference takes one input row per routed row.
+	for (i = 1; broadcast_input && i < rows; i++)
+		memcpy(ha_ref->data.f32 + (size_t)i * k, ha_ref->data.f32, sizeof(float) * k);
+	ccv_nnc_tensor_t* const hindices = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, segments), 0);
+	ccv_nnc_tensor_t* const hcounts = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, segments), 0);
+	// experts = 8 gives { 7, 1, 5, 2, 6, 3 }.
+	const int selected[] = { experts == 1 ? 0 : experts - 1, 1, experts / 2 + 1, 2, experts - 2, 3 };
+	int counts[] = { 0, 0, 0, 0, 0, 0 };
+	if (experts == 1)
+		counts[0] = rows;
+	else if (rows == 1)
+		counts[2] = 1;
+	else {
+		assert(rows >= 6);
+		counts[1] = 2;
+		for (i = 2; i < 6; i++)
+			counts[i] = (rows - 2) / 4 + (i == 5 ? (rows - 2) % 4 : 0);
+	}
+	memcpy(hindices->data.i32, selected, sizeof(int) * segments);
+	memcpy(hcounts->data.i32, counts, sizeof(int) * segments);
+	ccv_nnc_tensor_t* const expected = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, n), 0);
+	_segmented_swiglu_reference(ha_ref->data.f32, hindices->data.i32, hcounts->data.i32, hgate->data.f32, hup->data.f32,
+		hroute_ref->data.f32, rows, segments, n, k, clamp, expected->data.f32);
+	ccv_nnc_tensor_param_t gpu_q_params = q_params;
+	gpu_q_params.type = CCV_TENSOR_GPU_MEMORY | 000;
+	a_params.type = route_params.type = output_params.type = CCV_TENSOR_GPU_MEMORY | 000;
+	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, a_params, 0);
+	ccv_nnc_tensor_t* const gate_q = ccv_nnc_tensor_new(0, gpu_q_params, 0);
+	ccv_nnc_tensor_t* const up_q = ccv_nnc_tensor_new(0, gpu_q_params, 0);
+	ccv_nnc_tensor_t* const route = ccv_nnc_tensor_new(0, route_params, 0);
+	ccv_nnc_tensor_t* const indices = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32S, segments), 0);
+	ccv_nnc_tensor_t* const counts_gpu = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32S, segments), 0);
+	ccv_nnc_tensor_t* const output = ccv_nnc_tensor_new(0, output_params, 0);
+	output_params.type = CCV_TENSOR_CPU_MEMORY;
+	ccv_nnc_tensor_t* const actual_raw = ccv_nnc_tensor_new(0, output_params, 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0,
+		TENSOR_LIST(ha, hindices, hcounts, hgate_q, hup_q, hroute),
+		TENSOR_LIST(a, indices, counts_gpu, gate_q, up_q, route), 0);
+	ccv_nnc_cmd_t command = CMD_SEGMENTED_SWIGLU_FORWARD(clamp);
+	command.backend = CCV_NNC_BACKEND_MPS;
+	const uint64_t old_flags = ccv_nnc_flags();
+	ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA);
+	const int status = ccv_nnc_cmd_exec(command, ccv_nnc_no_hint, 0,
+		TENSOR_LIST(a, indices, counts_gpu, gate_q, up_q, route), TENSOR_LIST(output), 0);
+	if (old_flags & CCV_NNC_DISABLE_MFA)
+		ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA);
+	REQUIRE_EQ(status, CCV_NNC_EXEC_SUCCESS, "TMCQ segmented SwiGLU decode should execute: format=%d datatype=%d rows=%d broadcast=%d experts=%d K=%d", format, datatype, rows, broadcast_input, experts, k);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(output), TENSOR_LIST(actual_raw), 0);
+	float* const actual = (float*)ccmalloc(sizeof(float) * rows * n);
+	if (datatype == CCV_16F)
+		ccv_half_precision_to_float((uint16_t*)actual_raw->data.f16, actual, rows * n);
+	else
+		memcpy(actual, actual_raw->data.f32, sizeof(float) * rows * n);
+	for (i = 0; i < rows; i++)
+	{
+		double squared_error = 0, squared_reference = 0;
+		for (j = 0; j < n; j++)
+		{
+			const double value = actual[i * n + j];
+			const double reference = expected->data.f32[i * n + j];
+			REQUIRE(isfinite(value), "TMCQ output should be finite: format=%d row=%d col=%d", format, i, j);
+			squared_error += (value - reference) * (value - reference);
+			squared_reference += reference * reference;
+		}
+		const double relative_l2 = sqrt(squared_error / ccv_max(squared_reference, 1e-20));
+		REQUIRE(relative_l2 < (datatype == CCV_16F ? 5e-3 : 1e-4),
+			"TMCQ decode row should match the spec reference: format=%d datatype=%d rows=%d broadcast=%d clamp=%g experts=%d K=%d row=%d relative L2=%g",
+			format, datatype, rows, broadcast_input, clamp, experts, k, i, relative_l2);
+	}
+	ccfree(actual);
+	ccv_nnc_tensor_t* const tensors[] = {
+		hgate_q, hup_q, hgate, hup, ha_ref, hroute_ref, ha, hroute, hindices, hcounts, expected,
+		a, gate_q, up_q, route, indices, counts_gpu, output, actual_raw,
+	};
+	for (i = 0; i < sizeof(tensors) / sizeof(tensors[0]); i++)
+		ccv_nnc_tensor_free(tensors[i]);
+}
+
+static void _segmented_swiglu_mps_tmcq_decode_case(const int format, const int datatype, const int rows, const int broadcast_input, const float clamp, int* const __case_result__)
+{
+	_segmented_swiglu_mps_tmcq_decode_shape_case(format, datatype, rows, broadcast_input, clamp, 8, 512, __case_result__);
+}
+
+TEST_CASE("MPS segmented SwiGLU decodes TMCQ tiles for one row and short routed batches")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SEGMENTED_SWIGLU_FORWARD, CCV_NNC_BACKEND_MPS));
+	int format;
+	// Every rate in FP32: odd n / 2 (n = 18, 22, ...) puts tile starts off 8-byte boundaries.
+	for (format = CCV_NNC_QX_8I_ROWWISE_TMCQ_N16; format <= CCV_NNC_QX_8I_ROWWISE_TMCQ_N32; format++)
+	{
+		_segmented_swiglu_mps_tmcq_decode_case(format, CCV_32F, 1, 0, 10, __case_result__);
+		_segmented_swiglu_mps_tmcq_decode_case(format, CCV_32F, 6, 0, 10, __case_result__);
+	}
+	const int formats[] = { CCV_NNC_QX_8I_ROWWISE_TMCQ_N16, CCV_NNC_QX_8I_ROWWISE_TMCQ_N18, CCV_NNC_QX_8I_ROWWISE_TMCQ_N32 };
+	int i;
+	for (i = 0; i < sizeof(formats) / sizeof(formats[0]); i++)
+	{
+		_segmented_swiglu_mps_tmcq_decode_case(formats[i], CCV_16F, 1, 0, 10, __case_result__);
+		_segmented_swiglu_mps_tmcq_decode_case(formats[i], CCV_16F, 6, 0, 0, __case_result__);
+		_segmented_swiglu_mps_tmcq_decode_case(formats[i], CCV_32F, 6, 1, 0.25f, __case_result__);
+		_segmented_swiglu_mps_tmcq_decode_case(formats[i], CCV_16F, 18, 0, 10, __case_result__);
+	}
+}
+
+TEST_CASE("MPS segmented SwiGLU TMCQ decode covers K 256 and 7168 over 1 and 64 experts")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SEGMENTED_SWIGLU_FORWARD, CCV_NNC_BACKEND_MPS));
+	// K = 256 is the shortest K split over the 4 SIMD groups (two steps per stream); K = 7168 the
+	// DeepSeek hidden width. One route (1 row) and several: 6 rows over 6 of 64 experts, or 3 rows on
+	// the only expert (the decode path takes at most 3 rows per bin; more go to prefill).
+	const int formats[] = { CCV_NNC_QX_8I_ROWWISE_TMCQ_N16, CCV_NNC_QX_8I_ROWWISE_TMCQ_N22, CCV_NNC_QX_8I_ROWWISE_TMCQ_N32 };
+	const int ks[] = { 256, 7168 };
+	const int experts[] = { 1, 64 };
+	int f, ki, e;
+	for (f = 0; f < sizeof(formats) / sizeof(formats[0]); f++)
+		for (ki = 0; ki < 2; ki++)
+			for (e = 0; e < 2; e++)
+			{
+				_segmented_swiglu_mps_tmcq_decode_shape_case(formats[f], CCV_32F, 1, 0, 10, experts[e], ks[ki], __case_result__);
+				const int rows = experts[e] == 1 ? 3 : 6;
+				_segmented_swiglu_mps_tmcq_decode_shape_case(formats[f], CCV_16F, rows, 0, 10, experts[e], ks[ki], __case_result__);
+				_segmented_swiglu_mps_tmcq_decode_shape_case(formats[f], CCV_32F, rows, 1, 0.25f, experts[e], ks[ki], __case_result__);
+			}
+}
+
+TEST_CASE("MPS segmented SwiGLU TMCQ prefill matches the spec reference at 64 and 512 rows")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SEGMENTED_SWIGLU_FORWARD, CCV_NNC_BACKEND_MPS));
+	// With neural accelerators, 64 rows decode TMCQ tiles inside the segmented scaled GEMM and 512
+	// rows (past 64 per bin) expand the selected experts to int8 first; without them both take
+	// Int8MatMul on the expanded experts.
+	const int formats[] = { CCV_NNC_QX_8I_ROWWISE_TMCQ_N16, CCV_NNC_QX_8I_ROWWISE_TMCQ_N18, CCV_NNC_QX_8I_ROWWISE_TMCQ_N32 };
+	int i, use_neural_accelerators;
+	for (i = 0; i < sizeof(formats) / sizeof(formats[0]); i++)
+		for (use_neural_accelerators = 0; use_neural_accelerators < 2; use_neural_accelerators++)
+		{
+			_segmented_swiglu_mps_float_rowwise_rows_case(formats[i], 256, 512, 1, use_neural_accelerators, 64, __case_result__);
+			_segmented_swiglu_mps_float_rowwise_rows_case(formats[i], 256, 512, 1, use_neural_accelerators, 512, __case_result__);
+		}
+}
 
 TEST_CASE("MPS segmented SwiGLU packed matrix selection preserves small batch boundaries")
 {

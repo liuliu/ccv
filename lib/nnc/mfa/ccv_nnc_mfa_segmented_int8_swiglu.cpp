@@ -1,5 +1,6 @@
 #include "ccv_nnc_mfa.hpp"
 #include "kernels/SegmentedInt8SwiGLUDescriptor.hpp"
+#include "kernels/SegmentedInt8GemvDescriptor.hpp"
 
 using namespace ccv::nnc;
 
@@ -56,7 +57,12 @@ void ccv_nnc_mfa_encode_segmented_int8_swiglu(
     params.format == CCV_NNC_QX_8I_ROWWISE_IQ3_XXS ||
     params.format == CCV_NNC_QX_8I_ROWWISE_Q2_K ||
     params.format == CCV_NNC_QX_8I_ROWWISE_IQ1_S ||
-    params.format == CCV_NNC_QX_8I_ROWWISE_IQ1_M);
+    params.format == CCV_NNC_QX_8I_ROWWISE_IQ1_M ||
+    segmentedTMCQRate(params.format) != 0);
+
+  // TMCQ tiles are read as 32-bit words.
+  CCV_NNC_MFA_PRECONDITION(!segmentedTMCQRate(params.format) ||
+    ((tensorOffsets[0] % 4) == 0 && (tensorOffsets[1] % 4) == 0));
 
   SegmentedInt8SwiGLUDescriptor descriptor;
   descriptor.matrixDimensions = simd::uint2 { params.N, params.K };
@@ -66,7 +72,10 @@ void ccv_nnc_mfa_encode_segmented_int8_swiglu(
   descriptor.broadcastInput = params.broadcast_input;
   descriptor.clamp = params.clamp;
   descriptor.memoryPrecision = ioPrecision(params.data_type);
-  const NS::UInteger threadgroupsPerRoute = (params.N + 3) / 4;
+  // Four rows per threadgroup (one per SIMD group), or for TMCQ one 16-row tile row whose SIMD groups
+  // split K.
+  const NS::UInteger rowsPerThreadgroup = segmentedTMCQRate(params.format) ? 16 : 4;
+  const NS::UInteger threadgroupsPerRoute = (params.N + rowsPerThreadgroup - 1) / rowsPerThreadgroup;
   const NS::UInteger routedThreadgroups = threadgroupsPerRoute * params.M;
   descriptor.sharedRows = params.shared_rows;
   descriptor.routedThreadgroups = params.shared_rows > 0 ? (uint32_t)routedThreadgroups : 0;

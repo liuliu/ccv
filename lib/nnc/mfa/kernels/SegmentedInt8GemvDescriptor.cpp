@@ -40,6 +40,9 @@ std::size_t std::hash<SegmentedInt8GemvDescriptor>::operator()(
 
 uint32_t SegmentedInt8GemvDescriptor::groupSize() const noexcept
 {
+  // One 16 x 16 TMCQ tile is a 256-weight group; see CCV_NNC_QX_8I_ROWWISE_TMCQ_N16.
+  if (segmentedTMCQRate(format))
+    return 256;
   switch (format) {
     case 0:
       return 0;
@@ -72,6 +75,10 @@ uint32_t SegmentedInt8GemvDescriptor::groupsPerRow() const noexcept
 
 uint32_t SegmentedInt8GemvDescriptor::groupBits() const noexcept
 {
+  // 16 * n bits per tile. With N % 16 == 0 and K % 256 == 0, the row-wise payload formula below
+  // (rows x K / 256 x 16n bits = rows x K x n / 16 bits) is also the size of the tile grid.
+  if (const uint32_t rate = segmentedTMCQRate(format))
+    return 16 * rate;
   switch (format) {
     case 0:
       return 0;
@@ -122,6 +129,8 @@ uint64_t SegmentedInt8GemvDescriptor::weightExpertStride() const noexcept
     return (uint64_t)N * K;
   const uint64_t expertBits = (uint64_t)N * groupsPerRow() * groupBits();
   CCV_NNC_MFA_PRECONDITION((expertBits % 8) == 0);
+  // TMCQ experts are whole tile rows read as 32-bit words.
+  CCV_NNC_MFA_PRECONDITION(!segmentedTMCQRate(format) || ((N % 16) == 0 && (expertBits % 32) == 0));
   return expertBits / 8;
 }
 
@@ -206,5 +215,20 @@ std::pair<
 
 uint32_t segmentedInt8GemvSIMDGroupsPerThreadgroup(const uint32_t format)
 {
-  return format == CCV_NNC_QX_8I_ROWWISE_Q2_K ? 4 : kSegmentedInt8GemvSIMDGroupsPerThreadgroup;
+  return (format == CCV_NNC_QX_8I_ROWWISE_Q2_K || segmentedTMCQRate(format)) ? 4 : kSegmentedInt8GemvSIMDGroupsPerThreadgroup;
+}
+
+uint32_t segmentedTMCQRate(const uint32_t format)
+{
+  if (format < CCV_NNC_QX_8I_ROWWISE_TMCQ_N16 || format > CCV_NNC_QX_8I_ROWWISE_TMCQ_N32)
+    return 0;
+  return 16 + 2 * (format - CCV_NNC_QX_8I_ROWWISE_TMCQ_N16);
+}
+
+uint32_t segmentedInt8GemvRowsPerThreadgroup(const uint32_t format)
+{
+  // TMCQ: one 16-row tile row per threadgroup, its SIMD groups splitting K.
+  if (segmentedTMCQRate(format))
+    return 16;
+  return kSegmentedInt8GemvRowsPerSIMDGroup * segmentedInt8GemvSIMDGroupsPerThreadgroup(format);
 }

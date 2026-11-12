@@ -50,6 +50,13 @@ void ccv_nnc_mfa_encode_segmented_int8_gemv(
   CCV_NNC_MFA_PRECONDITION(
     params.format == 0 ||
     ((params.K % 256) == 0 && (params.N % 256) == 0));
+  // TMCQ tiles span 16 rows and its kernel takes one activation row per route; it has no
+  // modifier bits (no Hadamard rotation).
+  CCV_NNC_MFA_PRECONDITION(
+    !segmentedTMCQRate(params.format) || ((params.N % 16) == 0 && (params.K % 256) == 0));
+  // TMCQ tiles are read as 32-bit words: the weight offset and the expert stride must keep that.
+  CCV_NNC_MFA_PRECONDITION(
+    !segmentedTMCQRate(params.format) || (tensor_offsets[3] % 4) == 0);
   CCV_NNC_MFA_PRECONDITION(
     (uint64_t)params.expert_count * params.N <= UINT32_MAX);
 
@@ -62,7 +69,8 @@ void ccv_nnc_mfa_encode_segmented_int8_gemv(
   descriptor.useBias = params.fused_bias;
   descriptor.broadcastInput = params.broadcast_input;
   const uint32_t simdgroups = segmentedInt8GemvSIMDGroupsPerThreadgroup(params.format);
-  const uint32_t rowsPerThreadgroup = kSegmentedInt8GemvRowsPerSIMDGroup * simdgroups;
+  // Two rows per SIMD group, or for TMCQ one 16-row tile row per threadgroup.
+  const uint32_t rowsPerThreadgroup = segmentedInt8GemvRowsPerThreadgroup(params.format);
   const NS::UInteger threadgroupsPerRoute =
     (params.N + rowsPerThreadgroup - 1) / rowsPerThreadgroup;
   // The shared rows take two per threadgroup, after the routed ones in the grid's count.

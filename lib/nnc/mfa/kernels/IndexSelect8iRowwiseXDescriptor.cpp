@@ -11,6 +11,14 @@ static uint64_t align_up_64(const uint64_t value, const uint64_t alignment) noex
 	return (value + alignment - 1) & ~(alignment - 1);
 }
 
+// TMCQ tiles span 16 rows, so a row cannot be gathered on its own; TMCQ does not support
+// IndexSelect and the MPS command rejects it before reaching here.
+static bool is_tmcq(const uint32_t format) noexcept
+{
+	const uint32_t codec = format & CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK;
+	return codec >= CCV_NNC_QX_8I_ROWWISE_TMCQ_N16 && codec <= CCV_NNC_QX_8I_ROWWISE_TMCQ_N32;
+}
+
 }
 
 bool IndexSelect8iRowwiseXDescriptor::operator==(const IndexSelect8iRowwiseXDescriptor& rhs) const {
@@ -32,6 +40,7 @@ uint32_t IndexSelect8iRowwiseXDescriptor::outputRowCount() const noexcept {
 }
 
 uint32_t IndexSelect8iRowwiseXDescriptor::groupSize() const noexcept {
+	CCV_NNC_MFA_PRECONDITION(!is_tmcq(format));
 	switch (format) {
 		case CCV_NNC_QX_8I_ROWWISE_Q5_K:
 		case CCV_NNC_QX_8I_ROWWISE_Q4_K:
@@ -60,6 +69,7 @@ uint32_t IndexSelect8iRowwiseXDescriptor::groupsPerRow() const noexcept {
 }
 
 uint32_t IndexSelect8iRowwiseXDescriptor::groupBits() const noexcept {
+	CCV_NNC_MFA_PRECONDITION(!is_tmcq(format));
 	switch (format) {
 		case CCV_NNC_QX_8I_ROWWISE_Q5_K:
 			return 88;

@@ -107,6 +107,8 @@ struct Pipelines {
   uint32_t packed_format = 0;
   uint32_t dequant_x_dispatch_items = 0;
   uint32_t gemv_rows_per_threadgroup = 0;
+  // Packed direct GEMV rows per threadgroup: 2 for most formats, a 16-row tile row for TMCQ.
+  uint32_t scaled_x_rows_per_threadgroup = kInt8GemvRowsPerThreadgroup;
 };
 
 constexpr FormatInfo kRowwiseFormat = { 0, "rowwise" };
@@ -122,7 +124,14 @@ constexpr FormatInfo kPackedFormats[] = {
   { CCV_NNC_QX_8I_ROWWISE_IQ2_XS, "iq2_xs" },
   { CCV_NNC_QX_8I_ROWWISE_IQ3_S, "iq3_s" },
   { CCV_NNC_QX_8I_ROWWISE_IQ3_XXS, "iq3_xxs" },
+  { CCV_NNC_QX_8I_ROWWISE_IQ1_S, "iq1_s" },
+  { CCV_NNC_QX_8I_ROWWISE_TMCQ_N22, "tmcq_n22" },
 };
+
+bool is_tmcq_format(const uint32_t format)
+{
+  return format >= CCV_NNC_QX_8I_ROWWISE_TMCQ_N16 && format <= CCV_NNC_QX_8I_ROWWISE_TMCQ_N32;
+}
 
 uint32_t ceil_div(const uint32_t x, const uint32_t y)
 {
@@ -252,6 +261,9 @@ std::vector<FormatInfo> selected_formats(const Config& config)
 
 uint32_t rowwise_x_group_size(const uint32_t format)
 {
+  // A TMCQ group is one 16 x 16 tile (rows % 16 == 0 here, as rows % 256 == 0).
+  if (is_tmcq_format(format))
+    return 256;
   switch (format) {
     case CCV_NNC_QX_8I_ROWWISE_Q5_K:
     case CCV_NNC_QX_8I_ROWWISE_Q4_K:
@@ -261,6 +273,7 @@ uint32_t rowwise_x_group_size(const uint32_t format)
     case CCV_NNC_QX_8I_ROWWISE_IQ3_S:
       return 16;
     case CCV_NNC_QX_8I_ROWWISE_IQ2_XXS:
+    case CCV_NNC_QX_8I_ROWWISE_IQ1_S:
       return 32;
     case CCV_NNC_QX_8I_ROWWISE_Q6_K:
     case CCV_NNC_QX_8I_ROWWISE_IQ2_XS:
@@ -273,6 +286,8 @@ uint32_t rowwise_x_group_size(const uint32_t format)
 
 uint32_t rowwise_x_group_bits(const uint32_t format)
 {
+  if (is_tmcq_format(format))
+    return 16 * (16 + 2 * (format - CCV_NNC_QX_8I_ROWWISE_TMCQ_N16));
   switch (format) {
     case CCV_NNC_QX_8I_ROWWISE_Q5_K:
       return 88;
@@ -292,6 +307,8 @@ uint32_t rowwise_x_group_bits(const uint32_t format)
       return 28;
     case CCV_NNC_QX_8I_ROWWISE_IQ2_XXS:
       return 64;
+    case CCV_NNC_QX_8I_ROWWISE_IQ1_S:
+      return 50;
     default:
       return 0;
   }
@@ -432,8 +449,13 @@ Pipelines create_pipelines(
     dequant_x_desc.length = shape.rows * shape.cols;
     pipelines.dequant_x_dispatch_items = dequant_x_desc.dispatchItems();
   }
-  if (scaled_x_value)
+  if (scaled_x_value) {
     pipelines.scaled_x = scaled_x_value->pipeline;
+    Int8GemvDescriptor scaled_x_desc;
+    scaled_x_desc.format = packed_format;
+    scaled_x_desc.mrows = (uint8_t)mrows;
+    pipelines.scaled_x_rows_per_threadgroup = scaled_x_desc.rowsPerThreadgroup();
+  }
   pipelines.gemv_rows_per_threadgroup = GemvDescriptor::rowsPerThreadgroup(device);
   return pipelines;
 }
@@ -581,7 +603,7 @@ void encode_scaled_x_gemv(
   if (bias)
     encoder->setBuffer(bias, 0, 4);
   encoder->dispatchThreadgroups(
-      MTL::Size(ceil_div(shape.rows, kInt8GemvRowsPerThreadgroup), 1, 1),
+      MTL::Size(ceil_div(shape.rows, pipelines.scaled_x_rows_per_threadgroup), 1, 1),
       MTL::Size(kInt8GemvSIMDGroupsPerThreadgroup * 32, 1, 1));
 }
 
@@ -1002,7 +1024,7 @@ int run_shape(
 void print_usage(const char* const argv0)
 {
   std::cerr << "usage: " << argv0 << " [--dtype fp16|bf16|fp32] "
-            << "[--format rowwise|q5_k|q6_k|q4_k|q3_k|q2_k|iq2_xxs|iq2_s|iq2_xs|iq3_s|iq3_xxs] [--all-formats] "
+            << "[--format rowwise|q5_k|q6_k|q4_k|q3_k|q2_k|iq2_xxs|iq2_s|iq2_xs|iq3_s|iq3_xxs|iq1_s|tmcq_n22] [--all-formats] "
             << "[--bias 0|1] [--mrows 1|2|3] [--shape rows cols] [--runs 20] [--warmup 3] "
             << "[--dispatches 5] [--sleep-ms 200]\n";
 }
