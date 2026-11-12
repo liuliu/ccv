@@ -296,6 +296,10 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	const int w_qx_subtype = CCV_GET_DATA_TYPE(w->info.datatype) == CCV_QX ? (w->info.datatype & 0xf00) : 0;
 	const int w_8i_rowwise_x_format = w_qx_subtype == CCV_NNC_QX_8I_ROWWISE_X ? w->info.reserved : 0;
 	const int w_hadamard_256 = !!(w_8i_rowwise_x_format & CCV_NNC_QX_8I_ROWWISE_HADAMARD_256);
+	// TMCQ tiles span 16 rows and the codec defines no rotation (see CCV_NNC_QX_8I_ROWWISE_TMCQ_N16). Both paths
+	// below decode TMCQ whole tensors, which keeps the tiles intact.
+	if (ccv_nnc_8i_rowwise_x_is_tmcq(w_8i_rowwise_x_format) && w_hadamard_256)
+		return CCV_NNC_EXEC_INVALID;
 	if ((w_qx_subtype == CCV_NNC_QX_8I_ROWWISE || w_qx_subtype == CCV_NNC_QX_8I_ROWWISE_X) &&
 		transpose_w && !transpose_a &&
 		w->info.dim[ccv_nnc_tensor_nd(w->info.dim) - 1] == w_rows &&
@@ -359,7 +363,7 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	// H256 weights store Wq = W R along K, with R symmetric and its own inverse, so
 	// A W^T = (A R) Wq^T. Undoing R while decoding is free for the Q*_K codecs but costs
 	// extra for the IQ codecs (grid lookups), so for those rotate A instead when it is
-	// much smaller than W. IQ codecs are IQ2_S .. IQ2_XXS in the codec enum.
+	// much smaller than W. IQ codecs are IQ2_S .. IQ2_XXS in the codec enum; TMCQ (after them) has no H256.
 	const int w_codec = w->info.reserved & CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK;
 	const int rotate_a =
 		CCV_GET_DATA_TYPE(w->info.datatype) == CCV_QX &&
