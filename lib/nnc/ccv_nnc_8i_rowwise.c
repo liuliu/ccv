@@ -9,6 +9,8 @@
 #include <cblas.h>
 #endif
 #include "ccv_nnc_8i_rowwise_packed_grids.inc"
+// TMCQ v1.2: the frozen P2 pair codebook, ccv_nnc_tmcq_p2_table[2 k + parity] with k = (cw * 0x83DCD12D) >> 23.
+#include "ccv_nnc_tmcq_table.inc"
 #ifdef USE_DISPATCH
 #include <dispatch/dispatch.h>
 #endif
@@ -42,6 +44,9 @@ CCV_WARN_UNUSED(size_t) ccv_nnc_8i_rowwise_x_data_size(const int format, const i
 {
 	if (row_length == 0 || input_length % row_length != 0 ||
 		((format & CCV_NNC_QX_8I_ROWWISE_HADAMARD_256) && row_length % 256 != 0))
+		return 0;
+	if (ccv_nnc_8i_rowwise_x_is_tmcq(format) &&
+		(row_length % 256 != 0 || (input_length / row_length) % 16 != 0 || (format & CCV_NNC_QX_8I_ROWWISE_HADAMARD_256)))
 		return 0;
 	assert(datatype == CCV_16F || datatype == CCV_16BF || datatype == CCV_32F || datatype == CCV_64F);
 	assert(row_length > 0);
@@ -1424,10 +1429,62 @@ static void _ccv_nnc_8i_rowwise_packed_quant_iq3_xxs(const double* const y, cons
 	}
 }
 
+// The pair index k of a 15-bit trellis window: the top 9 bits of cw * 0x83DCD12D (mod 2^32).
+static inline int _ccv_nnc_8i_rowwise_tmcq_pair(const uint32_t cw)
+{
+	return (int)((cw * 0x83DCD12Du) >> 23);
+}
+
+// Weight t of a tile has end E_t = (t + 1) n / 16; a window ending (exclusive) at E reads bits E - 15 .. E - 1
+// LSB-first, wrapping inside the tile, so the newest bit E - 1 is bit 14 of the state. Pair j (weights 2j and
+// 2j + 1) reads the single window ending at E_{2j+1}.
+static inline int _ccv_nnc_8i_rowwise_tmcq_end(const int t, const int n)
+{
+	return ((t + 1) * n) >> 4;
+}
+
+// Decode the 256 int8 codes of tile g (tile-row-major, weights row-major inside the tile), one pair at a time.
+static void _ccv_nnc_8i_rowwise_tmcq_decode_tile(const uint8_t* const input, const size_t g, const int n, int8_t* const q8)
+{
+	const int T = 16 * n;
+	uint8_t bits[512 + 15];
+	const size_t bit_offset = g * (size_t)T;
+	int p;
+	for (p = 0; p < T; p++)
+		bits[15 + p] = (input[(bit_offset + p) >> 3] >> ((bit_offset + p) & 7)) & 1;
+	// bits[15 + p] is bit p; bits[0..14] repeat the tail so a window ending at E reads bits[E .. E + 14].
+	for (p = 0; p < 15; p++)
+		bits[p] = bits[15 + ((p - 15 + 16 * T) % T)];
+	int pj;
+	for (pj = 0; pj < 128; pj++)
+	{
+		const int end = _ccv_nnc_8i_rowwise_tmcq_end(2 * pj + 1, n);
+		uint32_t cw = 0;
+		int j;
+		for (j = 0; j < 15; j++)
+			cw |= (uint32_t)bits[end + j] << j; // bit (end - 15 + j) mod T.
+		const int k = _ccv_nnc_8i_rowwise_tmcq_pair(cw);
+		q8[2 * pj] = ccv_nnc_tmcq_p2_table[2 * k];
+		q8[2 * pj + 1] = ccv_nnc_tmcq_p2_table[2 * k + 1];
+	}
+}
+
 static void _ccv_nnc_8i_rowwise_packed_quant_group(const int format, const double* const y, const double* const w, const int16_t* const iq1_map, ccv_nnc_8i_rowwise_packed_group_t* const group)
 {
 	switch (format)
 	{
+		case CCV_NNC_QX_8I_ROWWISE_TMCQ_N16:
+		case CCV_NNC_QX_8I_ROWWISE_TMCQ_N18:
+		case CCV_NNC_QX_8I_ROWWISE_TMCQ_N20:
+		case CCV_NNC_QX_8I_ROWWISE_TMCQ_N22:
+		case CCV_NNC_QX_8I_ROWWISE_TMCQ_N24:
+		case CCV_NNC_QX_8I_ROWWISE_TMCQ_N26:
+		case CCV_NNC_QX_8I_ROWWISE_TMCQ_N28:
+		case CCV_NNC_QX_8I_ROWWISE_TMCQ_N30:
+		case CCV_NNC_QX_8I_ROWWISE_TMCQ_N32:
+			// TMCQ tiles span 16 rows; they are fitted by _ccv_nnc_8i_rowwise_tmcq_quantize_tile_row.
+			assert(0 && "TMCQ is not a per-row group codec");
+			break;
 		case CCV_NNC_QX_8I_ROWWISE_IQ1_S:
 			_ccv_nnc_8i_rowwise_packed_quant_iq1_s(y, w, iq1_map, group);
 			break;
@@ -1476,6 +1533,18 @@ static void _ccv_nnc_8i_rowwise_packed_pack_group(uint8_t* const output, const s
 	int j;
 	switch (format)
 	{
+		case CCV_NNC_QX_8I_ROWWISE_TMCQ_N16:
+		case CCV_NNC_QX_8I_ROWWISE_TMCQ_N18:
+		case CCV_NNC_QX_8I_ROWWISE_TMCQ_N20:
+		case CCV_NNC_QX_8I_ROWWISE_TMCQ_N22:
+		case CCV_NNC_QX_8I_ROWWISE_TMCQ_N24:
+		case CCV_NNC_QX_8I_ROWWISE_TMCQ_N26:
+		case CCV_NNC_QX_8I_ROWWISE_TMCQ_N28:
+		case CCV_NNC_QX_8I_ROWWISE_TMCQ_N30:
+		case CCV_NNC_QX_8I_ROWWISE_TMCQ_N32:
+			// TMCQ tiles are packed by _ccv_nnc_8i_rowwise_tmcq_pack_tile.
+			assert(0 && "TMCQ is not a per-row group codec");
+			break;
 		case CCV_NNC_QX_8I_ROWWISE_IQ1_S:
 			for (j = 0; j < 4; j++)
 				_ccv_nnc_8i_rowwise_packed_write_bits(output, bit + j * 11, (uint32_t)group->grid[j], 11);
@@ -1559,6 +1628,18 @@ static void _ccv_nnc_8i_rowwise_packed_decode_group(const uint8_t* const input, 
 	int j;
 	switch (format)
 	{
+		case CCV_NNC_QX_8I_ROWWISE_TMCQ_N16:
+		case CCV_NNC_QX_8I_ROWWISE_TMCQ_N18:
+		case CCV_NNC_QX_8I_ROWWISE_TMCQ_N20:
+		case CCV_NNC_QX_8I_ROWWISE_TMCQ_N22:
+		case CCV_NNC_QX_8I_ROWWISE_TMCQ_N24:
+		case CCV_NNC_QX_8I_ROWWISE_TMCQ_N26:
+		case CCV_NNC_QX_8I_ROWWISE_TMCQ_N28:
+		case CCV_NNC_QX_8I_ROWWISE_TMCQ_N30:
+		case CCV_NNC_QX_8I_ROWWISE_TMCQ_N32:
+			// A TMCQ group is a 16 x 16 tile, not a row segment; see _ccv_nnc_8i_rowwise_tmcq_decode_tile.
+			assert(0 && "TMCQ is not a per-row group codec");
+			break;
 		case CCV_NNC_QX_8I_ROWWISE_IQ1_S: {
 			uint32_t shifts = _ccv_nnc_8i_rowwise_packed_read_bits(input, bit + 44, 3);
 			shifts |= ((shifts ^ (shifts >> 1) ^ (shifts >> 2)) & 1) << 3;
@@ -1967,6 +2048,384 @@ static void _ccv_nnc_8i_rowwise_x_feedback_init(ccv_nnc_8i_rowwise_x_feedback_t*
 	}
 }
 
+// TMCQ reference encoder. Each 16 x 16 tile is one tail-biting bitshift trellis fitted by Viterbi on the
+// weighted squared error, one step per weight pair (v1.2 P2). Everything is computed in double and every sum
+// accumulates in increasing index order, so a straight numpy port reproduces the payload bit for bit.
+enum {
+	CCV_NNC_8I_ROWWISE_TMCQ_STATES = 1 << 15,
+	CCV_NNC_8I_ROWWISE_TMCQ_LOWS = 1 << 13, // Predecessor groups per pair step for f = 2 (fewer for f = 3, 4).
+	CCV_NNC_8I_ROWWISE_TMCQ_PAIRS = 128,
+	CCV_NNC_8I_ROWWISE_TMCQ_TILE = 16,
+};
+
+static uint16_t ccv_nnc_8i_rowwise_tmcq_pair_of_state[CCV_NNC_8I_ROWWISE_TMCQ_STATES];
+static double ccv_nnc_8i_rowwise_tmcq_cb_rms = 0;
+static int ccv_nnc_8i_rowwise_tmcq_initialized = 0;
+
+// cb_rms = sqrt(sum_s (T[2 k(s)]^2 + T[2 k(s) + 1]^2) / (2 * 32768)), the code rms over all states and both
+// weights of a pair.
+static void _ccv_nnc_8i_rowwise_tmcq_init(void)
+{
+	if (ccv_nnc_8i_rowwise_tmcq_initialized)
+		return;
+	double sum = 0;
+	int s;
+	for (s = 0; s < CCV_NNC_8I_ROWWISE_TMCQ_STATES; s++)
+	{
+		const int k = _ccv_nnc_8i_rowwise_tmcq_pair((uint32_t)s);
+		ccv_nnc_8i_rowwise_tmcq_pair_of_state[s] = (uint16_t)k;
+		const double q0 = ccv_nnc_tmcq_p2_table[2 * k];
+		const double q1 = ccv_nnc_tmcq_p2_table[2 * k + 1];
+		sum += q0 * q0;
+		sum += q1 * q1;
+	}
+	ccv_nnc_8i_rowwise_tmcq_cb_rms = sqrt(sum / (2 * CCV_NNC_8I_ROWWISE_TMCQ_STATES));
+	ccv_nnc_8i_rowwise_tmcq_initialized = 1;
+}
+
+typedef struct {
+	double* cost; // Path cost per state, CCV_NNC_8I_ROWWISE_TMCQ_STATES.
+	double* next; // Next step's path cost per state.
+	double* low_min; // min_h cost[(low << f) | h] per low, CCV_NNC_8I_ROWWISE_TMCQ_LOWS.
+	uint8_t* bp; // Back pointers h, CCV_NNC_8I_ROWWISE_TMCQ_PAIRS x CCV_NNC_8I_ROWWISE_TMCQ_LOWS.
+} ccv_nnc_8i_rowwise_tmcq_viterbi_t;
+
+// f_j = E_{2j+1} - E_{2j-1} with E_{-1} = 0, the fresh bits of pair j (2..4 for n = 16..32). For even n,
+// E_{t+8} = E_t + n / 2, so f has period 4 pairs (it divides 64).
+static inline int _ccv_nnc_8i_rowwise_tmcq_fresh(const int pj, const int n)
+{
+	return _ccv_nnc_8i_rowwise_tmcq_end(2 * pj + 1, n) - (pj > 0 ? _ccv_nnc_8i_rowwise_tmcq_end(2 * pj - 1, n) : 0);
+}
+
+// One Viterbi pass over the 128 pairs of a tile, processed in the order j' = 0..127 with original pair
+// j = (j' + rotation) mod 128 (targets, weights and f all taken at j). The step cost of state s is
+// w_{2j} (y_{2j} - T[2k])^2 + w_{2j+1} (y_{2j+1} - T[2k+1])^2 with k = k(s). With start < 0 both ends are
+// free and the cheapest end state is returned; otherwise both ends are fixed to start. Back pointers are
+// recorded at bp[j' * CCV_NNC_8I_ROWWISE_TMCQ_LOWS] for j' >= bp_from only, when bp is set.
+static int _ccv_nnc_8i_rowwise_tmcq_viterbi_pass(const ccv_nnc_8i_rowwise_tmcq_viterbi_t* const ws, const double* const y, const double* const w, const int n, const int rotation, const int start, uint8_t* const bp, const int bp_from)
+{
+	double* cost = ws->cost;
+	double* next = ws->next;
+	double* const low_min = ws->low_min;
+	const uint16_t* const pair_of_state = ccv_nnc_8i_rowwise_tmcq_pair_of_state;
+	int s;
+	for (s = 0; s < CCV_NNC_8I_ROWWISE_TMCQ_STATES; s++)
+		cost[s] = start < 0 ? 0 : (s == start ? 0 : INFINITY);
+	int step;
+	for (step = 0; step < CCV_NNC_8I_ROWWISE_TMCQ_PAIRS; step++)
+	{
+		const int pj = (step + rotation) & (CCV_NNC_8I_ROWWISE_TMCQ_PAIRS - 1);
+		const int f = _ccv_nnc_8i_rowwise_tmcq_fresh(pj, n);
+		assert(f >= 2 && f <= 4);
+		assert(f == _ccv_nnc_8i_rowwise_tmcq_fresh(step, n)); // Rotating by 64 pairs keeps the f sequence.
+		const int lows = 1 << (15 - f);
+		const int hs = 1 << f;
+		// The step cost only depends on k(s), so tabulate it per pair code.
+		double code_cost[512];
+		int k;
+		for (k = 0; k < 512; k++)
+		{
+			const double d0 = y[2 * pj] - (double)ccv_nnc_tmcq_p2_table[2 * k];
+			const double d1 = y[2 * pj + 1] - (double)ccv_nnc_tmcq_p2_table[2 * k + 1];
+			code_cost[k] = w[2 * pj] * (d0 * d0) + w[2 * pj + 1] * (d1 * d1);
+		}
+		uint8_t* const bpt = (bp && step >= bp_from) ? bp + (size_t)step * CCV_NNC_8I_ROWWISE_TMCQ_LOWS : 0;
+		int low;
+		for (low = 0; low < lows; low++)
+		{
+			const double* const c = cost + (low << f);
+			double best = c[0];
+			int best_h = 0;
+			int h;
+			for (h = 1; h < hs; h++)
+				if (c[h] < best)
+				{
+					best = c[h];
+					best_h = h;
+				}
+			low_min[low] = best;
+			if (bpt)
+				bpt[low] = (uint8_t)best_h;
+		}
+		const int mask = lows - 1;
+		for (s = 0; s < CCV_NNC_8I_ROWWISE_TMCQ_STATES; s++)
+			next[s] = low_min[s & mask] + code_cost[pair_of_state[s]];
+		double* const swap = cost;
+		cost = next;
+		next = swap;
+	}
+	if (start >= 0)
+		return start;
+	int best_s = 0;
+	double best = cost[0];
+	for (s = 1; s < CCV_NNC_8I_ROWWISE_TMCQ_STATES; s++)
+		if (cost[s] < best)
+		{
+			best = cost[s];
+			best_s = s;
+		}
+	return best_s;
+}
+
+// Walk the back pointers of processing steps last .. first (inclusive, descending) from state s, storing
+// the state of each step at states[(step + rotation) mod 128] when states is set. Returns the state before
+// step first.
+static int _ccv_nnc_8i_rowwise_tmcq_backtrack(const ccv_nnc_8i_rowwise_tmcq_viterbi_t* const ws, const int n, const int rotation, const int last, const int first, int s, uint16_t* const states)
+{
+	int step;
+	for (step = last; step >= first; step--)
+	{
+		const int pj = (step + rotation) & (CCV_NNC_8I_ROWWISE_TMCQ_PAIRS - 1);
+		if (states)
+			states[pj] = (uint16_t)s;
+		const int f = _ccv_nnc_8i_rowwise_tmcq_fresh(pj, n);
+		const int low = s & ((1 << (15 - f)) - 1);
+		s = (low << f) | ws->bp[(size_t)step * CCV_NNC_8I_ROWWISE_TMCQ_LOWS + low];
+	}
+	return s;
+}
+
+// Tail-biting fit with a mid anchor: a free pass is traced back from pair 127 to pair 64 to read s* = s_63
+// (the window ending at E_127 = 8n, bit-aligned) on its best path; a second pass rotated by 64 pairs
+// (j = 64 .. 127, 0 .. 63) pins both ends to s*, so the anchor sits in the middle of the tile instead of at
+// its wrap-around.
+static void _ccv_nnc_8i_rowwise_tmcq_viterbi(const ccv_nnc_8i_rowwise_tmcq_viterbi_t* const ws, const double* const y, const double* const w, const int n, uint16_t* const states)
+{
+	enum { P = CCV_NNC_8I_ROWWISE_TMCQ_PAIRS, H = CCV_NNC_8I_ROWWISE_TMCQ_PAIRS / 2 };
+	const int s_end = _ccv_nnc_8i_rowwise_tmcq_viterbi_pass(ws, y, w, n, 0, -1, ws->bp, H);
+	const int s_star = _ccv_nnc_8i_rowwise_tmcq_backtrack(ws, n, 0, P - 1, H, s_end, 0);
+	_ccv_nnc_8i_rowwise_tmcq_viterbi_pass(ws, y, w, n, H, s_star, ws->bp, 0);
+	const int s = _ccv_nnc_8i_rowwise_tmcq_backtrack(ws, n, H, P - 1, 0, s_star, states);
+	assert(s == s_star); // The state before pair 64 is s_63 = s*.
+	(void)s;
+}
+
+// bit[p] = (s_j >> (14 - (E_{2j+1} - 1 - p))) & 1 for p in [E_{2j-1}, E_{2j+1}), on an output already zeroed.
+static void _ccv_nnc_8i_rowwise_tmcq_pack_tile(uint8_t* const output, const size_t g, const int n, const uint16_t* const states)
+{
+	const size_t bit_offset = g * (size_t)(16 * n);
+	int prev_end = 0;
+	int pj;
+	for (pj = 0; pj < CCV_NNC_8I_ROWWISE_TMCQ_PAIRS; pj++)
+	{
+		const int end = _ccv_nnc_8i_rowwise_tmcq_end(2 * pj + 1, n);
+		int p;
+		for (p = prev_end; p < end; p++)
+			if ((states[pj] >> (14 - (end - 1 - p))) & 1)
+				output[(bit_offset + p) >> 3] |= (uint8_t)(1u << ((bit_offset + p) & 7));
+		prev_end = end;
+	}
+}
+
+typedef struct {
+	const void* input;
+	int datatype;
+	int n;
+	size_t row_length;
+	size_t row_count;
+	const float* imatrix;
+	size_t imatrix_length;
+	const ccv_nnc_8i_rowwise_x_feedback_t* fb; // Feedback of the current Hessian slice, 0 without a Hessian.
+	uint8_t* u8;
+	uint8_t* scales;
+} ccv_nnc_8i_rowwise_tmcq_rows_t;
+
+// Fit tile row tr (rows 16 tr .. 16 tr + 15) strip by strip, then refit each row scale on the fixed codes.
+static void _ccv_nnc_8i_rowwise_tmcq_quantize_tile_row(const ccv_nnc_8i_rowwise_tmcq_rows_t* const ctx, const size_t tr)
+{
+	enum { R = CCV_NNC_8I_ROWWISE_TMCQ_TILE };
+	const size_t K = ctx->row_length;
+	const size_t strips = K / R;
+	const int n = ctx->n;
+	const ccv_nnc_8i_rowwise_x_feedback_t* const fb = ctx->fb;
+	const double cb_rms = ccv_nnc_8i_rowwise_tmcq_cb_rms;
+	double* const x = (double*)ccmalloc(sizeof(double) * R * K);
+	double* const target = fb ? (double*)ccmalloc(sizeof(double) * R * K) : x;
+	double* const wc = (double*)ccmalloc(sizeof(double) * K);
+	int8_t* const q = (int8_t*)ccmalloc(sizeof(int8_t) * R * K);
+	ccv_nnc_8i_rowwise_tmcq_viterbi_t ws;
+	ws.cost = (double*)ccmalloc(sizeof(double) * CCV_NNC_8I_ROWWISE_TMCQ_STATES);
+	ws.next = (double*)ccmalloc(sizeof(double) * CCV_NNC_8I_ROWWISE_TMCQ_STATES);
+	ws.low_min = (double*)ccmalloc(sizeof(double) * CCV_NNC_8I_ROWWISE_TMCQ_LOWS);
+	ws.bp = (uint8_t*)ccmalloc(CCV_NNC_8I_ROWWISE_TMCQ_PAIRS * CCV_NNC_8I_ROWWISE_TMCQ_LOWS);
+	const size_t row_begin = tr * R;
+	size_t i, j, k;
+	for (i = 0; i < R; i++)
+		_ccv_nnc_8i_rowwise_packed_read_row(ctx->input, ctx->datatype, (row_begin + i) * K, K, K, x + i * K);
+	if (fb)
+	{
+		for (k = 0; k < K; k++)
+			wc[k] = fb->weights[k];
+	} else {
+		// Slices hold a multiple of 16 rows, so the whole tile row shares one imatrix slice.
+		const float* const row_imatrix = _ccv_nnc_8i_rowwise_imatrix_for_row(ctx->imatrix, ctx->imatrix_length, K, ctx->row_count, row_begin);
+		for (k = 0; k < K; k++)
+			wc[k] = _ccv_nnc_8i_rowwise_weight(row_imatrix, k);
+	}
+	double sum_wc = 0;
+	for (k = 0; k < K; k++)
+		sum_wc += wc[k];
+	double scale[R];
+	for (i = 0; i < R; i++)
+	{
+		const double* const xi = x + i * K;
+		double sum = 0;
+		for (k = 0; k < K; k++)
+			sum += wc[k] * (xi[k] * xi[k]);
+		const double s = sum_wc > 0 ? sqrt(sum / sum_wc) / cb_rms : 0;
+		scale[i] = (s > 0 && isfinite(s)) ? s : 0;
+	}
+	if (fb)
+		memcpy(target, x, sizeof(double) * R * K);
+	size_t tc;
+	for (tc = 0; tc < strips; tc++)
+	{
+		const size_t c0 = tc * R;
+		double y[256], w[256];
+		for (i = 0; i < R; i++)
+			for (j = 0; j < R; j++)
+			{
+				const double s = scale[i];
+				y[i * R + j] = s > 0 ? target[i * K + c0 + j] / s : 0;
+				w[i * R + j] = wc[c0 + j] * (s * s);
+			}
+		uint16_t states[CCV_NNC_8I_ROWWISE_TMCQ_PAIRS];
+		_ccv_nnc_8i_rowwise_tmcq_viterbi(&ws, y, w, n, states);
+		_ccv_nnc_8i_rowwise_tmcq_pack_tile(ctx->u8, tr * strips + tc, n, states);
+		int t;
+		for (t = 0; t < 256; t++)
+			q[(t / R) * K + c0 + t % R] = ccv_nnc_tmcq_p2_table[2 * ccv_nnc_8i_rowwise_tmcq_pair_of_state[states[t >> 1]] + (t & 1)];
+		if (!fb || c0 + R >= K)
+			continue;
+		// Block LDLQ feedback, the same update as the portable branch of
+		// _ccv_nnc_8i_rowwise_x_quantize_rows_feedback (lines 2256-2273 as of bc117330: t[r] += ej[r] * u
+		// with u = U[group_start + j][l], j ascending per lane, e = x - s q8 from line 2237): here
+		// target[i][l] += e[j] U[c0 + j][l] for every later lane l, one product added at a time. The BLAS
+		// dgemm branch there (lines 2251-2254) has no fixed summation order and is not mirrored.
+		for (i = 0; i < R; i++)
+		{
+			double e[R];
+			for (j = 0; j < R; j++)
+				e[j] = x[i * K + c0 + j] - scale[i] * (double)q[i * K + c0 + j];
+			double* const ti = target + i * K;
+			for (j = 0; j < R; j++)
+			{
+				const double* const uj = fb->u + (c0 + j) * K;
+				const double ej = e[j];
+				size_t l;
+				for (l = c0 + R; l < K; l++)
+					ti[l] += ej * uj[l];
+			}
+		}
+	}
+	// Refit s' = (q H~ x) / (q H~ q) on the fixed codes, H~ = hessian + ridge I or diag(wc). Each product
+	// forms (H~ x)_j = ridge x_j + sum_l H[j][l] x_l first (l ascending), as the portable hx of
+	// _ccv_nnc_8i_rowwise_x_quantize_rows_feedback (lines 2168-2180 as of bc117330), then dots it with q.
+	for (i = 0; i < R; i++)
+	{
+		const double* const xi = x + i * K;
+		const int8_t* const qi = q + i * K;
+		double num = 0, den = 0;
+		if (fb)
+		{
+			for (j = 0; j < K; j++)
+			{
+				const float* const hj = fb->hessian + j * K;
+				double hx = fb->ridge * xi[j];
+				double hq = fb->ridge * (double)qi[j];
+				size_t l;
+				for (l = 0; l < K; l++)
+				{
+					hx += (double)hj[l] * xi[l];
+					hq += (double)hj[l] * (double)qi[l];
+				}
+				num += (double)qi[j] * hx;
+				den += (double)qi[j] * hq;
+			}
+		} else {
+			for (k = 0; k < K; k++)
+			{
+				num += (double)qi[k] * (wc[k] * xi[k]);
+				den += (double)qi[k] * (wc[k] * (double)qi[k]);
+			}
+		}
+		const double s = num / den;
+		if (den > 0 && isfinite(s))
+			scale[i] = s;
+		_ccv_nnc_8i_rowwise_packed_store_scale(ctx->scales, ctx->datatype, row_begin + i, scale[i]);
+	}
+	ccfree(ws.bp);
+	ccfree(ws.low_min);
+	ccfree(ws.next);
+	ccfree(ws.cost);
+	ccfree(q);
+	ccfree(wc);
+	if (fb)
+		ccfree(target);
+	ccfree(x);
+}
+
+static size_t _ccv_nnc_quantize_8i_rowwise_x_tmcq(const void* input, const int datatype, const size_t input_length, const size_t row_length, const int format, const float* const imatrix, const size_t imatrix_length, const float* const hessian, const size_t hessian_length, void* output, const size_t output_length)
+{
+	const size_t row_count = input_length / row_length;
+	const size_t scale_offset = _ccv_nnc_8i_rowwise_packed_scale_offset(format, input_length, row_length);
+	const size_t output_size = scale_offset + row_count * CCV_GET_DATA_TYPE_SIZE(datatype);
+	if (output_length < output_size)
+		return 0;
+	_ccv_nnc_8i_rowwise_tmcq_init();
+	uint8_t* const u8 = (uint8_t*)output;
+	memset(u8, 0, scale_offset);
+	ccv_nnc_8i_rowwise_x_feedback_t feedback = {0};
+	if (hessian)
+	{
+		feedback.u = (double*)ccmalloc(sizeof(double) * row_length * row_length);
+		feedback.rbb = (double*)ccmalloc(sizeof(double) * row_length * CCV_NNC_8I_ROWWISE_TMCQ_TILE);
+		feedback.weights = (double*)ccmalloc(sizeof(double) * row_length);
+		feedback.hessian64 = 0; // The TMCQ refit reads the float Hessian in a fixed order.
+	}
+	ccv_nnc_8i_rowwise_tmcq_rows_t rows_data = {
+		.input = input,
+		.datatype = datatype,
+		.n = ccv_nnc_8i_rowwise_x_tmcq_rate(format),
+		.row_length = row_length,
+		.row_count = row_count,
+		.imatrix = imatrix,
+		.imatrix_length = imatrix_length,
+		.fb = hessian ? &feedback : 0,
+		.u8 = u8,
+		.scales = u8 + scale_offset,
+	};
+	const ccv_nnc_8i_rowwise_tmcq_rows_t* const ctx = &rows_data;
+	// Each Hessian slice is factored once and shared by its tile rows; tile rows never straddle slices.
+	const size_t slices = hessian ? hessian_length / (row_length * row_length) : 1;
+	const size_t tile_rows_per_slice = row_count / slices / CCV_NNC_8I_ROWWISE_TMCQ_TILE;
+	size_t slice;
+	for (slice = 0; slice < slices; slice++)
+	{
+		if (hessian)
+			_ccv_nnc_8i_rowwise_x_feedback_init(&feedback, hessian + slice * row_length * row_length, row_length, row_length, CCV_NNC_8I_ROWWISE_TMCQ_TILE);
+		const size_t first_tile_row = slice * tile_rows_per_slice;
+#ifdef USE_DISPATCH
+		dispatch_apply(tile_rows_per_slice, dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^(size_t tr) {
+#else
+		parallel_for(tr, (int)tile_rows_per_slice) {
+#endif
+			_ccv_nnc_8i_rowwise_tmcq_quantize_tile_row(ctx, first_tile_row + (size_t)tr);
+#ifdef USE_DISPATCH
+		});
+#else
+		} parallel_endfor
+#endif
+	}
+	if (hessian)
+	{
+		ccfree(feedback.weights);
+		ccfree(feedback.rbb);
+		ccfree(feedback.u);
+	}
+	return output_size;
+}
+
 typedef struct {
 	const void* input;
 	int datatype;
@@ -2318,6 +2777,8 @@ static void _ccv_nnc_8i_rowwise_x_quantize_rows_feedback(const ccv_nnc_8i_rowwis
 
 static size_t _ccv_nnc_quantize_8i_rowwise_x(const void* input, const int datatype, const size_t input_length, const size_t row_length, const int format, const float* const imatrix, const size_t imatrix_length, const float* const hessian, const size_t hessian_length, void* output, const size_t output_length)
 {
+	if (ccv_nnc_8i_rowwise_x_is_tmcq(format))
+		return _ccv_nnc_quantize_8i_rowwise_x_tmcq(input, datatype, input_length, row_length, format, imatrix, imatrix_length, hessian, hessian_length, output, output_length);
 	const int codec = format & CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK;
 	const size_t row_count = input_length / row_length;
 	const size_t group_size = ccv_nnc_8i_rowwise_x_group_size(format);
@@ -2474,6 +2935,15 @@ CCV_WARN_UNUSED(size_t) ccv_nnc_quantize_8i_rowwise_x(const void* input, const i
 		if (hessian_length < matrix_length || hessian_length % matrix_length != 0 || row_count % (hessian_length / matrix_length) != 0)
 			return 0;
 	}
+	if (ccv_nnc_8i_rowwise_x_is_tmcq(format))
+	{
+		// 16 x 16 tiles: whole tile rows and columns, every imatrix / Hessian slice a whole number of tile rows.
+		if (row_length % 256 != 0 || row_count == 0 || row_count % 16 != 0 || (format & CCV_NNC_QX_8I_ROWWISE_HADAMARD_256))
+			return 0;
+		const size_t slices = imatrix ? imatrix_length / row_length : hessian ? hessian_length / (row_length * row_length) : 1;
+		if ((row_count / slices) % 16 != 0)
+			return 0;
+	}
 	return _ccv_nnc_quantize_8i_rowwise_x(input, datatype, input_length, row_length, format, imatrix, imatrix_length, hessian, hessian_length, output, output_length);
 }
 
@@ -2503,6 +2973,30 @@ void ccv_nnc_dequantize_8i_rowwise_x(const void* input, const int datatype, cons
 	assert(input_length >= scale_offset + row_count * CCV_GET_DATA_TYPE_SIZE(datatype));
 	const uint8_t* const u8 = (const uint8_t*)input;
 	const uint8_t* const scales = u8 + scale_offset;
+	if (ccv_nnc_8i_rowwise_x_is_tmcq(format))
+	{
+		// Each tile writes 16 rows x 16 columns back to row-major output.
+		assert(!(format & CCV_NNC_QX_8I_ROWWISE_HADAMARD_256));
+		assert(row_length % 256 == 0 && row_count % 16 == 0);
+		const int n = ccv_nnc_8i_rowwise_x_tmcq_rate(format);
+		const size_t strips = row_length / 16;
+		parallel_for(tr, (int)(row_count / 16)) {
+			double scale[16];
+			int i;
+			for (i = 0; i < 16; i++)
+				scale[i] = _ccv_nnc_8i_rowwise_packed_load_scale(scales, datatype, (size_t)tr * 16 + i);
+			size_t tc;
+			for (tc = 0; tc < strips; tc++)
+			{
+				int8_t q8[256];
+				_ccv_nnc_8i_rowwise_tmcq_decode_tile(u8, (size_t)tr * strips + tc, n, q8);
+				int t;
+				for (t = 0; t < 256; t++)
+					_ccv_nnc_8i_rowwise_packed_write_value(output, datatype, ((size_t)tr * 16 + t / 16) * row_length + tc * 16 + t % 16, scale[t / 16] * q8[t]);
+			}
+		} parallel_endfor
+		return;
+	}
 	parallel_for(i, (int)row_count) {
 		const double scale = _ccv_nnc_8i_rowwise_packed_load_scale(scales, datatype, i);
 		if (format & CCV_NNC_QX_8I_ROWWISE_HADAMARD_256)
