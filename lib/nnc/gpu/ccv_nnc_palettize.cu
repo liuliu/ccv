@@ -1380,11 +1380,12 @@ static __device__ __forceinline__ double _ccv_nnc_8i_rowwise_x_tmcq_mul(const do
 // grid-stride loops keep that copy amortized over many tiles.
 static size_t _ccv_nnc_8i_rowwise_x_tmcq_blocks(const size_t warp_tasks)
 {
-	int device = 0, threads_per_sm = 0;
+	int device = 0, threads_per_sm = 0, sm_count = 0;
 	CUDA_ENFORCE(cudaGetDevice(&device));
 	CUDA_ENFORCE(cudaDeviceGetAttribute(&threads_per_sm, cudaDevAttrMaxThreadsPerMultiProcessor, device));
+	CUDA_ENFORCE(cudaDeviceGetAttribute(&sm_count, cudaDevAttrMultiProcessorCount, device));
 	const size_t blocks_per_sm = ccv_max(threads_per_sm / (CCV_NNC_8I_ROWWISE_X_TMCQ_WARPS * 32), 1);
-	return ccv_min((warp_tasks + CCV_NNC_8I_ROWWISE_X_TMCQ_WARPS - 1) / CCV_NNC_8I_ROWWISE_X_TMCQ_WARPS, (size_t)ccv_nnc_gpu_device_props().multi_processor_count * blocks_per_sm);
+	return ccv_min((warp_tasks + CCV_NNC_8I_ROWWISE_X_TMCQ_WARPS - 1) / CCV_NNC_8I_ROWWISE_X_TMCQ_WARPS, (size_t)sm_count * blocks_per_sm);
 }
 
 // One warp converts a pair of horizontally adjacent tiles (a tile row holds row_length / 16 tiles, an even count),

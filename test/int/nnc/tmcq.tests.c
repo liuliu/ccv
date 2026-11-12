@@ -922,7 +922,7 @@ TEST_CASE("TMCQ P2 table matches the frozen SHA-256")
 	REQUIRE(strcmp(digest, "d58cf36d15b31e5b121334f704b15ad99bc39837ac5c096f0a37b7632763f34c") == 0, "table digest %s", digest);
 }
 
-TEST_CASE("TMCQ golden vectors for the QuantStar reference")
+TEST_CASE("TMCQ encoder golden vectors")
 {
 	// Inputs (all float32, generated in this order from one xorshift32 stream seeded 0x12345678):
 	//   W[16][256] = uniform();

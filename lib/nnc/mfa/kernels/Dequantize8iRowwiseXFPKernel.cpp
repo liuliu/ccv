@@ -160,8 +160,9 @@ static bool is_tmcq(const uint32_t format)
 // TMCQ fp decode, the fallback for paths that take floating-point weights. Same thread mapping
 // as the int8 decode in Dequantize8iRowwiseXKernel.cpp: one thread per row segment (16 weights of
 // one row inside one tile), consecutive threads on consecutive tile columns of the same row. The
-// weight is the exact float product q8 * scale (q8 has at most 8 significant bits), rounded once
-// to the output type like the CPU decode.
+// weight is the exact float product q8 * scale (q8 has at most 8 significant bits), converted once
+// to the output type with Metal's default rounding, like this kernel's other formats. The CPU and
+// CUDA decodes round 16F / 16BF toward zero, so the two can differ by one ulp there.
 static std::string create_tmcq_fp_source(const uint32_t format)
 {
 	const uint32_t n = 16 + 2 * ((format & CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK) - CCV_NNC_QX_8I_ROWWISE_TMCQ_N16);

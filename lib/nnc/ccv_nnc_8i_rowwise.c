@@ -2058,29 +2058,21 @@ enum {
 	CCV_NNC_8I_ROWWISE_TMCQ_TILE = 16,
 };
 
-static uint16_t ccv_nnc_8i_rowwise_tmcq_pair_of_state[CCV_NNC_8I_ROWWISE_TMCQ_STATES];
-static double ccv_nnc_8i_rowwise_tmcq_cb_rms = 0;
-static int ccv_nnc_8i_rowwise_tmcq_initialized = 0;
-
 // cb_rms = sqrt(sum_s (T[2 k(s)]^2 + T[2 k(s) + 1]^2) / (2 * 32768)), the code rms over all states and both
-// weights of a pair.
-static void _ccv_nnc_8i_rowwise_tmcq_init(void)
+// weights of a pair. Computed per quantize call (no shared lazily initialized state).
+static double _ccv_nnc_8i_rowwise_tmcq_cb_rms(void)
 {
-	if (ccv_nnc_8i_rowwise_tmcq_initialized)
-		return;
 	double sum = 0;
 	int s;
 	for (s = 0; s < CCV_NNC_8I_ROWWISE_TMCQ_STATES; s++)
 	{
 		const int k = _ccv_nnc_8i_rowwise_tmcq_pair((uint32_t)s);
-		ccv_nnc_8i_rowwise_tmcq_pair_of_state[s] = (uint16_t)k;
 		const double q0 = ccv_nnc_tmcq_p2_table[2 * k];
 		const double q1 = ccv_nnc_tmcq_p2_table[2 * k + 1];
 		sum += q0 * q0;
 		sum += q1 * q1;
 	}
-	ccv_nnc_8i_rowwise_tmcq_cb_rms = sqrt(sum / (2 * CCV_NNC_8I_ROWWISE_TMCQ_STATES));
-	ccv_nnc_8i_rowwise_tmcq_initialized = 1;
+	return sqrt(sum / (2 * CCV_NNC_8I_ROWWISE_TMCQ_STATES));
 }
 
 typedef struct {
@@ -2107,7 +2099,6 @@ static int _ccv_nnc_8i_rowwise_tmcq_viterbi_pass(const ccv_nnc_8i_rowwise_tmcq_v
 	double* cost = ws->cost;
 	double* next = ws->next;
 	double* const low_min = ws->low_min;
-	const uint16_t* const pair_of_state = ccv_nnc_8i_rowwise_tmcq_pair_of_state;
 	int s;
 	for (s = 0; s < CCV_NNC_8I_ROWWISE_TMCQ_STATES; s++)
 		cost[s] = start < 0 ? 0 : (s == start ? 0 : INFINITY);
@@ -2149,7 +2140,7 @@ static int _ccv_nnc_8i_rowwise_tmcq_viterbi_pass(const ccv_nnc_8i_rowwise_tmcq_v
 		}
 		const int mask = lows - 1;
 		for (s = 0; s < CCV_NNC_8I_ROWWISE_TMCQ_STATES; s++)
-			next[s] = low_min[s & mask] + code_cost[pair_of_state[s]];
+			next[s] = low_min[s & mask] + code_cost[_ccv_nnc_8i_rowwise_tmcq_pair((uint32_t)s)];
 		double* const swap = cost;
 		cost = next;
 		next = swap;
@@ -2228,6 +2219,7 @@ typedef struct {
 	const ccv_nnc_8i_rowwise_x_feedback_t* fb; // Feedback of the current Hessian slice, 0 without a Hessian.
 	uint8_t* u8;
 	uint8_t* scales;
+	double cb_rms; // _ccv_nnc_8i_rowwise_tmcq_cb_rms().
 } ccv_nnc_8i_rowwise_tmcq_rows_t;
 
 // Fit tile row tr (rows 16 tr .. 16 tr + 15) strip by strip, then refit each row scale on the fixed codes.
@@ -2238,7 +2230,7 @@ static void _ccv_nnc_8i_rowwise_tmcq_quantize_tile_row(const ccv_nnc_8i_rowwise_
 	const size_t strips = K / R;
 	const int n = ctx->n;
 	const ccv_nnc_8i_rowwise_x_feedback_t* const fb = ctx->fb;
-	const double cb_rms = ccv_nnc_8i_rowwise_tmcq_cb_rms;
+	const double cb_rms = ctx->cb_rms;
 	double* const x = (double*)ccmalloc(sizeof(double) * R * K);
 	double* const target = fb ? (double*)ccmalloc(sizeof(double) * R * K) : x;
 	double* const wc = (double*)ccmalloc(sizeof(double) * K);
@@ -2294,7 +2286,7 @@ static void _ccv_nnc_8i_rowwise_tmcq_quantize_tile_row(const ccv_nnc_8i_rowwise_
 		_ccv_nnc_8i_rowwise_tmcq_pack_tile(ctx->u8, tr * strips + tc, n, states);
 		int t;
 		for (t = 0; t < 256; t++)
-			q[(t / R) * K + c0 + t % R] = ccv_nnc_tmcq_p2_table[2 * ccv_nnc_8i_rowwise_tmcq_pair_of_state[states[t >> 1]] + (t & 1)];
+			q[(t / R) * K + c0 + t % R] = ccv_nnc_tmcq_p2_table[2 * _ccv_nnc_8i_rowwise_tmcq_pair(states[t >> 1]) + (t & 1)];
 		if (!fb || c0 + R >= K)
 			continue;
 		// Block LDLQ feedback, the same update as the portable branch of
@@ -2372,7 +2364,6 @@ static size_t _ccv_nnc_quantize_8i_rowwise_x_tmcq(const void* input, const int d
 	const size_t output_size = scale_offset + row_count * CCV_GET_DATA_TYPE_SIZE(datatype);
 	if (output_length < output_size)
 		return 0;
-	_ccv_nnc_8i_rowwise_tmcq_init();
 	uint8_t* const u8 = (uint8_t*)output;
 	memset(u8, 0, scale_offset);
 	ccv_nnc_8i_rowwise_x_feedback_t feedback = {0};
@@ -2394,6 +2385,7 @@ static size_t _ccv_nnc_quantize_8i_rowwise_x_tmcq(const void* input, const int d
 		.fb = hessian ? &feedback : 0,
 		.u8 = u8,
 		.scales = u8 + scale_offset,
+		.cb_rms = _ccv_nnc_8i_rowwise_tmcq_cb_rms(),
 	};
 	const ccv_nnc_8i_rowwise_tmcq_rows_t* const ctx = &rows_data;
 	// Each Hessian slice is factored once and shared by its tile rows; tile rows never straddle slices.
