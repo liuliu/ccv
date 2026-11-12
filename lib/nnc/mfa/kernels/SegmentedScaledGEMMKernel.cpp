@@ -184,11 +184,15 @@ bool SegmentedScaledGEMMKernel::fusesPackedFormat(uint32_t format, uint64_t M, u
 {
   if (format == 0 || (format & ~CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK) != 0)
     return false;
-  // Dedicated tile decoders beat expanding the expert bank at every measured batch size. For TMCQ's
-  // register decoder on M5 Ultra (DeepSeek routed shapes, 384 experts) that held from 2 to 256 rows
-  // per bin over all experts, and up to 4096 rows per bin over 6 experts, where the two tie.
+  // TMCQ's register decoder decodes each weight again for every 32-row tile. On M5 Ultra (DeepSeek
+  // routed shapes) it beat expanding the selected experts from 2 to 256 rows per bin over 384
+  // experts and tied at 4096 rows per bin over 6 experts; at 16384 rows per bin expanding was
+  // about 3% faster.
+  if (segmentedTMCQRate(format))
+    return M <= (uint64_t)binCount * 4096;
+  // Dedicated tile decoders beat expanding the expert bank at every measured batch size.
   if (format == CCV_NNC_QX_8I_ROWWISE_IQ2_XXS || format == CCV_NNC_QX_8I_ROWWISE_IQ3_XXS || format == CCV_NNC_QX_8I_ROWWISE_Q2_K ||
-      format == CCV_NNC_QX_8I_ROWWISE_IQ1_S || format == CCV_NNC_QX_8I_ROWWISE_IQ1_M || segmentedTMCQRate(format))
+      format == CCV_NNC_QX_8I_ROWWISE_IQ1_S || format == CCV_NNC_QX_8I_ROWWISE_IQ1_M)
     return true;
   // The shared group decoder decodes each weight again for every row tile. It wins up to
   // about 64 rows per bin, but expanding once is faster for longer prefill.
