@@ -87,4 +87,56 @@ static inline const char* ccv_nnc_mfa_tmcq_decode_source()
   return source.c_str();
 }
 
+// Register-fragment helpers for the segmented scaled GEMM prefill kernel only (tmcq_w3_*). They
+// decode exactly like tmcq_decode_row16 but return a row's 16 codes packed as int8 bytes, columns
+// 4c ... 4c + 3 in word c (little-endian), which is the layout the register fragments take.
+static const char* const tmcq_w3_decode_helpers = R"(
+// tmcq_decode_row16's windows, with each table entry read as one ushort (q8[2j] in the low byte).
+template <typename Table>
+inline uint4 tmcq_w3_decode_row16_words(device const uint* tile, uint n, uint r, Table table)
+{
+  const int words = int(n >> 1);
+  const int first = int(r * n + (n >> 4)) - 15;
+  const int w = first >> 5; // -1 only for row 0
+  const uint s0 = uint(first) & 31u;
+  const int i0 = w < 0 ? w + words : w;
+  const int i1 = w + 1 >= words ? w + 1 - words : w + 1;
+  const int i2 = w + 2 >= words ? w + 2 - words : w + 2;
+  const uint w0 = tile[i0];
+  const uint w1 = tile[i1];
+  const uint w2 = tile[i2];
+  const uint a = tmcq_funnel(w0, w1, s0);
+  const uint b = tmcq_funnel(w1, w2, s0);
+  uint t[8];
+  #pragma clang loop unroll(full)
+  for (uint i = 0; i < 8u; ++i)
+  {
+    const uint k = (((2u * i + 2u) * n) >> 4) - (n >> 4);
+    const uint window = k + 15u <= 32u ? (a >> k) : ((a >> k) | (b << (32u - k)));
+    t[i] = table[((window & 0x7fffu) * 0x83DCD12Du) >> 23];
+  }
+  return uint4(t[0] | (t[1] << 16), t[2] | (t[3] << 16), t[4] | (t[5] << 16), t[6] | (t[7] << 16));
+}
+)";
+
+// MSL for `constant ushort tmcq_w3_table[512]` (entry i is ccv_nnc_tmcq_p2_table[2 i] in the low byte
+// and [2 i + 1] in the high byte) followed by the tmcq_w3_* helpers. Append after
+// ccv_nnc_mfa_tmcq_decode_source(), which defines tmcq_funnel.
+static inline const char* tmcq_w3_decode_source()
+{
+  static const std::string source = [] {
+    std::string s = "constant ushort tmcq_w3_table[512] = {\n";
+    for (int i = 0; i < 512; i++)
+    {
+      const unsigned value = (unsigned)(uint8_t)ccv_nnc_tmcq_p2_table[2 * i] | ((unsigned)(uint8_t)ccv_nnc_tmcq_p2_table[2 * i + 1] << 8);
+      s += std::to_string(value) + "u";
+      s += (i % 16 == 15) ? ",\n" : ", ";
+    }
+    s += "};\n";
+    s += tmcq_w3_decode_helpers;
+    return s;
+  }();
+  return source.c_str();
+}
+
 #endif

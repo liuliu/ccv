@@ -4,6 +4,7 @@
 #include "../ccv_nnc_mfa_hash.hpp"
 #include "../ccv_nnc_mfa_error.hpp"
 #include "../ccv_nnc_mfa.hpp"
+#include "SegmentedInt8GemvDescriptor.hpp"
 
 namespace {
 
@@ -13,12 +14,15 @@ static void serializeBinaries(MTL::BinaryArchive* const binaryArchive, const std
   binaryArchive->serializeToURL(NS::URL::fileURLWithPath(NS::String::string(pathToWrite.c_str(), NS::UTF8StringEncoding)), &error);
 }
 
-// IQ2_XXS, Q2_K and IQ3_XXS expand weight fragments in registers for 32-row tiles at every M.
-// TMCQ is not among them: its 16 x 16 tiles map whole onto the threadgroup path's 128 x 128 weight
-// block (8 x 8 tiles), so it takes that path like the other packed formats.
+// IQ2_XXS, Q2_K, IQ3_XXS and TMCQ expand weight fragments in registers for 32-row tiles at every M.
+// A SIMD group's 32 weight rows are two whole TMCQ tile rows, and a lane's 16 consecutive K values
+// one row of a tile. On M5 Ultra (DeepSeek routed shapes) this beat TMCQ's former threadgroup path
+// (16- or 64-row tiles decoding 8 x 8 tiles into a 128 x 128 block) at every measured batch size,
+// and 64-row register tiles that reuse each decoded fragment for two 32-row activation tiles.
 static bool usesRegisterTiles(const uint32_t format) noexcept
 {
-  return format == CCV_NNC_QX_8I_ROWWISE_IQ2_XXS || format == CCV_NNC_QX_8I_ROWWISE_Q2_K || format == CCV_NNC_QX_8I_ROWWISE_IQ3_XXS;
+  return format == CCV_NNC_QX_8I_ROWWISE_IQ2_XXS || format == CCV_NNC_QX_8I_ROWWISE_Q2_K || format == CCV_NNC_QX_8I_ROWWISE_IQ3_XXS ||
+    segmentedTMCQRate(format);
 }
 
 // The selected tile's rows. Other packed formats waste most of a 64-row tile on sparse
