@@ -185,6 +185,20 @@ cc_binary(
 )
 
 cc_binary(
+	name = "tmcq_mps.tests",
+	linkopts = select({
+		"@platforms//os:macos": ["-Wl,-U,___test_case_setup,-U,___test_case_teardown"],
+		"//conditions:default": [],
+	}),
+	srcs = ["tmcq_mps.tests.c"],
+	copts = ccv_default_copts(),
+	deps = [
+		"//test:case",
+		"//lib:nnc"
+	]
+)
+
+cc_binary(
 	name = "rotate_half.tests",
 	srcs = ["rotate_half.tests.c"],
 	copts = ccv_default_copts(),
@@ -261,6 +275,26 @@ cc_binary(
 cc_binary(
 	name = "palettize.tests",
 	srcs = ["palettize.tests.c"],
+	copts = ccv_default_copts(),
+	deps = [
+		"//test:case",
+		"//lib:nnc"
+	]
+)
+
+cc_binary(
+	name = "tmcq.tests",
+	srcs = ["tmcq.tests.c"],
+	copts = ccv_default_copts(),
+	deps = [
+		"//test:case",
+		"//lib:nnc"
+	]
+)
+
+cc_binary(
+	name = "tmcq_cuda.tests",
+	srcs = ["tmcq_cuda.tests.c"],
 	copts = ccv_default_copts(),
 	deps = [
 		"//test:case",
