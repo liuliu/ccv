@@ -4,9 +4,18 @@
 #include "GEMMOperandPrecision.hpp"
 #include "nnc/mfa/3rdparty/metal-cpp/Metal.hpp"
 
-// Every segmented int8 SwiGLU threadgroup is four SIMD groups (the fused shared-expert rows assume
-// it too). For TMCQ a threadgroup covers one 16-row tile row and its four SIMD groups split K.
-constexpr uint32_t kSegmentedInt8SwiGLUTMCQSIMDGroups = 4;
+// Segmented int8 SwiGLU threadgroups are four SIMD groups (the fused shared-expert rows assume it
+// too), except TMCQ without a fused shared expert. A TMCQ threadgroup covers one 16-row tile row and
+// splits K eight ways: one split per SIMD group over eight SIMD groups, or two per SIMD group over
+// the four of a dispatch with a fused shared expert, with the same summation order.
+constexpr uint32_t kSegmentedInt8SwiGLUTMCQSIMDGroups = 8;
+constexpr uint32_t kSegmentedInt8SwiGLUTMCQSharedSIMDGroups = 4;
+
+// SIMD groups per threadgroup of a TMCQ segmented SwiGLU dispatch.
+constexpr uint32_t segmentedInt8SwiGLUTMCQSIMDGroups(const bool sharedFused)
+{
+  return sharedFused ? kSegmentedInt8SwiGLUTMCQSharedSIMDGroups : kSegmentedInt8SwiGLUTMCQSIMDGroups;
+}
 
 struct SegmentedInt8SwiGLUKernelDescriptor {
   uint32_t format;

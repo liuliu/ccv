@@ -240,4 +240,66 @@ static inline const char* tmcq_w3_decode_source()
   return source.c_str();
 }
 
+// Helpers for the segmented SwiGLU decode. They read a half2 copy of the pair table: every int8 code
+// is exact in half, and a half feeds a float FMA without the sign extension and int -> float
+// conversion that a char2 entry needs. The decoded codes are the same as tmcq_decode_row16's.
+static const char* const ccv_nnc_mfa_tmcq_w2_helpers = R"(
+// Fills a threadgroup copy of tmcq_w2_table, lane `index` of `count` threads. The caller adds the
+// barrier.
+inline void tmcq_w2_load_table(threadgroup half2* table, uint index, uint count)
+{
+  for (uint i = index; i < 512u; i += count)
+    table[i] = tmcq_w2_table[i];
+}
+
+// Codes of row r of a tile as q[0 .. 3] = columns 0-3, ..., 12-15: the same windows and table
+// entries as tmcq_decode_row16, from a half2 table (tmcq_w2_table or a tmcq_w2_load_table copy).
+template <typename Table>
+inline void tmcq_w2_decode_row16(device const uint* tile, uint n, uint r, thread half4* q, Table table)
+{
+  const int words = int(n >> 1);
+  const int first = int(r * n + (n >> 4)) - 15;
+  const int w = first >> 5; // -1 only for row 0
+  const uint s0 = uint(first) & 31u;
+  const int i0 = w < 0 ? w + words : w;
+  const int i1 = w + 1 >= words ? w + 1 - words : w + 1;
+  const int i2 = w + 2 >= words ? w + 2 - words : w + 2;
+  const uint w0 = tile[i0];
+  const uint w1 = tile[i1];
+  const uint w2 = tile[i2];
+  const uint a = tmcq_funnel(w0, w1, s0);
+  const uint b = tmcq_funnel(w1, w2, s0);
+  half2 c[8];
+  #pragma clang loop unroll(full)
+  for (uint i = 0; i < 8u; ++i)
+  {
+    const uint k = (((2u * i + 2u) * n) >> 4) - (n >> 4);
+    const uint window = k + 15u <= 32u ? (a >> k) : ((a >> k) | (b << (32u - k)));
+    c[i] = table[((window & 0x7fffu) * 0x83DCD12Du) >> 23];
+  }
+  q[0] = half4(c[0], c[1]);
+  q[1] = half4(c[2], c[3]);
+  q[2] = half4(c[4], c[5]);
+  q[3] = half4(c[6], c[7]);
+}
+)";
+
+// MSL for `constant half2 tmcq_w2_table[512]`, generated from ccv_nnc_tmcq_p2_table, followed by the
+// W2 helpers. Goes after ccv_nnc_mfa_tmcq_decode_source(), whose tmcq_funnel the helpers use.
+static inline const char* ccv_nnc_mfa_tmcq_w2_source()
+{
+  static const std::string source = [] {
+    std::string s = "constant half2 tmcq_w2_table[512] = {\n";
+    for (int i = 0; i < 512; i++)
+    {
+      s += "half2(" + std::to_string(ccv_nnc_tmcq_p2_table[2 * i]) + ", " + std::to_string(ccv_nnc_tmcq_p2_table[2 * i + 1]) + ")";
+      s += (i % 8 == 7) ? ",\n" : ", ";
+    }
+    s += "};\n";
+    s += ccv_nnc_mfa_tmcq_w2_helpers;
+    return s;
+  }();
+  return source.c_str();
+}
+
 #endif
