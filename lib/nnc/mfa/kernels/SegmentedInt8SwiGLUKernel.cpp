@@ -1209,11 +1209,11 @@ inline float stable_sigmoid(const float value)
 }
 
 // TMCQ routes: each threadgroup owns one 16-row tile row of the routed expert's gate and up weights,
-// and its SIMD groups split K. Each SIMD group uses the lane mapping of the segmented TMCQ GEMV:
-// lanes 0-15 take rows 0-15 of the even tiles of its K streams, lanes 16-31 those of the odd tiles,
-// and the 16 lanes of a half share each activation load. The codes come from a threadgroup half2
-// copy of the pair table. Gate and up each finish their whole dot product and take their row scale
-// before the clamp and SiLU, as the other formats do.
+// and its SIMD groups split K. In a SIMD group each run of eight lanes takes one tile of its K
+// streams, every lane two adjacent rows of it, whose codes share one run of tile words; the eight
+// lanes share each activation load. The codes come from a threadgroup half2 copy of the pair
+// table. Gate and up each finish their whole dot product and take their row scale before the clamp
+// and SiLU, as the other formats do.
 static std::string buildTMCQShader(
   const SegmentedInt8SwiGLUKernelDescriptor& descriptor, const uint32_t rate)
 {
@@ -1310,35 +1310,54 @@ inline float stable_sigmoid(const float value)
   destination += (ulong)route * nrows;
   device const real4* activation4 = (device const real4*)activation;
 
-  const uint r = lane & 15u;
+  // Each lane decodes two adjacent rows of a tile (one run of tile words), so eight lanes cover a
+  // tile and a SIMD group four tiles of its K stream at once.
+  constexpr uint rows_per_lane = 2;
+  constexpr uint lanes_per_tile = 16u / rows_per_lane;
+  constexpr uint tiles_per_simdgroup = 32u / lanes_per_tile;
+  const uint r0 = (lane % lanes_per_tile) * rows_per_lane;
   for (uint split = simdgroup_index; split < k_splits; split += k_simdgroups) {
-    float gate_sum = 0;
-    float up_sum = 0;
-    // ncols % 256 == 0, so every one of the 2 * k_splits streams runs the same number of steps.
-    for (uint tc = split * 2u + (lane >> 4); tc < tiles_per_row; tc += 2u * k_splits) {
+    float gate_sum[rows_per_lane] = {};
+    float up_sum[rows_per_lane] = {};
+    // A lane whose stream runs past the tile row (ncols % 512 != 0) adds nothing.
+    for (uint tc = split * tiles_per_simdgroup + lane / lanes_per_tile; tc < tiles_per_row;
+         tc += tiles_per_simdgroup * k_splits) {
       const ulong tile_word = (ulong)tc * TMCQ_TILE_WORDS;
-      device const uint* gate_tile = gate_tiles + tile_word;
-      device const uint* up_tile = up_tiles + tile_word;
       const float4 y0 = float4(activation4[tc * 4u + 0u]);
       const float4 y1 = float4(activation4[tc * 4u + 1u]);
       const float4 y2 = float4(activation4[tc * 4u + 2u]);
       const float4 y3 = float4(activation4[tc * 4u + 3u]);
-      half4 g[4];
-      half4 u[4];
-      tmcq_w2_decode_row16(gate_tile, TMCQ_N, r, g, table);
-      tmcq_w2_decode_row16(up_tile, TMCQ_N, r, u, table);
-      gate_sum += dot(float4(g[0]), y0) + dot(float4(g[1]), y1) + dot(float4(g[2]), y2) + dot(float4(g[3]), y3);
-      up_sum += dot(float4(u[0]), y0) + dot(float4(u[1]), y1) + dot(float4(u[2]), y2) + dot(float4(u[3]), y3);
+      half4 g[4 * rows_per_lane];
+      half4 u[4 * rows_per_lane];
+      tmcq_w2_decode_rows<TMCQ_N, rows_per_lane>(gate_tiles + tile_word, r0, g, table);
+      tmcq_w2_decode_rows<TMCQ_N, rows_per_lane>(up_tiles + tile_word, r0, u, table);
+      #pragma clang loop unroll(full)
+      for (uint rr = 0; rr < rows_per_lane; ++rr) {
+        gate_sum[rr] += dot(float4(g[4 * rr + 0]), y0) + dot(float4(g[4 * rr + 1]), y1) +
+          dot(float4(g[4 * rr + 2]), y2) + dot(float4(g[4 * rr + 3]), y3);
+        up_sum[rr] += dot(float4(u[4 * rr + 0]), y0) + dot(float4(u[4 * rr + 1]), y1) +
+          dot(float4(u[4 * rr + 2]), y2) + dot(float4(u[4 * rr + 3]), y3);
+      }
     }
-    gate_sum += simd_shuffle_xor(gate_sum, 16);
-    up_sum += simd_shuffle_xor(up_sum, 16);
-    if (lane < 16) {
-      route_scratch[split * 16u + r] = gate_sum;
-      route_scratch[(k_splits + split) * 16u + r] = up_sum;
+    #pragma clang loop unroll(full)
+    for (uint rr = 0; rr < rows_per_lane; ++rr) {
+      #pragma clang loop unroll(full)
+      for (uint offset = lanes_per_tile; offset < 32u; offset <<= 1) {
+        gate_sum[rr] += simd_shuffle_xor(gate_sum[rr], offset);
+        up_sum[rr] += simd_shuffle_xor(up_sum[rr], offset);
+      }
+    }
+    if (lane < lanes_per_tile) {
+      #pragma clang loop unroll(full)
+      for (uint rr = 0; rr < rows_per_lane; ++rr) {
+        route_scratch[split * 16u + r0 + rr] = gate_sum[rr];
+        route_scratch[(k_splits + split) * 16u + r0 + rr] = up_sum[rr];
+      }
     }
   }
   threadgroup_barrier(mem_flags::mem_threadgroup);
   if (simdgroup_index == 0 && lane < 16) {
+    const uint r = lane;
     float gate_sum = 0;
     float up_sum = 0;
     for (uint s = 0; s < k_splits; ++s) {

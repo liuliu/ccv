@@ -1846,6 +1846,7 @@ TEST_CASE("MPS segmented SwiGLU evaluates a shared expert in the packed decode d
 	const int formats[] = {
 		CCV_NNC_QX_8I_ROWWISE_IQ2_XXS, CCV_NNC_QX_8I_ROWWISE_IQ2_XS, CCV_NNC_QX_8I_ROWWISE_IQ3_XXS,
 		CCV_NNC_QX_8I_ROWWISE_Q2_K, CCV_NNC_QX_8I_ROWWISE_IQ1_S, CCV_NNC_QX_8I_ROWWISE_IQ1_M,
+		CCV_NNC_QX_8I_ROWWISE_TMCQ_N16, CCV_NNC_QX_8I_ROWWISE_TMCQ_N22, CCV_NNC_QX_8I_ROWWISE_TMCQ_N32,
 	};
 	int i;
 	for (i = 0; i < sizeof(formats) / sizeof(formats[0]); i++)
