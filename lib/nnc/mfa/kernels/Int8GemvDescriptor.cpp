@@ -120,6 +120,17 @@ uint32_t Int8GemvDescriptor::rowsPerThreadgroup() const noexcept {
   return kInt8GemvRowsPerThreadgroup;
 }
 
+uint32_t Int8GemvDescriptor::threadsPerThreadgroup() const noexcept {
+  if (is_tmcq(format))
+    return int8GemvTMCQSIMDGroups(mrows) * 32;
+  return kInt8GemvSIMDGroupsPerThreadgroup * 32;
+}
+
+uint32_t int8GemvTMCQSIMDGroups(const uint32_t mrows)
+{
+  return 16;
+}
+
 uint64_t Int8GemvDescriptor::inputScaleOffset() const noexcept {
   const uint64_t payloadBits = (uint64_t)nrows * groupsPerRow() * groupBits();
   const uint64_t payloadBytes = (payloadBits + 7) / 8;

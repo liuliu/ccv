@@ -1072,11 +1072,16 @@ kernel void segmented_int8_gemv(
 )";
 }
 
+// Tiles each lane of the TMCQ kernel decodes per loop iteration.
+constexpr uint32_t TMCQ_W1_SEGMENTED_UNROLL = 2;
+
 // TMCQ, one activation row per route. The weight is a grid of 16 x 16 tiles (row-major over the
-// grid, n / 2 words each), so each SIMD group owns one 16-row tile row of the routed expert: lanes
-// 0-15 take rows 0-15 of the even tiles along K and lanes 16-31 the same rows of the odd tiles. The
-// 16 lanes of a half read the same 16 activations and the same tile words, so every activation
-// load serves 16 rows. Row scales multiply the reduced integer-code sums, as for the other formats.
+// grid, n / 2 words each), and each threadgroup owns one 16-row tile row of the routed expert: its
+// 2 S half SIMD groups are streams over the tile columns (tile columns stream, stream + 2 S, ...),
+// and lane r = tiisg & 15 of a half takes row r of each tile. The 16 lanes of a half read the same
+// 16 activations and the same tile words, so every activation load serves 16 rows. The pair table
+// is a half2 threadgroup copy (see tmcq_w1_decode_words), which drops the int-to-float converts of
+// the decoded weights. Row scales multiply the reduced integer-code sums, as for the other formats.
 static void append_tmcq_m1_kernel(std::string& shader, const uint32_t rate, const bool fusedBias)
 {
   shader += R"(
@@ -1084,6 +1089,7 @@ static void append_tmcq_m1_kernel(std::string& shader, const uint32_t rate, cons
 using namespace metal;
 )";
   shader += ccv_nnc_mfa_tmcq_decode_source();
+  shader += ccv_nnc_mfa_tmcq_w1_helpers;
   shader += "constant constexpr uint TMCQ_N = " + std::to_string(rate) + ";\n";
   shader += "constant constexpr uint TMCQ_TILE_WORDS = TMCQ_N / 2;\n";
   shader += "constant constexpr uint S = " + std::to_string(segmentedInt8GemvSIMDGroupsPerThreadgroup(CCV_NNC_QX_8I_ROWWISE_TMCQ_N16)) + ";\n";
@@ -1107,15 +1113,16 @@ kernel void segmented_int8_gemv(
   uint tiisg [[thread_index_in_simdgroup]]
 ) {
   // One threadgroup per 16-row tile row; its S SIMD groups split K and add up in partials.
+  constexpr uint M = 1;
+  constexpr uint STREAMS = 2 * S;
   const uint tile_rows = nrows / 16u;
   const uint threadgroups_per_route = tile_rows;
   const uint route = tgpig_position / threadgroups_per_route;
   threadgroup int route_expert;
   threadgroup float partials[S * 16];
-  // A threadgroup copy of the pair table, as in the dense TMCQ GEMV; the route lookup's barrier
-  // below also publishes it.
-  threadgroup char2 tmcq_tg[512];
-  tmcq_load_table(tmcq_tg, sgitg * 32u + tiisg, S * 32u);
+  // The route lookup's barrier below also publishes the table copy.
+  threadgroup half2 tmcq_tg[512];
+  tmcq_w1_load_table(tmcq_tg, sgitg * 32u + tiisg, S * 32u);
   if (sgitg == 0 && tiisg == 0) {
     route_expert = -1;
     uint row_offset = 0;
@@ -1145,28 +1152,25 @@ kernel void segmented_int8_gemv(
   src1 += broadcast_input ? 0 : (ulong)route * ncols;
   device const real4* y4 = (device const real4*)src1;
   const uint r = tiisg & 15u;
-  float sum = 0;
-  // ncols % 256 == 0, so every one of the 2 S streams runs the same number of steps.
-  for (uint tc = sgitg * 2u + (tiisg >> 4); tc < tiles_per_row; tc += 2u * S) {
-    device const uint* tile = tiles + (ulong)tc * TMCQ_TILE_WORDS;
-    const float4 y0 = float4(y4[tc * 4u + 0u]);
-    const float4 y1 = float4(y4[tc * 4u + 1u]);
-    const float4 y2 = float4(y4[tc * 4u + 2u]);
-    const float4 y3 = float4(y4[tc * 4u + 3u]);
-    int4 q[4];
-    tmcq_decode_row16(tile, TMCQ_N, r, q, (threadgroup const char2*)tmcq_tg);
-    sum += dot(float4(q[0]), y0) + dot(float4(q[1]), y1) + dot(float4(q[2]), y2) + dot(float4(q[3]), y3);
-  }
-  sum += simd_shuffle_xor(sum, 16);
+  const uint stream = sgitg * 2u + (tiisg >> 4);
+  const tmcq_w1_row_words layout = tmcq_w1_row_layout(TMCQ_N, r);
+  float sum[M];
+  const uint tc_end = tiles_per_row;
+)";
+  shader += tmcq_w1_loop_source(TMCQ_W1_SEGMENTED_UNROLL, "(threadgroup const half2*)tmcq_tg",
+    "    acc@[0] += dot(q@[0], float4(y4[tc@ * 4u + 0u])) + dot(q@[1], float4(y4[tc@ * 4u + 1u])) + dot(q@[2], float4(y4[tc@ * 4u + 2u])) + dot(q@[3], float4(y4[tc@ * 4u + 3u]));\n",
+    "TMCQ_N");
+  shader += R"(
+  float total = sum[0] + simd_shuffle_xor(sum[0], 16);
   if (tiisg < 16)
-    partials[sgitg * 16u + r] = sum;
+    partials[sgitg * 16u + r] = total;
   threadgroup_barrier(mem_flags::mem_threadgroup);
   if (sgitg == 0 && tiisg < 16) {
-    sum = 0;
+    total = 0;
     for (uint s = 0; s < S; s++)
-      sum += partials[s * 16u + r];
+      total += partials[s * 16u + r];
     const uint row = tile_row * 16u + r;
-    float value = sum * (float)scales[(ulong)expert * nrows + row];
+    float value = total * (float)scales[(ulong)expert * nrows + row];
 )";
   if (fusedBias) {
     shader += R"(

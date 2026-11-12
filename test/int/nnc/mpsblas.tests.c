@@ -3212,6 +3212,36 @@ TEST_CASE("mps segmented int8 gemv with TMCQ weights at K 256 and 7168 over 1 an
 				}
 }
 
+TEST_CASE("mps segmented gemm with TMCQ weights at N 16, 64 and 128")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SEGMENTED_GEMM_FORWARD, CCV_NNC_BACKEND_MPS));
+	// TMCQ needs only whole 16-row tile rows (N % 16), not N % 256. Decode: one row on one of 2
+	// experts, and 6 rows over 6 of 11 experts, which take the segmented GEMV. Prefill: 16 and 65
+	// rows over 6 of 8 experts with guard rows, on the fused (fallback = 0) and fallback paths; N
+	// below 64 leaves the register tile's columns partial.
+	const int formats[] = { CCV_NNC_QX_8I_ROWWISE_TMCQ_N16, CCV_NNC_QX_8I_ROWWISE_TMCQ_N22, CCV_NNC_QX_8I_ROWWISE_TMCQ_N32 };
+	const int ns[] = { 16, 64, 128 };
+	int f, ni, c;
+	for (f = 0; f < sizeof(formats) / sizeof(formats[0]); f++)
+		for (ni = 0; ni < sizeof(ns) / sizeof(ns[0]); ni++)
+			for (c = 0; c < 6; c++)
+			{
+				// c: 0 = 1 route, 1 = 6 routes (GEMV); 2 .. 5 = 16 / 65 rows x fused / fallback.
+				const int total_m = c == 0 ? 1 : c == 1 ? 6 : (c & 1) ? 65 : 16;
+				const int expert_count = c == 0 ? 2 : c == 1 ? 11 : 8;
+				const int bincount = c == 0 ? 1 : 6;
+				const int force_fallback = c < 2 ? 1 : c >= 4;
+				const int guard_output = c >= 2;
+				double max_abs = 0;
+				double max_rel = 0;
+				REQUIRE_EQ(_mps_segmented_scaled_gemm_validate_format_shape_experts_dims(
+					CCV_16F, c == 1, force_fallback, formats[f], total_m, expert_count, bincount, guard_output, ns[ni], 256, &max_abs, &max_rel), 0,
+					"TMCQ segmented GEMM should run: format=%d N=%d rows=%d bins=%d fallback=%d", formats[f], ns[ni], total_m, bincount, force_fallback);
+				REQUIRE(max_rel < 3e-3, "TMCQ segmented GEMM should match the spec reference: format=%d N=%d rows=%d bins=%d fallback=%d abs=%g rel=%g",
+					formats[f], ns[ni], total_m, bincount, force_fallback, max_abs, max_rel);
+			}
+}
+
 TEST_CASE("mps segmented gemm with TMCQ weights at K 256 and 7168 with partial row blocks")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SEGMENTED_GEMM_FORWARD, CCV_NNC_BACKEND_MPS));

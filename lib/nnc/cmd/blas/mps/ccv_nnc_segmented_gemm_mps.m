@@ -355,8 +355,9 @@ static int _ccv_nnc_segmented_gemm_routed_forw(const ccv_nnc_cmd_t cmd, const cc
 			(CCV_GET_DATA_TYPE(b->info.datatype) != CCV_QX) &&
 			(!bias || CCV_GET_DATA_TYPE(bias->info.datatype) != CCV_QX) &&
 			((w_rows % 4) == 0) &&
+			// TMCQ: K % 256 and N % 16 (whole tile rows), as the dense GEMV gate.
 			(!w_8i_rowwise_x_format ||
-				((w_rows % 256) == 0 && (b_cols % 256) == 0)) &&
+				(w_tmcq ? ((w_rows % 256) == 0 && (b_cols % 16) == 0) : ((w_rows % 256) == 0 && (b_cols % 256) == 0))) &&
 			w_tmcq_supported &&
 			!is_transpose_a &&
 			is_transpose_w &&

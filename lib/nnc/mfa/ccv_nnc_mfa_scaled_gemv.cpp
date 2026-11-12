@@ -113,6 +113,6 @@ void ccv_nnc_mfa_encode_scaled_gemv(ccv_nnc_mfa_context_t* context, ccv_nnc_mfa_
   const uint32_t rowsPerThreadgroup = descriptor.rowsPerThreadgroup();
   MTL::Size gridSize = MTL::Size((params.nrows + rowsPerThreadgroup - 1) / rowsPerThreadgroup, 1, batchDimension);
   CCV_NNC_MFA_PRECONDITION(gridSize.width > 0);
-  encoder->dispatchThreadgroups(gridSize, MTL::Size(kInt8GemvSIMDGroupsPerThreadgroup * 32, 1, 1));
+  encoder->dispatchThreadgroups(gridSize, MTL::Size(descriptor.threadsPerThreadgroup(), 1, 1));
   command_batch->finishCommand(encoder);
 }

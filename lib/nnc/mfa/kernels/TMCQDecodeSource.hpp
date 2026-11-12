@@ -70,6 +70,107 @@ inline void tmcq_decode_row16(device const uint* tile, uint n, uint r, thread in
 }
 )";
 
+// Helpers used only by the TMCQ GEMV kernels (dense Int8GemvKernel and SegmentedInt8GemvKernel).
+// They take the three tile words a row needs and return the row's 16 weights as float4s, reading a
+// half2 threadgroup copy of the pair table: every entry is one 32-bit bank word, and the weights need
+// no int-to-float converts before the float dot products.
+static const char* const ccv_nnc_mfa_tmcq_w1_helpers = R"(
+// Word indices (within the n / 2-word tile) and bit offset of the first window of row r; see
+// tmcq_decode_row16 for the layout. Only row 0 wraps, and only its first word.
+struct tmcq_w1_row_words
+{
+  uint i0, i1, i2, s0;
+};
+
+inline tmcq_w1_row_words tmcq_w1_row_layout(uint n, uint r)
+{
+  const int words = int(n >> 1);
+  const int first = int(r * n + (n >> 4)) - 15;
+  const int w = first >> 5;
+  tmcq_w1_row_words l;
+  l.s0 = uint(first) & 31u;
+  l.i0 = uint(w < 0 ? w + words : w);
+  l.i1 = uint(w + 1 >= words ? w + 1 - words : w + 1);
+  l.i2 = uint(w + 2 >= words ? w + 2 - words : w + 2);
+  return l;
+}
+
+// Fills a half2 threadgroup copy of tmcq_table (int8 values are exact in half), lane `index` of
+// `count` threads. The caller adds the barrier.
+inline void tmcq_w1_load_table(threadgroup half2* table, uint index, uint count)
+{
+  for (uint i = index; i < 512u; i += count)
+    table[i] = half2(float2(tmcq_table[i]));
+}
+
+// The 16 weights of a tile row from its three words w0, w1, w2 (tile words i0, i1, i2 of
+// tmcq_w1_row_layout) and offset s0, as q[0 .. 3] = columns 0-3, ..., 12-15; same windows and
+// codebook entries as tmcq_decode_row16.
+inline void tmcq_w1_decode_words(uint w0, uint w1, uint w2, uint s0, uint n, thread float4* q, threadgroup const half2* table)
+{
+  const uint a = tmcq_funnel(w0, w1, s0);
+  const uint b = tmcq_funnel(w1, w2, s0);
+  float2 c[8];
+  #pragma clang loop unroll(full)
+  for (uint i = 0; i < 8u; ++i)
+  {
+    const uint k = (((2u * i + 2u) * n) >> 4) - (n >> 4);
+    const uint window = k + 15u <= 32u ? (a >> k) : ((a >> k) | (b << (32u - k)));
+    c[i] = float2(table[((window & 0x7fffu) * 0x83DCD12Du) >> 23]);
+  }
+  q[0] = float4(c[0], c[1]);
+  q[1] = float4(c[2], c[3]);
+  q[2] = float4(c[4], c[5]);
+  q[3] = float4(c[6], c[7]);
+}
+)";
+
+// MSL for the TMCQ GEMV main loop. In scope it needs M, STREAMS, stream, tc_end, tiles, layout and
+// float sum[M]. Each lane walks tile columns tc = stream, stream + STREAMS, ... below tc_end, `unroll`
+// tiles per iteration: all of their words are read before any is decoded, and each adds into its own
+// accumulators acc<u>[M]; a one-tile loop takes the remainder, and the accumulators end in sum[M].
+// `accumulate` is the per-tile statement, with '@' standing for the unroll index u: it reads tile
+// column tc@ and weights q@[0 .. 3] and adds into acc@. `n` names the rate in MSL.
+static inline std::string tmcq_w1_loop_source(const uint32_t unroll, const std::string& table, const std::string& accumulate, const std::string& n)
+{
+  auto at = [](const std::string& text, const uint32_t u) {
+    std::string out;
+    for (const char c : text)
+      out += c == '@' ? std::to_string(u) : std::string(1, c);
+    return out;
+  };
+  auto body = [&](const uint32_t count) {
+    std::string b;
+    for (uint32_t u = 0; u < count; u++) {
+      const std::string i = std::to_string(u);
+      b += "    const uint tc" + i + " = tc + " + i + "u * STREAMS;\n";
+      b += "    device const uint* tile" + i + " = tiles + (ulong)tc" + i + " * (" + n + " / 2u);\n";
+      b += "    const uint w0_" + i + " = tile" + i + "[layout.i0];\n";
+      b += "    const uint w1_" + i + " = tile" + i + "[layout.i1];\n";
+      b += "    const uint w2_" + i + " = tile" + i + "[layout.i2];\n";
+    }
+    for (uint32_t u = 0; u < count; u++) {
+      const std::string i = std::to_string(u);
+      b += "    float4 q" + i + "[4];\n";
+      b += "    tmcq_w1_decode_words(w0_" + i + ", w1_" + i + ", w2_" + i + ", layout.s0, " + n + ", q" + i + ", " + table + ");\n";
+      b += at(accumulate, u);
+    }
+    return b;
+  };
+  std::string s;
+  for (uint32_t u = 0; u < unroll; u++)
+    s += "  float acc" + std::to_string(u) + "[M];\n  for (uint m = 0; m < M; m++)\n    acc" + std::to_string(u) + "[m] = 0;\n";
+  s += "  uint tc = stream;\n";
+  s += "  for (; tc + " + std::to_string(unroll - 1) + "u * STREAMS < tc_end; tc += " + std::to_string(unroll) + "u * STREAMS) {\n" + body(unroll) + "  }\n";
+  if (unroll > 1)
+    s += "  for (; tc < tc_end; tc += STREAMS) {\n" + body(1) + "  }\n";
+  s += "  for (uint m = 0; m < M; m++)\n    sum[m] = acc0[m]";
+  for (uint32_t u = 1; u < unroll; u++)
+    s += " + acc" + std::to_string(u) + "[m]";
+  s += ";\n";
+  return s;
+}
+
 // MSL for the table (`constant char2 tmcq_table[512]`) followed by the helpers.
 static inline const char* ccv_nnc_mfa_tmcq_decode_source()
 {

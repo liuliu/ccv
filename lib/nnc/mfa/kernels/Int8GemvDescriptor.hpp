@@ -13,6 +13,10 @@ constexpr uint32_t kInt8GemvSIMDGroupsPerThreadgroup = 4;
 // TMCQ tiles span 16 rows, so a TMCQ threadgroup computes one tile row of outputs.
 constexpr uint32_t kInt8GemvTMCQRowsPerThreadgroup = 16;
 
+// SIMD groups of a TMCQ GEMV threadgroup (one tile row) for `mrows` activation rows; every other
+// format uses kInt8GemvSIMDGroupsPerThreadgroup. See append_tmcq_kernel in Int8GemvKernel.cpp.
+uint32_t int8GemvTMCQSIMDGroups(const uint32_t mrows);
+
 struct Int8GemvKernelDescriptor {
   uint8_t fusedBias;
   uint8_t mrows;
@@ -60,6 +64,8 @@ struct Int8GemvDescriptor {
   uint32_t groupBits() const noexcept;
   // Weight rows each threadgroup computes.
   uint32_t rowsPerThreadgroup() const noexcept;
+  // Threads per threadgroup: kInt8GemvSIMDGroupsPerThreadgroup SIMD groups for every format but TMCQ.
+  uint32_t threadsPerThreadgroup() const noexcept;
 	  uint64_t inputScaleOffset() const noexcept;
 
   std::pair<Int8GemvKernelDescriptor, PipelineValue<Int8GemvKernel>*> findKernel(MTL::Device* const device, const DeviceProperties& dprops, NS::Array* const binaryArchivesToRead, MTL::BinaryArchive* const binaryArchiveToWrite, const std::string& pathToWrite, std::unordered_map<Int8GemvKernelDescriptor, std::unique_ptr<Int8GemvKernel>> *const libraryCache) const noexcept;
