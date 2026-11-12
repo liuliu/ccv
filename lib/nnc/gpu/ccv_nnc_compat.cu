@@ -271,9 +271,19 @@ void cumemadvisereadmostly(int device, void* ptr, size_t size)
 {
 	device = cudevicemap(device);
 	CUDA_ENFORCE(cudaSetDevice(device));
+#if CUDART_VERSION >= 13000
+	// CUDA 13 takes a cudaMemLocation instead of a device ordinal.
+	cudaMemLocation location = {};
+	location.type = cudaMemLocationTypeDevice;
+	location.id = device;
+	cudaMemAdvise(ptr, size, cudaMemAdviseSetReadMostly, location);
+	// Also prefer a particular device.
+	cudaMemAdvise(ptr, size, cudaMemAdviseSetPreferredLocation, location);
+#else
 	cudaMemAdvise(ptr, size, cudaMemAdviseSetReadMostly, device);
 	// Also prefer a particular device.
 	cudaMemAdvise(ptr, size, cudaMemAdviseSetPreferredLocation, device);
+#endif
 }
 
 void cufree(int device, void* ptr)
@@ -818,7 +828,14 @@ void ccv_nnc_tensor_prefetch_async(ccv_nnc_tensor_t* const tensor, const ccv_nnc
 	if (CCV_IS_TENSOR_VIEW(tensor) || !(tensor->type & CCV_MAPPED_MEM))
 		return;
 	cudaStream_t stream = ccv_nnc_stream_context_get_stream(stream_context);
+#if CUDART_VERSION >= 13000
+	cudaMemLocation location = {};
+	location.type = cudaMemLocationTypeDevice;
+	location.id = cudevicemap(CCV_TENSOR_GET_DEVICE_ID(tensor->info.type));
+	cudaMemPrefetchAsync(tensor->data.u8, ccv_nnc_tensor_data_size(tensor->info), location, 0, stream);
+#else
 	cudaMemPrefetchAsync(tensor->data.u8, ccv_nnc_tensor_data_size(tensor->info), cudevicemap(CCV_TENSOR_GET_DEVICE_ID(tensor->info.type)), stream);
+#endif
 }
 
 void ccv_nnc_stream_context_set_cublas_workspace(cublasHandle_t cublas, const ccv_nnc_stream_context_t* const stream_context, size_t workspace_size)
