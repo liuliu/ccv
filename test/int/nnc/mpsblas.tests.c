@@ -3242,6 +3242,28 @@ TEST_CASE("mps segmented gemm with TMCQ weights at N 16, 64 and 128")
 			}
 }
 
+TEST_CASE("mps segmented gemm with TMCQ weights past the fused cutoff")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SEGMENTED_GEMM_FORWARD, CCV_NNC_BACKEND_MPS));
+	// TMCQ fuses its decode up to 4096 rows per bin; 4097 and 8200 rows over 1 and 2 bins expand the
+	// selected experts first. Guard rows check the bounds.
+	const int formats[] = { CCV_NNC_QX_8I_ROWWISE_TMCQ_N16, CCV_NNC_QX_8I_ROWWISE_TMCQ_N22 };
+	int f, c;
+	for (f = 0; f < sizeof(formats) / sizeof(formats[0]); f++)
+		for (c = 0; c < 2; c++)
+		{
+			const int total_m = c ? 8200 : 4097;
+			const int bincount = c ? 2 : 1;
+			double max_abs = 0;
+			double max_rel = 0;
+			REQUIRE_EQ(_mps_segmented_scaled_gemm_validate_format_shape_experts_dims(
+				CCV_16F, 0, 0, formats[f], total_m, 4, bincount, 1, 256, 256, &max_abs, &max_rel), 0,
+				"TMCQ segmented GEMM should run past the fused cutoff: format=%d rows=%d bins=%d", formats[f], total_m, bincount);
+			REQUIRE(max_rel < 3e-3, "TMCQ segmented GEMM should match the spec reference past the fused cutoff: format=%d rows=%d bins=%d abs=%g rel=%g",
+				formats[f], total_m, bincount, max_abs, max_rel);
+		}
+}
+
 TEST_CASE("mps segmented gemm with TMCQ weights at K 256 and 7168 with partial row blocks")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SEGMENTED_GEMM_FORWARD, CCV_NNC_BACKEND_MPS));
