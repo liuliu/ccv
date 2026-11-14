@@ -80,6 +80,9 @@ static int _ccv_nnc_segmented_swiglu_shared_forw(const float clamp, const ccv_nn
 		(K % 4) == 0 : (K % 256) == 0 && (N % 256) == 0;
 	if (rowwise_weights && !rowwise_shape_supported)
 		return CCV_NNC_EXEC_INVALID;
+	// TMCQ shared weights take the matrix paths below, as in SWIGLU_FORWARD.
+	if (rowwise_weights && ccv_nnc_8i_rowwise_x_is_tmcq(gate_format) && (gate_format & ~CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK))
+		return CCV_NNC_EXEC_INVALID;
 
 	// A few rows, as a speculative verify runs, read the weights once in the GEMV-style kernel.
 	// Past 6 rows its per-row sums make it slower than the matrix paths on wide FFNs (M5 Max).
@@ -365,7 +368,11 @@ static int _ccv_nnc_segmented_swiglu_routed_forw(const ccv_nnc_cmd_t cmd, ccv_nn
 		 gate_format == CCV_NNC_QX_8I_ROWWISE_IQ3_XXS ||
 		 gate_format == CCV_NNC_QX_8I_ROWWISE_Q2_K ||
 		 gate_format == CCV_NNC_QX_8I_ROWWISE_IQ1_S ||
-		 gate_format == CCV_NNC_QX_8I_ROWWISE_IQ1_M);
+		 gate_format == CCV_NNC_QX_8I_ROWWISE_IQ1_M ||
+		 // TMCQ (no modifier bits): one SIMD group per 16-row tile row; N % 256 above covers N % 16.
+		 (ccv_nnc_8i_rowwise_x_is_tmcq(gate_format) && !(gate_format & ~CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK) &&
+		  // The kernel reads tiles as 32-bit words.
+		  (gate_w->dataof % 4) == 0 && (up_w->dataof % 4) == 0));
 	// A one-row shared expert with int8 rowwise (Q8_0, Q5_K or Q6_K) weights over the same FP32
 	// input width joins the packed decode dispatch when the routed weights are resident.
 	const ccv_nnc_tensor_view_t* const shared_a = shared ? (const ccv_nnc_tensor_view_t*)shared[0] : 0;
@@ -375,6 +382,8 @@ static int _ccv_nnc_segmented_swiglu_routed_forw(const ccv_nnc_cmd_t cmd, ccv_nn
 	const int shared_gate_nd = shared ? ccv_nnc_tensor_nd(shared_gate_w->info.dim) : 0;
 	const uint32_t shared_rows = shared_gate_nd == 2 ? (uint32_t)shared_gate_w->info.dim[0] : 0;
 	const uint32_t shared_format = shared && (shared_gate_w->info.datatype & 0xf00) == CCV_NNC_QX_8I_ROWWISE_X ? (uint32_t)shared_gate_w->info.reserved : 0;
+	// A TMCQ shared expert does not join the dispatch: it runs as SWIGLU_FORWARD, which decodes its
+	// tiles to int8 first.
 	const int shared_weights_supported = shared && (
 		shared_gate_w->info.datatype == (CCV_QX | CCV_NNC_QX_8I_ROWWISE | (CCV_32F >> 12)) ||
 		(shared_gate_w->info.datatype == (CCV_QX | CCV_NNC_QX_8I_ROWWISE_X | (CCV_32F >> 12)) &&
@@ -526,6 +535,11 @@ static int _ccv_nnc_segmented_swiglu_routed_forw(const ccv_nnc_cmd_t cmd, ccv_nn
 		gate_rowwise && up_rowwise &&
 		((gate_w->info.datatype & 0xff) << 12) == a->info.datatype;
 	if (!dense_weights && !rowwise_weights)
+		return CCV_NNC_EXEC_INVALID;
+	// Every TMCQ path (fused tile decode or selected-expert expansion) reads the tiles as 32-bit
+	// words, and none takes a Hadamard rotation.
+	if (rowwise_weights && ccv_nnc_8i_rowwise_x_is_tmcq(gate_format) &&
+		((gate_format & ~CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK) || (gate_w->dataof % 4) != 0 || (up_w->dataof % 4) != 0))
 		return CCV_NNC_EXEC_INVALID;
 	const int use_segmented_scaled_swiglu_without_neural_accelerators =
 		!use_neural_accelerators && rowwise_shape_supported && a->info.datatype == CCV_32F &&

@@ -1,4 +1,6 @@
 #include "SegmentedInt8SwiGLUKernel.hpp"
+#include "SegmentedInt8GemvDescriptor.hpp"
+#include "TMCQDecodeSource.hpp"
 #include "../ccv_nnc_mfa.hpp"
 #include "../../ccv_nnc_8i_rowwise_packed_grids.inc"
 
@@ -492,6 +494,7 @@ inline void segmented_int8_swiglu_routes(
   device const int* counts,
   device const real* route_weights,
   threadgroup int& route_expert,
+  threadgroup float* route_scratch,
   uint threadgroup_position,
   uint simdgroup_index,
   uint lane)
@@ -501,6 +504,9 @@ inline void segmented_int8_swiglu_routes(
 static void appendSegmentedSwiGLUKernels(
   std::string& shader, const SegmentedInt8SwiGLUKernelDescriptor& descriptor)
 {
+  // TMCQ: gate and up partial sums of each K split, then the half2 pair table (512 floats' worth).
+  const std::string scratch = segmentedTMCQRate(descriptor.format) ?
+    "2 * TMCQ_K_SPLITS * 16 + 512" : "2 * 4 * 16";
   shader += R"(
 kernel void segmented_int8_swiglu(
   device const uchar* gate_weights [[buffer(0)]],
@@ -517,9 +523,12 @@ kernel void segmented_int8_swiglu(
   uint lane [[thread_index_in_simdgroup]])
 {
   threadgroup int route_expert;
+  // Cross-SIMD-group partial sums for the formats that split K (TMCQ, followed by its threadgroup
+  // copy of the pair table); the others leave it unused.
+  threadgroup float route_scratch[)" + scratch + R"(];
   segmented_int8_swiglu_routes(
     gate_weights, up_weights, activation, destination, gate_scales, up_scales,
-    indices, counts, route_weights, route_expert, threadgroup_position,
+    indices, counts, route_weights, route_expert, route_scratch, threadgroup_position,
     simdgroup_index, lane);
 }
 )";
@@ -654,6 +663,9 @@ kernel void segmented_int8_swiglu_shared(
   uint lane [[thread_index_in_simdgroup]])
 {
   threadgroup int route_expert;
+  // Cross-SIMD-group partial sums for the formats that split K (TMCQ, followed by its threadgroup
+  // copy of the pair table); the others leave it unused.
+  threadgroup float route_scratch[)" + scratch + R"(];
   // Spread the shared threadgroups evenly through the grid, as the Q8_0 shared rows do.
   const uint shared_threadgroups = (shared_nrows + shared_rows_per_threadgroup - 1u) / shared_rows_per_threadgroup;
   const uint total = routed_threadgroups + shared_threadgroups;
@@ -665,7 +677,7 @@ kernel void segmented_int8_swiglu_shared(
   else
     segmented_int8_swiglu_routes(
       gate_weights, up_weights, activation, destination, gate_scales, up_scales,
-      indices, counts, route_weights, route_expert, threadgroup_position - shared_before,
+      indices, counts, route_weights, route_expert, route_scratch, threadgroup_position - shared_before,
       simdgroup_index, lane);
 }
 )";
@@ -804,6 +816,9 @@ kernel void segmented_int8_swiglu_shared(
   uint lane [[thread_index_in_simdgroup]])
 {
   threadgroup int route_expert;
+  // Cross-SIMD-group partial sums for the formats that split K (TMCQ, followed by its threadgroup
+  // copy of the pair table); the others leave it unused.
+  threadgroup float route_scratch[)" + scratch + R"(];
   threadgroup float partials[4][32];
   // Spread the shared threadgroups evenly through the grid: grouping them at either end leaves
   // most of the routed work without bandwidth-bound neighbors.
@@ -817,7 +832,7 @@ kernel void segmented_int8_swiglu_shared(
   else
     segmented_int8_swiglu_routes(
       gate_weights, up_weights, activation, destination, gate_scales, up_scales,
-      indices, counts, route_weights, route_expert, threadgroup_position - shared_before,
+      indices, counts, route_weights, route_expert, route_scratch, threadgroup_position - shared_before,
       simdgroup_index, lane);
 }
 )";
@@ -1193,6 +1208,188 @@ inline float stable_sigmoid(const float value)
   return shader;
 }
 
+// TMCQ routes: each threadgroup owns one 16-row tile row of the routed expert's gate and up weights,
+// and its SIMD groups split K. In a SIMD group each run of eight lanes takes one tile of its K
+// streams, every lane two adjacent rows of it, whose codes share one run of tile words; the eight
+// lanes share each activation load. The codes come from a threadgroup half2 copy of the pair
+// table. Gate and up each finish their whole dot product and take their row scale before the clamp
+// and SiLU, as the other formats do.
+static std::string buildTMCQShader(
+  const SegmentedInt8SwiGLUKernelDescriptor& descriptor, const uint32_t rate)
+{
+  std::string shader;
+  if (descriptor.memoryPrecision == GEMMOperandPrecision::FP32)
+    shader = "typedef float real; typedef float4 real4;\n";
+  else if (descriptor.memoryPrecision == GEMMOperandPrecision::BF16)
+    shader = "typedef bfloat real; typedef bfloat4 real4;\n";
+  else
+    shader = "typedef half real; typedef half4 real4;\n";
+  shader += R"(
+constant uint ncols [[function_constant(0)]];
+constant uint nrows [[function_constant(1)]];
+constant uint segment_count [[function_constant(2)]];
+constant uint group_size [[function_constant(3)]];
+constant uint groups_per_row [[function_constant(4)]];
+constant uint expert_count [[function_constant(5)]];
+constant uint broadcast_input [[function_constant(6)]];
+constant ulong weight_expert_stride [[function_constant(7)]];
+)";
+  if (descriptor.clamp)
+    shader += "constant float clamp_limit [[function_constant(8)]];\n";
+  shader += R"(
+#include <metal_stdlib>
+using namespace metal;
+)";
+  shader += ccv_nnc_mfa_tmcq_decode_source();
+  shader += ccv_nnc_mfa_tmcq_w2_source();
+  shader += "constant constexpr uint TMCQ_N = " + std::to_string(rate) + ";\n";
+  shader += "constant constexpr uint TMCQ_K_SPLITS = " + std::to_string(kSegmentedInt8SwiGLUTMCQSIMDGroups) + ";\n";
+  shader += "constant constexpr uint TMCQ_K_SIMDGROUPS = " +
+    std::to_string(segmentedInt8SwiGLUTMCQSIMDGroups(descriptor.sharedFused)) + ";\n";
+  shader += "constant constexpr uint TMCQ_TILE_WORDS = TMCQ_N / 2;\n";
+  shader += R"(
+inline float stable_sigmoid(const float value)
+{
+  const float tail = metal::precise::divide(1.0f, 1.0f + metal::precise::exp(abs(value)));
+  return tail + step(0.0f, value) * (1.0f - 2.0f * tail);
+}
+
+)";
+  appendRoutesSignature(shader);
+  shader += R"(
+  // One threadgroup per 16-row tile row. K is split k_splits ways and the partial sums add up in
+  // route_scratch in split order. Each SIMD group takes splits simdgroup_index, + k_simdgroups, ...:
+  // one with eight SIMD groups, two with the four of a fused shared expert, which keeps the routed
+  // rows bit for bit the same either way.
+  constexpr uint k_splits = TMCQ_K_SPLITS;
+  constexpr uint k_simdgroups = TMCQ_K_SIMDGROUPS;
+  const uint tile_rows = nrows / 16u;
+  const uint threadgroups_per_route = tile_rows;
+  const uint route = threadgroup_position / threadgroups_per_route;
+  if (simdgroup_index == 0 && lane == 0) {
+    route_expert = -1;
+    uint row_offset = 0;
+    for (uint segment = 0; segment < segment_count; ++segment) {
+      const int count = counts[segment];
+      if (count <= 0)
+        continue;
+      const uint next_row_offset = row_offset + (uint)count;
+      if (route < next_row_offset) {
+        route_expert = indices[segment];
+        break;
+      }
+      row_offset = next_row_offset;
+    }
+  }
+  threadgroup half2* const table = (threadgroup half2*)(route_scratch + 2u * k_splits * 16u);
+  tmcq_w2_load_table(table, simdgroup_index * 32u + lane, 32u * k_simdgroups);
+  threadgroup_barrier(mem_flags::mem_threadgroup);
+  const int expert = route_expert;
+  if (expert < 0 || expert >= (int)expert_count)
+    return;
+
+  // Keep this load before the projections: loading after the SIMD reductions
+  // produced intermittent zero outputs with Metal shader validation in the
+  // IQ2_XXS 257-expert case. Preserve this workaround across packed formats;
+  // see "MPS segmented SwiGLU preserves route weights with 257 experts" in
+  // test/int/nnc/segmented_swiglu.tests.c.
+  const float route_weight = (float)route_weights[route];
+
+  const uint tile_row = threadgroup_position - route * threadgroups_per_route;
+  // An expert is nrows / 16 whole tile rows, so weight_expert_stride (bytes) is a multiple of the
+  // 2n-byte tile and every tile starts on a word.
+  const uint tiles_per_row = ncols / 16u;
+  const ulong tile_row_word = (ulong)tile_row * tiles_per_row * TMCQ_TILE_WORDS;
+  device const uint* gate_tiles =
+    (device const uint*)(gate_weights + (ulong)expert * weight_expert_stride) + tile_row_word;
+  device const uint* up_tiles =
+    (device const uint*)(up_weights + (ulong)expert * weight_expert_stride) + tile_row_word;
+  gate_scales += (ulong)expert * nrows;
+  up_scales += (ulong)expert * nrows;
+  activation += broadcast_input ? 0 : (ulong)route * ncols;
+  destination += (ulong)route * nrows;
+  device const real4* activation4 = (device const real4*)activation;
+
+  // Each lane decodes two adjacent rows of a tile (one run of tile words), so eight lanes cover a
+  // tile and a SIMD group four tiles of its K stream at once.
+  constexpr uint rows_per_lane = 2;
+  constexpr uint lanes_per_tile = 16u / rows_per_lane;
+  constexpr uint tiles_per_simdgroup = 32u / lanes_per_tile;
+  const uint r0 = (lane % lanes_per_tile) * rows_per_lane;
+  for (uint split = simdgroup_index; split < k_splits; split += k_simdgroups) {
+    float gate_sum[rows_per_lane] = {};
+    float up_sum[rows_per_lane] = {};
+    // A lane whose stream runs past the tile row (ncols % 512 != 0) adds nothing.
+    for (uint tc = split * tiles_per_simdgroup + lane / lanes_per_tile; tc < tiles_per_row;
+         tc += tiles_per_simdgroup * k_splits) {
+      const ulong tile_word = (ulong)tc * TMCQ_TILE_WORDS;
+      const float4 y0 = float4(activation4[tc * 4u + 0u]);
+      const float4 y1 = float4(activation4[tc * 4u + 1u]);
+      const float4 y2 = float4(activation4[tc * 4u + 2u]);
+      const float4 y3 = float4(activation4[tc * 4u + 3u]);
+      half4 g[4 * rows_per_lane];
+      half4 u[4 * rows_per_lane];
+      tmcq_w2_decode_rows<TMCQ_N, rows_per_lane>(gate_tiles + tile_word, r0, g, table);
+      tmcq_w2_decode_rows<TMCQ_N, rows_per_lane>(up_tiles + tile_word, r0, u, table);
+      #pragma clang loop unroll(full)
+      for (uint rr = 0; rr < rows_per_lane; ++rr) {
+        gate_sum[rr] += dot(float4(g[4 * rr + 0]), y0) + dot(float4(g[4 * rr + 1]), y1) +
+          dot(float4(g[4 * rr + 2]), y2) + dot(float4(g[4 * rr + 3]), y3);
+        up_sum[rr] += dot(float4(u[4 * rr + 0]), y0) + dot(float4(u[4 * rr + 1]), y1) +
+          dot(float4(u[4 * rr + 2]), y2) + dot(float4(u[4 * rr + 3]), y3);
+      }
+    }
+    #pragma clang loop unroll(full)
+    for (uint rr = 0; rr < rows_per_lane; ++rr) {
+      #pragma clang loop unroll(full)
+      for (uint offset = lanes_per_tile; offset < 32u; offset <<= 1) {
+        gate_sum[rr] += simd_shuffle_xor(gate_sum[rr], offset);
+        up_sum[rr] += simd_shuffle_xor(up_sum[rr], offset);
+      }
+    }
+    if (lane < lanes_per_tile) {
+      #pragma clang loop unroll(full)
+      for (uint rr = 0; rr < rows_per_lane; ++rr) {
+        route_scratch[split * 16u + r0 + rr] = gate_sum[rr];
+        route_scratch[(k_splits + split) * 16u + r0 + rr] = up_sum[rr];
+      }
+    }
+  }
+  threadgroup_barrier(mem_flags::mem_threadgroup);
+  if (simdgroup_index == 0 && lane < 16) {
+    const uint r = lane;
+    float gate_sum = 0;
+    float up_sum = 0;
+    for (uint s = 0; s < k_splits; ++s) {
+      gate_sum += route_scratch[s * 16u + r];
+      up_sum += route_scratch[(k_splits + s) * 16u + r];
+    }
+    const uint row = tile_row * 16u + r;
+    float gate0 = gate_sum * (float)gate_scales[row];
+    float up0 = up_sum * (float)up_scales[row];
+)";
+  if (descriptor.clamp)
+    shader += R"(
+    gate0 = min(gate0, clamp_limit);
+    up0 = clamp(up0, -clamp_limit, clamp_limit);
+)";
+  shader += R"(
+    {
+      const float sigmoid_gate0 = stable_sigmoid(gate0);
+      {
+#pragma METAL fp math_mode(safe)
+        // ((up * gate) * sigmoid) * weight, as in the other segmented SwiGLU formats: fast-math
+        // must not reassociate the weighted product.
+        destination[row] = (real)(((up0 * gate0) * sigmoid_gate0) * route_weight);
+      }
+    }
+  }
+}
+)";
+  appendSegmentedSwiGLUKernels(shader, descriptor);
+  return shader;
+}
+
 static std::string buildQ2KShader(
   const SegmentedInt8SwiGLUKernelDescriptor& descriptor)
 {
@@ -1339,6 +1536,14 @@ SegmentedInt8SwiGLUKernel::SegmentedInt8SwiGLUKernel(
   if (descriptor.format == CCV_NNC_QX_8I_ROWWISE_IQ1_S ||
       descriptor.format == CCV_NNC_QX_8I_ROWWISE_IQ1_M) {
     source = buildIQ1Shader(descriptor);
+    auto string = NS::String::string(source.c_str(), NS::UTF8StringEncoding);
+    NS::Error* error = nil;
+    library = NS::TransferPtr(device->newLibrary(string, nil, &error));
+    CCV_NNC_MFA_CHECK_ERROR(error);
+    return;
+  }
+  if (const uint32_t rate = segmentedTMCQRate(descriptor.format)) {
+    source = buildTMCQShader(descriptor, rate);
     auto string = NS::String::string(source.c_str(), NS::UTF8StringEncoding);
     NS::Error* error = nil;
     library = NS::TransferPtr(device->newLibrary(string, nil, &error));

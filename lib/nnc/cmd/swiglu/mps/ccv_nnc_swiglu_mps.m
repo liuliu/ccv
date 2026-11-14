@@ -84,6 +84,11 @@ static int _ccv_nnc_swiglu_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hi
 		(K % 4) == 0 : (K % 256) == 0 && (N % 256) == 0;
 	if (rowwise_weights && !rowwise_shape_supported)
 		return CCV_NNC_EXEC_INVALID;
+	// TMCQ weights have no direct row kernel here: they take the matrix paths below, which decode
+	// their 16 x 16 tiles first (N % 256 covers the tiles' N % 16). No TMCQ codec takes a Hadamard
+	// rotation.
+	if (rowwise_weights && ccv_nnc_8i_rowwise_x_is_tmcq(gate_format) && (gate_format & ~CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK))
+		return CCV_NNC_EXEC_INVALID;
 
 	// A few rows, as a speculative verify runs, read the weights once in the GEMV-style kernel.
 	// Past 6 rows its per-row sums make it slower than the matrix paths on wide FFNs (M5 Max).

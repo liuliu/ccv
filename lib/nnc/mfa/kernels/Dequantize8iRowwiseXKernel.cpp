@@ -1,4 +1,5 @@
 #include "Dequantize8iRowwiseXKernel.hpp"
+#include "TMCQDecodeSource.hpp"
 #include "../ccv_nnc_mfa.hpp"
 
 #include "../../ccv_nnc_8i_rowwise_packed_grids.inc"
@@ -240,6 +241,130 @@ inline uint4 iq1_pair_bytes(const uint index0, const uint index1, const uint shi
 )";
 	return shader;
 }
+}
+
+namespace {
+
+static bool is_tmcq(const uint32_t format)
+{
+	const uint32_t codec = format & CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK;
+	return codec >= CCV_NNC_QX_8I_ROWWISE_TMCQ_N16 && codec <= CCV_NNC_QX_8I_ROWWISE_TMCQ_N32;
+}
+
+// TMCQ int8 decode. A tile spans 16 rows, so the per-group kernels above do not apply. Thread
+// mapping: one thread per row segment, i.e. the 16 weights one output row takes from one tile.
+// Thread x covers row x / (K / 16) and tile column x % (K / 16), so the lanes of a SIMD group
+// write consecutive 16-byte pieces of the same output row (512 contiguous bytes, the int8 output
+// being 8 bits per weight against n / 16 bits read), and the 16 threads that share a tile read
+// the same n / 2 words, which stay in cache. dispatch_items (see the descriptors) is
+// max(rows * K / 16, scale bytes); total_groups / groups_per_expert count tiles.
+static std::string create_tmcq_source(const uint32_t format)
+{
+	const uint32_t n = 16 + 2 * ((format & CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK) - CCV_NNC_QX_8I_ROWWISE_TMCQ_N16);
+	std::string shader = R"(
+#include <metal_stdlib>
+using namespace metal;
+)";
+	shader += "constant uint tmcq_n = " + std::to_string(n) + ";\n";
+	shader += "constant uint tmcq_tile_words = " + std::to_string(n / 2) + ";\n";
+	shader += ccv_nnc_mfa_tmcq_decode_source();
+	shader += R"(
+// Writes the 16 int8 weights of `row` (local to the tile grid starting at `source`) in tile column
+// `tc` to destination[row * row_length + 16 * tc ...].
+inline void tmcq_store_segment(device const uchar* source, device uchar* destination, const uint row, const uint tc)
+{
+  const uint tiles_per_row = row_length >> 4;
+  const ulong tile_index = (ulong)(row >> 4) * tiles_per_row + tc;
+  device const uint* tile = reinterpret_cast<device const uint*>(source) + tile_index * tmcq_tile_words;
+  int4 q[4];
+  tmcq_decode_row16(tile, tmcq_n, row & 15u, q, tmcq_table);
+  device char4* destination4 = reinterpret_cast<device char4*>(destination + (ulong)row * row_length + (tc << 4));
+  destination4[0] = char4(q[0]);
+  destination4[1] = char4(q[1]);
+  destination4[2] = char4(q[2]);
+  destination4[3] = char4(q[3]);
+}
+
+kernel void dequantize_8i_rowwise_x(
+  device const uchar* source [[buffer(0)]],
+  device uchar* destination [[buffer(1)]],
+  device const uchar* input_scales [[buffer(2)]],
+  device uchar* output_scales [[buffer(3)]],
+
+  uint3 tgid [[threadgroup_position_in_grid]],
+  ushort lid [[thread_index_in_threadgroup]]
+) {
+  const uint x = tgid.x * threadgroup_size + lid;
+  if (x >= dispatch_items)
+    return;
+  // total_groups tiles of 16 segments each.
+  if (x < total_groups * 16u) {
+    const uint tiles_per_row = row_length >> 4;
+    const uint row = x / tiles_per_row;
+    tmcq_store_segment(source, destination, row, x - row * tiles_per_row);
+  }
+  if (x < scale_bytes)
+    output_scales[x] = input_scales[x];
+}
+
+kernel void dequantize_8i_rowwise_x_selected(
+  device const uchar* source [[buffer(0)]],
+  device const uint* active_experts [[buffer(1)]],
+  device uchar* destination [[buffer(2)]],
+  device const uchar* input_scales [[buffer(3)]],
+  device uchar* output_scales [[buffer(4)]],
+
+  uint3 tgid [[threadgroup_position_in_grid]],
+  ushort lid [[thread_index_in_threadgroup]]
+) {
+  const uint x = tgid.x * threadgroup_size + lid;
+  const uint active_expert = tgid.y;
+  if (x >= selected_dispatch_items_per_expert)
+    return;
+  const uint expert = active_experts[active_expert];
+  if (expert >= expert_count)
+    return;
+  // groups_per_expert tiles of 16 segments each; rows_per_expert % 16 == 0, so experts start on
+  // tile rows and the 16-byte tile stride keeps every expert on a word boundary.
+  if (x < groups_per_expert * 16u) {
+    const uint tiles_per_row = row_length >> 4;
+    const uint row = x / tiles_per_row;
+    device const uchar* expert_source = source + (ulong)expert * groups_per_expert * (tmcq_tile_words * 4u);
+    device uchar* expert_destination = destination + (ulong)expert * rows_per_expert * row_length;
+    tmcq_store_segment(expert_source, expert_destination, row, x - row * tiles_per_row);
+  }
+  if (x < scale_bytes_per_expert) {
+    output_scales[expert * scale_bytes_per_expert + x] =
+      input_scales[expert * scale_bytes_per_expert + x];
+  }
+}
+
+kernel void dequantize_8i_rowwise_x_selected_plan(
+  device const int* indices [[buffer(0)]],
+  device const int* counts [[buffer(1)]],
+  device uint* active_experts [[buffer(2)]],
+  device uint* dispatch_args [[buffer(3)]],
+  ushort lid [[thread_index_in_threadgroup]]
+) {
+  if (lid != 0)
+    return;
+  uint active_count = 0;
+  for (uint bin = 0; bin < bincount; ++bin) {
+    const int count = counts[bin];
+    const int expert_i = indices[bin];
+    if (count > 0 && expert_i >= 0 && expert_i < (int)expert_count)
+      active_experts[active_count++] = (uint)expert_i;
+  }
+  if (active_count == 0)
+    active_experts[0] = expert_count;
+  dispatch_args[0] = (selected_dispatch_items_per_expert + threadgroup_size - 1) / threadgroup_size;
+  dispatch_args[1] = max(active_count, 1u);
+  dispatch_args[2] = 1;
+}
+)";
+	return shader;
+}
+
 }
 
 Dequantize8iRowwiseXKernel::Dequantize8iRowwiseXKernel(Dequantize8iRowwiseXKernelDescriptor descriptor, MTL::Device* const device)
@@ -583,6 +708,8 @@ inline void decode_group(device const uchar* source, const ulong group_index, th
 
 std::string Dequantize8iRowwiseXKernel::createSource() const noexcept
 {
+	if (is_tmcq(format))
+		return createConstants() + "\n" + create_tmcq_source(format);
 	std::string shader = createConstants() + "\n";
 	shader += R"(
 #include <metal_stdlib>

@@ -226,8 +226,23 @@ static inline ccv_nnc_tensor_param_t ccv_nnc_tensor_8i_rowwise(const ccv_nnc_ten
 	return new_params;
 }
 
+static inline int ccv_nnc_8i_rowwise_x_is_tmcq(const int format)
+{
+	const int codec = format & CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK;
+	return codec >= CCV_NNC_QX_8I_ROWWISE_TMCQ_N16 && codec <= CCV_NNC_QX_8I_ROWWISE_TMCQ_N32;
+}
+
+/* Trellis bits per 256-weight tile over 16, i.e. the TMCQ rate n (bits per weight = n / 16). */
+static inline int ccv_nnc_8i_rowwise_x_tmcq_rate(const int format)
+{
+	assert(ccv_nnc_8i_rowwise_x_is_tmcq(format));
+	return 16 + 2 * ((format & CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK) - CCV_NNC_QX_8I_ROWWISE_TMCQ_N16);
+}
+
 static inline int ccv_nnc_8i_rowwise_x_group_size(const int format)
 {
+	if (ccv_nnc_8i_rowwise_x_is_tmcq(format))
+		return 256; // One 16 x 16 tile; it spans 16 rows, see CCV_NNC_QX_8I_ROWWISE_TMCQ_N16.
 	switch (format & CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK)
 	{
 		case CCV_NNC_QX_8I_ROWWISE_Q5_K:
@@ -253,6 +268,8 @@ static inline int ccv_nnc_8i_rowwise_x_group_size(const int format)
 
 static inline int ccv_nnc_8i_rowwise_x_group_bits(const int format)
 {
+	if (ccv_nnc_8i_rowwise_x_is_tmcq(format))
+		return 16 * ccv_nnc_8i_rowwise_x_tmcq_rate(format);
 	switch (format & CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK)
 	{
 		case CCV_NNC_QX_8I_ROWWISE_Q5_K:
@@ -289,6 +306,13 @@ static inline ccv_nnc_tensor_param_t ccv_nnc_tensor_8i_rowwise_x(const ccv_nnc_t
 	if (format & CCV_NNC_QX_8I_ROWWISE_HADAMARD_256)
 	{
 		assert(nd > 0 && params.dim[nd - 1] > 0 && params.dim[nd - 1] % 256 == 0);
+	}
+	if (ccv_nnc_8i_rowwise_x_is_tmcq(format))
+	{
+		// Tiles span 16 rows and 16 columns; with row_length % 256 the payload size matches the row-wise formula.
+		assert(nd > 0 && params.dim[nd - 1] > 0 && params.dim[nd - 1] % 256 == 0);
+		assert((ccv_nnc_tensor_count(params) / params.dim[nd - 1]) % 16 == 0);
+		assert(!(format & CCV_NNC_QX_8I_ROWWISE_HADAMARD_256));
 	}
 	ccv_nnc_tensor_param_t new_params = params;
 	new_params.datatype = ((params.datatype >> 12) & 0xff) | CCV_QX | CCV_NNC_QX_8I_ROWWISE_X;

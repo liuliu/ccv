@@ -151,6 +151,8 @@ inline void decode_group(device const uchar* source, const ulong group_index, th
 IndexSelect8iRowwiseXKernel::IndexSelect8iRowwiseXKernel(IndexSelect8iRowwiseXKernelDescriptor descriptor, MTL::Device* const device)
 {
 	format = descriptor.format;
+	// TMCQ does not support IndexSelect: its tiles span 16 rows, see IndexSelect8iRowwiseXDescriptor.cpp.
+	CCV_NNC_MFA_PRECONDITION((format & CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK) < CCV_NNC_QX_8I_ROWWISE_TMCQ_N16 || (format & CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK) > CCV_NNC_QX_8I_ROWWISE_TMCQ_N32);
 	loadM = descriptor.loadM;
 	memoryPrecision = descriptor.memoryPrecision;
 	source = createSource();
