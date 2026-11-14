@@ -1250,7 +1250,7 @@ using namespace metal;
   shader += R"(
 inline float stable_sigmoid(const float value)
 {
-  const float tail = 1.0f / (1.0f + exp(abs(value)));
+  const float tail = metal::precise::divide(1.0f, 1.0f + metal::precise::exp(abs(value)));
   return tail + step(0.0f, value) * (1.0f - 2.0f * tail);
 }
 
@@ -1374,8 +1374,15 @@ inline float stable_sigmoid(const float value)
     up0 = clamp(up0, -clamp_limit, clamp_limit);
 )";
   shader += R"(
-    destination[row] = (real)(
-      route_weight * up0 * gate0 * stable_sigmoid(gate0));
+    {
+      const float sigmoid_gate0 = stable_sigmoid(gate0);
+      {
+#pragma METAL fp math_mode(safe)
+        // ((up * gate) * sigmoid) * weight, as in the other segmented SwiGLU formats: fast-math
+        // must not reassociate the weighted product.
+        destination[row] = (real)(((up0 * gate0) * sigmoid_gate0) * route_weight);
+      }
+    }
   }
 }
 )";
