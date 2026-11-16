@@ -8,7 +8,8 @@ bool SegmentedInt8SwiGLUDescriptor::operator==(const SegmentedInt8SwiGLUDescript
   return simd_all(matrixDimensions == rhs.matrixDimensions) &&
     expertCount == rhs.expertCount && routeCount == rhs.routeCount &&
     format == rhs.format && broadcastInput == rhs.broadcastInput &&
-    clamp == rhs.clamp && memoryPrecision == rhs.memoryPrecision &&
+    clamp == rhs.clamp && gateSoftCap == rhs.gateSoftCap && upSoftCap == rhs.upSoftCap &&
+    memoryPrecision == rhs.memoryPrecision &&
     sharedRows == rhs.sharedRows && routedThreadgroups == rhs.routedThreadgroups &&
     sharedFormat == rhs.sharedFormat;
 }
@@ -24,6 +25,7 @@ std::size_t std::hash<SegmentedInt8SwiGLUDescriptor>::operator()(
   seed = combine_32(seed, value.format);
   seed = combine_32(seed, value.broadcastInput);
   seed = combine_32(seed, uint32_t(std::hash<float>{}(value.clamp)));
+  seed = combine_64(seed, pack_64(simd::uint2 { uint32_t(std::hash<float>{}(value.gateSoftCap)), uint32_t(std::hash<float>{}(value.upSoftCap)) }));
   seed = combine_32(seed, (uint32_t)value.memoryPrecision.value);
   seed = combine_64(seed, pack_64(simd::uint2 { value.sharedRows, value.routedThreadgroups }));
   seed = combine_32(seed, value.sharedFormat);
@@ -148,6 +150,8 @@ std::pair<
   SegmentedInt8SwiGLUKernelDescriptor kernelDesc;
   kernelDesc.format = format;
   kernelDesc.clamp = clamp > 0;
+  kernelDesc.gateSoftCap = gateSoftCap > 0;
+  kernelDesc.upSoftCap = upSoftCap > 0;
   kernelDesc.memoryPrecision = memoryPrecision;
   kernelDesc.sharedFused = sharedRows > 0;
   kernelDesc.sharedFormat = sharedRows > 0 ? sharedFormat : 0;
@@ -177,6 +181,10 @@ std::pair<
   constants->setConstantValue(&weightStride, MTL::DataTypeULong, NS::UInteger(7));
   if (clamp > 0)
     constants->setConstantValue(&clamp, MTL::DataTypeFloat, NS::UInteger(8));
+  if (gateSoftCap > 0)
+    constants->setConstantValue(&gateSoftCap, MTL::DataTypeFloat, NS::UInteger(11));
+  if (upSoftCap > 0)
+    constants->setConstantValue(&upSoftCap, MTL::DataTypeFloat, NS::UInteger(12));
   if (sharedRows > 0) {
     constants->setConstantValue(&sharedRows, MTL::DataTypeUInt, NS::UInteger(9));
     constants->setConstantValue(&routedThreadgroups, MTL::DataTypeUInt, NS::UInteger(10));

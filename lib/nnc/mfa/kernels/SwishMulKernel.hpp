@@ -29,6 +29,10 @@ struct SwishMulKernel {
 
   bool clamp;
 
+  bool gateSoftCap;
+
+  bool upSoftCap;
+
   GEMMOperandPrecision gPrecision;
 
   GEMMOperandPrecision aPrecision;

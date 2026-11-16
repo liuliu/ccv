@@ -10,6 +10,8 @@ typedef struct {
   uint32_t N;
   uint32_t K;
   float clamp;
+  float gate_soft_cap;
+  float up_soft_cap;
 } ccv_nnc_mfa_int8_swiglu_params_t;
 
 typedef struct {
@@ -21,6 +23,8 @@ typedef struct {
   uint8_t loadM;
   uint8_t use_neural_accelerators;
   float clamp;
+  float gate_soft_cap;
+  float up_soft_cap;
 } ccv_nnc_mfa_scaled_swiglu_params_t;
 
 #ifdef __cplusplus

@@ -348,9 +348,13 @@ typedef struct {
 		} swish_mul;
 		struct {
 			float clamp; /**< [segmented_swiglu.clamp] If positive, clamp the up projection symmetrically and the gate projection from above. */
+			float gate_soft_cap; /**< [segmented_swiglu.gate_soft_cap] If positive, the gate's linear factor is gate_soft_cap * tanh(gate / gate_soft_cap), while the sigmoid reads the gate itself. */
+			float up_soft_cap; /**< [segmented_swiglu.up_soft_cap] If positive, the up projection is up_soft_cap * tanh(up / up_soft_cap). */
 		} segmented_swiglu;
 		struct {
 			float clamp; /**< [swiglu.clamp] If positive, clamp the up projection symmetrically and the gate projection from above. */
+			float gate_soft_cap; /**< [swiglu.gate_soft_cap] If positive, the gate's linear factor is gate_soft_cap * tanh(gate / gate_soft_cap), while the sigmoid reads the gate itself. */
+			float up_soft_cap; /**< [swiglu.up_soft_cap] If positive, the up projection is up_soft_cap * tanh(up / up_soft_cap). */
 		} swiglu;
 		struct {
 			float exponent; /**< [pow.exponent] The exponent in y = x ^ exponent. */
@@ -5418,32 +5422,36 @@ CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_scatter_add(const int bincount, cons
  */
 CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_segmented_dense(const int segments, const int count, const int no_bias, const int flags, const int functional, const int shared_expert, const int is_trainable, const char* const name);
 /**
- * A gate/up projection followed by optionally clamped SwiGLU.
+ * A gate/up projection followed by optionally clamped or soft-capped SwiGLU.
  * @param count The intermediate output width.
  * @param clamp If positive, clamp the up projection symmetrically and gate projection from above.
+ * @param gate_soft_cap If positive, the gate's linear factor is gate_soft_cap * tanh(gate / gate_soft_cap), while the sigmoid reads the gate itself.
+ * @param up_soft_cap If positive, the up projection is up_soft_cap * tanh(up / up_soft_cap).
  * @param is_trainable Whether the parameters of this model can be trained.
  * @param name The unique name of the model.
  * @return A SwiGLU layer model owning gate and up weights.
  */
-CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_swiglu(const int count, const float clamp, const int is_trainable, const char* const name);
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_swiglu(const int count, const float clamp, const float gate_soft_cap, const float up_soft_cap, const int is_trainable, const char* const name);
 /**
- * A segmented expert gate/up projection followed by row-weighted, optionally clamped SwiGLU.
+ * A segmented expert gate/up projection followed by row-weighted, optionally clamped or soft-capped SwiGLU.
  * The stateful form takes grouped activation rows, active expert IDs, row counts, and route weights.
  * The functional form takes gate and up weights before the route weights.
  * A single activation row is broadcast across all routed rows.
  * @param segments How many expert segments are in each weight table.
  * @param count The intermediate output width of each expert.
  * @param clamp If positive, clamp the up projection symmetrically and gate projection from above.
+ * @param gate_soft_cap If positive, the gate's linear factor is gate_soft_cap * tanh(gate / gate_soft_cap), while the sigmoid reads the gate itself.
+ * @param up_soft_cap If positive, the up projection is up_soft_cap * tanh(up / up_soft_cap).
  * @param functional If non-zero, the model owns no parameters and takes gate and up weight tensors as inputs.
  * @param shared_expert Also take a shared expert's activation after the route weights (followed by
- *        its gate and up weights with functional), and return its clamped SwiGLU as a second
- *        output. Without functional, the model owns the shared expert's gate and up weights, count
- *        rows each. Decode can evaluate both in one dispatch.
+ *        its gate and up weights with functional), and return its SwiGLU, clamped and soft-capped
+ *        the same way, as a second output. Without functional, the model owns the shared expert's
+ *        gate and up weights, count rows each. Decode can evaluate both in one dispatch.
  * @param is_trainable Whether the parameters of this model can be trained.
  * @param name The unique name of the model.
  * @return A segmented SwiGLU layer model.
  */
-CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_segmented_swiglu(const int segments, const int count, const float clamp, const int functional, const int shared_expert, const int is_trainable, const char* const name);
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_segmented_swiglu(const int segments, const int count, const float clamp, const float gate_soft_cap, const float up_soft_cap, const int functional, const int shared_expert, const int is_trainable, const char* const name);
 /**
  * A unified gate / up / down MoE weights-streaming operation. Inputs are expert IDs,
  * counts, route weights, gate weights, up weights, and down weights. Outputs preserve

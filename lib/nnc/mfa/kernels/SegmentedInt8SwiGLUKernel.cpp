@@ -628,8 +628,10 @@ inline void segmented_int8_swiglu_shared_rows(
     gate = min(gate, clamp_limit);
     up = clamp(up, -clamp_limit, clamp_limit);
 )";
+    shader += (descriptor.gateSoftCap || descriptor.upSoftCap) ? R"(
+    destination[row] = (real)(soft_cap_swiglu(gate, up));)" : R"(
+    destination[row] = (real)(up * gate * stable_sigmoid(gate));)";
     shader += R"(
-    destination[row] = (real)(up * gate * stable_sigmoid(gate));
   }
 }
 
@@ -765,8 +767,10 @@ inline void segmented_int8_swiglu_shared_rows(
       gate = min(gate, clamp_limit);
       up = clamp(up, -clamp_limit, clamp_limit);
 )";
+    shader += (descriptor.gateSoftCap || descriptor.upSoftCap) ? R"(
+      destination[row_base + 0] = (real)(soft_cap_swiglu(gate, up));)" : R"(
+      destination[row_base + 0] = (real)(up * gate * stable_sigmoid(gate));)";
     shader += R"(
-      destination[row_base + 0] = (real)(up * gate * stable_sigmoid(gate));
     }
     if (lane == 1 && active1) {
       float gate = all_gate1 * (float)gate_scales[row_base + 1];
@@ -777,8 +781,10 @@ inline void segmented_int8_swiglu_shared_rows(
       gate = min(gate, clamp_limit);
       up = clamp(up, -clamp_limit, clamp_limit);
 )";
+    shader += (descriptor.gateSoftCap || descriptor.upSoftCap) ? R"(
+      destination[row_base + 1] = (real)(soft_cap_swiglu(gate, up));)" : R"(
+      destination[row_base + 1] = (real)(up * gate * stable_sigmoid(gate));)";
     shader += R"(
-      destination[row_base + 1] = (real)(up * gate * stable_sigmoid(gate));
     }
   }
 }
@@ -846,6 +852,10 @@ constant ulong weight_expert_stride [[function_constant(7)]];
 )";
   if (descriptor.clamp)
     shader += "constant float clamp_limit [[function_constant(8)]];\n";
+  if (descriptor.gateSoftCap)
+    shader += "constant float gate_soft_cap [[function_constant(11)]];\n";
+  if (descriptor.upSoftCap)
+    shader += "constant float up_soft_cap [[function_constant(12)]];\n";
   shader += R"(
 #include <metal_stdlib>
 using namespace metal;
@@ -860,6 +870,15 @@ inline float stable_sigmoid(const float value)
 }
 
 )";
+  if (descriptor.gateSoftCap || descriptor.upSoftCap) {
+    // The sigmoid reads the gate itself, while the soft caps bound its linear factor and up. The
+    // fast tanh loses accuracy for large inputs, as in the tanh kernel.
+    shader += "inline float soft_cap_swiglu(const float gate, const float up)\n{\n  return (";
+    shader += descriptor.upSoftCap ? "up_soft_cap * precise::tanh(up / up_soft_cap)" : "up";
+    shader += ") * (";
+    shader += descriptor.gateSoftCap ? "gate_soft_cap * precise::tanh(gate / gate_soft_cap)" : "gate";
+    shader += ") * stable_sigmoid(gate);\n}\n\n";
+  }
   appendRoutesSignature(shader);
   shader += R"(
   constexpr uint rows_per_simdgroup = 1;
@@ -936,9 +955,12 @@ inline float stable_sigmoid(const float value)
     gate0 = min(gate0, clamp_limit);
     up0 = clamp(up0, -clamp_limit, clamp_limit);
 )";
-  shader += R"(
+  shader += (descriptor.gateSoftCap || descriptor.upSoftCap) ? R"(
     destination[row_base + 0] = (real)(
-      route_weight * up0 * gate0 * stable_sigmoid(gate0));
+      route_weight * soft_cap_swiglu(gate0, up0));)" : R"(
+    destination[row_base + 0] = (real)(
+      route_weight * up0 * gate0 * stable_sigmoid(gate0));)";
+  shader += R"(
   }
 }
 )";
@@ -968,6 +990,10 @@ constant ulong weight_expert_stride [[function_constant(7)]];
 )";
   if (descriptor.clamp)
     shader += "constant float clamp_limit [[function_constant(8)]];\n";
+  if (descriptor.gateSoftCap)
+    shader += "constant float gate_soft_cap [[function_constant(11)]];\n";
+  if (descriptor.upSoftCap)
+    shader += "constant float up_soft_cap [[function_constant(12)]];\n";
   shader += R"(
 #include <metal_stdlib>
 using namespace metal;
@@ -982,6 +1008,15 @@ inline float stable_sigmoid(const float value)
 }
 
 )";
+  if (descriptor.gateSoftCap || descriptor.upSoftCap) {
+    // The sigmoid reads the gate itself, while the soft caps bound its linear factor and up. The
+    // fast tanh loses accuracy for large inputs, as in the tanh kernel.
+    shader += "inline float soft_cap_swiglu(const float gate, const float up)\n{\n  return (";
+    shader += descriptor.upSoftCap ? "up_soft_cap * precise::tanh(up / up_soft_cap)" : "up";
+    shader += ") * (";
+    shader += descriptor.gateSoftCap ? "gate_soft_cap * precise::tanh(gate / gate_soft_cap)" : "gate";
+    shader += ") * stable_sigmoid(gate);\n}\n\n";
+  }
   appendRoutesSignature(shader);
   shader += R"(
   constexpr uint rows_per_simdgroup = 1;
@@ -1061,9 +1096,12 @@ inline float stable_sigmoid(const float value)
     gate0 = min(gate0, clamp_limit);
     up0 = clamp(up0, -clamp_limit, clamp_limit);
 )";
-  shader += R"(
+  shader += (descriptor.gateSoftCap || descriptor.upSoftCap) ? R"(
     destination[row_base + 0] = (real)(
-      route_weight * up0 * gate0 * stable_sigmoid(gate0));
+      route_weight * soft_cap_swiglu(gate0, up0));)" : R"(
+    destination[row_base + 0] = (real)(
+      route_weight * up0 * gate0 * stable_sigmoid(gate0));)";
+  shader += R"(
   }
 }
 )";
@@ -1093,6 +1131,10 @@ constant ulong weight_expert_stride [[function_constant(7)]];
 )";
   if (descriptor.clamp)
     shader += "constant float clamp_limit [[function_constant(8)]];\n";
+  if (descriptor.gateSoftCap)
+    shader += "constant float gate_soft_cap [[function_constant(11)]];\n";
+  if (descriptor.upSoftCap)
+    shader += "constant float up_soft_cap [[function_constant(12)]];\n";
   shader += R"(
 #include <metal_stdlib>
 using namespace metal;
@@ -1107,6 +1149,15 @@ inline float stable_sigmoid(const float value)
 }
 
 )";
+  if (descriptor.gateSoftCap || descriptor.upSoftCap) {
+    // The sigmoid reads the gate itself, while the soft caps bound its linear factor and up. The
+    // fast tanh loses accuracy for large inputs, as in the tanh kernel.
+    shader += "inline float soft_cap_swiglu(const float gate, const float up)\n{\n  return (";
+    shader += descriptor.upSoftCap ? "up_soft_cap * precise::tanh(up / up_soft_cap)" : "up";
+    shader += ") * (";
+    shader += descriptor.gateSoftCap ? "gate_soft_cap * precise::tanh(gate / gate_soft_cap)" : "gate";
+    shader += ") * stable_sigmoid(gate);\n}\n\n";
+  }
   appendRoutesSignature(shader);
   shader += R"(
   constexpr uint rows_per_simdgroup = 1;
@@ -1183,9 +1234,12 @@ inline float stable_sigmoid(const float value)
     gate0 = min(gate0, clamp_limit);
     up0 = clamp(up0, -clamp_limit, clamp_limit);
 )";
-  shader += R"(
+  shader += (descriptor.gateSoftCap || descriptor.upSoftCap) ? R"(
     destination[row_base + 0] = (real)(
-      route_weight * up0 * gate0 * stable_sigmoid(gate0));
+      route_weight * soft_cap_swiglu(gate0, up0));)" : R"(
+    destination[row_base + 0] = (real)(
+      route_weight * up0 * gate0 * stable_sigmoid(gate0));)";
+  shader += R"(
   }
 }
 )";
@@ -1215,6 +1269,10 @@ constant ulong weight_expert_stride [[function_constant(7)]];
 )";
   if (descriptor.clamp)
     shader += "constant float clamp_limit [[function_constant(8)]];\n";
+  if (descriptor.gateSoftCap)
+    shader += "constant float gate_soft_cap [[function_constant(11)]];\n";
+  if (descriptor.upSoftCap)
+    shader += "constant float up_soft_cap [[function_constant(12)]];\n";
   shader += R"(
 #include <metal_stdlib>
 using namespace metal;
@@ -1229,6 +1287,15 @@ inline float stable_sigmoid(const float value)
 }
 
 )";
+  if (descriptor.gateSoftCap || descriptor.upSoftCap) {
+    // The sigmoid reads the gate itself, while the soft caps bound its linear factor and up. The
+    // fast tanh loses accuracy for large inputs, as in the tanh kernel.
+    shader += "inline float soft_cap_swiglu(const float gate, const float up)\n{\n  return (";
+    shader += descriptor.upSoftCap ? "up_soft_cap * precise::tanh(up / up_soft_cap)" : "up";
+    shader += ") * (";
+    shader += descriptor.gateSoftCap ? "gate_soft_cap * precise::tanh(gate / gate_soft_cap)" : "gate";
+    shader += ") * stable_sigmoid(gate);\n}\n\n";
+  }
   appendRoutesSignature(shader);
   shader += R"(
   constexpr uint rows_per_simdgroup = 1;
@@ -1304,9 +1371,12 @@ inline float stable_sigmoid(const float value)
     gate0 = min(gate0, clamp_limit);
     up0 = clamp(up0, -clamp_limit, clamp_limit);
 )";
-  shader += R"(
+  shader += (descriptor.gateSoftCap || descriptor.upSoftCap) ? R"(
     destination[row_base + 0] = (real)(
-      route_weight * up0 * gate0 * stable_sigmoid(gate0));
+      route_weight * soft_cap_swiglu(gate0, up0));)" : R"(
+    destination[row_base + 0] = (real)(
+      route_weight * up0 * gate0 * stable_sigmoid(gate0));)";
+  shader += R"(
   }
 }
 )";
@@ -1374,6 +1444,10 @@ constant ulong weight_expert_stride [[function_constant(7)]];
 )";
   if (descriptor.clamp)
     shader += "constant float clamp_limit [[function_constant(8)]];\n";
+  if (descriptor.gateSoftCap)
+    shader += "constant float gate_soft_cap [[function_constant(11)]];\n";
+  if (descriptor.upSoftCap)
+    shader += "constant float up_soft_cap [[function_constant(12)]];\n";
   appendIQ2XXSScaledGrid(shader);
   appendIQ2XXSSigns(shader);
   shader += R"(
@@ -1445,6 +1519,15 @@ inline float stable_sigmoid(const float value)
 }
 
 )";
+  if (descriptor.gateSoftCap || descriptor.upSoftCap) {
+    // The sigmoid reads the gate itself, while the soft caps bound its linear factor and up. The
+    // fast tanh loses accuracy for large inputs, as in the tanh kernel.
+    shader += "inline float soft_cap_swiglu(const float gate, const float up)\n{\n  return (";
+    shader += descriptor.upSoftCap ? "up_soft_cap * precise::tanh(up / up_soft_cap)" : "up";
+    shader += ") * (";
+    shader += descriptor.gateSoftCap ? "gate_soft_cap * precise::tanh(gate / gate_soft_cap)" : "gate";
+    shader += ") * stable_sigmoid(gate);\n}\n\n";
+  }
   appendRoutesSignature(shader);
   shader += R"(
   constexpr uint rows_per_simdgroup = 1;
@@ -1517,9 +1600,12 @@ inline float stable_sigmoid(const float value)
     gate0 = min(gate0, clamp_limit);
     up0 = clamp(up0, -clamp_limit, clamp_limit);
 )";
-  shader += R"(
+  shader += (descriptor.gateSoftCap || descriptor.upSoftCap) ? R"(
     destination[row_base + 0] = (real)(
-      route_weight * up0 * gate0 * stable_sigmoid(gate0));
+      route_weight * soft_cap_swiglu(gate0, up0));)" : R"(
+    destination[row_base + 0] = (real)(
+      route_weight * up0 * gate0 * stable_sigmoid(gate0));)";
+  shader += R"(
   }
 }
 )";

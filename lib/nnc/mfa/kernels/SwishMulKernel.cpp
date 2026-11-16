@@ -19,6 +19,10 @@ SwishMulKernel::SwishMulKernel(SwishMulKernelDescriptor descriptor, MTL::Device*
 
   clamp = descriptor.clamp;
 
+  gateSoftCap = descriptor.gateSoftCap;
+
+  upSoftCap = descriptor.upSoftCap;
+
   gPrecision = descriptor.gPrecision;
 
   aPrecision = descriptor.aPrecision;
@@ -193,7 +197,13 @@ inline float stable_swish_gradient(float z)
 )";
     if (clamp_enabled)
       shader += "  av = metal::clamp(av, (float4)(-clamp_limit), (float4)(clamp_limit));\n  bv = min(bv, (float4)(clamp_limit));\n";
-    if (beta_is_one)
+    // The sigmoid reads the gate itself; the soft caps bound its linear factor and the value.
+    // The fast tanh loses accuracy for large inputs, as in the tanh kernel.
+    if (upSoftCap)
+      shader += "  av = up_soft_cap * precise::tanh(av / up_soft_cap);\n";
+    if (gateSoftCap)
+      shader += std::string("  float4 result = av * (gate_soft_cap * precise::tanh(bv / gate_soft_cap)) * stable_sigmoid(") + (beta_is_one ? "bv" : "beta * bv") + ");\n";
+    else if (beta_is_one)
       shader += "  float4 result = av * bv * stable_sigmoid(bv);\n";
     else
       shader += "  float4 result = av * bv * stable_sigmoid(beta * bv);\n";
@@ -222,7 +232,11 @@ inline float stable_swish_gradient(float z)
 )";
     if (clamp_enabled)
       shader += "  av = metal::clamp(av, -clamp_limit, clamp_limit);\n  bv = min(bv, clamp_limit);\n";
-    if (beta_is_one)
+    if (upSoftCap)
+      shader += "  av = up_soft_cap * precise::tanh(av / up_soft_cap);\n";
+    if (gateSoftCap)
+      shader += std::string("  float result = av * (gate_soft_cap * precise::tanh(bv / gate_soft_cap)) * stable_sigmoid(") + (beta_is_one ? "bv" : "beta * bv") + ");\n";
+    else if (beta_is_one)
       shader += "  float result = av * bv * stable_sigmoid(bv);\n";
     else
       shader += "  float result = av * bv * stable_sigmoid(beta * bv);\n";
@@ -311,6 +325,14 @@ std::string SwishMulKernel::createConstants() const noexcept {
   }
   if (clamp) {
     defines += "constant float clamp_limit [[function_constant(3)]];";
+    defines += "\n";
+  }
+  if (gateSoftCap) {
+    defines += "constant float gate_soft_cap [[function_constant(5)]];";
+    defines += "\n";
+  }
+  if (upSoftCap) {
+    defines += "constant float up_soft_cap [[function_constant(6)]];";
     defines += "\n";
   }
   if (weighted) {

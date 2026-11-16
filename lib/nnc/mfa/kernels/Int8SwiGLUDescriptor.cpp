@@ -5,7 +5,8 @@
 bool Int8SwiGLUDescriptor::operator==(const Int8SwiGLUDescriptor& rhs) const
 {
   return format == rhs.format && M == rhs.M && N == rhs.N && K == rhs.K &&
-    clamp == rhs.clamp && memoryPrecision == rhs.memoryPrecision;
+    clamp == rhs.clamp && gateSoftCap == rhs.gateSoftCap && upSoftCap == rhs.upSoftCap &&
+    memoryPrecision == rhs.memoryPrecision;
 }
 
 std::size_t std::hash<Int8SwiGLUDescriptor>::operator()(
@@ -18,6 +19,7 @@ std::size_t std::hash<Int8SwiGLUDescriptor>::operator()(
   seed = combine_32(seed, value.N);
   seed = combine_32(seed, value.K);
   seed = combine_32(seed, uint32_t(std::hash<float>{}(value.clamp)));
+  seed = combine_64(seed, pack_64(simd::uint2 { uint32_t(std::hash<float>{}(value.gateSoftCap)), uint32_t(std::hash<float>{}(value.upSoftCap)) }));
   seed = combine_32(seed, (uint32_t)value.memoryPrecision.value);
   return seed;
 }
@@ -41,6 +43,8 @@ std::pair<
 
   Int8SwiGLUKernelDescriptor kernelDesc;
   kernelDesc.clamp = clamp > 0;
+  kernelDesc.gateSoftCap = gateSoftCap > 0;
+  kernelDesc.upSoftCap = upSoftCap > 0;
   kernelDesc.memoryPrecision = memoryPrecision;
   kernelDesc.activationRows = M;
   kernelDesc.format = format;
@@ -58,6 +62,10 @@ std::pair<
   constants->setConstantValue(&N, MTL::DataTypeUInt, NS::UInteger(1));
   if (clamp > 0)
     constants->setConstantValue(&clamp, MTL::DataTypeFloat, NS::UInteger(2));
+  if (gateSoftCap > 0)
+    constants->setConstantValue(&gateSoftCap, MTL::DataTypeFloat, NS::UInteger(3));
+  if (upSoftCap > 0)
+    constants->setConstantValue(&upSoftCap, MTL::DataTypeFloat, NS::UInteger(4));
   NS::String* functionName = NS::String::string(
     "int8_swiglu", NS::UTF8StringEncoding);
   NS::Error* error = nil;

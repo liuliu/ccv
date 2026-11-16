@@ -338,6 +338,8 @@
 #define CMD_SCATTER_ADD_BACKWARD(_bincount) ccv_nnc_cmd(CCV_NNC_SCATTER_ADD_BACKWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.scatter_add={.bincount=_bincount}}), 0)
 // CCV_NNC_SEGMENTED_SWIGLU_FORWARD
 #define CMD_SEGMENTED_SWIGLU_FORWARD(_clamp) ccv_nnc_cmd(CCV_NNC_SEGMENTED_SWIGLU_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.segmented_swiglu={.clamp=_clamp}}), 0)
+// CCV_NNC_SEGMENTED_SWIGLU_FORWARD
+#define CMD_SEGMENTED_SWIGLU_SOFT_CAP_FORWARD(_gate_soft_cap, _up_soft_cap) ccv_nnc_cmd(CCV_NNC_SEGMENTED_SWIGLU_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.segmented_swiglu={.gate_soft_cap=_gate_soft_cap,.up_soft_cap=_up_soft_cap}}), 0)
 // CCV_NNC_SEGMENTED_SWIGLU_BACKWARD
 #define CMD_SEGMENTED_SWIGLU_BACKWARD(_clamp) ccv_nnc_cmd(CCV_NNC_SEGMENTED_SWIGLU_BACKWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.segmented_swiglu={.clamp=_clamp}}), 0)
 // CCV_NNC_SGD_FORWARD
@@ -390,6 +392,8 @@
 #define CMD_SPARSE_INDEXED_ATTENTION_BACKWARD(_scale, _is_causal, _attention_sinks) ccv_nnc_cmd(CCV_NNC_SPARSE_INDEXED_ATTENTION_BACKWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.sparse_indexed_attention={.scale=_scale,.is_causal=_is_causal,.attention_sinks=_attention_sinks,.sliding_window=0}}), 0)
 // CCV_NNC_SWIGLU_FORWARD
 #define CMD_SWIGLU_FORWARD(_clamp) ccv_nnc_cmd(CCV_NNC_SWIGLU_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.swiglu={.clamp=_clamp}}), 0)
+// CCV_NNC_SWIGLU_FORWARD
+#define CMD_SWIGLU_SOFT_CAP_FORWARD(_gate_soft_cap, _up_soft_cap) ccv_nnc_cmd(CCV_NNC_SWIGLU_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.swiglu={.gate_soft_cap=_gate_soft_cap,.up_soft_cap=_up_soft_cap}}), 0)
 // CCV_NNC_SWIGLU_BACKWARD
 #define CMD_SWIGLU_BACKWARD(_clamp) ccv_nnc_cmd(CCV_NNC_SWIGLU_BACKWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.swiglu={.clamp=_clamp}}), 0)
 // CCV_NNC_SWISH_FORWARD

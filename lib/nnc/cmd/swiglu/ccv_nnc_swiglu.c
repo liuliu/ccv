@@ -43,5 +43,7 @@ REGISTER_COMMAND(CCV_NNC_SWIGLU_BACKWARD)(ccv_nnc_cmd_registry_t* const registry
 
 //@REGISTER_EASY_COMMAND_MACRO(CCV_NNC_SWIGLU_FORWARD)
 #define CMD_SWIGLU_FORWARD(_clamp) ccv_nnc_cmd(CCV_NNC_SWIGLU_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.swiglu={.clamp=_clamp}}), 0)
+//@REGISTER_EASY_COMMAND_MACRO(CCV_NNC_SWIGLU_FORWARD)
+#define CMD_SWIGLU_SOFT_CAP_FORWARD(_gate_soft_cap, _up_soft_cap) ccv_nnc_cmd(CCV_NNC_SWIGLU_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.swiglu={.gate_soft_cap=_gate_soft_cap,.up_soft_cap=_up_soft_cap}}), 0)
 //@REGISTER_EASY_COMMAND_MACRO(CCV_NNC_SWIGLU_BACKWARD)
 #define CMD_SWIGLU_BACKWARD(_clamp) ccv_nnc_cmd(CCV_NNC_SWIGLU_BACKWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.swiglu={.clamp=_clamp}}), 0)

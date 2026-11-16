@@ -11,13 +11,17 @@ constexpr uint32_t kInt8SwiGLUPackedRowsPerThreadgroup = kInt8SwiGLUSIMDGroupsPe
 
 struct Int8SwiGLUKernelDescriptor {
   bool clamp;
+  // Soft caps of the gate's linear factor and of up.
+  bool gateSoftCap = false;
+  bool upSoftCap = false;
   GEMMOperandPrecision memoryPrecision;
   uint32_t activationRows;
   uint32_t format;
 
   constexpr bool operator==(const Int8SwiGLUKernelDescriptor& rhs) const
   {
-    return clamp == rhs.clamp && memoryPrecision == rhs.memoryPrecision &&
+    return clamp == rhs.clamp && gateSoftCap == rhs.gateSoftCap && upSoftCap == rhs.upSoftCap &&
+      memoryPrecision == rhs.memoryPrecision &&
       activationRows == rhs.activationRows && format == rhs.format;
   }
 };
@@ -29,6 +33,7 @@ struct std::hash<Int8SwiGLUKernelDescriptor>
   {
     return std::hash<uint64_t>()(
       (uint64_t)value.memoryPrecision.value | ((uint64_t)value.clamp << 8) |
+      ((uint64_t)value.gateSoftCap << 9) | ((uint64_t)value.upSoftCap << 10) |
       ((uint64_t)value.activationRows << 16) | ((uint64_t)value.format << 32));
   }
 };

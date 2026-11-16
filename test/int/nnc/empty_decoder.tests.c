@@ -132,9 +132,9 @@ TEST_CASE("empty decoder operators reject invalid arity before accessing outputs
 TEST_CASE("empty decoder models retain their parameter slots and infer empty outputs")
 {
 	ccv_cnnp_model_t* const models[] = {
-		ccv_cnnp_swiglu(32, 10, 0, "swiglu"),
-		ccv_cnnp_segmented_swiglu(4, 32, 10, 0, 0, 0, "segmented_swiglu"),
-		ccv_cnnp_segmented_swiglu(4, 32, 10, 0, 1, 0, "segmented_swiglu_with_shared_expert"),
+		ccv_cnnp_swiglu(32, 10, 0, 0, 0, "swiglu"),
+		ccv_cnnp_segmented_swiglu(4, 32, 10, 0, 0, 0, 0, 0, "segmented_swiglu"),
+		ccv_cnnp_segmented_swiglu(4, 32, 10, 0, 0, 0, 1, 0, "segmented_swiglu_with_shared_expert"),
 		ccv_cnnp_segmented_dense(4, 32, 1, 0, 0, 0, 0, "segmented_dense"),
 		ccv_cnnp_segmented_dense(4, 32, 0, 0, 0, 0, 0, "segmented_dense_with_bias"),
 		ccv_cnnp_segmented_dense(4, 32, 1, 0, 0, 1, 0, "segmented_dense_with_shared_expert"),

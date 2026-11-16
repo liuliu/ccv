@@ -5,6 +5,8 @@ typedef struct {
   float beta;
   float scale;
   float clamp;
+  float gate_soft_cap;
+  float up_soft_cap;
   uint64_t a_data_type;
   uint64_t b_data_type;
   uint64_t weight_data_type;

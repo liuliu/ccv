@@ -118,6 +118,88 @@ TEST_CASE("segmented SwiGLU composes routed gate and up projections on CPU")
 	ccv_nnc_tensor_free(a);
 }
 
+TEST_CASE("segmented SwiGLU soft caps the gate's linear factor and up on CPU")
+{
+	const int rows = 17;
+	const int segments = 5;
+	const int experts = 8;
+	const int n = 29;
+	const int k = 31;
+	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, k), 0);
+	ccv_nnc_tensor_t* const indices = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, segments), 0);
+	ccv_nnc_tensor_t* const counts = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, segments), 0);
+	ccv_nnc_tensor_t* const gate_w = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, experts, n, k), 0);
+	ccv_nnc_tensor_t* const up_w = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, experts, n, k), 0);
+	ccv_nnc_tensor_t* const route_weight = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, 1), 0);
+	ccv_nnc_tensor_t* const output = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, n), 0);
+	float* const uncapped = (float*)ccmalloc(sizeof(float) * rows * n);
+	const int selected[] = { 6, 2, 1, 7, 4 };
+	const int rows_per_segment[] = { 4, 0, 6, 3, 4 };
+	memcpy(indices->data.i32, selected, sizeof(selected));
+	memcpy(counts->data.i32, rows_per_segment, sizeof(rows_per_segment));
+	_segmented_swiglu_fill(a->data.f32, (size_t)rows * k, 17, 101, 1.0f / 64);
+	_segmented_swiglu_fill(gate_w->data.f32, (size_t)experts * n * k, 29, 113, 1.0f / 512);
+	_segmented_swiglu_fill(up_w->data.f32, (size_t)experts * n * k, 37, 127, 1.0f / 512);
+	int i;
+	for (i = 0; i < rows; i++)
+		route_weight->data.f32[i] = (float)(i + 1) / rows;
+	_segmented_swiglu_reference(a->data.f32, indices->data.i32, counts->data.i32,
+		gate_w->data.f32, up_w->data.f32, route_weight->data.f32,
+		rows, segments, n, k, 0, uncapped);
+	const float caps[3][2] = { { 0.1f, 0.15f }, { 0.1f, 0 }, { 0, 0.15f } };
+	int c;
+	for (c = 0; c < 3; c++)
+	{
+		const float gate_soft_cap = caps[c][0];
+		const float up_soft_cap = caps[c][1];
+		ccv_nnc_cmd_t command = CMD_SEGMENTED_SWIGLU_SOFT_CAP_FORWARD(gate_soft_cap, up_soft_cap);
+		command.backend = CCV_NNC_BACKEND_CPU_REF;
+		REQUIRE_EQ(ccv_nnc_cmd_exec(command, ccv_nnc_no_hint, 0,
+			TENSOR_LIST(a, indices, counts, gate_w, up_w, route_weight), TENSOR_LIST(output), 0),
+			CCV_NNC_EXEC_SUCCESS, "segmented SwiGLU with soft caps should execute on CPU");
+		// The sigmoid reads the gate itself, and the soft caps bound its linear factor and up.
+		int row = 0;
+		int segment;
+		double capped_difference = 0;
+		double uncapped_norm = 0;
+		for (segment = 0; segment < segments; segment++)
+		{
+			int segment_row;
+			for (segment_row = 0; segment_row < rows_per_segment[segment]; segment_row++, row++)
+			{
+				int col;
+				for (col = 0; col < n; col++)
+				{
+					float gate = 0;
+					float up = 0;
+					int inner;
+					for (inner = 0; inner < k; inner++)
+					{
+						const size_t weight_index = ((size_t)selected[segment] * n + col) * k + inner;
+						gate += a->data.f32[(size_t)row * k + inner] * gate_w->data.f32[weight_index];
+						up += a->data.f32[(size_t)row * k + inner] * up_w->data.f32[weight_index];
+					}
+					const float gate_linear = gate_soft_cap > 0 ? gate_soft_cap * tanhf(gate / gate_soft_cap) : gate;
+					const float up_capped = up_soft_cap > 0 ? up_soft_cap * tanhf(up / up_soft_cap) : up;
+					const float expected = route_weight->data.f32[row] * up_capped * gate_linear / (1 + expf(-gate));
+					REQUIRE_EQ_WITH_TOLERANCE(output->data.f32[(size_t)row * n + col], expected, 1e-5, "segmented SwiGLU should apply its soft caps at row %d, column %d", row, col);
+					capped_difference += fabs((double)expected - uncapped[(size_t)row * n + col]);
+					uncapped_norm += fabs((double)uncapped[(size_t)row * n + col]);
+				}
+			}
+		}
+		REQUIRE(capped_difference > 0.05 * uncapped_norm, "the soft caps should change these outputs");
+	}
+	ccfree(uncapped);
+	ccv_nnc_tensor_free(output);
+	ccv_nnc_tensor_free(route_weight);
+	ccv_nnc_tensor_free(up_w);
+	ccv_nnc_tensor_free(gate_w);
+	ccv_nnc_tensor_free(counts);
+	ccv_nnc_tensor_free(indices);
+	ccv_nnc_tensor_free(a);
+}
+
 TEST_CASE("segmented SwiGLU broadcasts one activation row across routed experts on CPU")
 {
 	const int rows = 6;
@@ -200,15 +282,13 @@ static void _segmented_swiglu_compare_half(const ccv_float16_t* const actual_hal
 	ccfree(actual);
 }
 
-TEST_CASE("MPS segmented SwiGLU supports general dense routed groups")
+static void _segmented_swiglu_dense_case(const ccv_nnc_cmd_t swiglu, int* const __case_result__)
 {
-	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SEGMENTED_SWIGLU_FORWARD, CCV_NNC_BACKEND_MPS));
 	const int rows = 17;
 	const int segments = 5;
 	const int experts = 8;
 	const int n = 29;
 	const int k = 31;
-	const float clamp = 2.5f;
 	ccv_nnc_tensor_t* const ha = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, k), 0);
 	ccv_nnc_tensor_t* const hgate_w = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, experts, n, k), 0);
 	ccv_nnc_tensor_t* const hup_w = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, experts, n, k), 0);
@@ -226,7 +306,7 @@ TEST_CASE("MPS segmented SwiGLU supports general dense routed groups")
 	int i;
 	for (i = 0; i < rows; i++)
 		hroute_weight->data.f32[i] = (float)(i + 1) / rows;
-	ccv_nnc_cmd_t cpu_command = CMD_SEGMENTED_SWIGLU_FORWARD(clamp);
+	ccv_nnc_cmd_t cpu_command = swiglu;
 	cpu_command.backend = CCV_NNC_BACKEND_CPU_REF;
 	REQUIRE_EQ(ccv_nnc_cmd_exec(cpu_command, ccv_nnc_no_hint, 0,
 		TENSOR_LIST(ha, hindices, hcounts, hgate_w, hup_w, hroute_weight), TENSOR_LIST(expected), 0),
@@ -244,7 +324,7 @@ TEST_CASE("MPS segmented SwiGLU supports general dense routed groups")
 		TENSOR_LIST(ha, hindices, hcounts, hgate_w, hup_w, hroute_weight),
 		TENSOR_LIST(a, indices, counts, gate_w, up_w, route_weight), stream), CCV_NNC_EXEC_SUCCESS,
 		"dense segmented SwiGLU inputs should transfer");
-	ccv_nnc_cmd_t mps_command = CMD_SEGMENTED_SWIGLU_FORWARD(clamp);
+	ccv_nnc_cmd_t mps_command = swiglu;
 	mps_command.backend = CCV_NNC_BACKEND_MPS;
 	REQUIRE_EQ(ccv_nnc_cmd_exec(mps_command, ccv_nnc_no_hint, 0,
 		TENSOR_LIST(a, indices, counts, gate_w, up_w, route_weight), TENSOR_LIST(output), stream),
@@ -271,7 +351,14 @@ TEST_CASE("MPS segmented SwiGLU supports general dense routed groups")
 	ccv_nnc_tensor_free(ha);
 }
 
-static void _segmented_swiglu_mps_rowwise_case(const int format, const int broadcast_input, const int grouped_prefill, const float clamp, const char* const format_name, int* const __case_result__)
+TEST_CASE("MPS segmented SwiGLU supports general dense routed groups")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SEGMENTED_SWIGLU_FORWARD, CCV_NNC_BACKEND_MPS));
+	_segmented_swiglu_dense_case(CMD_SEGMENTED_SWIGLU_FORWARD(2.5f), __case_result__);
+	_segmented_swiglu_dense_case(CMD_SEGMENTED_SWIGLU_SOFT_CAP_FORWARD(0.1, 0.15), __case_result__);
+}
+
+static void _segmented_swiglu_mps_rowwise_case(const int format, const int broadcast_input, const int grouped_prefill, const ccv_nnc_cmd_t swiglu, const char* const format_name, int* const __case_result__)
 {
 	const int rows = grouped_prefill ? 17 : 6;
 	const int segments = 6;
@@ -347,7 +434,7 @@ static void _segmented_swiglu_mps_rowwise_case(const int format, const int broad
 	ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0,
 		TENSOR_LIST(ha, hgate_dequant, hup_dequant, hroute),
 		TENSOR_LIST(ha_ref, hgate_ref, hup_ref, hroute_ref), 0);
-	ccv_nnc_cmd_t cpu_command = CMD_SEGMENTED_SWIGLU_FORWARD(clamp);
+	ccv_nnc_cmd_t cpu_command = swiglu;
 	cpu_command.backend = CCV_NNC_BACKEND_CPU_REF;
 	REQUIRE_EQ(ccv_nnc_cmd_exec(cpu_command, ccv_nnc_no_hint, 0,
 		TENSOR_LIST(ha_ref, hindices, hcounts, hgate_ref, hup_ref, hroute_ref), TENSOR_LIST(expected), 0),
@@ -366,7 +453,7 @@ static void _segmented_swiglu_mps_rowwise_case(const int format, const int broad
 	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0,
 		TENSOR_LIST(ha, hindices, hcounts, hgate_q, hup_q, hroute),
 		TENSOR_LIST(a, indices, counts, gate_q, up_q, route), stream);
-	ccv_nnc_cmd_t mps_command = CMD_SEGMENTED_SWIGLU_FORWARD(clamp);
+	ccv_nnc_cmd_t mps_command = swiglu;
 	mps_command.backend = CCV_NNC_BACKEND_MPS;
 	const uint64_t old_flags = ccv_nnc_flags();
 	ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA);
@@ -420,50 +507,67 @@ static void _segmented_swiglu_mps_rowwise_case(const int format, const int broad
 TEST_CASE("MPS segmented SwiGLU fuses rowwise int8 decode")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SEGMENTED_SWIGLU_FORWARD, CCV_NNC_BACKEND_MPS));
-	_segmented_swiglu_mps_rowwise_case(0, 0, 0, 10, "Q8_0 decode", __case_result__);
+	_segmented_swiglu_mps_rowwise_case(0, 0, 0, CMD_SEGMENTED_SWIGLU_FORWARD(10), "Q8_0 decode", __case_result__);
 }
 
 TEST_CASE("MPS segmented SwiGLU fuses IQ2_XXS decode")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SEGMENTED_SWIGLU_FORWARD, CCV_NNC_BACKEND_MPS));
-	_segmented_swiglu_mps_rowwise_case(CCV_NNC_QX_8I_ROWWISE_IQ2_XXS, 0, 0, 10, "IQ2_XXS decode", __case_result__);
-	_segmented_swiglu_mps_rowwise_case(CCV_NNC_QX_8I_ROWWISE_IQ2_XXS, 0, 0, 0.25f, "IQ2_XXS decode with specialized clamp", __case_result__);
-	_segmented_swiglu_mps_rowwise_case(CCV_NNC_QX_8I_ROWWISE_IQ2_XXS, 0, 0, 0, "IQ2_XXS decode without clamp", __case_result__);
+	_segmented_swiglu_mps_rowwise_case(CCV_NNC_QX_8I_ROWWISE_IQ2_XXS, 0, 0, CMD_SEGMENTED_SWIGLU_FORWARD(10), "IQ2_XXS decode", __case_result__);
+	_segmented_swiglu_mps_rowwise_case(CCV_NNC_QX_8I_ROWWISE_IQ2_XXS, 0, 0, CMD_SEGMENTED_SWIGLU_FORWARD(0.25f), "IQ2_XXS decode with specialized clamp", __case_result__);
+	_segmented_swiglu_mps_rowwise_case(CCV_NNC_QX_8I_ROWWISE_IQ2_XXS, 0, 0, CMD_SEGMENTED_SWIGLU_FORWARD(0), "IQ2_XXS decode without clamp", __case_result__);
 }
 
 TEST_CASE("MPS segmented SwiGLU fuses IQ2_XS, IQ3_XXS, and Q2_K decode")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SEGMENTED_SWIGLU_FORWARD, CCV_NNC_BACKEND_MPS));
-	_segmented_swiglu_mps_rowwise_case(CCV_NNC_QX_8I_ROWWISE_IQ2_XS, 0, 0, 10, "IQ2_XS decode", __case_result__);
-	_segmented_swiglu_mps_rowwise_case(CCV_NNC_QX_8I_ROWWISE_IQ3_XXS, 0, 0, 10, "IQ3_XXS decode", __case_result__);
-	_segmented_swiglu_mps_rowwise_case(CCV_NNC_QX_8I_ROWWISE_Q2_K, 0, 0, 10, "Q2_K decode", __case_result__);
+	_segmented_swiglu_mps_rowwise_case(CCV_NNC_QX_8I_ROWWISE_IQ2_XS, 0, 0, CMD_SEGMENTED_SWIGLU_FORWARD(10), "IQ2_XS decode", __case_result__);
+	_segmented_swiglu_mps_rowwise_case(CCV_NNC_QX_8I_ROWWISE_IQ3_XXS, 0, 0, CMD_SEGMENTED_SWIGLU_FORWARD(10), "IQ3_XXS decode", __case_result__);
+	_segmented_swiglu_mps_rowwise_case(CCV_NNC_QX_8I_ROWWISE_Q2_K, 0, 0, CMD_SEGMENTED_SWIGLU_FORWARD(10), "Q2_K decode", __case_result__);
 }
 
 TEST_CASE("MPS segmented SwiGLU fuses IQ1_S and IQ1_M decode")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SEGMENTED_SWIGLU_FORWARD, CCV_NNC_BACKEND_MPS));
-	_segmented_swiglu_mps_rowwise_case(CCV_NNC_QX_8I_ROWWISE_IQ1_S, 0, 0, 10, "IQ1_S decode", __case_result__);
-	_segmented_swiglu_mps_rowwise_case(CCV_NNC_QX_8I_ROWWISE_IQ1_M, 0, 0, 10, "IQ1_M decode", __case_result__);
-	_segmented_swiglu_mps_rowwise_case(CCV_NNC_QX_8I_ROWWISE_IQ1_S, 1, 0, 0, "broadcast IQ1_S decode without clamp", __case_result__);
-	_segmented_swiglu_mps_rowwise_case(CCV_NNC_QX_8I_ROWWISE_IQ1_M, 1, 0, 0, "broadcast IQ1_M decode without clamp", __case_result__);
+	_segmented_swiglu_mps_rowwise_case(CCV_NNC_QX_8I_ROWWISE_IQ1_S, 0, 0, CMD_SEGMENTED_SWIGLU_FORWARD(10), "IQ1_S decode", __case_result__);
+	_segmented_swiglu_mps_rowwise_case(CCV_NNC_QX_8I_ROWWISE_IQ1_M, 0, 0, CMD_SEGMENTED_SWIGLU_FORWARD(10), "IQ1_M decode", __case_result__);
+	_segmented_swiglu_mps_rowwise_case(CCV_NNC_QX_8I_ROWWISE_IQ1_S, 1, 0, CMD_SEGMENTED_SWIGLU_FORWARD(0), "broadcast IQ1_S decode without clamp", __case_result__);
+	_segmented_swiglu_mps_rowwise_case(CCV_NNC_QX_8I_ROWWISE_IQ1_M, 1, 0, CMD_SEGMENTED_SWIGLU_FORWARD(0), "broadcast IQ1_M decode without clamp", __case_result__);
 }
 
 TEST_CASE("MPS segmented SwiGLU broadcasts one activation row for rowwise int8 decode")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SEGMENTED_SWIGLU_FORWARD, CCV_NNC_BACKEND_MPS));
-	_segmented_swiglu_mps_rowwise_case(0, 1, 0, 10, "broadcast Q8_0 decode", __case_result__);
+	_segmented_swiglu_mps_rowwise_case(0, 1, 0, CMD_SEGMENTED_SWIGLU_FORWARD(10), "broadcast Q8_0 decode", __case_result__);
 }
 
 TEST_CASE("MPS segmented SwiGLU broadcasts one activation row for IQ2_XXS decode")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SEGMENTED_SWIGLU_FORWARD, CCV_NNC_BACKEND_MPS));
-	_segmented_swiglu_mps_rowwise_case(CCV_NNC_QX_8I_ROWWISE_IQ2_XXS, 1, 0, 10, "broadcast IQ2_XXS decode", __case_result__);
+	_segmented_swiglu_mps_rowwise_case(CCV_NNC_QX_8I_ROWWISE_IQ2_XXS, 1, 0, CMD_SEGMENTED_SWIGLU_FORWARD(10), "broadcast IQ2_XXS decode", __case_result__);
 }
 
 TEST_CASE("MPS segmented SwiGLU executes grouped rowwise int8 prefill")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SEGMENTED_SWIGLU_FORWARD, CCV_NNC_BACKEND_MPS));
-	_segmented_swiglu_mps_rowwise_case(0, 0, 1, 10, "Q8_0 grouped prefill", __case_result__);
+	_segmented_swiglu_mps_rowwise_case(0, 0, 1, CMD_SEGMENTED_SWIGLU_FORWARD(10), "Q8_0 grouped prefill", __case_result__);
+}
+
+TEST_CASE("MPS segmented SwiGLU soft caps rowwise decode and grouped prefill")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SEGMENTED_SWIGLU_FORWARD, CCV_NNC_BACKEND_MPS));
+	const ccv_nnc_cmd_t swiglu = CMD_SEGMENTED_SWIGLU_SOFT_CAP_FORWARD(0.1, 0.15);
+	_segmented_swiglu_mps_rowwise_case(0, 0, 0, swiglu, "Q8_0 decode with soft caps", __case_result__);
+	// One cap at a time.
+	_segmented_swiglu_mps_rowwise_case(CCV_NNC_QX_8I_ROWWISE_IQ2_XXS, 0, 0, CMD_SEGMENTED_SWIGLU_SOFT_CAP_FORWARD(0.1, 0), "IQ2_XXS decode with a gate soft cap", __case_result__);
+	_segmented_swiglu_mps_rowwise_case(CCV_NNC_QX_8I_ROWWISE_IQ2_XXS, 0, 0, CMD_SEGMENTED_SWIGLU_SOFT_CAP_FORWARD(0, 0.15), "IQ2_XXS decode with an up soft cap", __case_result__);
+	_segmented_swiglu_mps_rowwise_case(0, 0, 1, CMD_SEGMENTED_SWIGLU_SOFT_CAP_FORWARD(0.1, 0), "Q8_0 grouped prefill with a gate soft cap", __case_result__);
+	_segmented_swiglu_mps_rowwise_case(0, 0, 1, CMD_SEGMENTED_SWIGLU_SOFT_CAP_FORWARD(0, 0.15), "Q8_0 grouped prefill with an up soft cap", __case_result__);
+	_segmented_swiglu_mps_rowwise_case(CCV_NNC_QX_8I_ROWWISE_IQ2_XXS, 0, 0, swiglu, "IQ2_XXS decode with soft caps", __case_result__);
+	_segmented_swiglu_mps_rowwise_case(CCV_NNC_QX_8I_ROWWISE_Q2_K, 0, 0, swiglu, "Q2_K decode with soft caps", __case_result__);
+	_segmented_swiglu_mps_rowwise_case(CCV_NNC_QX_8I_ROWWISE_IQ2_XXS, 1, 0, swiglu, "broadcast IQ2_XXS decode with soft caps", __case_result__);
+	_segmented_swiglu_mps_rowwise_case(0, 0, 1, swiglu, "Q8_0 grouped prefill with soft caps", __case_result__);
+	_segmented_swiglu_mps_rowwise_case(CCV_NNC_QX_8I_ROWWISE_IQ2_XXS, 0, 1, swiglu, "IQ2_XXS grouped prefill with soft caps", __case_result__);
 }
 
 // Builds packed 8i row-wise X weights directly instead of fitting them with the quantizer, which
@@ -720,12 +824,11 @@ TEST_CASE("MPS segmented SwiGLU uses Int8MatMul for packed weights and float sca
 TEST_CASE("MPS segmented SwiGLU executes grouped IQ2_XXS prefill")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SEGMENTED_SWIGLU_FORWARD, CCV_NNC_BACKEND_MPS));
-	_segmented_swiglu_mps_rowwise_case(CCV_NNC_QX_8I_ROWWISE_IQ2_XXS, 0, 1, 10, "IQ2_XXS grouped prefill", __case_result__);
+	_segmented_swiglu_mps_rowwise_case(CCV_NNC_QX_8I_ROWWISE_IQ2_XXS, 0, 1, CMD_SEGMENTED_SWIGLU_FORWARD(10), "IQ2_XXS grouped prefill", __case_result__);
 }
 
-TEST_CASE("MPS segmented SwiGLU handles small rowwise batches across formats")
+static void _segmented_swiglu_small_batches_case(const ccv_nnc_cmd_t swiglu, int* const __case_result__)
 {
-	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SEGMENTED_SWIGLU_FORWARD, CCV_NNC_BACKEND_MPS));
 	const int formats[] = {
 		0, CCV_NNC_QX_8I_ROWWISE_IQ2_XXS, CCV_NNC_QX_8I_ROWWISE_IQ2_XS,
 		CCV_NNC_QX_8I_ROWWISE_IQ3_XXS, CCV_NNC_QX_8I_ROWWISE_Q2_K,
@@ -734,10 +837,9 @@ TEST_CASE("MPS segmented SwiGLU handles small rowwise batches across formats")
 		CCV_NNC_QX_8I_ROWWISE_IQ2_S, CCV_NNC_QX_8I_ROWWISE_IQ3_S,
 		CCV_NNC_QX_8I_ROWWISE_IQ1_S, CCV_NNC_QX_8I_ROWWISE_IQ1_M,
 	};
-	const int row_counts[] = { 3, 17, 18, 19 };
+	const int row_counts[] = { 3, 8, 17, 18, 19 };
 	const int segments = 6, experts = 8, n = 256, k = 256;
 	const size_t weight_count = (size_t)experts * n * k;
-	const float clamp = 10;
 	for (int f = 0; f < sizeof(formats) / sizeof(formats[0]); f++)
 	{
 		const int format = formats[f];
@@ -812,7 +914,7 @@ TEST_CASE("MPS segmented SwiGLU handles small rowwise batches across formats")
 						ha_ref->data.f32[row * k + j] = scale * ccv_clamp((int)lrintf(ha->data.f32[row * k + j] * inv_scale), -127, 127);
 				}
 			}
-			ccv_nnc_cmd_t command = CMD_SEGMENTED_SWIGLU_FORWARD(clamp);
+			ccv_nnc_cmd_t command = swiglu;
 			command.backend = CCV_NNC_BACKEND_CPU_REF;
 			REQUIRE_EQ(ccv_nnc_cmd_exec(command, ccv_nnc_no_hint, 0,
 				TENSOR_LIST(ha_ref, hi, hc, hgate, hup, hr), TENSOR_LIST(expected), 0), CCV_NNC_EXEC_SUCCESS, "CPU reference should execute");
@@ -862,6 +964,19 @@ TEST_CASE("MPS segmented SwiGLU handles small rowwise batches across formats")
 		ccv_nnc_tensor_free(hgate);
 		ccv_nnc_tensor_free(hup);
 	}
+}
+
+TEST_CASE("MPS segmented SwiGLU handles small rowwise batches across formats")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SEGMENTED_SWIGLU_FORWARD, CCV_NNC_BACKEND_MPS));
+	_segmented_swiglu_small_batches_case(CMD_SEGMENTED_SWIGLU_FORWARD(10), __case_result__);
+}
+
+TEST_CASE("MPS segmented SwiGLU soft caps small rowwise batches across formats")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SEGMENTED_SWIGLU_FORWARD, CCV_NNC_BACKEND_MPS));
+	// Both caps: two activations of 1e8 make the uncapped projections of their rows too large to compare.
+	_segmented_swiglu_small_batches_case(CMD_SEGMENTED_SWIGLU_SOFT_CAP_FORWARD(4, 25), __case_result__);
 }
 
 TEST_CASE("MPS segmented SwiGLU preserves route weights with 257 experts")

@@ -54,6 +54,8 @@ static int _ccv_nnc_segmented_swiglu_routed_forw(const ccv_nnc_cmd_t cmd, ccv_nn
 		return CCV_NNC_EXEC_INVALID;
 	const float limit = cmd.info.segmented_swiglu.clamp;
 	const int clamp_enabled = limit > 0;
+	const float gate_soft_cap = cmd.info.segmented_swiglu.gate_soft_cap;
+	const float up_soft_cap = cmd.info.segmented_swiglu.up_soft_cap;
 	size_t row = 0;
 	size_t segment;
 	for (segment = 0; segment < segment_count; segment++)
@@ -89,15 +91,19 @@ static int _ccv_nnc_segmented_swiglu_routed_forw(const ccv_nnc_cmd_t cmd, ccv_nn
 					gate = ccv_min(gate, limit);
 					up = ccv_min(ccv_max(up, -limit), limit);
 				}
-				output_row[column] = route_weight->data.f32[row] * up * gate / (1 + expf(-gate));
+				// The sigmoid reads the gate itself; the soft caps bound its linear factor and up.
+				const float gate_linear = gate_soft_cap > 0 ? gate_soft_cap * tanhf(gate / gate_soft_cap) : gate;
+				if (up_soft_cap > 0)
+					up = up_soft_cap * tanhf(up / up_soft_cap);
+				output_row[column] = route_weight->data.f32[row] * up * gate_linear / (1 + expf(-gate));
 			} parallel_endfor
 		}
 	}
 	return row == rows ? CCV_NNC_EXEC_SUCCESS : CCV_NNC_EXEC_INVALID;
 }
 
-// The shared expert: a clamped SwiGLU of each of its activation rows, as SWIGLU_FORWARD computes it.
-static int _ccv_nnc_segmented_swiglu_shared_forw(const float limit, const ccv_nnc_tensor_t* const a, const ccv_nnc_tensor_t* const gate_w, const ccv_nnc_tensor_t* const up_w, ccv_nnc_tensor_t* const output)
+// The shared expert: a clamped or soft-capped SwiGLU of each of its activation rows, as SWIGLU_FORWARD computes it.
+static int _ccv_nnc_segmented_swiglu_shared_forw(const float limit, const float gate_soft_cap, const float up_soft_cap, const ccv_nnc_tensor_t* const a, const ccv_nnc_tensor_t* const gate_w, const ccv_nnc_tensor_t* const up_w, ccv_nnc_tensor_t* const output)
 {
 	if (output->info.dim[0] == 0)
 		return CCV_NNC_EXEC_SUCCESS;
@@ -150,7 +156,11 @@ static int _ccv_nnc_segmented_swiglu_shared_forw(const float limit, const ccv_nn
 				gate = ccv_min(gate, limit);
 				up = ccv_min(ccv_max(up, -limit), limit);
 			}
-			output_row[column] = up * gate / (1 + expf(-gate));
+			// The sigmoid reads the gate itself; the soft caps bound its linear factor and up.
+			const float gate_linear = gate_soft_cap > 0 ? gate_soft_cap * tanhf(gate / gate_soft_cap) : gate;
+			if (up_soft_cap > 0)
+				up = up_soft_cap * tanhf(up / up_soft_cap);
+			output_row[column] = up * gate_linear / (1 + expf(-gate));
 		}
 	} parallel_endfor
 	return CCV_NNC_EXEC_SUCCESS;
@@ -164,7 +174,7 @@ static int _ccv_nnc_segmented_swiglu_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc
 		return CCV_NNC_EXEC_INVALID;
 	if (input_size == 9)
 	{
-		const int status = _ccv_nnc_segmented_swiglu_shared_forw(cmd.info.segmented_swiglu.clamp, inputs[6], inputs[7], inputs[8], outputs[1]);
+		const int status = _ccv_nnc_segmented_swiglu_shared_forw(cmd.info.segmented_swiglu.clamp, cmd.info.segmented_swiglu.gate_soft_cap, cmd.info.segmented_swiglu.up_soft_cap, inputs[6], inputs[7], inputs[8], outputs[1]);
 		if (status != CCV_NNC_EXEC_SUCCESS)
 			return status;
 	}

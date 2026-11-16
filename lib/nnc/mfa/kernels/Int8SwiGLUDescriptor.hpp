@@ -13,6 +13,9 @@ struct Int8SwiGLUDescriptor {
   uint32_t N;
   uint32_t K;
   float clamp;
+  // Soft caps of the gate's linear factor and of up, when positive.
+  float gateSoftCap = 0;
+  float upSoftCap = 0;
   GEMMOperandPrecision memoryPrecision;
 
   bool operator==(const Int8SwiGLUDescriptor& rhs) const;

@@ -5832,6 +5832,8 @@ typedef struct {
 	ccv_nnc_tensor_symbol_t up_weights;
 	int count;
 	float clamp;
+	float gate_soft_cap;
+	float up_soft_cap;
 } ccv_cnnp_model_swiglu_t;
 
 static void _ccv_cnnp_swiglu_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
@@ -5857,7 +5859,9 @@ static void _ccv_cnnp_swiglu_build(ccv_cnnp_model_t* const super, ccv_nnc_symbol
 	assert(self->up_weights.graph == graph);
 	const ccv_nnc_tensor_symbol_t gate_weights = ccv_cnnp_model_get_symbol(super, self->gate_weights);
 	const ccv_nnc_tensor_symbol_t up_weights = ccv_cnnp_model_get_symbol(super, self->up_weights);
-	const ccv_nnc_cmd_t cmd = CMD_SWIGLU_FORWARD(self->clamp);
+	ccv_nnc_cmd_t cmd = CMD_SWIGLU_FORWARD(self->clamp);
+	cmd.info.swiglu.gate_soft_cap = self->gate_soft_cap;
+	cmd.info.swiglu.up_soft_cap = self->up_soft_cap;
 	const ccv_nnc_tensor_symbol_t command_inputs[] = {
 		inputs[0], gate_weights, up_weights,
 	};
@@ -5896,7 +5900,7 @@ static const ccv_cnnp_model_vtab_t ccv_cnnp_swiglu_isa = {
 	.copy = _ccv_cnnp_swiglu_copy,
 };
 
-ccv_cnnp_model_t* ccv_cnnp_swiglu(const int count, const float clamp, const int is_trainable, const char* const name)
+ccv_cnnp_model_t* ccv_cnnp_swiglu(const int count, const float clamp, const float gate_soft_cap, const float up_soft_cap, const int is_trainable, const char* const name)
 {
 	ccv_cnnp_model_swiglu_t* const model = (ccv_cnnp_model_swiglu_t*)cccalloc(1, sizeof(ccv_cnnp_model_swiglu_t));
 	model->super.isa = &ccv_cnnp_swiglu_isa;
@@ -5909,13 +5913,15 @@ ccv_cnnp_model_t* ccv_cnnp_swiglu(const int count, const float clamp, const int 
 	model->up_weights.d = CCV_NNC_NO_TENSOR_SYMBOL;
 	model->count = count;
 	model->clamp = clamp;
+	model->gate_soft_cap = gate_soft_cap;
+	model->up_soft_cap = up_soft_cap;
 	return (ccv_cnnp_model_t*)model;
 }
 
 static ccv_cnnp_model_t* _ccv_cnnp_swiglu_copy(const ccv_cnnp_model_t* const super, void* const context)
 {
 	const ccv_cnnp_model_swiglu_t* const self = (const ccv_cnnp_model_swiglu_t*)super;
-	return ccv_cnnp_swiglu(self->count, self->clamp, self->super.is_trainable, self->super.name);
+	return ccv_cnnp_swiglu(self->count, self->clamp, self->gate_soft_cap, self->up_soft_cap, self->super.is_trainable, self->super.name);
 }
 
 // MARK - Segmented SwiGLU Layer
@@ -5930,6 +5936,8 @@ typedef struct {
 	int segments;
 	int count;
 	float clamp;
+	float gate_soft_cap;
+	float up_soft_cap;
 	int functional;
 	int shared_expert;
 } ccv_cnnp_model_segmented_swiglu_t;
@@ -5994,7 +6002,9 @@ static void _ccv_cnnp_segmented_swiglu_build(ccv_cnnp_model_t* const super, ccv_
 			shared_up_weights = ccv_cnnp_model_get_symbol(super, self->shared_up_weights);
 		}
 	}
-	const ccv_nnc_cmd_t cmd = CMD_SEGMENTED_SWIGLU_FORWARD(self->clamp);
+	ccv_nnc_cmd_t cmd = CMD_SEGMENTED_SWIGLU_FORWARD(self->clamp);
+	cmd.info.segmented_swiglu.gate_soft_cap = self->gate_soft_cap;
+	cmd.info.segmented_swiglu.up_soft_cap = self->up_soft_cap;
 	const ccv_nnc_tensor_symbol_t command_inputs[] = {
 		inputs[0], inputs[1], inputs[2], gate_weights, up_weights, inputs[self->functional ? 5 : 3],
 		self->shared_expert ? inputs[self->functional ? 6 : 4] : NO_TENSOR_SYMBOL, shared_gate_weights, shared_up_weights,
@@ -6051,7 +6061,7 @@ static const ccv_cnnp_model_vtab_t ccv_cnnp_segmented_swiglu_isa = {
 	.copy = _ccv_cnnp_segmented_swiglu_copy,
 };
 
-ccv_cnnp_model_t* ccv_cnnp_segmented_swiglu(const int segments, const int count, const float clamp, const int functional, const int shared_expert, const int is_trainable, const char* const name)
+ccv_cnnp_model_t* ccv_cnnp_segmented_swiglu(const int segments, const int count, const float clamp, const float gate_soft_cap, const float up_soft_cap, const int functional, const int shared_expert, const int is_trainable, const char* const name)
 {
 	ccv_cnnp_model_segmented_swiglu_t* const model = (ccv_cnnp_model_segmented_swiglu_t*)cccalloc(1, sizeof(ccv_cnnp_model_segmented_swiglu_t));
 	model->super.isa = &ccv_cnnp_segmented_swiglu_isa;
@@ -6067,6 +6077,8 @@ ccv_cnnp_model_t* ccv_cnnp_segmented_swiglu(const int segments, const int count,
 	model->segments = segments;
 	model->count = count;
 	model->clamp = clamp;
+	model->gate_soft_cap = gate_soft_cap;
+	model->up_soft_cap = up_soft_cap;
 	model->functional = functional;
 	model->shared_expert = shared_expert;
 	return (ccv_cnnp_model_t*)model;
@@ -6075,7 +6087,7 @@ ccv_cnnp_model_t* ccv_cnnp_segmented_swiglu(const int segments, const int count,
 static ccv_cnnp_model_t* _ccv_cnnp_segmented_swiglu_copy(const ccv_cnnp_model_t* const super, void* const context)
 {
 	const ccv_cnnp_model_segmented_swiglu_t* const self = (const ccv_cnnp_model_segmented_swiglu_t*)super;
-	return ccv_cnnp_segmented_swiglu(self->segments, self->count, self->clamp, self->functional, self->shared_expert, self->super.is_trainable, self->super.name);
+	return ccv_cnnp_segmented_swiglu(self->segments, self->count, self->clamp, self->gate_soft_cap, self->up_soft_cap, self->functional, self->shared_expert, self->super.is_trainable, self->super.name);
 }
 
 // MARK - MoE Weights Streaming

@@ -112,10 +112,64 @@ TEST_CASE("SwiGLU composes gate and up projections on CPU and infers metadata fr
 	ccv_nnc_tensor_free(a);
 }
 
+TEST_CASE("SwiGLU soft caps the gate's linear factor and up on CPU")
+{
+	const int rows = 6;
+	const int n = 29;
+	const int k = 31;
+	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, k), 0);
+	ccv_nnc_tensor_t* const gate_w = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, n, k), 0);
+	ccv_nnc_tensor_t* const up_w = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, n, k), 0);
+	ccv_nnc_tensor_t* const output = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, n), 0);
+	float* const uncapped = (float*)ccmalloc(sizeof(float) * rows * n);
+	_swiglu_fill(a->data.f32, (size_t)rows * k, 17, 101, 1.0f / 64);
+	_swiglu_fill(gate_w->data.f32, (size_t)n * k, 29, 113, 1.0f / 512);
+	_swiglu_fill(up_w->data.f32, (size_t)n * k, 37, 127, 1.0f / 512);
+	_swiglu_reference(a->data.f32, gate_w->data.f32, up_w->data.f32, rows, n, k, 0, uncapped);
+	const float caps[3][2] = { { 0.1f, 0.15f }, { 0.1f, 0 }, { 0, 0.15f } };
+	int c;
+	for (c = 0; c < 3; c++)
+	{
+		const float gate_soft_cap = caps[c][0];
+		const float up_soft_cap = caps[c][1];
+		ccv_nnc_cmd_t command = CMD_SWIGLU_SOFT_CAP_FORWARD(gate_soft_cap, up_soft_cap);
+		command.backend = CCV_NNC_BACKEND_CPU_REF;
+		REQUIRE_EQ(ccv_nnc_cmd_exec(command, ccv_nnc_no_hint, 0, TENSOR_LIST(a, gate_w, up_w), TENSOR_LIST(output), 0),
+			CCV_NNC_EXEC_SUCCESS, "SwiGLU with soft caps should execute on CPU");
+		// The sigmoid reads the gate itself, and the soft caps bound its linear factor and up.
+		double capped_difference = 0;
+		double uncapped_norm = 0;
+		int row, col, inner;
+		for (row = 0; row < rows; row++)
+			for (col = 0; col < n; col++)
+			{
+				float gate = 0;
+				float up = 0;
+				for (inner = 0; inner < k; inner++)
+				{
+					gate += a->data.f32[row * k + inner] * gate_w->data.f32[col * k + inner];
+					up += a->data.f32[row * k + inner] * up_w->data.f32[col * k + inner];
+				}
+				const float gate_linear = gate_soft_cap > 0 ? gate_soft_cap * tanhf(gate / gate_soft_cap) : gate;
+				const float up_capped = up_soft_cap > 0 ? up_soft_cap * tanhf(up / up_soft_cap) : up;
+				const float expected = up_capped * gate_linear / (1 + expf(-gate));
+				REQUIRE_EQ_WITH_TOLERANCE(output->data.f32[row * n + col], expected, 1e-5, "SwiGLU should apply its soft caps at row %d, column %d", row, col);
+				capped_difference += fabs((double)expected - uncapped[row * n + col]);
+				uncapped_norm += fabs((double)uncapped[row * n + col]);
+			}
+		REQUIRE(capped_difference > 0.05 * uncapped_norm, "the soft caps should change these outputs");
+	}
+	ccfree(uncapped);
+	ccv_nnc_tensor_free(output);
+	ccv_nnc_tensor_free(up_w);
+	ccv_nnc_tensor_free(gate_w);
+	ccv_nnc_tensor_free(a);
+}
+
 TEST_CASE("SwiGLU model exposes one input and owns both projection weights")
 {
 	const ccv_nnc_tensor_param_t input_params = CPU_TENSOR_NHWC(32F, 2, 3, 31);
-	ccv_cnnp_model_t* const model = ccv_cnnp_swiglu(29, 2.5f, 0, "swiglu");
+	ccv_cnnp_model_t* const model = ccv_cnnp_swiglu(29, 2.5f, 0, 0, 0, "swiglu");
 	ccv_cnnp_model_compile(model, TENSOR_PARAM_LIST(input_params), CMD_NOOP(), CMD_NOOP());
 	ccv_nnc_tensor_param_t output_params = {};
 	ccv_cnnp_model_tensor_auto(model, &output_params, 1);
@@ -129,13 +183,11 @@ TEST_CASE("SwiGLU model exposes one input and owns both projection weights")
 	ccv_cnnp_model_free(model);
 }
 
-TEST_CASE("MPS SwiGLU supports general dense projections")
+static void _swiglu_dense_case(const ccv_nnc_cmd_t swiglu, int* const __case_result__)
 {
-	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SWIGLU_FORWARD, CCV_NNC_BACKEND_MPS));
 	const int rows = 17;
 	const int n = 29;
 	const int k = 31;
-	const float clamp = 2.5f;
 	ccv_nnc_tensor_t* const ha = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, k), 0);
 	ccv_nnc_tensor_t* const hgate_w = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, n, k), 0);
 	ccv_nnc_tensor_t* const hup_w = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, n, k), 0);
@@ -143,7 +195,7 @@ TEST_CASE("MPS SwiGLU supports general dense projections")
 	_swiglu_fill(ha->data.f32, (size_t)rows * k, 17, 101, 1.0f / 64);
 	_swiglu_fill(hgate_w->data.f32, (size_t)n * k, 29, 113, 1.0f / 512);
 	_swiglu_fill(hup_w->data.f32, (size_t)n * k, 37, 127, 1.0f / 512);
-	ccv_nnc_cmd_t cpu_command = CMD_SWIGLU_FORWARD(clamp);
+	ccv_nnc_cmd_t cpu_command = swiglu;
 	cpu_command.backend = CCV_NNC_BACKEND_CPU_REF;
 	REQUIRE_EQ(ccv_nnc_cmd_exec(cpu_command, ccv_nnc_no_hint, 0,
 		TENSOR_LIST(ha, hgate_w, hup_w), TENSOR_LIST(expected), 0),
@@ -157,7 +209,7 @@ TEST_CASE("MPS SwiGLU supports general dense projections")
 	REQUIRE_EQ(ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0,
 		TENSOR_LIST(ha, hgate_w, hup_w), TENSOR_LIST(a, gate_w, up_w), stream),
 		CCV_NNC_EXEC_SUCCESS, "dense SwiGLU inputs should transfer");
-	ccv_nnc_cmd_t mps_command = CMD_SWIGLU_FORWARD(clamp);
+	ccv_nnc_cmd_t mps_command = swiglu;
 	mps_command.backend = CCV_NNC_BACKEND_MPS;
 	REQUIRE_EQ(ccv_nnc_cmd_exec(mps_command, ccv_nnc_no_hint, 0,
 		TENSOR_LIST(a, gate_w, up_w), TENSOR_LIST(output), stream),
@@ -179,7 +231,14 @@ TEST_CASE("MPS SwiGLU supports general dense projections")
 	ccv_nnc_tensor_free(ha);
 }
 
-static void _swiglu_mps_rowwise_case(const int rows, const float clamp, const char* const case_name, int* const __case_result__)
+TEST_CASE("MPS SwiGLU supports general dense projections")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SWIGLU_FORWARD, CCV_NNC_BACKEND_MPS));
+	_swiglu_dense_case(CMD_SWIGLU_FORWARD(2.5f), __case_result__);
+	_swiglu_dense_case(CMD_SWIGLU_SOFT_CAP_FORWARD(0.1, 0.15), __case_result__);
+}
+
+static void _swiglu_mps_rowwise_case(const int rows, const ccv_nnc_cmd_t swiglu, const char* const case_name, int* const __case_result__)
 {
 	const int n = 256;
 	const int k = 256;
@@ -219,7 +278,7 @@ static void _swiglu_mps_rowwise_case(const int rows, const float clamp, const ch
 	ccv_nnc_tensor_t* const expected = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, n), 0);
 	ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0,
 		TENSOR_LIST(ha, hgate_dequant, hup_dequant), TENSOR_LIST(ha_ref, hgate_ref, hup_ref), 0);
-	ccv_nnc_cmd_t cpu_command = CMD_SWIGLU_FORWARD(clamp);
+	ccv_nnc_cmd_t cpu_command = swiglu;
 	cpu_command.backend = CCV_NNC_BACKEND_CPU_REF;
 	REQUIRE_EQ(ccv_nnc_cmd_exec(cpu_command, ccv_nnc_no_hint, 0,
 		TENSOR_LIST(ha_ref, hgate_ref, hup_ref), TENSOR_LIST(expected), 0),
@@ -235,7 +294,7 @@ static void _swiglu_mps_rowwise_case(const int rows, const float clamp, const ch
 	REQUIRE_EQ(ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0,
 		TENSOR_LIST(ha, hgate_q, hup_q), TENSOR_LIST(a, gate_q, up_q), stream),
 		CCV_NNC_EXEC_SUCCESS, "%s inputs should transfer", case_name);
-	ccv_nnc_cmd_t mps_command = CMD_SWIGLU_FORWARD(clamp);
+	ccv_nnc_cmd_t mps_command = swiglu;
 	mps_command.backend = CCV_NNC_BACKEND_MPS;
 	const uint64_t old_flags = ccv_nnc_flags();
 	ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA);
@@ -283,8 +342,8 @@ static void _swiglu_mps_rowwise_case(const int rows, const float clamp, const ch
 TEST_CASE("MPS SwiGLU fuses rowwise int8 decode")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SWIGLU_FORWARD, CCV_NNC_BACKEND_MPS));
-	_swiglu_mps_rowwise_case(1, 10, "rowwise int8 decode SwiGLU should match its dequantized CPU reference", __case_result__);
-	_swiglu_mps_rowwise_case(1, 0, "unclamped rowwise int8 decode SwiGLU should match its dequantized CPU reference", __case_result__);
+	_swiglu_mps_rowwise_case(1, CMD_SWIGLU_FORWARD(10), "rowwise int8 decode SwiGLU should match its dequantized CPU reference", __case_result__);
+	_swiglu_mps_rowwise_case(1, CMD_SWIGLU_FORWARD(0), "unclamped rowwise int8 decode SwiGLU should match its dequantized CPU reference", __case_result__);
 }
 
 TEST_CASE("MPS SwiGLU reads rowwise int8 weights once for a few rows")
@@ -293,10 +352,10 @@ TEST_CASE("MPS SwiGLU reads rowwise int8 weights once for a few rows")
 	static const int rows[] = { 2, 3, 4, 6 };
 	int i;
 	for (i = 0; i < sizeof(rows) / sizeof(rows[0]); i++)
-		_swiglu_mps_rowwise_case(rows[i], 10, "few-row rowwise int8 SwiGLU should match its dequantized CPU reference", __case_result__);
+		_swiglu_mps_rowwise_case(rows[i], CMD_SWIGLU_FORWARD(10), "few-row rowwise int8 SwiGLU should match its dequantized CPU reference", __case_result__);
 }
 
-static void _swiglu_mps_packed_case(const int format, const int datatype, const int rows, const float clamp, const int activation_offset, int* const __case_result__)
+static void _swiglu_mps_packed_case(const int format, const int datatype, const int rows, const ccv_nnc_cmd_t swiglu, const int activation_offset, int* const __case_result__)
 {
 	// Q8_0 (format 0), Q5_K or Q6_K weights over a few rows, as the shared expert of a speculative
 	// verify runs. The reference takes the dequantized weights and the activations in FP32. A
@@ -344,7 +403,7 @@ static void _swiglu_mps_packed_case(const int format, const int datatype, const 
 	ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0,
 		TENSOR_LIST(ha, hgate, hup), TENSOR_LIST(ha_f32, hgate_f32, hup_f32), 0);
 	ccv_nnc_tensor_t* const expected = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, n), 0);
-	ccv_nnc_cmd_t cpu_command = CMD_SWIGLU_FORWARD(clamp);
+	ccv_nnc_cmd_t cpu_command = swiglu;
 	cpu_command.backend = CCV_NNC_BACKEND_CPU_REF;
 	REQUIRE_EQ(ccv_nnc_cmd_exec(cpu_command, ccv_nnc_no_hint, 0,
 		TENSOR_LIST(ha_f32, hgate_f32, hup_f32), TENSOR_LIST(expected), 0),
@@ -377,7 +436,7 @@ static void _swiglu_mps_packed_case(const int format, const int datatype, const 
 	ccv_nnc_tensor_t* const actual = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, n), 0);
 	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0,
 		TENSOR_LIST(ha_buffer, hgate_q, hup_q), TENSOR_LIST(a, gate_q, up_q), 0);
-	ccv_nnc_cmd_t mps_command = CMD_SWIGLU_FORWARD(clamp);
+	ccv_nnc_cmd_t mps_command = swiglu;
 	mps_command.backend = CCV_NNC_BACKEND_MPS;
 	REQUIRE_EQ(ccv_nnc_cmd_exec(mps_command, ccv_nnc_no_hint, 0,
 		TENSOR_LIST(a_view ? (ccv_nnc_tensor_t*)a_view : a, gate_q, up_q), TENSOR_LIST(output), 0),
@@ -398,7 +457,7 @@ static void _swiglu_mps_packed_case(const int format, const int datatype, const 
 	// here on M5 Max. A misread lands near 1.3.
 	const double tolerance = activation_offset > 0 ? 5e-2 : datatype == CCV_32F ? 1e-5 : 2e-3;
 	REQUIRE(relative_l2 < tolerance,
-		"format=%d datatype=%d rows=%d clamp=%g activation_offset=%d SwiGLU should match its dequantized CPU reference (relative L2 %.8g)", format, datatype, rows, clamp, activation_offset, relative_l2);
+		"format=%d datatype=%d rows=%d clamp=%g soft caps=%g, %g activation_offset=%d SwiGLU should match its dequantized CPU reference (relative L2 %.8g)", format, datatype, rows, swiglu.info.swiglu.clamp, swiglu.info.swiglu.gate_soft_cap, swiglu.info.swiglu.up_soft_cap, activation_offset, relative_l2);
 	ccv_nnc_tensor_free(actual);
 	ccv_nnc_tensor_free(hb);
 	ccv_nnc_tensor_free(output);
@@ -429,7 +488,7 @@ TEST_CASE("MPS SwiGLU reads Q5_K and Q6_K weights once for up to 6 rows")
 	for (f = 0; f < 2; f++)
 		for (d = 0; d < 2; d++)
 			for (rows = 1; rows <= 6; rows++)
-				_swiglu_mps_packed_case(formats[f], datatypes[d], rows, rows == 3 ? 0 : 0.5, 0, __case_result__);
+				_swiglu_mps_packed_case(formats[f], datatypes[d], rows, CMD_SWIGLU_FORWARD(rows == 3 ? 0 : 0.5), 0, __case_result__);
 }
 
 TEST_CASE("MPS SwiGLU leaves activation views off the vector boundary to the matrix paths")
@@ -443,13 +502,26 @@ TEST_CASE("MPS SwiGLU leaves activation views off the vector boundary to the mat
 	for (f = 0; f < 3; f++)
 		for (d = 0; d < 2; d++)
 			for (rows = 1; rows <= 4; rows += 3)
-				_swiglu_mps_packed_case(formats[f], datatypes[d], rows, 0.5, 1, __case_result__);
+				_swiglu_mps_packed_case(formats[f], datatypes[d], rows, CMD_SWIGLU_FORWARD(0.5), 1, __case_result__);
+}
+
+TEST_CASE("MPS SwiGLU soft caps rowwise int8 and packed weights")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SWIGLU_FORWARD, CCV_NNC_BACKEND_MPS));
+	const ccv_nnc_cmd_t swiglu = CMD_SWIGLU_SOFT_CAP_FORWARD(0.1, 0.15);
+	_swiglu_mps_rowwise_case(1, swiglu, "rowwise int8 decode SwiGLU with soft caps should match its dequantized CPU reference", __case_result__);
+	_swiglu_mps_rowwise_case(1, CMD_SWIGLU_SOFT_CAP_FORWARD(0.1, 0), "rowwise int8 decode SwiGLU with a gate soft cap should match its dequantized CPU reference", __case_result__);
+	_swiglu_mps_rowwise_case(1, CMD_SWIGLU_SOFT_CAP_FORWARD(0, 0.15), "rowwise int8 decode SwiGLU with an up soft cap should match its dequantized CPU reference", __case_result__);
+	_swiglu_mps_rowwise_case(6, swiglu, "few-row rowwise int8 SwiGLU with soft caps should match its dequantized CPU reference", __case_result__);
+	_swiglu_mps_rowwise_case(17, swiglu, "rowwise int8 prefill SwiGLU with soft caps should match its dequantized CPU reference", __case_result__);
+	_swiglu_mps_packed_case(CCV_NNC_QX_8I_ROWWISE_Q5_K, CCV_16F, 1, swiglu, 0, __case_result__);
+	_swiglu_mps_packed_case(CCV_NNC_QX_8I_ROWWISE_Q6_K, CCV_32F, 6, swiglu, 0, __case_result__);
 }
 
 TEST_CASE("MPS SwiGLU quantizes activation once for rowwise int8 prefill")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SWIGLU_FORWARD, CCV_NNC_BACKEND_MPS));
-	_swiglu_mps_rowwise_case(17, 10, "rowwise int8 prefill SwiGLU should match its dequantized CPU reference", __case_result__);
+	_swiglu_mps_rowwise_case(17, CMD_SWIGLU_FORWARD(10), "rowwise int8 prefill SwiGLU should match its dequantized CPU reference", __case_result__);
 }
 
 TEST_CASE("MPS SwiGLU uses Int8MatMul for float rowwise int8 prefill without neural accelerators")
