@@ -1,6 +1,7 @@
 #include "NormalizationKernel.hpp"
 #include "../ccv_nnc_mfa.hpp"
 
+#include <cmath>
 #include <iomanip>
 #include <limits>
 #include <sstream>
@@ -28,6 +29,7 @@ NormalizationKernel::NormalizationKernel(NormalizationKernelDescriptor descripto
   scaleTranslationBatched = descriptor.scaleTranslationBatched;
   normalizationType = descriptor.normalizationType;
   reuseSavedStatistics = descriptor.reuseSavedStatistics;
+  clip = descriptor.clip;
   loadM = descriptor.loadM;
   srcBatchStride = descriptor.srcBatchStride;
   dstBatchStride = descriptor.dstBatchStride;
@@ -138,8 +140,16 @@ kernel void normalization(
     }
     if (simd_lane == 0) {
       variance = variance / float(sample_count) + epsilon;
-      const float standard_deviation_reciprocal = rsqrt(variance);
-      partials[0] = standard_deviation_reciprocal;
+)";
+  // The factor stops where the final scale brings it to 1. A zero scale has no finite factor to
+  // stop at, and its output is zero either way.
+  const float clip_reciprocal = 1 / scale;
+  if (clip && std::isfinite(clip_reciprocal)) {
+    rmsnorm_shader += "      const float standard_deviation_reciprocal = min(rsqrt(variance), float(" + high_precision_to_string(clip_reciprocal) + "));\n";
+  } else {
+    rmsnorm_shader += "      const float standard_deviation_reciprocal = rsqrt(variance);\n";
+  }
+  rmsnorm_shader += R"(      partials[0] = standard_deviation_reciprocal;
       saved_standard_deviation_reciprocal[threadgroup_index] = real(standard_deviation_reciprocal);
     }
   }

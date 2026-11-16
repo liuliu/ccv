@@ -12,6 +12,7 @@ typedef struct {
   uint8_t scale_translation_batched;
   uint8_t normalization_type;
   uint8_t reuse_saved_statistics;
+  uint8_t clip; // RMSNorm only: the factor scale / rms never exceeds 1.
   uint8_t loadM;
 
   uint32_t batch_dims_data[CCV_NNC_MAX_DIM_ALLOC];

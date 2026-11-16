@@ -39,6 +39,7 @@ static int _ccv_nnc_rmsnorm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t h
 	// The epsilon is used a little bit differently from batch norm, it is outside of the sqrt in this case.
 	const float epsilon = cmd.info.rmsnorm.epsilon;
 	const float output_scale = cmd.info.rmsnorm.scale;
+	const int clip = cmd.info.rmsnorm.clip;
 	int saved_inv_std_stride[CCV_NNC_MAX_DIM_ALLOC];
 	ccv_nnc_tensor_view_get_stride(saved_inv_std, saved_inv_std_stride);
 	int x;
@@ -90,6 +91,10 @@ static int _ccv_nnc_rmsnorm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t h
 				float* const varp2 = varp1 + i[2] * saved_inv_std_stride[2];
 				for (x = 0; x < rdim[3]; x++)
 					varp2[x] = 1. / sqrtf(varp2[x] * inv_n + epsilon);
+				// With clip, the factor stops where the output scale brings it to 1.
+				if (clip)
+					for (x = 0; x < rdim[3]; x++)
+						varp2[x] = ccv_min(varp2[x], 1. / output_scale);
 			}
 		}
 	}
@@ -163,6 +168,8 @@ static int _ccv_nnc_rmsnorm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t h
 {
 	assert(input_size == 6 || input_size == 5);
 	assert(output_size >= 1);
+	if (cmd.info.rmsnorm.clip) // The clip is forward only.
+		return CCV_NNC_EXEC_INVALID;
 	const int elementwise_affine = cmd.info.rmsnorm.elementwise_affine;
 	const float output_scale = cmd.info.rmsnorm.scale;
 	ccv_nnc_tensor_view_t* const g = (ccv_nnc_tensor_view_t*)inputs[0];

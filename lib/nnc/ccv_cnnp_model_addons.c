@@ -3330,7 +3330,7 @@ static const ccv_cnnp_model_vtab_t ccv_cnnp_rmsnorm_isa = {
 	.copy = _ccv_cnnp_rmsnorm_copy,
 };
 
-ccv_cnnp_model_t* ccv_cnnp_rmsnorm(const float epsilon, const int axis[CCV_NNC_MAX_DIM_ALLOC], const int axis_count, const int elementwise_affine, const float scale, const int is_trainable, const char* const name)
+ccv_cnnp_model_t* ccv_cnnp_rmsnorm(const float epsilon, const int axis[CCV_NNC_MAX_DIM_ALLOC], const int axis_count, const int elementwise_affine, const float scale, const int clip, const int is_trainable, const char* const name)
 {
 	ccv_cnnp_model_rmsnorm_t* const model_rmsnorm = (ccv_cnnp_model_rmsnorm_t*)cccalloc(1, sizeof(ccv_cnnp_model_rmsnorm_t));
 	model_rmsnorm->super.isa = &ccv_cnnp_rmsnorm_isa;
@@ -3343,6 +3343,7 @@ ccv_cnnp_model_t* ccv_cnnp_rmsnorm(const float epsilon, const int axis[CCV_NNC_M
 	model_rmsnorm->scale.graph = 0;
 	model_rmsnorm->params.rmsnorm.epsilon = epsilon;
 	model_rmsnorm->params.rmsnorm.scale = scale;
+	model_rmsnorm->params.rmsnorm.clip = clip;
 	model_rmsnorm->params.rmsnorm.count = axis_count;
 	model_rmsnorm->params.rmsnorm.elementwise_affine = elementwise_affine;
 	memcpy(model_rmsnorm->params.lnorm.axis, axis, sizeof(int) * axis_count);
@@ -3352,7 +3353,7 @@ ccv_cnnp_model_t* ccv_cnnp_rmsnorm(const float epsilon, const int axis[CCV_NNC_M
 static ccv_cnnp_model_t* _ccv_cnnp_rmsnorm_copy(const ccv_cnnp_model_t* const super, void* const context)
 {
 	const ccv_cnnp_model_rmsnorm_t* const self = (const ccv_cnnp_model_rmsnorm_t*)super;
-	return ccv_cnnp_rmsnorm(self->params.rmsnorm.epsilon, self->params.rmsnorm.axis, self->params.rmsnorm.count, self->params.rmsnorm.elementwise_affine, self->params.rmsnorm.scale, self->super.is_trainable, self->super.name);
+	return ccv_cnnp_rmsnorm(self->params.rmsnorm.epsilon, self->params.rmsnorm.axis, self->params.rmsnorm.count, self->params.rmsnorm.elementwise_affine, self->params.rmsnorm.scale, self->params.rmsnorm.clip, self->super.is_trainable, self->super.name);
 }
 
 // MARK - RMSNorm CMul Layer

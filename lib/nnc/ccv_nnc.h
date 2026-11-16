@@ -202,6 +202,7 @@ typedef struct {
 			float epsilon; /**< [rmsnorm.epsilon] The epsilon for standard derivation. */
 			float scale; /**< [rmsnorm.scale] The scale applied to the final output. */
 			int elementwise_affine; /**< [rmsnorm.elementwise_affine] Whether it supports scale. */
+			int clip; /**< [rmsnorm.clip] If 1, the factor scale / rms never exceeds 1, so the output is the input whenever its RMS is within the scale: an L2 clip at scale * sqrt(n). Forward only. */
 		} rmsnorm;
 		struct {
 			int axis[CCV_NNC_MAX_DIM_ALLOC]; /**< [rmsnorm_gated.axis[]] The axis selected to compute mean / variance. */
@@ -4891,11 +4892,12 @@ CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_group_norm(const int group_axis, con
  * @param axis_count How many axis we count as feature.
  * @param elementwise_affine Whether it contains scale.
  * @param scale The scale applied to the final output.
+ * @param clip If 1, the factor scale / rms never exceeds 1, so the output is the input whenever its RMS is within the scale: an L2 clip at scale * sqrt(n).
  * @param is_trainable Whether the parameters of this model can be trained.
  * @param name The unique name of the model.
  * @return A rmsnorm model.
  */
-CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_rmsnorm(const float epsilon, const int axis[CCV_NNC_MAX_DIM_ALLOC], const int axis_count, const int elementwise_affine, const float scale, const int is_trainable, const char* const name);
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_rmsnorm(const float epsilon, const int axis[CCV_NNC_MAX_DIM_ALLOC], const int axis_count, const int elementwise_affine, const float scale, const int clip, const int is_trainable, const char* const name);
 /**
  * A rmsnorm complex multiplication model.
  * Computes RMSNorm(x) complex-multiplied by rotation, optionally with an elementwise scale.

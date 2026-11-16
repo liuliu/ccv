@@ -4263,6 +4263,158 @@ TEST_CASE("compare rmsnorm with mps in bfloat precision through mfa and graph")
 	ccv_nnc_tensor_free(expected_inv16bf);
 }
 
+static void _rmsnorm_clip_case(char* __case_name__, int* __case_result__, const int tokens, const int heads, const int dim, const float threshold)
+{
+	// Query heads as an L2 clip reads them: each head vector longer than the threshold is scaled
+	// down to it, shorter ones pass through.
+	const int rows = tokens * heads;
+	const int element_count = rows * dim;
+	ccv_nnc_tensor_t* const ha = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, tokens, heads, dim), 0);
+	ccv_nnc_tensor_t* const hb = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, tokens, heads, dim), 0);
+	ccv_nnc_tensor_t* const hinv = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, tokens, heads, 1), 0);
+	float* const expected = (float*)ccmalloc(sizeof(float) * element_count);
+	dsfmt_t dsfmt;
+	dsfmt_init_gen_rand(&dsfmt, 7);
+	int i, j;
+	int clipped = 0;
+	for (i = 0; i < rows; i++)
+	{
+		// Norms from a fifth of the threshold to twice it.
+		const float magnitude = threshold / sqrtf(dim) * 0.7f * (1 + (i * 5) % 11);
+		double norm2 = 0;
+		for (j = 0; j < dim; j++)
+		{
+			ha->data.f32[i * dim + j] = magnitude * (float)(dsfmt_genrand_open_close(&dsfmt) - 0.5);
+			norm2 += (double)ha->data.f32[i * dim + j] * ha->data.f32[i * dim + j];
+		}
+		const float norm = (float)sqrt(norm2);
+		const float factor = ccv_min(threshold / (norm + 1e-6f), 1);
+		if (factor < 1)
+			clipped++;
+		for (j = 0; j < dim; j++)
+			expected[i * dim + j] = ha->data.f32[i * dim + j] * factor;
+	}
+	REQUIRE(clipped > rows / 5 && clipped < rows * 4 / 5, "the rows should fall on both sides of the threshold (%d of %d clipped)", clipped, rows);
+	ccv_nnc_cmd_t cmd = CMD_RMSNORM_FORWARD(1e-12, 0, 2);
+	cmd.info.rmsnorm.scale = threshold / sqrtf(dim);
+	cmd.info.rmsnorm.clip = 1;
+	REQUIRE_EQ(CCV_NNC_EXEC_SUCCESS, ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(ha), TENSOR_LIST(hb, hinv), 0), "rmsnorm with clip should run on cpu");
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, hb->data.f32, expected, element_count, 1e-5, "rmsnorm with clip on cpu should match the L2 clip");
+	const int datatypes[2] = { CCV_32F, CCV_16F };
+	const uint64_t old_flags = ccv_nnc_flags();
+	int d, pass;
+	for (d = 0; d < 2; d++)
+	{
+		ccv_nnc_tensor_param_t params = GPU_TENSOR_NHWC(000, 32F, tokens, heads, dim);
+		ccv_nnc_tensor_param_t inv_params = GPU_TENSOR_NHWC(000, 32F, tokens, heads, 1);
+		params.datatype = inv_params.datatype = datatypes[d];
+		ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, params, 0);
+		ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, params, 0);
+		ccv_nnc_tensor_t* const inv = ccv_nnc_tensor_new(0, inv_params, 0);
+		ccv_nnc_tensor_param_t host_params = params;
+		host_params.type = CCV_TENSOR_CPU_MEMORY;
+		ccv_nnc_tensor_t* const hat = ccv_nnc_tensor_new(0, host_params, 0);
+		ccv_nnc_tensor_t* const hbt = ccv_nnc_tensor_new(0, host_params, 0);
+		ccv_nnc_tensor_t* const hb32 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, tokens, heads, dim), 0);
+		ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha), TENSOR_LIST(hat), 0);
+		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(hat), TENSOR_LIST(a), 0);
+		// First through mfa, then the graph fallback.
+		for (pass = 0; pass < 2; pass++)
+		{
+			if (pass == 0)
+				ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA);
+			else
+				ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA);
+			REQUIRE_EQ(CCV_NNC_EXEC_SUCCESS, ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(a), TENSOR_LIST(b, inv), 0), "rmsnorm with clip should run on mps (datatype %d, pass %d)", datatypes[d], pass);
+			ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(b), TENSOR_LIST(hbt), 0);
+			ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(hbt), TENSOR_LIST(hb32), 0);
+			// The half precision input and output round once each.
+			REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, hb32->data.f32, expected, element_count, datatypes[d] == CCV_32F ? 1e-4 : 2e-2, "rmsnorm with clip on mps should match the L2 clip (datatype %d, pass %d)", datatypes[d], pass);
+		}
+		ccv_nnc_tensor_free(a);
+		ccv_nnc_tensor_free(b);
+		ccv_nnc_tensor_free(inv);
+		ccv_nnc_tensor_free(hat);
+		ccv_nnc_tensor_free(hbt);
+		ccv_nnc_tensor_free(hb32);
+	}
+	if (old_flags & CCV_NNC_DISABLE_MFA)
+		ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA);
+	else
+		ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA);
+	ccfree(expected);
+	ccv_nnc_tensor_free(ha);
+	ccv_nnc_tensor_free(hb);
+	ccv_nnc_tensor_free(hinv);
+}
+
+TEST_CASE("rmsnorm with clip is an L2 clip on cpu and mps through mfa and graph")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_RMSNORM_FORWARD, CCV_NNC_BACKEND_MPS));
+	// A prefill chunk and one decode step of queries, then of 16-wide relative states.
+	_rmsnorm_clip_case(__case_name__, __case_result__, 37, 48, 128, 22.627417f);
+	_rmsnorm_clip_case(__case_name__, __case_result__, 1, 48, 128, 22.627417f);
+	_rmsnorm_clip_case(__case_name__, __case_result__, 37, 48, 16, 8);
+	_rmsnorm_clip_case(__case_name__, __case_result__, 1, 48, 16, 8);
+	_rmsnorm_clip_case(__case_name__, __case_result__, 1, 8, 128, 22.627417f);
+	// Scales 1 and 0.5, whose reciprocals are whole numbers.
+	_rmsnorm_clip_case(__case_name__, __case_result__, 37, 48, 128, sqrtf(128));
+	_rmsnorm_clip_case(__case_name__, __case_result__, 37, 48, 16, 0.5f * sqrtf(16));
+}
+
+TEST_CASE("rmsnorm with clip and zero scale outputs zeros on mps through mfa and graph")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_RMSNORM_FORWARD, CCV_NNC_BACKEND_MPS));
+	ccv_nnc_tensor_t* const ha = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 37, 48, 128), 0);
+	ccv_nnc_tensor_t* const hb = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 37, 48, 128), 0);
+	ccv_nnc_tensor_t* const hinv = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 37, 48, 1), 0);
+	dsfmt_t dsfmt;
+	dsfmt_init_gen_rand(&dsfmt, 11);
+	int i;
+	for (i = 0; i < 37 * 48 * 128; i++)
+		ha->data.f32[i] = dsfmt_genrand_open_close(&dsfmt) * 2 - 1;
+	ccv_nnc_cmd_t cmd = CMD_RMSNORM_FORWARD(1e-6, 0, 2);
+	cmd.info.rmsnorm.scale = 0;
+	cmd.info.rmsnorm.clip = 1;
+	REQUIRE_EQ(CCV_NNC_EXEC_SUCCESS, ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(ha), TENSOR_LIST(hb, hinv), 0), "rmsnorm with clip and zero scale should run on cpu");
+	float* const zeros = (float*)cccalloc(37 * 48 * 128, sizeof(float));
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, hb->data.f32, zeros, 37 * 48 * 128, 1e-6, "rmsnorm with clip and zero scale on cpu should output zeros");
+	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 37, 48, 128), 0);
+	ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 37, 48, 128), 0);
+	ccv_nnc_tensor_t* const inv = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 37, 48, 1), 0);
+	ccv_nnc_tensor_t* const hbt = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 37, 48, 128), 0);
+	ccv_nnc_tensor_t* const hinvt = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 37, 48, 1), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha), TENSOR_LIST(a), 0);
+	const uint64_t old_flags = ccv_nnc_flags();
+	int pass;
+	// First through mfa, then the graph fallback.
+	for (pass = 0; pass < 2; pass++)
+	{
+		if (pass == 0)
+			ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA);
+		else
+			ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA);
+		REQUIRE_EQ(CCV_NNC_EXEC_SUCCESS, ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(a), TENSOR_LIST(b, inv), 0), "rmsnorm with clip and zero scale should run on mps (pass %d)", pass);
+		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(b, inv), TENSOR_LIST(hbt, hinvt), 0);
+		REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, hbt->data.f32, zeros, 37 * 48 * 128, 1e-6, "rmsnorm with clip and zero scale on mps should output zeros (pass %d)", pass);
+		// Without a finite reciprocal to clip at, the saved factor is the unclipped one, as on cpu.
+		REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, hinvt->data.f32, hinv->data.f32, 37 * 48, 1e-4, "rmsnorm with clip and zero scale on mps should save the cpu factor (pass %d)", pass);
+	}
+	if (old_flags & CCV_NNC_DISABLE_MFA)
+		ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA);
+	else
+		ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA);
+	ccfree(zeros);
+	ccv_nnc_tensor_free(ha);
+	ccv_nnc_tensor_free(hb);
+	ccv_nnc_tensor_free(hinv);
+	ccv_nnc_tensor_free(a);
+	ccv_nnc_tensor_free(b);
+	ccv_nnc_tensor_free(inv);
+	ccv_nnc_tensor_free(hbt);
+	ccv_nnc_tensor_free(hinvt);
+}
+
 TEST_CASE("compare rmsnorm cmul with affine weight using cpu ref")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_RMSNORM_CMUL_FORWARD, CCV_NNC_BACKEND_CPU_REF));
