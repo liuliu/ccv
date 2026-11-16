@@ -4,16 +4,16 @@
 #include "../ccv_nnc_mfa_error.hpp"
 
 bool CausalConvolutionDescriptor::operator==(const CausalConvolutionDescriptor& rhs) const {
-  return silu == rhs.silu && memoryPrecision == rhs.memoryPrecision;
+  return silu == rhs.silu && dynamicWeights == rhs.dynamicWeights && memoryPrecision == rhs.memoryPrecision;
 }
 
 std::size_t std::hash<CausalConvolutionDescriptor>::operator()(const CausalConvolutionDescriptor& descriptor) const noexcept {
-  const CausalConvolutionKernelDescriptor kernelDesc = { descriptor.silu, descriptor.memoryPrecision };
+  const CausalConvolutionKernelDescriptor kernelDesc = { descriptor.silu, descriptor.dynamicWeights, descriptor.memoryPrecision };
   return std::hash<CausalConvolutionKernelDescriptor>()(kernelDesc);
 }
 
 std::pair<CausalConvolutionKernelDescriptor, PipelineValue<CausalConvolutionKernel>*> CausalConvolutionDescriptor::findKernel(MTL::Device* const device, const DeviceProperties& dprops, NS::Array* const binaryArchivesToRead, MTL::BinaryArchive* const binaryArchiveToWrite, const std::string& pathToWrite, std::unordered_map<CausalConvolutionKernelDescriptor, std::unique_ptr<CausalConvolutionKernel>>* const libraryCache) const noexcept {
-  const CausalConvolutionKernelDescriptor kernelDesc = { silu, memoryPrecision };
+  const CausalConvolutionKernelDescriptor kernelDesc = { silu, dynamicWeights, memoryPrecision };
   CausalConvolutionKernel* kernel;
   const auto iterator = libraryCache->find(kernelDesc);
   if (iterator != libraryCache->end())

@@ -5029,15 +5029,17 @@ CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_rotate_half(const char* const name);
  * convolution before linear attention. Inputs are x [B, T, C] and the previous kernel_size - 1 rows
  * of x [B, kernel_size - 1, C]; outputs are y [B, T, C], optionally SiLU, and the next rows
  * [B, kernel_size - 1 + state_checkpoint_count, C], the last rows of the previous rows followed by x.
- * The model owns its weights [C, 1, kernel_size, 1].
+ * The model owns its weights [C, 1, kernel_size, 1]. With dynamic weights, a third input [B, T, groups, kernel_size]
+ * holds per-token dynamic weights, which each token adds to the weights of the channels in each of its groups.
  * @param kernel_size The number of taps, at least 2.
  * @param silu If 1, apply SiLU to the output.
  * @param state_checkpoint_count Number of extra next rows, so the rows before each of the last tokens are kept too.
+ * @param has_dynamic_weights If 1, the per-token dynamic weights are the third input.
  * @param is_trainable Whether the weights are trainable.
  * @param name The unique name of the model.
- * @return A model that is applied with two inputs and generates two outputs.
+ * @return A model that is applied with two or three inputs and generates two outputs.
  */
-CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_causal_convolution(const int kernel_size, const int silu, const int state_checkpoint_count, const int is_trainable, const char* const name);
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_causal_convolution(const int kernel_size, const int silu, const int state_checkpoint_count, const int has_dynamic_weights, const int is_trainable, const char* const name);
 /**
  * Apply the gated delta recurrent update.
  * Inputs are (q, k, v, decay / log_decay, beta, state_in), and outputs are (y, state_out).

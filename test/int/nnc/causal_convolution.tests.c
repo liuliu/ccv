@@ -24,12 +24,15 @@ static float _causal_convolution_reference_context(const float* const previous, 
 }
 
 // The CPU reference against a direct loop, then the GPU against the CPU, in FP32, FP16 or BF16.
-static void _causal_convolution_case(char* __case_name__, int* __case_result__, const int B, const int T, const int C, const int K, const int silu, const int state_checkpoint_count, const int datatype)
+// With groups, each token adds its own dynamic weights to the weights of each channel group.
+static void _causal_convolution_case(char* __case_name__, int* __case_result__, const int B, const int T, const int C, const int K, const int silu, const int state_checkpoint_count, const int datatype, const int groups)
 {
 	const int rows = K - 1 + state_checkpoint_count;
 	ccv_nnc_tensor_t* const hx = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, B, T, C), 0);
 	ccv_nnc_tensor_t* const hprev = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, B, K - 1, C), 0);
 	ccv_nnc_tensor_t* const hw = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, C, 1, K, 1), 0);
+	ccv_nnc_tensor_t* const hdw = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, B, T, groups > 0 ? groups : 1, K), 0);
+	const int input_size = groups > 0 ? 4 : 3;
 	int i;
 	for (i = 0; i < B * T * C; i++)
 		hx->data.f32[i] = _causal_convolution_value(i, 13, 31, 0.12f);
@@ -37,11 +40,13 @@ static void _causal_convolution_case(char* __case_name__, int* __case_result__, 
 		hprev->data.f32[i] = _causal_convolution_value(i, 7, 23, 0.2f);
 	for (i = 0; i < C * K; i++)
 		hw->data.f32[i] = _causal_convolution_value(i, 5, 11, 0.1f);
+	for (i = 0; i < B * T * (groups > 0 ? groups : 1) * K; i++)
+		hdw->data.f32[i] = _causal_convolution_value(i, 3, 17, 0.05f);
 	if (datatype != CCV_32F)
 	{
 		// The GPU reads FP16 or BF16; the references read the same rounded values.
-		ccv_nnc_tensor_t* const tensors[3] = { hx, hprev, hw };
-		for (i = 0; i < 3; i++)
+		ccv_nnc_tensor_t* const tensors[4] = { hx, hprev, hw, hdw };
+		for (i = 0; i < 4; i++)
 		{
 			const size_t count = ccv_nnc_tensor_count(tensors[i]->info);
 			uint16_t* const scratch = (uint16_t*)ccmalloc(sizeof(uint16_t) * count);
@@ -66,7 +71,10 @@ static void _causal_convolution_case(char* __case_name__, int* __case_result__, 
 			{
 				float sum = 0;
 				for (j = 0; j < K; j++)
-					sum += hw->data.f32[c * K + j] * _causal_convolution_reference_context(hprev->data.f32, hx->data.f32, b, t + j, c, T, C, K);
+				{
+					const float dynamic_weight = groups > 0 ? hdw->data.f32[(((size_t)b * T + t) * groups + c / (C / groups)) * K + j] : 0;
+					sum += (hw->data.f32[c * K + j] + dynamic_weight) * _causal_convolution_reference_context(hprev->data.f32, hx->data.f32, b, t + j, c, T, C, K);
+				}
 				expected_y[((size_t)b * T + t) * C + c] = silu ? sum / (1 + expf(-sum)) : sum;
 			}
 			for (j = 0; j < rows; j++)
@@ -75,7 +83,7 @@ static void _causal_convolution_case(char* __case_name__, int* __case_result__, 
 	const ccv_nnc_cmd_t cmd = CMD_CAUSAL_CONVOLUTION_FORWARD(silu, state_checkpoint_count);
 	ccv_nnc_tensor_t* const cpu_y = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, B, T, C), 0);
 	ccv_nnc_tensor_t* const cpu_next = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, B, rows, C), 0);
-	REQUIRE_EQ(ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(hx, hprev, hw), TENSOR_LIST(cpu_y, cpu_next), 0), CCV_NNC_EXEC_SUCCESS, "CPU causal convolution should execute");
+	REQUIRE_EQ(ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, (ccv_nnc_tensor_t*[]){ hx, hprev, hw, hdw }, input_size, TENSOR_LIST(cpu_y, cpu_next), 0), CCV_NNC_EXEC_SUCCESS, "CPU causal convolution should execute");
 	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, expected_y, cpu_y->data.f32, B * T * C, 1e-5, "CPU causal convolution output should match (T %d)", T);
 	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, expected_next, cpu_next->data.f32, B * rows * C, 1e-6, "CPU causal convolution next rows should match (T %d)", T);
 	if (ccv_nnc_cmd_ok(CCV_NNC_CAUSAL_CONVOLUTION_FORWARD, CCV_NNC_BACKEND_MPS))
@@ -84,20 +92,23 @@ static void _causal_convolution_case(char* __case_name__, int* __case_result__, 
 		ccv_nnc_tensor_param_t pp = GPU_TENSOR_NHWC(000, 32F, B, K - 1, C);
 		ccv_nnc_tensor_param_t wp = GPU_TENSOR_NCHW(000, 32F, C, 1, K, 1);
 		ccv_nnc_tensor_param_t np = GPU_TENSOR_NHWC(000, 32F, B, rows, C);
-		xp.datatype = pp.datatype = wp.datatype = np.datatype = datatype;
+		ccv_nnc_tensor_param_t dwp = GPU_TENSOR_NHWC(000, 32F, B, T, groups > 0 ? groups : 1, K);
+		xp.datatype = pp.datatype = wp.datatype = np.datatype = dwp.datatype = datatype;
 		ccv_nnc_tensor_t* const x = ccv_nnc_tensor_new(0, xp, 0);
 		ccv_nnc_tensor_t* const prev = ccv_nnc_tensor_new(0, pp, 0);
 		ccv_nnc_tensor_t* const w = ccv_nnc_tensor_new(0, wp, 0);
+		ccv_nnc_tensor_t* const dw = ccv_nnc_tensor_new(0, dwp, 0);
 		ccv_nnc_tensor_t* const y = ccv_nnc_tensor_new(0, xp, 0);
 		ccv_nnc_tensor_t* const next = ccv_nnc_tensor_new(0, np, 0);
-		ccv_nnc_tensor_param_t hxp = xp, hpp = pp, hwp = wp, hnp = np;
-		hxp.type = hpp.type = hwp.type = hnp.type = CCV_TENSOR_CPU_MEMORY;
+		ccv_nnc_tensor_param_t hxp = xp, hpp = pp, hwp = wp, hnp = np, hdwp = dwp;
+		hxp.type = hpp.type = hwp.type = hnp.type = hdwp.type = CCV_TENSOR_CPU_MEMORY;
 		ccv_nnc_tensor_t* const hxt = ccv_nnc_tensor_new(0, hxp, 0);
 		ccv_nnc_tensor_t* const hpt = ccv_nnc_tensor_new(0, hpp, 0);
 		ccv_nnc_tensor_t* const hwt = ccv_nnc_tensor_new(0, hwp, 0);
-		ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(hx, hprev, hw), TENSOR_LIST(hxt, hpt, hwt), 0);
-		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(hxt, hpt, hwt), TENSOR_LIST(x, prev, w), 0);
-		REQUIRE_EQ(ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(x, prev, w), TENSOR_LIST(y, next), 0), CCV_NNC_EXEC_SUCCESS, "GPU causal convolution should execute");
+		ccv_nnc_tensor_t* const hdwt = ccv_nnc_tensor_new(0, hdwp, 0);
+		ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(hx, hprev, hw, hdw), TENSOR_LIST(hxt, hpt, hwt, hdwt), 0);
+		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(hxt, hpt, hwt, hdwt), TENSOR_LIST(x, prev, w, dw), 0);
+		REQUIRE_EQ(ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, (ccv_nnc_tensor_t*[]){ x, prev, w, dw }, input_size, TENSOR_LIST(y, next), 0), CCV_NNC_EXEC_SUCCESS, "GPU causal convolution should execute");
 		ccv_nnc_tensor_t* const hyt = ccv_nnc_tensor_new(0, hxp, 0);
 		ccv_nnc_tensor_t* const hnt = ccv_nnc_tensor_new(0, hnp, 0);
 		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(y, next), TENSOR_LIST(hyt, hnt), 0);
@@ -110,6 +121,8 @@ static void _causal_convolution_case(char* __case_name__, int* __case_result__, 
 		ccv_nnc_tensor_free(x);
 		ccv_nnc_tensor_free(prev);
 		ccv_nnc_tensor_free(w);
+		ccv_nnc_tensor_free(dw);
+		ccv_nnc_tensor_free(hdwt);
 		ccv_nnc_tensor_free(y);
 		ccv_nnc_tensor_free(next);
 		ccv_nnc_tensor_free(hxt);
@@ -125,32 +138,46 @@ static void _causal_convolution_case(char* __case_name__, int* __case_result__, 
 	ccv_nnc_tensor_free(hx);
 	ccv_nnc_tensor_free(hprev);
 	ccv_nnc_tensor_free(hw);
+	ccv_nnc_tensor_free(hdw);
 	ccv_nnc_tensor_free(cpu_y);
 	ccv_nnc_tensor_free(cpu_next);
 }
 
 TEST_CASE("causal convolution decodes one token and keeps the last rows")
 {
-	_causal_convolution_case(__case_name__, __case_result__, 1, 1, 1536, 4, 1, 0, CCV_32F);
-	_causal_convolution_case(__case_name__, __case_result__, 1, 1, 1536, 4, 1, 0, CCV_16F);
-	_causal_convolution_case(__case_name__, __case_result__, 1, 1, 1536, 4, 1, 0, CCV_16BF);
-	_causal_convolution_case(__case_name__, __case_result__, 2, 1, 100, 4, 0, 0, CCV_32F);
+	_causal_convolution_case(__case_name__, __case_result__, 1, 1, 1536, 4, 1, 0, CCV_32F, 0);
+	_causal_convolution_case(__case_name__, __case_result__, 1, 1, 1536, 4, 1, 0, CCV_16F, 0);
+	_causal_convolution_case(__case_name__, __case_result__, 1, 1, 1536, 4, 1, 0, CCV_16BF, 0);
+	_causal_convolution_case(__case_name__, __case_result__, 2, 1, 100, 4, 0, 0, CCV_32F, 0);
 }
 
 TEST_CASE("causal convolution verifies rows with state checkpoints")
 {
-	_causal_convolution_case(__case_name__, __case_result__, 1, 2, 1536, 4, 1, 1, CCV_16F);
-	_causal_convolution_case(__case_name__, __case_result__, 1, 6, 1536, 4, 1, 5, CCV_16F);
-	_causal_convolution_case(__case_name__, __case_result__, 1, 6, 1536, 4, 1, 5, CCV_16BF);
-	_causal_convolution_case(__case_name__, __case_result__, 2, 6, 100, 3, 1, 2, CCV_32F);
+	_causal_convolution_case(__case_name__, __case_result__, 1, 2, 1536, 4, 1, 1, CCV_16F, 0);
+	_causal_convolution_case(__case_name__, __case_result__, 1, 6, 1536, 4, 1, 5, CCV_16F, 0);
+	_causal_convolution_case(__case_name__, __case_result__, 1, 6, 1536, 4, 1, 5, CCV_16BF, 0);
+	_causal_convolution_case(__case_name__, __case_result__, 2, 6, 100, 3, 1, 2, CCV_32F, 0);
 }
 
 TEST_CASE("causal convolution prefills a chunk")
 {
-	_causal_convolution_case(__case_name__, __case_result__, 1, 261, 1536, 4, 1, 0, CCV_16F);
-	_causal_convolution_case(__case_name__, __case_result__, 1, 261, 1536, 4, 1, 0, CCV_16BF);
-	_causal_convolution_case(__case_name__, __case_result__, 1, 261, 1536, 4, 1, 0, CCV_32F);
-	_causal_convolution_case(__case_name__, __case_result__, 1, 2, 300, 2, 0, 0, CCV_32F);
+	_causal_convolution_case(__case_name__, __case_result__, 1, 261, 1536, 4, 1, 0, CCV_16F, 0);
+	_causal_convolution_case(__case_name__, __case_result__, 1, 261, 1536, 4, 1, 0, CCV_16BF, 0);
+	_causal_convolution_case(__case_name__, __case_result__, 1, 261, 1536, 4, 1, 0, CCV_32F, 0);
+	_causal_convolution_case(__case_name__, __case_result__, 1, 2, 300, 2, 0, 0, CCV_32F, 0);
+}
+
+TEST_CASE("causal convolution adds per-token dynamic weights to each channel group")
+{
+	// Eight heads of 128 channels, as the key and value convolutions of a full-attention layer.
+	_causal_convolution_case(__case_name__, __case_result__, 1, 1, 1024, 4, 0, 0, CCV_32F, 8);
+	_causal_convolution_case(__case_name__, __case_result__, 1, 1, 1024, 4, 0, 0, CCV_16F, 8);
+	_causal_convolution_case(__case_name__, __case_result__, 1, 261, 1024, 4, 0, 0, CCV_32F, 8);
+	_causal_convolution_case(__case_name__, __case_result__, 1, 261, 1024, 4, 0, 0, CCV_16F, 8);
+	_causal_convolution_case(__case_name__, __case_result__, 1, 37, 1024, 4, 0, 0, CCV_16BF, 8);
+	// One group, every channel its own group, checkpoints and SiLU.
+	_causal_convolution_case(__case_name__, __case_result__, 2, 6, 100, 3, 1, 2, CCV_32F, 1);
+	_causal_convolution_case(__case_name__, __case_result__, 2, 5, 96, 4, 0, 0, CCV_32F, 96);
 }
 
 TEST_CASE("causal convolution writes beside its inputs in one buffer")
@@ -225,7 +252,7 @@ TEST_CASE("causal convolution model runs between other layers on the GPU")
 	const ccv_cnnp_model_io_t x_input = ccv_cnnp_input();
 	const ccv_cnnp_model_io_t previous_input = ccv_cnnp_input();
 	const ccv_cnnp_model_io_t x = ccv_cnnp_model_apply(ccv_cnnp_scalar_mul(2, "before"), MODEL_IO_LIST(x_input));
-	ccv_cnnp_model_t* const convolution = ccv_cnnp_causal_convolution(K, 1, state_checkpoint_count, 0, "conv1d");
+	ccv_cnnp_model_t* const convolution = ccv_cnnp_causal_convolution(K, 1, state_checkpoint_count, 0, 0, "conv1d");
 	const ccv_cnnp_model_io_t convolved = ccv_cnnp_model_apply(convolution, MODEL_IO_LIST(x, previous_input));
 	const ccv_cnnp_model_io_t y = ccv_cnnp_model_apply(ccv_cnnp_extract(0, "y"), MODEL_IO_LIST(convolved));
 	const ccv_cnnp_model_io_t next = ccv_cnnp_model_apply(ccv_cnnp_extract(1, "next"), MODEL_IO_LIST(convolved));

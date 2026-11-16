@@ -9,6 +9,7 @@ typedef struct {
   uint32_t kernel_size;
   uint32_t next_rows;
   uint8_t silu;
+  uint32_t dynamic_weight_groups; // 0 without per-token dynamic weights.
 } ccv_nnc_mfa_causal_convolution_params_t;
 
 #ifdef __cplusplus

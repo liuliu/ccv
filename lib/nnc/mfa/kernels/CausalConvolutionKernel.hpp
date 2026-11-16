@@ -11,6 +11,7 @@ struct CausalConvolutionKernel {
   MTL::Size threadgroupSize;
 
   bool silu;
+  bool dynamicWeights;
   GEMMOperandPrecision memoryPrecision;
 
   CausalConvolutionKernel(CausalConvolutionKernelDescriptor descriptor, MTL::Device* const device);

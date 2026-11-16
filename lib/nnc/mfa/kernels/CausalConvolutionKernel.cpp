@@ -3,6 +3,7 @@
 
 CausalConvolutionKernel::CausalConvolutionKernel(CausalConvolutionKernelDescriptor descriptor, MTL::Device* const device) {
   silu = descriptor.silu;
+  dynamicWeights = descriptor.dynamicWeights;
   memoryPrecision = descriptor.memoryPrecision;
   threadgroupSize = MTL::Size(256, 1, 1);
   source = createSource();
@@ -28,7 +29,12 @@ kernel void causal_convolution(
   device real* y [[buffer(3)]],
   device real* next [[buffer(4)]],
   constant uint* sizes [[buffer(5)]],
-  uint3 tpig [[thread_position_in_grid]])
+)";
+  if (dynamicWeights) {
+    // Per-token dynamic weights [B, T, G, K], which each token adds to the weights of the channels in each group.
+    shader += "  device const real* dynamic_weights [[buffer(6)]],\n";
+  }
+  shader += R"(  uint3 tpig [[thread_position_in_grid]])
 {
   const uint T = sizes[1];
   const uint C = sizes[2];
@@ -42,9 +48,19 @@ kernel void causal_convolution(
   const uint history = K - 1;
   if (row < T) {
     float sum = 0;
+)";
+  if (dynamicWeights) {
+    shader += R"(    const uint G = sizes[5];
+    const uint dynamic_offset = ((b * T + row) * G + c / (C / G)) * K;
     for (uint j = 0; j < K; j++)
+      sum += (float(weight[c * K + j]) + float(dynamic_weights[dynamic_offset + j])) * context_value(x, previous, b, row + j, c, T, C, history);
+)";
+  } else {
+    shader += R"(    for (uint j = 0; j < K; j++)
       sum += float(weight[c * K + j]) * context_value(x, previous, b, row + j, c, T, C, history);
-    if (silu)
+)";
+  }
+  shader += R"(    if (silu)
       sum = sum / (1.0f + exp(-sum));
     y[(b * T + row) * C + c] = real(sum);
   } else {

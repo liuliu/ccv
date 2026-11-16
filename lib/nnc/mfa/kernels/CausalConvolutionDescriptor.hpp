@@ -12,14 +12,15 @@
 
 struct CausalConvolutionKernelDescriptor {
   bool silu;
+  bool dynamicWeights;
   GEMMOperandPrecision memoryPrecision;
-  bool operator==(const CausalConvolutionKernelDescriptor& rhs) const { return silu == rhs.silu && memoryPrecision == rhs.memoryPrecision; }
+  bool operator==(const CausalConvolutionKernelDescriptor& rhs) const { return silu == rhs.silu && dynamicWeights == rhs.dynamicWeights && memoryPrecision == rhs.memoryPrecision; }
 };
 
 template<>
 struct std::hash<CausalConvolutionKernelDescriptor> {
   std::size_t operator()(const CausalConvolutionKernelDescriptor& descriptor) const noexcept {
-    return std::hash<int>()((int)descriptor.silu | ((int)descriptor.memoryPrecision.value << 8));
+    return std::hash<int>()((int)descriptor.silu | ((int)descriptor.dynamicWeights << 1) | ((int)descriptor.memoryPrecision.value << 8));
   }
 };
 
@@ -28,6 +29,8 @@ struct CausalConvolutionKernel;
 // Sizes are bound at encode time, so one pipeline serves every shape.
 struct CausalConvolutionDescriptor {
   bool silu;
+  // Per-token dynamic weights add to the weights of each channel group.
+  bool dynamicWeights;
   GEMMOperandPrecision memoryPrecision;
 
   bool operator==(const CausalConvolutionDescriptor& rhs) const;

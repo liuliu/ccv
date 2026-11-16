@@ -7,15 +7,18 @@
 
 static int _ccv_nnc_causal_convolution_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
 {
-	assert(input_size == 3);
+	assert(input_size == 3 || input_size == 4);
 	assert(output_size == 2);
 	const ccv_nnc_tensor_t* const x = inputs[0];
 	const ccv_nnc_tensor_t* const previous = inputs[1];
 	const ccv_nnc_tensor_t* const weight = inputs[2];
 	ccv_nnc_tensor_t* const y = outputs[0];
 	ccv_nnc_tensor_t* const next = outputs[1];
+	// Per-token dynamic weights [B, T, groups, kernel_size], which each token adds to the weights of the
+	// channels in each of its groups.
+	const ccv_nnc_tensor_t* const dynamic_weights = input_size > 3 ? inputs[3] : 0;
 	int i;
-	for (i = 0; i < 3; i++)
+	for (i = 0; i < input_size; i++)
 		assert(inputs[i]->info.datatype == CCV_32F && CCV_IS_TENSOR_CONTIGUOUS(inputs[i]));
 	for (i = 0; i < 2; i++)
 		assert(outputs[i]->info.datatype == CCV_32F && CCV_IS_TENSOR_CONTIGUOUS(outputs[i]));
@@ -30,6 +33,9 @@ static int _ccv_nnc_causal_convolution_forw(const ccv_nnc_cmd_t cmd, const ccv_n
 	assert(ccv_nnc_tensor_count(y->info) == (size_t)B * T * channels);
 	assert(rows <= kernel_size - 1 + T);
 	const int history = kernel_size - 1;
+	const int groups = dynamic_weights ? ccv_nnc_tensor_count(dynamic_weights->info) / ((size_t)B * T * kernel_size) : 0;
+	assert(!dynamic_weights || (groups >= 1 && channels % groups == 0 && ccv_nnc_tensor_count(dynamic_weights->info) == (size_t)B * T * groups * kernel_size));
+	const int group_channels = dynamic_weights ? channels / groups : 0;
 	// Context row r of batch b is previous row r, then x row r - history.
 #define CONTEXT(b, r, c) ((r) < history ? previous->data.f32[((size_t)(b) * history + (r)) * channels + (c)] : x->data.f32[((size_t)(b) * T + (r) - history) * channels + (c)])
 	const int silu = cmd.info.causal_convolution.silu;
@@ -41,8 +47,14 @@ static int _ccv_nnc_causal_convolution_forw(const ccv_nnc_cmd_t cmd, const ccv_n
 			for (t = 0; t < T; t++)
 			{
 				float sum = 0;
-				for (j = 0; j < kernel_size; j++)
-					sum += w[j] * CONTEXT(b, t + j, c);
+				if (dynamic_weights)
+				{
+					const float* const dynamic_weight = dynamic_weights->data.f32 + (((size_t)b * T + t) * groups + c / group_channels) * kernel_size;
+					for (j = 0; j < kernel_size; j++)
+						sum += (w[j] + dynamic_weight[j]) * CONTEXT(b, t + j, c);
+				} else
+					for (j = 0; j < kernel_size; j++)
+						sum += w[j] * CONTEXT(b, t + j, c);
 				y->data.f32[((size_t)b * T + t) * channels + c] = silu ? sum / (1 + expf(-sum)) : sum;
 			}
 			// The next rows are the context's last rows.

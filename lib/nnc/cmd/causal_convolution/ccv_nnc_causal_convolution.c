@@ -9,6 +9,10 @@ static int _ccv_nnc_causal_convolution_forw_bitmask(const ccv_nnc_cmd_param_t cm
 	// [C, kernel_size]. Outputs: y [B, T, C] and the next rows [B, kernel_size - 1 + state_checkpoint_count, C].
 	if (input_size == 3 && output_size == 2 && (input_bitmasks[0] & 7u) == 7u && (output_bitmasks[0] & 3u) == 3u)
 		return 1;
+	// With per-token dynamic weights [B, T, groups, kernel_size], which each token adds to the weights of the
+	// channels in each of its groups.
+	if (input_size == 4 && output_size == 2 && (input_bitmasks[0] & 15u) == 15u && (output_bitmasks[0] & 3u) == 3u)
+		return 1;
 	return 0;
 }
 
@@ -19,7 +23,7 @@ static int _ccv_nnc_causal_convolution_back_bitmask(const ccv_nnc_cmd_param_t cm
 
 static void _ccv_nnc_causal_convolution_tensor_auto_forw(const ccv_nnc_cmd_param_t cmd, const ccv_nnc_tensor_param_t* const inputs, const int input_size, const ccv_nnc_hint_t hint, ccv_nnc_tensor_param_t* const outputs, const int output_size)
 {
-	assert(input_size == 3);
+	assert(input_size == 3 || input_size == 4);
 	assert(output_size == 2);
 	const int x_nd = ccv_nnc_tensor_nd(inputs[0].dim);
 	const int channels = inputs[0].dim[x_nd - 1];

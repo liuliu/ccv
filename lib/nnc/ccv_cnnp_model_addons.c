@@ -2781,14 +2781,15 @@ typedef struct {
 	int kernel_size;
 	int silu;
 	int state_checkpoint_count;
+	int has_dynamic_weights;
 } ccv_cnnp_model_causal_convolution_t;
 
 static void _ccv_cnnp_causal_convolution_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
 {
 	PRINT(CCV_CLI_VERBOSE, "[cnnp_causal_convolution_build] -\n");
-	assert(input_size == 2);
-	assert(output_size == 2);
 	ccv_cnnp_model_causal_convolution_t* const self = (ccv_cnnp_model_causal_convolution_t*)super;
+	assert(input_size == (self->has_dynamic_weights ? 3 : 2));
+	assert(output_size == 2);
 	const ccv_nnc_tensor_param_t params = ccv_nnc_tensor_symbol_params(graph, inputs[0]);
 	const int channels = params.dim[ccv_nnc_tensor_nd(params.dim) - 1];
 	// The depthwise convolution's weight layout, so its checkpoints load as they are.
@@ -2811,7 +2812,10 @@ static void _ccv_cnnp_causal_convolution_build(ccv_cnnp_model_t* const super, cc
 		}, 3, ccv_nnc_no_hint, output_params, 2);
 	outputs[0] = ccv_nnc_tensor_symbol_new(graph, output_params[0], 0);
 	outputs[1] = ccv_nnc_tensor_symbol_new(graph, output_params[1], 0);
-	ccv_nnc_graph_exec_symbol_new(graph, cmd, TENSOR_SYMBOL_LIST(inputs[0], inputs[1], weights), outputs, output_size, "causal_convolution");
+	if (self->has_dynamic_weights)
+		ccv_nnc_graph_exec_symbol_new(graph, cmd, TENSOR_SYMBOL_LIST(inputs[0], inputs[1], weights, inputs[2]), outputs, output_size, "causal_convolution");
+	else
+		ccv_nnc_graph_exec_symbol_new(graph, cmd, TENSOR_SYMBOL_LIST(inputs[0], inputs[1], weights), outputs, output_size, "causal_convolution");
 }
 
 static void _ccv_cnnp_causal_convolution_init_states(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_cnnp_state_initializer_f initializer, void* const context)
@@ -2837,13 +2841,13 @@ static const ccv_cnnp_model_vtab_t ccv_cnnp_causal_convolution_isa = {
 	.copy = _ccv_cnnp_causal_convolution_copy,
 };
 
-ccv_cnnp_model_t* ccv_cnnp_causal_convolution(const int kernel_size, const int silu, const int state_checkpoint_count, const int is_trainable, const char* const name)
+ccv_cnnp_model_t* ccv_cnnp_causal_convolution(const int kernel_size, const int silu, const int state_checkpoint_count, const int has_dynamic_weights, const int is_trainable, const char* const name)
 {
 	// One tap has no previous rows to carry.
 	assert(kernel_size >= 2);
 	ccv_cnnp_model_causal_convolution_t* const model_causal_convolution = (ccv_cnnp_model_causal_convolution_t*)cccalloc(1, sizeof(ccv_cnnp_model_causal_convolution_t));
 	model_causal_convolution->super.isa = &ccv_cnnp_causal_convolution_isa;
-	model_causal_convolution->super.input_size = 2;
+	model_causal_convolution->super.input_size = has_dynamic_weights ? 3 : 2;
 	model_causal_convolution->super.outputs = model_causal_convolution->outputs;
 	model_causal_convolution->super.output_size = 2;
 	model_causal_convolution->super.is_trainable = is_trainable;
@@ -2852,6 +2856,7 @@ ccv_cnnp_model_t* ccv_cnnp_causal_convolution(const int kernel_size, const int s
 	model_causal_convolution->kernel_size = kernel_size;
 	model_causal_convolution->silu = silu;
 	model_causal_convolution->state_checkpoint_count = state_checkpoint_count;
+	model_causal_convolution->has_dynamic_weights = has_dynamic_weights;
 	ccv_cnnp_model_copy_name(&model_causal_convolution->super, name);
 	return (ccv_cnnp_model_t*)model_causal_convolution;
 }
@@ -2859,7 +2864,7 @@ ccv_cnnp_model_t* ccv_cnnp_causal_convolution(const int kernel_size, const int s
 static ccv_cnnp_model_t* _ccv_cnnp_causal_convolution_copy(const ccv_cnnp_model_t* const super, void* const context)
 {
 	const ccv_cnnp_model_causal_convolution_t* const self = (const ccv_cnnp_model_causal_convolution_t*)super;
-	return ccv_cnnp_causal_convolution(self->kernel_size, self->silu, self->state_checkpoint_count, self->super.is_trainable, super->name);
+	return ccv_cnnp_causal_convolution(self->kernel_size, self->silu, self->state_checkpoint_count, self->has_dynamic_weights, self->super.is_trainable, super->name);
 }
 
 // MARK - Gated Delta Layer
