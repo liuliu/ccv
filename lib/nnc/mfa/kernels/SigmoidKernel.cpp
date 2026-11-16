@@ -33,14 +33,14 @@ using namespace metal;
 
 inline float stable_sigmoid(float z)
 {
-  const float tail = 1.0f / (1.0f + exp(abs(z)));
+  const float tail = precise::divide(1.0f, 1.0f + precise::exp(abs(z)));
   const float positive = step(0.0f, z);
   return tail + positive * (1.0f - 2.0f * tail);
 }
 
 inline float4 stable_sigmoid(float4 z)
 {
-  const float4 tail = 1.0f / (1.0f + exp(abs(z)));
+  const float4 tail = precise::divide(1.0f, 1.0f + precise::exp(abs(z)));
   const float4 positive = step(0.0f, z);
   return tail + positive * (1.0f - 2.0f * tail);
 }

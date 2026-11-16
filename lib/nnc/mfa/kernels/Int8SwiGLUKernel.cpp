@@ -23,7 +23,7 @@ using namespace metal;
 
 inline float stable_sigmoid(const float value)
 {
-  const float tail = 1.0f / (1.0f + exp(abs(value)));
+  const float tail = metal::precise::divide(1.0f, 1.0f + metal::precise::exp(abs(value)));
   return tail + step(0.0f, value) * (1.0f - 2.0f * tail);
 }
 

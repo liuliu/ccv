@@ -33,7 +33,10 @@ struct MoERoutingDescriptor {
 	bool singleInputToken;
 	float normalizationEpsilon;
 	bool sigmoid;
+	// 0 for one token, else the token count up to 16. Any count of tokens (0 here) routes
+	// in three stages instead: 1 selects, 2 groups, 3 gathers.
 	uint32_t tokenCount;
+	uint32_t stage;
 
 	bool operator==(const MoERoutingDescriptor& rhs) const;
 	uint32_t executionSIMDGroups() const noexcept;

@@ -251,7 +251,15 @@ std::pair<NAMatMulKernelDescriptor, PipelineValue<NAMatMulKernel> *> NAMatMulDes
   const bool threadBarrierOverK = NAMatMulDescriptor::threadBarrierOverK(this->matrixDimensions[2], splitK);
   const uint32_t groupMValue = groupM(this->matrixDimensions[0]);
   const uint32_t groupNValue = this->transposeState[1] ? groupN(this->matrixDimensions[1]) : 0;
-  auto kernelDesc = NAMatMulKernelDescriptor(simd::ushort3 { 128, blockN(), 64 }, this->memoryPrecisions, registerPrecisions, splitK, 4, threadBarrierOverK, this->transposeState, this->useBias, this->loadM, groupMValue, groupNValue, this->leadingDimensions.has_value());
+  // An FP16 output with an FP32 register precision accumulates in FP32 and
+  // rounds once. The segmented GEMM prologue (indirect command buffers) sizes
+  // and offsets the split-K partials by the output type, so it keeps the
+  // output-typed accumulator.
+  const bool fp32Accumulation =
+      registerPrecisionC == GEMMOperandPrecision::FP32 &&
+      memoryPrecisions.C == GEMMOperandPrecision::FP16 &&
+      !this->supportIndirectCommandBuffers;
+  auto kernelDesc = NAMatMulKernelDescriptor(simd::ushort3 { 128, blockN(), 64 }, this->memoryPrecisions, registerPrecisions, splitK, 4, threadBarrierOverK, this->transposeState, this->useBias, this->loadM, groupMValue, groupNValue, this->leadingDimensions.has_value(), fp32Accumulation);
   NAMatMulKernel* kernel = createKernel(kernelDesc);
   auto pipelines = createPipeline(kernel->library.get(), splitK, (this->matrixDimensions[1] % 2) == 0);
 
