@@ -13,6 +13,17 @@ static uint64_t align_up_64(const uint64_t value, const uint64_t alignment) noex
 	return (value + alignment - 1) & ~(alignment - 1);
 }
 
+static bool is_tmcq(const uint32_t format) noexcept
+{
+	const uint32_t codec = format & CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK;
+	return codec >= CCV_NNC_QX_8I_ROWWISE_TMCQ_N16 && codec <= CCV_NNC_QX_8I_ROWWISE_TMCQ_N32;
+}
+
+static uint32_t tmcq_rate(const uint32_t format) noexcept
+{
+	return 16 + 2 * ((format & CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK) - CCV_NNC_QX_8I_ROWWISE_TMCQ_N16);
+}
+
 }
 
 bool Dequantize8iRowwiseXDescriptor::operator==(const Dequantize8iRowwiseXDescriptor& rhs) const {
@@ -28,6 +39,9 @@ uint32_t Dequantize8iRowwiseXDescriptor::rowCount() const noexcept {
 }
 
 uint32_t Dequantize8iRowwiseXDescriptor::groupSize() const noexcept {
+	// A TMCQ group is one 16 x 16 tile, so groupsPerRow() * rowCount() counts tiles.
+	if (is_tmcq(format))
+		return 256;
 	switch (format) {
 		case CCV_NNC_QX_8I_ROWWISE_Q5_K:
 		case CCV_NNC_QX_8I_ROWWISE_Q4_K:
@@ -56,6 +70,8 @@ uint32_t Dequantize8iRowwiseXDescriptor::groupsPerRow() const noexcept {
 }
 
 uint32_t Dequantize8iRowwiseXDescriptor::groupBits() const noexcept {
+	if (is_tmcq(format))
+		return 16 * tmcq_rate(format);
 	switch (format) {
 		case CCV_NNC_QX_8I_ROWWISE_Q5_K:
 			return 88;
@@ -103,6 +119,10 @@ uint32_t Dequantize8iRowwiseXDescriptor::scaleBytes() const noexcept {
 }
 
 uint32_t Dequantize8iRowwiseXDescriptor::dispatchItems() const noexcept {
+	// TMCQ decodes one tile row segment (16 weights of one row inside one tile) per thread, see
+	// Dequantize8iRowwiseXKernel::createTMCQSource.
+	if (is_tmcq(format))
+		return std::max(rowCount() * (rowLength / 16), scaleBytes());
 	return std::max(totalGroups(), scaleBytes());
 }
 
@@ -119,6 +139,10 @@ std::pair<Dequantize8iRowwiseXKernelDescriptor, PipelineValue<Dequantize8iRowwis
 	(void)binaryArchivesToRead;
 	(void)binaryArchiveToWrite;
 	(void)pathToWrite;
+	if (is_tmcq(format)) {
+		CCV_NNC_MFA_PRECONDITION((format & ~CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK) == 0);
+		CCV_NNC_MFA_PRECONDITION(rowLength > 0 && (rowLength % 256) == 0 && (length % rowLength) == 0 && (rowCount() % 16) == 0);
+	}
 	auto createKernel =
 	[=](Dequantize8iRowwiseXKernelDescriptor descriptor) -> Dequantize8iRowwiseXKernel* {
 		auto iterator = libraryCache->find(descriptor);
@@ -225,6 +249,8 @@ uint32_t Dequantize8iRowwiseXSelectedDescriptor::scaleBytesPerExpert() const noe
 }
 
 uint32_t Dequantize8iRowwiseXSelectedDescriptor::dispatchItemsPerExpert() const noexcept {
+	if (is_tmcq(format))
+		return std::max(rowsPerExpert * (rowLength / 16), scaleBytesPerExpert());
 	return std::max(groupsPerExpert(), scaleBytesPerExpert());
 }
 
@@ -242,6 +268,11 @@ std::pair<Dequantize8iRowwiseXKernelDescriptor, PipelineValue<Dequantize8iRowwis
 	(void)binaryArchivesToRead;
 	(void)binaryArchiveToWrite;
 	(void)pathToWrite;
+	if (is_tmcq(format)) {
+		// Tiles span 16 rows, so every expert must start on a tile row.
+		CCV_NNC_MFA_PRECONDITION((format & ~CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK) == 0);
+		CCV_NNC_MFA_PRECONDITION(rowLength > 0 && (rowLength % 256) == 0 && (rowsPerExpert % 16) == 0);
+	}
 	auto createKernel =
 	[=](Dequantize8iRowwiseXKernelDescriptor descriptor) -> Dequantize8iRowwiseXKernel* {
 		auto iterator = libraryCache->find(descriptor);

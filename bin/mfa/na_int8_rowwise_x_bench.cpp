@@ -255,7 +255,7 @@ double run_x_fp_dequant_once(
   encoder->setBuffer(source, descriptor.inputScaleOffset(), 2);
   for (int i = 0; i < repeats; ++i)
     encoder->dispatchThreadgroups(
-        pipeline->kernel->gridSize(descriptor.totalGroups()),
+        pipeline->kernel->gridSize(descriptor.totalGroups(), descriptor.groupSize()),
         pipeline->kernel->threadgroupSize);
   encoder->endEncoding();
   command_buffer->commit();
