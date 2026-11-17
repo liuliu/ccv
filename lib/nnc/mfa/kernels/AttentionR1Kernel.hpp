@@ -18,6 +18,7 @@ struct AttentionR1Kernel {
   bool loadC;
 
   bool attentionSinks;
+  bool relativeBias;
 
   AttentionR1Kernel(AttentionR1KernelDescriptor descriptor, MTL::Device* const device);
 

@@ -41,6 +41,12 @@ struct NAAttentionKernelDescriptor {
 
   bool attentionSinks;
 
+  // One sink for each query and head, rather than for each head.
+  bool sinksPerQuery = false;
+
+  // Each query adds its own bias to the scores of the keys within an extent before it.
+  bool relativeBias = false;
+
   uint32_t slidingWindow;
 
   // Selected split count. A value <= 1 disables splitKV.

@@ -53,6 +53,10 @@ struct NAAttentionKernel {
 
   bool attentionSinks;
 
+  bool sinksPerQuery;
+
+  bool relativeBias;
+
   uint32_t slidingWindow;
 
   unsigned short threadgroupMemoryAllocation(MTL::ComputePipelineState *const pipelineState, const NAAttentionDescriptor &descriptor) const noexcept;

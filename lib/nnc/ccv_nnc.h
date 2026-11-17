@@ -370,9 +370,10 @@ typedef struct {
 			               For FP16 input, CCV_NNC_GEMM_8I alone uses FP16 intermediates and saved logsumexp. CCV_NNC_GEMM_32F requests FP32; an explicit CCV_NNC_GEMM_16F takes precedence if both are present.
 			               Quantized backward retains quantized P/V regardless of the floating flags. */
 			int deterministic; /**< [scaled_dot_product_attention.deterministic] Whether we want the attention computation to be deterministic (CUDA only). */
-			int attention_sinks; /**< [scaled_dot_product_attention.attention_sinks] Whether a scalar or per-query-head attention sink tensor is supplied as an input. */
+			int attention_sinks; /**< [scaled_dot_product_attention.attention_sinks] Whether an attention sink tensor is supplied as an input: a scalar, one for each query head, or one for each query and head as [batch, R, Hq]. */
 			int sliding_window; /**< [scaled_dot_product_attention.sliding_window] Causal sliding-window size, including the current token. 0 disables sliding-window attention. */
 			int use_hadamard; /**< [scaled_dot_product_attention.use_hadamard] Request a fused Q/K Hadamard transform during NA INT8 forward attention for supported head dimensions. Ignored by other implementations and backward. */
+			int relative_bias; /**< [scaled_dot_product_attention.relative_bias] Whether a relative-position bias tensor [batch, R, Hq, extent] is supplied as an input. A query's own key is at column row + C - R; the key d positions before it, for 0 <= d < extent, adds the query's bias at d to its score. Forward only. */
 		} scaled_dot_product_attention;
 		struct {
 			float scale; /**< Multiplier for Q.K logits. */
@@ -5326,7 +5327,7 @@ CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_replicated(ccv_cnnp_model_t* const m
 CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_all_to_all(const int count, const int axis, const char* const name);
 /**
  * Apply the scaled dot product attention to input. Accepting input in the form of (q, k, v)
- * or (q, k, v, attn_mask) if has_attn_mask is 1. If attention_sinks is 1, append the sink tensor to the input list.
+ * or (q, k, v, attn_mask) if has_attn_mask is 1. If attention_sinks is 1, append the sink tensor to the input list: a scalar, one for each query head, or one for each query and head as [batch, R, Hq]. If relative_bias is 1, append the bias tensor after it.
  * @param scale The scale to be applied to the qk dot product.
  * @param is_causal Whether to apply is_causal mask to it. If both attn_mask and is_causal supplied, we will cut attn_mask to upper right triangle.
  * @param has_attn_mask Whether the input would accept a 4th parameter the attention mask.
@@ -5337,13 +5338,14 @@ CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_all_to_all(const int count, const in
  * @param use_hadamard Request a fused Q/K Hadamard transform during supported NA INT8 forward attention. Other implementations and backward ignore this option.
  * @param attention_sinks Whether the input would accept an attention sink tensor.
  * @param sliding_window Causal sliding-window size, including the current token. 0 disables sliding-window attention.
+ * @param relative_bias Whether the input would accept a relative-position bias tensor [batch, R, Hq, extent] after the sinks: the key d positions before a query's own, for 0 <= d < extent, adds the query's bias at d to its score.
  * @param fused_unify_head_weights Whether we also have unifying head weight fused into it. The output would be in shape of (N, S, H * Ev).
  * @param no_bias Whether we have bias or not for the unifying head output.
  * @param is_trainable Whether or not it is trainable (if weight / bias provided).
  * @param name The unique name of the model.
  * @return A model that can apply scaled dot product attention compute.
  */
-CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_scaled_dot_product_attention(const float scale, const int is_causal, const int has_attn_mask, const int is_varlen, const int max_seqlen_q, const int max_seqlen_kv, const int flags, const int use_hadamard, const int attention_sinks, const int sliding_window, const int fused_unify_head_weights, const int no_bias, const int is_trainable, const char* const name);
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_scaled_dot_product_attention(const float scale, const int is_causal, const int has_attn_mask, const int is_varlen, const int max_seqlen_q, const int max_seqlen_kv, const int flags, const int use_hadamard, const int attention_sinks, const int sliding_window, const int relative_bias, const int fused_unify_head_weights, const int no_bias, const int is_trainable, const char* const name);
 /**
  * The function prototype to call during the model execution at this position.
  */

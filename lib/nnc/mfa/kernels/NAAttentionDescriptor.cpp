@@ -37,6 +37,8 @@ bool NAAttentionDescriptor::operator==(const NAAttentionDescriptor& rhs) const {
   masked == rhs.masked &&
   isVarlen == rhs.isVarlen &&
   attentionSinks == rhs.attentionSinks &&
+  sinksPerQuery == rhs.sinksPerQuery &&
+  relativeBias == rhs.relativeBias &&
   slidingWindow == rhs.slidingWindow &&
   (loadStrides || maskBatchStride == rhs.maskBatchStride) &&
   loadC == rhs.loadC &&
@@ -75,7 +77,7 @@ std::size_t std::hash<NAAttentionDescriptor>::operator()(const NAAttentionDescri
   seed = combine_32(seed, pack_32(simd::ushort2 {
       (uint16_t)(hash.masked ? 1 : 0),
       (uint16_t)(hash.isVarlen ? 1 : 0) }));
-  seed = combine_32(seed, hash.attentionSinks ? 1 : 0);
+  seed = combine_32(seed, (hash.attentionSinks ? 1 : 0) | (hash.sinksPerQuery ? 2 : 0) | (hash.relativeBias ? 4 : 0));
   seed = combine_32(seed, hash.slidingWindow);
   seed = combine_32(seed, hash.loadStrides ? 0 : hash.maskBatchStride);
   seed = combine_32(seed, pack_32(simd::ushort2 { hash.type.value, 0 } ));
@@ -154,6 +156,8 @@ NAAttentionKernelDescriptor NAAttentionDescriptor::kernelDescriptor(MTL::Device 
   descriptor.hasRemainderR = !loadR || isVarlen || matrixDimensions[0] % blockDimensions[0] != 0;
   descriptor.hasRemainderC = !loadC || isVarlen || matrixDimensions[1] % (blockDimensions[1] * ((isCausal || masked) ? 1 : 2)) != 0;
   descriptor.loadStrides = loadStrides;
+  descriptor.sinksPerQuery = sinksPerQuery;
+  descriptor.relativeBias = relativeBias;
   return descriptor;
 }
 
@@ -163,6 +167,8 @@ uint16_t NAAttentionDescriptor::splitKV(simd::ushort3 blockDimensions, uint16_t 
       matrixDimensions[0] > blockDimensions[0] * 4 ||
       masked ||
       isVarlen ||
+      sinksPerQuery ||
+      relativeBias ||
       slidingWindow > 0) {
     return 1;
   }

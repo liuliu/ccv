@@ -43,6 +43,8 @@ NAAttentionKernel::NAAttentionKernel(NAAttentionKernelDescriptor descriptor, MTL
   hasRemainderC = descriptor.hasRemainderC;
   loadStrides = descriptor.loadStrides;
   attentionSinks = descriptor.attentionSinks;
+  sinksPerQuery = descriptor.sinksPerQuery;
+  relativeBias = descriptor.relativeBias;
   slidingWindow = descriptor.slidingWindow;
   splitKV = descriptor.splitKV;
 
@@ -775,6 +777,12 @@ std::string NAAttentionKernel::createBufferBindings() const noexcept {
     output += "* Sinks_buf [[buffer(19)]],\n";
     output += "  constant uint& Sink_head_stride [[buffer(20)]],\n";
   }
+  if (type.value == AttentionKernelType::forward && relativeBias) {
+    output += "  device const ";
+    output += memoryName(AttentionOperand::Q);
+    output += "* Relative_bias_buf [[buffer(23)]],\n";
+    output += "  constant uint& Relative_bias_extent [[buffer(24)]],\n";
+  }
   if (type.value == AttentionKernelType::forward && loadC) {
     output += "  const device uint* C_buf [[buffer(21)]],\n";
   }
@@ -849,6 +857,17 @@ std::string NAAttentionKernel::createAdjustOffsets() const noexcept {
     source += R"(
   Mask_buf += tgid.z * Mask_batch_stride;
   Block_mask_buf += tgid.z * Block_mask_batch_stride;
+)";
+  }
+  // Both are [batch, R, Hq, ...].
+  if (type.value == AttentionKernelType::forward && attentionSinks && sinksPerQuery) {
+    source += R"(
+  Sinks_buf += tgid.z * R * Hq;
+)";
+  }
+  if (type.value == AttentionKernelType::forward && relativeBias) {
+    source += R"(
+  Relative_bias_buf += size_t(tgid.z) * R * Hq * Relative_bias_extent;
 )";
   }
   return source.ToString();
@@ -1325,6 +1344,8 @@ kernel void compute_d(
 }
 
 void NAAttentionKernel::loopForwardSingleCausal(CodeWriter &source) const noexcept {
+  // A mask or a relative-position bias adds to the scaled scores in place, before the maximum.
+  const bool scoresInPlace = masked || relativeBias;
   source.SetValue("MEMORY_NAME_Q", memoryName(AttentionOperand::Q));
   source.SetValue("MEMORY_NAME_K", memoryName(AttentionOperand::K));
   source.SetValue("MEMORY_NAME_V", memoryName(AttentionOperand::V));
@@ -1384,12 +1405,22 @@ void NAAttentionKernel::loopForwardSingleCausal(CodeWriter &source) const noexce
   auto cL = matmul_qk_op.get_row_reduction_destination_cooperative_tensor<decltype(mQ), decltype(mK), float>();
   auto correction = matmul_qk_op.get_row_reduction_destination_cooperative_tensor<decltype(mQ), decltype(mK), float>();
 )";
-  if (attentionSinks) {
+  if (attentionSinks && !sinksPerQuery) {
     source += R"(
   const float sink_m = (float)Sinks_buf[tgid.y * Sink_head_stride] * 1.442695041;
 )";
   }
-  source += attentionSinks ? R"(
+  source += (attentionSinks && sinksPerQuery) ? R"(
+  // One sink for each query and head; rows past the last query read its sink and are dropped.
+  #pragma clang loop unroll(full)
+  for (unsigned short k = 0; k < cM.get_capacity(); ++k) {
+    if (cM.is_valid_element(k)) {
+      const uint sink_row = min(tgid.x * {{BLOCK_DIMENSIONS_PARALLELIZATION}} + uint(cM.get_multidimensional_index(k)[0]), uint({{R_LENGTH}}) - 1);
+      cM[k] = (float)Sinks_buf[sink_row * Hq + tgid.y] * 1.442695041;
+      cL[k] = 1;
+    }
+  }
+)" : attentionSinks ? R"(
   #pragma clang loop unroll(full)
   for (unsigned short k = 0; k < cM.get_capacity(); ++k) {
     if (cM.is_valid_element(k)) {
@@ -1503,10 +1534,26 @@ void NAAttentionKernel::loopForwardSingleCausal(CodeWriter &source) const noexce
     }
 )";
   }
-  if (masked) {
+  if (scoresInPlace) {
     if (isCausal) {
       source += R"(
     const bool causal_mask_0 = int(c + {{BLOCK_DIMENSIONS_TRAVERSAL}} - 1) > causal_first_column_limit;
+)";
+    }
+    // The mask's term and the bias's on the scaled score, appended with the loop in one piece.
+    std::string scoreTerms;
+    if (masked) {
+      scoreTerms += R"(        if (mask_flags == 2 && row < int({{R_LENGTH}})) {
+          score += (float)Mask_buf[row * C + column] * {{MASK_SCALE}};
+        }
+)";
+    }
+    if (relativeBias) {
+      scoreTerms += R"(        // The key this many positions before the query's own adds the query's bias at that distance.
+        const int relative_distance = row + causal_column_offset - column;
+        if (relative_distance >= 0 && relative_distance < int(Relative_bias_extent) && row < int({{R_LENGTH}})) {
+          score += (float)Relative_bias_buf[(uint(row) * Hq + tgid.y) * Relative_bias_extent + uint(relative_distance)] * {{MASK_SCALE}};
+        }
 )";
     }
     source += R"(
@@ -1517,10 +1564,7 @@ void NAAttentionKernel::loopForwardSingleCausal(CodeWriter &source) const noexce
         const int row = causal_row_start + idx[1];
         const int column = int(c) + idx[0];
         float score = cS_0[k] * {{DOT_SCALE}};
-        if (mask_flags == 2 && row < int({{R_LENGTH}})) {
-          score += (float)Mask_buf[row * C + column] * {{MASK_SCALE}};
-        }
-)";
+)" + scoreTerms;
     if (isCausal) {
       if (slidingWindow > 0) {
         source += R"(
@@ -1591,7 +1635,7 @@ void NAAttentionKernel::loopForwardSingleCausal(CodeWriter &source) const noexce
       if (cM.is_valid_element(k)) {
         correction[k] = 1;
 )";
-  if (masked) {
+  if (scoresInPlace) {
     source += R"(
         const float M_new = cM_0_new[k];
 )";
@@ -1608,7 +1652,12 @@ void NAAttentionKernel::loopForwardSingleCausal(CodeWriter &source) const noexce
       }
     }
 )";
-  if (masked) {
+  if (scoresInPlace) {
+    // With a bias but no sink, a row that sees no key yet, because its window starts after this tile
+    // or its own key is before the first one, has no maximum.
+    source.SetValue("IN_PLACE_WEIGHT", (relativeBias && !attentionSinks) ?
+        "cS_0[k] > -numeric_limits<float>::infinity() ? fast::exp2(cS_0[k] - *dst_it) : 0" :
+        "fast::exp2(cS_0[k] - *dst_it)");
     source += R"(
     // Softmax. cS becomes cP.
     #pragma clang loop unroll(full)
@@ -1616,7 +1665,7 @@ void NAAttentionKernel::loopForwardSingleCausal(CodeWriter &source) const noexce
       if (cS_0.is_valid_element(k)) {
         auto it = cS_0.get_iterator(k);
         auto dst_it = cM.map_iterator(it);
-        cS_0[k] = fast::exp2(cS_0[k] - *dst_it);
+        cS_0[k] = {{IN_PLACE_WEIGHT}};
       }
     }
 )";
@@ -1798,7 +1847,22 @@ void NAAttentionKernel::loopForwardSingleCausal(CodeWriter &source) const noexce
     }
 )";
   }
-  if (masked) {
+  if (scoresInPlace) {
+    // The mask's term and the bias's on the scaled score, appended with the loop in one piece.
+    std::string scoreTerms;
+    if (masked) {
+      scoreTerms += R"(          if (mask_flags == 2 && row < int({{R_LENGTH}})) {
+            score += (float)Mask_buf[row * C + column] * {{MASK_SCALE}};
+          }
+)";
+    }
+    if (relativeBias) {
+      scoreTerms += R"(          const int relative_distance = row + causal_column_offset - column;
+          if (relative_distance >= 0 && relative_distance < int(Relative_bias_extent) && row < int({{R_LENGTH}})) {
+            score += (float)Relative_bias_buf[(uint(row) * Hq + tgid.y) * Relative_bias_extent + uint(relative_distance)] * {{MASK_SCALE}};
+          }
+)";
+    }
     source += R"(
     #pragma clang loop unroll(full)
     for (unsigned short k = 0; k < cS_0.get_capacity(); ++k) {
@@ -1810,10 +1874,7 @@ void NAAttentionKernel::loopForwardSingleCausal(CodeWriter &source) const noexce
           cS_0[k] = -numeric_limits<float>::infinity();
         } else {
           float score = cS_0[k] * {{DOT_SCALE}};
-          if (mask_flags == 2 && row < int({{R_LENGTH}})) {
-            score += (float)Mask_buf[row * C + column] * {{MASK_SCALE}};
-          }
-)";
+)" + scoreTerms;
     if (isCausal) {
       if (slidingWindow > 0) {
         source += R"(
@@ -1893,7 +1954,7 @@ void NAAttentionKernel::loopForwardSingleCausal(CodeWriter &source) const noexce
       if (cM.is_valid_element(k)) {
         correction[k] = 1;
 )";
-  if (masked) {
+  if (scoresInPlace) {
     source += R"(
         const float M_new = cM_0_new[k];
 )";
@@ -1910,7 +1971,7 @@ void NAAttentionKernel::loopForwardSingleCausal(CodeWriter &source) const noexce
       }
     }
 )";
-  if (masked) {
+  if (scoresInPlace) {
     source += R"(
     // Softmax. cS becomes cP.
     #pragma clang loop unroll(full)
@@ -1922,7 +1983,7 @@ void NAAttentionKernel::loopForwardSingleCausal(CodeWriter &source) const noexce
         if (idx[0] >= (int){{C_SINGLE_REMAINDER}}) {
           cS_0[k] = 0;
         } else {
-          cS_0[k] = fast::exp2(cS_0[k] - *dst_it);
+          cS_0[k] = {{IN_PLACE_WEIGHT}};
         }
       }
     }

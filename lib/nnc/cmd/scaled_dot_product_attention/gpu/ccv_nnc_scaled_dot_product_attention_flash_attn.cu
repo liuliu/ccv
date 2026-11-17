@@ -25,6 +25,8 @@ static int _ccv_nnc_scaled_dot_product_attention_forw(const ccv_nnc_cmd_t cmd, c
 		return CCV_NNC_EXEC_INVALID;
 	if (cmd.info.scaled_dot_product_attention.sliding_window != 0)
 		return CCV_NNC_EXEC_INVALID;
+	if (cmd.info.scaled_dot_product_attention.relative_bias)
+		return CCV_NNC_EXEC_INVALID;
 	ccv_nnc_tensor_view_t* const q = (ccv_nnc_tensor_view_t*)inputs[0];
 	ccv_nnc_tensor_view_t* const k = (ccv_nnc_tensor_view_t*)inputs[1];
 	ccv_nnc_tensor_view_t* const v = (ccv_nnc_tensor_view_t*)inputs[2];
@@ -372,6 +374,8 @@ static int _ccv_nnc_scaled_dot_product_attention_back(const ccv_nnc_cmd_t cmd, c
 	if (cmd.info.scaled_dot_product_attention.attention_sinks)
 		return CCV_NNC_EXEC_INVALID;
 	if (cmd.info.scaled_dot_product_attention.sliding_window != 0)
+		return CCV_NNC_EXEC_INVALID;
+	if (cmd.info.scaled_dot_product_attention.relative_bias)
 		return CCV_NNC_EXEC_INVALID;
 	if (cmd.info.scaled_dot_product_attention.is_varlen)
 		return CCV_NNC_EXEC_INVALID;

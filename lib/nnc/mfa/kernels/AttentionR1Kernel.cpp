@@ -6,6 +6,7 @@ AttentionR1Kernel::AttentionR1Kernel(AttentionR1KernelDescriptor descriptor, MTL
   memoryPrecision = descriptor.memoryPrecision;
   loadC = descriptor.loadC;
   attentionSinks = descriptor.attentionSinks;
+  relativeBias = descriptor.relativeBias;
   source = createSource();
   auto string = NS::String::string(source.c_str(), NS::UTF8StringEncoding);
   NS::Error* error = nil;
@@ -44,6 +45,8 @@ using namespace metal;
       source += "    constant uint& C_LEN [[buffer(4)]],\n";
     if (attentionSinks)
       source += "    device const real* Sinks [[buffer(19)]],\n    constant uint& Sink_head_stride [[buffer(20)]],\n";
+    if (relativeBias)
+      source += "    device const real* Relative_bias [[buffer(23)]],\n    constant uint& Relative_bias_extent [[buffer(24)]],\n";
     source += R"(
     uint3 tgid [[threadgroup_position_in_grid]],
     uint3 grid [[threadgroups_per_grid]],
@@ -94,7 +97,14 @@ using namespace metal;
     #pragma clang loop unroll(full)
     for (uint j = 0; j < HEADS_PER_SIMD; ++j) {
       scores[j] = simd_sum(scores[j]);
-      const float next_m = max(row_m[j], scores[j]);
+)";
+    if (relativeBias)
+      source += R"(      // The key this far before the query's own, the last visible one, adds the query's bias at
+      // that distance.
+      if (cols - 1 - c < Relative_bias_extent)
+        scores[j] += float(Relative_bias[((size_t(batch) * R_LEN + r) * Hq + hq + j) * Relative_bias_extent + cols - 1 - c]) * 1.442695041;
+)";
+    source += R"(      const float next_m = max(row_m[j], scores[j]);
       correction[j] = fast::exp2(row_m[j] - next_m);
       weights[j] = fast::exp2(scores[j] - next_m);
       row_s[j] = row_s[j] * correction[j] + weights[j];
@@ -147,6 +157,8 @@ kernel void attention_r1_cooperative(
     source += "    constant uint& C_LEN [[buffer(4)]],\n";
   if (attentionSinks)
     source += "    device const real* Sinks [[buffer(19)]],\n    constant uint& Sink_head_stride [[buffer(20)]],\n";
+  if (relativeBias)
+    source += "    device const real* Relative_bias [[buffer(23)]],\n    constant uint& Relative_bias_extent [[buffer(24)]],\n";
   source += R"(
     threadgroup float* scratch [[threadgroup(0)]],
     uint3 tgid [[threadgroup_position_in_grid]],
@@ -180,7 +192,12 @@ kernel void attention_r1_cooperative(
     for (uint i = 0; i < elements; ++i)
       score += q[i] * float(kp[i]);
     score = simd_sum(score);
-    const float next_m = max(maximum, score);
+)";
+  if (relativeBias)
+    source += R"(    if (cols - 1 - c < Relative_bias_extent)
+      score += float(Relative_bias[row * Relative_bias_extent + cols - 1 - c]) * 1.442695041;
+)";
+  source += R"(    const float next_m = max(maximum, score);
     const float correction = fast::exp2(maximum - next_m);
     const float weight = fast::exp2(score - next_m);
     for (uint i = 0; i < elements; ++i)

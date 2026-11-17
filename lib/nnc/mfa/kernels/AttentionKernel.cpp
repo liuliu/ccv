@@ -24,6 +24,8 @@ AttentionKernel::AttentionKernel(AttentionKernelDescriptor descriptor, MTL::Devi
   masked = descriptor.masked;
   isVarlen = descriptor.isVarlen;
   slidingWindow = descriptor.slidingWindow;
+  sinksPerQuery = descriptor.sinksPerQuery;
+  relativeBias = descriptor.relativeBias;
   leadingDimensions = descriptor.leadingDimensions;
   disableAsyncCopy = false;
 
@@ -44,7 +46,10 @@ AttentionKernel::AttentionKernel(AttentionKernelDescriptor descriptor, MTL::Devi
     library = NS::TransferPtr(device->newLibrary(string, nil, &error));
     if (error) {
       error = nil;
-      library = NS::TransferPtr(findPrecompiledLibrary(descriptor, device, &error));
+      // No precompiled library has per-query sinks or a relative-position bias.
+      if (!sinksPerQuery && !relativeBias) {
+        library = NS::TransferPtr(findPrecompiledLibrary(descriptor, device, &error));
+      }
       if (!library) {
         preferAsyncCache = false;
         preferAsyncLoad = false;
@@ -704,6 +709,12 @@ std::string AttentionKernel::createBufferBindings() const noexcept {
     output += "* Sinks_buf [[buffer(19), function_constant(attention_sinks)]],\n";
     output += "  constant uint& Sink_head_stride [[buffer(20), function_constant(attention_sinks)]],\n";
   }
+  if (type.value == AttentionKernelType::forward && relativeBias) {
+    output += "  device const ";
+    output += memoryName(AttentionOperand::Q);
+    output += "* Relative_bias_buf [[buffer(23)]],\n";
+    output += "  constant uint& Relative_bias_extent [[buffer(24)]],\n";
+  }
   if (loadR || loadC)
     output += "  constant uint* dimensions [[buffer(21)]],\n";
   return output;
@@ -778,6 +789,17 @@ std::string AttentionKernel::createAdjustOffsets() const noexcept {
     source += R"(
     Mask_buf += gid.z * Mask_batch_stride;
     Block_mask_buf += gid.z * Block_mask_batch_stride;
+)";
+  }
+  // Both are [batch, R, Hq, ...].
+  if (type.value == AttentionKernelType::forward && sinksPerQuery) {
+    source += R"(
+    Sinks_buf += gid.z * R * Hq;
+)";
+  }
+  if (type.value == AttentionKernelType::forward && relativeBias) {
+    source += R"(
+    Relative_bias_buf += size_t(gid.z) * R * Hq * Relative_bias_extent;
 )";
   }
   if (type.value == AttentionKernelType::forward && isVarlen) {
@@ -925,9 +947,11 @@ std::string AttentionKernel::loopForwardMasked() const noexcept {
   source.SetValue("BLOCK_DIMENSIONS_TRAVERSAL", std::to_string(blockDimensions[1]));
   source.SetValue("QKT", QKT);
   source.SetValue("MASK_ATTENTION_MATRIX", maskAttentionMatrix());
-  source.SetValue("ONLINE_REDUCE_MAXIMUM", onlineReduceMaximum(masked));
+  // A mask or a relative-position bias adds to the scaled scores in place, before the maximum.
+  const bool scoresInPlace = masked || relativeBias;
+  source.SetValue("ONLINE_REDUCE_MAXIMUM", onlineReduceMaximum(scoresInPlace));
   source.SetValue("ONLINE_CORRECT_O", onlineCorrectO());
-	  source.SetValue("SOFTMAX", softmax(false, masked));
+	  source.SetValue("SOFTMAX", softmax(false, scoresInPlace));
 	  source.SetValue("ONLINE_REDUCE_SUM", onlineReduceSum());
 	  source.SetValue("PV", PV);
   source.SetValue("DECLARE_ACCUMULATION_STATE", masked ? "  bool has_accumulated = false;\n" : "");
@@ -956,7 +980,9 @@ std::string AttentionKernel::loopForwardMasked() const noexcept {
     source.SetValue("L_MEMORY_NAME", memoryName(AttentionOperand::L));
     source.SetValue("O_LEADING_DIMENSION", leadingDimension(AttentionOperand::O));
     source.SetValue("O_TRANSPOSED", transposed(AttentionOperand::O) ? "true" : "false");
-    source.SetValue("EMPTY_LSE", "(attention_sinks ? (float)Sinks_buf[gid.y * Sink_head_stride] * 1.442695041 : -numeric_limits<float>::infinity())");
+    source.SetValue("EMPTY_LSE", sinksPerQuery ?
+        "(float)Sinks_buf[(parallelization_group_offset + row) * Hq + gid.y] * 1.442695041" :
+        "(attention_sinks ? (float)Sinks_buf[gid.y * Sink_head_stride] * 1.442695041 : -numeric_limits<float>::infinity())");
     source += R"(
   if (traversal_end == 0) {
     const uint tid = uint(sidx) * 32 + uint(lane_id);
@@ -1004,6 +1030,12 @@ std::string AttentionKernel::loopForwardMasked() const noexcept {
 	    if (mask_flags == 0 && c + {{BLOCK_DIMENSIONS_TRAVERSAL}} < traversal_end) {
 	      continue;
 	    }
+)";
+  }
+  if (relativeBias && !masked) {
+    // Every tile takes the in-place path the mask flags select.
+    source += R"(
+	    const uchar mask_flags = 2;
 )";
   }
   source += R"(
@@ -2297,12 +2329,17 @@ std::string AttentionKernel::createSetup() const noexcept {
     if (cached(AttentionOperand::O)) {
       output += allocate(AttentionOperand::O);
     }
-    output += R"(
+    if (sinksPerQuery) {
+      // One sink for each query and head; rows past the last query read its sink and are dropped.
+      output += "\n    float m = (float)Sinks_buf[(" + clampedParallelizationThreadOffsetValue() + ") * Hq + gid.y] * 1.442695041;\n    float l = 1;\n\n";
+    } else {
+      output += R"(
 
     float m = attention_sinks ? (float)Sinks_buf[gid.y * Sink_head_stride] * 1.442695041 : -numeric_limits<float>::max();
     float l = attention_sinks ? 1 : numeric_limits<float>::denorm_min();
 
 )";
+    }
     break;
   case AttentionKernelType::backwardQuery: {
     if (cached(AttentionOperand::Q)) {
@@ -3344,6 +3381,13 @@ std::string AttentionKernel::maskAttentionMatrix() const noexcept {
 	            score += mask_value * 1.442695041;
 	          }
 	        })");
+	  } else if (relativeBias) {
+	    // The key this many positions before the query's own adds the query's bias at that distance.
+	    source.SetValue("MASK_TERM", R"(
+	        const int relative_distance = int(row) + int()" + traversalDimensionValue() + R"() - int()" + parallelizationDimensionValue() + R"() - int(column);
+	        if (relative_distance >= 0 && relative_distance < int(Relative_bias_extent) && row < )" + parallelizationDimensionValue() + R"() {
+	          score += (float)Relative_bias_buf[(row * Hq + gid.y) * Relative_bias_extent + uint(relative_distance)] * 1.442695041;
+	        })");
 	  } else {
 	    source.SetValue("MASK_TERM", "");
 	  }
@@ -3356,7 +3400,9 @@ std::string AttentionKernel::maskAttentionMatrix() const noexcept {
   } else {
     source.SetValue("CAUSAL_VALID", "");
   }
-	  if (masked) {
+	  // A relative-position bias adds to the scores in place as a mask does, with every tile's mask
+	  // flags 2.
+	  if (masked || relativeBias) {
 	    source += R"(
 
 	  const {{REGISTER_NAME_S}} mask_value =

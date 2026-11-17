@@ -19,6 +19,8 @@ bool AttentionDescriptor::operator==(const AttentionDescriptor& rhs) const {
   masked == rhs.masked &&
   isVarlen == rhs.isVarlen &&
   attentionSinks == rhs.attentionSinks &&
+  sinksPerQuery == rhs.sinksPerQuery &&
+  relativeBias == rhs.relativeBias &&
   slidingWindow == rhs.slidingWindow &&
   ((loadR || loadC) || maskBatchStride == rhs.maskBatchStride) &&
   type == rhs.type &&
@@ -52,7 +54,7 @@ std::size_t std::hash<AttentionDescriptor>::operator()(const AttentionDescriptor
   seed = combine_32(seed, pack_32(simd::ushort2 {
       (uint16_t)(hash.masked ? 1 : 0),
       (uint16_t)(hash.isVarlen ? 1 : 0) }));
-  seed = combine_32(seed, hash.attentionSinks ? 1 : 0);
+  seed = combine_32(seed, (hash.attentionSinks ? 1 : 0) | (hash.sinksPerQuery ? 2 : 0) | (hash.relativeBias ? 4 : 0));
   seed = combine_32(seed, hash.slidingWindow);
   seed = combine_32(seed, (hash.loadR || hash.loadC) ? 0 : hash.maskBatchStride);
   seed = combine_32(seed, (hash.loadR ? 1 : 0) | (hash.loadC ? 2 : 0));
@@ -144,11 +146,15 @@ AttentionKernelDescriptor AttentionDescriptor::kernelDescriptor(MTL::Device *con
     auto descriptor = AttentionKernelDescriptor(createBlockDimensions(), createCacheState(), createHeadDimension(), createMemoryPrecisions(), true, false, createRegisterPrecisions(device), createTransposeState(), createLeadingDimensions(), type, isCausal, masked, isVarlen, slidingWindowKernelVariant);
     descriptor.loadR = loadR;
     descriptor.loadC = loadC;
+    descriptor.sinksPerQuery = sinksPerQuery;
+    descriptor.relativeBias = relativeBias;
     return descriptor;
   } else {
     auto descriptor = AttentionKernelDescriptor(createBlockDimensions(), createCacheState(), createHeadDimension(), createMemoryPrecisions(), false, true, createRegisterPrecisions(device), createTransposeState(), createLeadingDimensions(), type, isCausal, masked, isVarlen, slidingWindowKernelVariant);
     descriptor.loadR = loadR;
     descriptor.loadC = loadC;
+    descriptor.sinksPerQuery = sinksPerQuery;
+    descriptor.relativeBias = relativeBias;
     return descriptor;
   }
 }

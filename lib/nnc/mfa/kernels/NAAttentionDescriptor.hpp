@@ -50,6 +50,13 @@ struct NAAttentionDescriptor {
 
   bool attentionSinks = false;
 
+  /// One sink for each query and head, [batch, R, Hq], rather than for each head.
+  bool sinksPerQuery = false;
+
+  /// A relative-position bias [batch, R, Hq, extent]: each query adds its own bias to the scores
+  /// of the keys within the extent before it.
+  bool relativeBias = false;
+
   uint32_t slidingWindow = 0;
 
   uint32_t maskBatchStride = 0;

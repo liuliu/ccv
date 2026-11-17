@@ -36,6 +36,17 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
     CCV_NNC_MFA_PRECONDITION(!params.is_varlen);
   }
   CCV_NNC_MFA_PRECONDITION(!(params.masked && params.is_varlen));
+  if (params.relative_bias_extent > 0 || hash.sinks_per_query) {
+    // A relative-position bias and per-query sinks run in the causal forward kernels.
+    CCV_NNC_MFA_PRECONDITION(params.type == 0);
+    CCV_NNC_MFA_PRECONDITION(params.is_causal);
+    CCV_NNC_MFA_PRECONDITION(!params.is_varlen);
+    CCV_NNC_MFA_PRECONDITION(!params.use_quantized_attention);
+  }
+  if (params.relative_bias_extent > 0) {
+    // A relative-position bias runs without a mask.
+    CCV_NNC_MFA_PRECONDITION(!params.masked);
+  }
   if (params.sliding_window > 0) {
     CCV_NNC_MFA_PRECONDITION(params.type == 0);
     CCV_NNC_MFA_PRECONDITION(params.is_causal);
@@ -98,7 +109,11 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
         !params.use_quantized_attention &&
         !hash.masked &&
         !hash.is_varlen &&
-        hash.sliding_window == 0 &&
+        // With a relative-position bias, also when the sliding window covers every key, or when
+        // one row reads the last keys of a cache bound with more than its window.
+        (hash.sliding_window == 0 || (hash.relative_bias_extent > 0 && (hash.sliding_window >= hash.C || (hash.R == 1 && batch_sizes[0] == 1)))) &&
+        (hash.relative_bias_extent == 0 || hash.is_causal) &&
+        !hash.sinks_per_query &&
         attentionR1DataType &&
         (hash.R == 1 || hash.R == 2) &&
         !tensors[5] && // Saved logsumexp requires the general attention path.
@@ -107,9 +122,13 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
         hash.Hk > 0 &&
         (hash.Hq % hash.Hk) == 0;
     if (useAttentionR1) {
+      // The keys the row reads, and where they start in the bound keys and values (FP16 or BF16).
+      const uint32_t keyCount = hash.sliding_window > 0 && hash.sliding_window < hash.C ? hash.sliding_window : hash.C;
+      const size_t keyOffset = (size_t)(hash.C - keyCount) * hash.Hk * hash.D * 2;
       AttentionR1Descriptor attentionDesc = AttentionR1Descriptor::select(
-          attentionR1Precision, hash.C, hash.Hq, hash.Hk, hash.D, hash.alpha, true, hash.attention_sinks,
+          attentionR1Precision, keyCount, hash.Hq, hash.Hk, hash.D, hash.alpha, true, hash.attention_sinks,
           hash.R, hash.is_causal, batch_sizes[0], context->device_properties.coreCount);
+      attentionDesc.relativeBias = hash.relative_bias_extent > 0;
       auto pool = NS::AutoreleasePool::alloc()->init();
       auto &shaderCache = context->kernel_cache;
       DeviceProperties dprops = DeviceProperties();
@@ -131,13 +150,18 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
           encoder->useResource(tensors[8], MTL::ResourceUsageRead);
         }
         encoder->setBuffer(tensors[0], tensor_offsets[0], 0);
-        encoder->setBuffer(tensors[1], tensor_offsets[1], 1);
-        encoder->setBuffer(tensors[2], tensor_offsets[2], 2);
+        encoder->setBuffer(tensors[1], tensor_offsets[1] + keyOffset, 1);
+        encoder->setBuffer(tensors[2], tensor_offsets[2] + keyOffset, 2);
         encoder->setBuffer(tensors[3], tensor_offsets[3], 3);
-        encoder->setBytes(&hash.C, sizeof(hash.C), 4);
+        encoder->setBytes(&keyCount, sizeof(keyCount), 4);
         if (hash.attention_sinks) {
           encoder->setBuffer(tensors[8], tensor_offsets[8], 19);
           encoder->setBytes(&params.sink_head_stride, sizeof(params.sink_head_stride), 20);
+        }
+        if (hash.relative_bias_extent > 0) {
+          encoder->useResource(tensors[9], MTL::ResourceUsageRead);
+          encoder->setBuffer(tensors[9], tensor_offsets[9], 23);
+          encoder->setBytes(&params.relative_bias_extent, sizeof(params.relative_bias_extent), 24);
         }
         encoder->dispatchThreadgroups(
             attentionDesc.mode == AttentionR1Descriptor::Mode::cooperative
@@ -162,13 +186,18 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
         encoder->useResource(tensors[8], MTL::ResourceUsageRead);
       }
       encoder->setBuffer(tensors[0], tensor_offsets[0], 0);
-      encoder->setBuffer(tensors[1], tensor_offsets[1], 1);
-      encoder->setBuffer(tensors[2], tensor_offsets[2], 2);
+      encoder->setBuffer(tensors[1], tensor_offsets[1] + keyOffset, 1);
+      encoder->setBuffer(tensors[2], tensor_offsets[2] + keyOffset, 2);
       encoder->setBuffer(scratch, 0, 3);
-      encoder->setBytes(&hash.C, sizeof(hash.C), 4);
+      encoder->setBytes(&keyCount, sizeof(keyCount), 4);
       if (hash.attention_sinks) {
         encoder->setBuffer(tensors[8], tensor_offsets[8], 19);
         encoder->setBytes(&params.sink_head_stride, sizeof(params.sink_head_stride), 20);
+      }
+      if (hash.relative_bias_extent > 0) {
+        encoder->useResource(tensors[9], MTL::ResourceUsageRead);
+        encoder->setBuffer(tensors[9], tensor_offsets[9], 23);
+        encoder->setBytes(&params.relative_bias_extent, sizeof(params.relative_bias_extent), 24);
       }
       encoder->dispatchThreadgroups(
           MTL::Size(hash.Hq / (attentionDesc.simdgroups / hash.R * attentionDesc.headsPerSIMD), batch_sizes[0], attentionDesc.workgroups),
@@ -474,6 +503,8 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
       attentionDesc.masked = hash.masked;
       attentionDesc.isVarlen = hash.is_varlen;
       attentionDesc.attentionSinks = hash.attention_sinks;
+      attentionDesc.sinksPerQuery = hash.sinks_per_query;
+      attentionDesc.relativeBias = hash.relative_bias_extent > 0;
       attentionDesc.slidingWindow = hash.sliding_window;
       attentionDesc.loadR = (ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M);
       attentionDesc.loadC = (!hash.masked && !hash.is_varlen && hash.R <= 4) || (ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_ATTENTION_SPECIALIZING_C);
@@ -646,6 +677,11 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
         encoder->setBuffer(tensors[8], tensor_offsets[8], 19);
         encoder->setBytes(&params.sink_head_stride, sizeof(params.sink_head_stride), 20);
       }
+      if (hash.relative_bias_extent > 0) {
+        encoder->useResource(tensors[9], MTL::ResourceUsageRead);
+        encoder->setBuffer(tensors[9], tensor_offsets[9], 23);
+        encoder->setBytes(&params.relative_bias_extent, sizeof(params.relative_bias_extent), 24);
+      }
 
       // Calculate the grid size.
       MTL::Size gridSize = kernel->threadgroupsPerGrid(attentionDesc);
@@ -683,6 +719,8 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
     attentionDesc.masked = hash.masked;
     attentionDesc.isVarlen = hash.is_varlen;
     attentionDesc.attentionSinks = hash.attention_sinks;
+    attentionDesc.sinksPerQuery = hash.sinks_per_query;
+    attentionDesc.relativeBias = hash.relative_bias_extent > 0;
     attentionDesc.slidingWindow = hash.sliding_window;
     if (hash.masked && batch_sizes[1] > 1) {
       attentionDesc.maskBatchStride = hash.R * hash.C;
@@ -821,6 +859,11 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
         encoder->useResource(tensors[8], MTL::ResourceUsageRead);
         encoder->setBuffer(tensors[8], tensor_offsets[8], 19);
         encoder->setBytes(&params.sink_head_stride, sizeof(params.sink_head_stride), 20);
+      }
+      if (hash.relative_bias_extent > 0) {
+        encoder->useResource(tensors[9], MTL::ResourceUsageRead);
+        encoder->setBuffer(tensors[9], tensor_offsets[9], 23);
+        encoder->setBytes(&params.relative_bias_extent, sizeof(params.relative_bias_extent), 24);
       }
     
       MTL::Size gridSize
@@ -1374,6 +1417,8 @@ mfa::attention::hash::hash(ccv_nnc_mfa_attention_params_t params) {
       params.use_neural_accelerators && params.use_quantized_attention &&
       params.D >= 8 && params.D <= 256 && params.D % 8 == 0;
   attention_sinks = params.attention_sinks;
+  sinks_per_query = params.attention_sinks && params.sink_query_stride > 0;
+  relative_bias_extent = params.relative_bias_extent;
   sliding_window = params.sliding_window;
 }
 
@@ -1399,6 +1444,8 @@ bool mfa::attention::hash::operator==(const mfa::attention::hash& hash) const {
   (use_quantized_attention == hash.use_quantized_attention) &&
   (use_hadamard == hash.use_hadamard) &&
   (attention_sinks == hash.attention_sinks) &&
+  (sinks_per_query == hash.sinks_per_query) &&
+  (relative_bias_extent == hash.relative_bias_extent) &&
   (sliding_window == hash.sliding_window);
 }
 
@@ -1423,6 +1470,8 @@ std::ostream& operator<<(std::ostream& os, const mfa::attention::hash& hash) {
   os << " .use_quantized_attention = " << bool(hash.use_quantized_attention) << " ";
   os << " .use_hadamard = " << bool(hash.use_hadamard) << " ";
   os << " .attention_sinks = " << bool(hash.attention_sinks) << " ";
+  os << " .sinks_per_query = " << bool(hash.sinks_per_query) << " ";
+  os << " .relative_bias_extent = " << hash.relative_bias_extent << " ";
   os << " .sliding_window = " << hash.sliding_window << " ";
   os << " .type = " << hash.type << " ";
   os << "}";
@@ -1440,7 +1489,8 @@ std::size_t std::hash<mfa::attention::hash>::operator()(const mfa::attention::ha
   seed = combine_32(seed, hash.type);
   seed = combine_32(seed, hash.use_quantized_attention);
   seed = combine_32(seed, hash.use_hadamard);
-  seed = combine_32(seed, hash.attention_sinks);
+  seed = combine_32(seed, hash.attention_sinks | (hash.sinks_per_query << 1));
+  seed = combine_32(seed, hash.relative_bias_extent);
   seed = combine_32(seed, hash.sliding_window);
   seed = combine_32(seed, hash.upcast);
   return seed;

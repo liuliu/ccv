@@ -20,6 +20,10 @@ typedef struct {
   uint8_t attention_sinks;
   uint32_t sliding_window;
   uint32_t sink_head_stride;
+  // Hq when there is a sink for each query and head, [batch, R, Hq]; 0 otherwise.
+  uint32_t sink_query_stride;
+  // The extent of the relative-position bias [batch, R, Hq, extent]; 0 without one.
+  uint32_t relative_bias_extent;
   uint32_t R;
   uint32_t C;
   uint32_t Hq;
@@ -59,6 +63,8 @@ public:
   uint8_t use_quantized_attention;
   uint8_t use_hadamard;
   uint8_t attention_sinks;
+  uint8_t sinks_per_query;
+  uint32_t relative_bias_extent;
   uint32_t sliding_window;
   uint32_t R;
   uint32_t C;

@@ -9812,7 +9812,7 @@ TEST_CASE("scaled dot product attention with quantized NA mps and use_hadamard")
 				}
 				if (D == 128)
 				{
-					ccv_cnnp_model_t* const model = ccv_cnnp_scaled_dot_product_attention(cmd.info.scaled_dot_product_attention.scale, cmd.info.scaled_dot_product_attention.is_causal, 1, 0, 0, 0, CCV_NNC_GEMM_8I, 1, 1, 0, 0, 0, 0, "hadamard");
+					ccv_cnnp_model_t* const model = ccv_cnnp_scaled_dot_product_attention(cmd.info.scaled_dot_product_attention.scale, cmd.info.scaled_dot_product_attention.is_causal, 1, 0, 0, 0, CCV_NNC_GEMM_8I, 1, 1, 0, 0, 0, 0, 0, "hadamard");
 					ccv_cnnp_model_t* const copy = ccv_cnnp_model_copy(model, 0);
 					ccv_cnnp_model_free(model);
 					ccv_nnc_tensor_param_t input_params[] = { gpu_q->info, gpu_k->info, gpu_v->info, gpu_mask->info, gpu_sinks->info };

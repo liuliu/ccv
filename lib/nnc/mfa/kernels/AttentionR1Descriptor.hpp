@@ -19,10 +19,14 @@ struct AttentionR1KernelDescriptor {
 
   bool attentionSinks;
 
+  // Each query adds its own bias to the scores of the keys within an extent before it.
+  bool relativeBias = false;
+
   constexpr bool operator==(const AttentionR1KernelDescriptor& rhs) const {
     return memoryPrecision == rhs.memoryPrecision &&
         loadC == rhs.loadC &&
-        attentionSinks == rhs.attentionSinks;
+        attentionSinks == rhs.attentionSinks &&
+        relativeBias == rhs.relativeBias;
   }
 };
 
@@ -30,7 +34,7 @@ template<>
 struct std::hash<AttentionR1KernelDescriptor>
 {
   std::size_t operator()(const AttentionR1KernelDescriptor& hash) const noexcept {
-    return std::hash<int>()(((int)hash.memoryPrecision.value << 2) | ((hash.loadC ? 1 : 0) << 1) | (hash.attentionSinks ? 1 : 0));
+    return std::hash<int>()(((int)hash.memoryPrecision.value << 3) | ((hash.relativeBias ? 1 : 0) << 2) | ((hash.loadC ? 1 : 0) << 1) | (hash.attentionSinks ? 1 : 0));
   }
 };
 
@@ -62,6 +66,9 @@ struct AttentionR1Descriptor {
   bool loadC;
 
   bool attentionSinks;
+
+  /// A relative-position bias [batch, R, Hq, extent], with causal attention.
+  bool relativeBias = false;
 
   uint32_t simdgroups;
 
