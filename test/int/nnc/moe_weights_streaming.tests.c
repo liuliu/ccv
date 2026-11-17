@@ -4,6 +4,7 @@
 #include <ccv.h>
 #include <nnc/ccv_nnc.h>
 #include <nnc/ccv_nnc_easy.h>
+#include <nnc/ccv_nnc_codebook.h>
 #include <math.h>
 #include <stdio.h>
 #include <string.h>
@@ -757,9 +758,8 @@ TEST_CASE("MPS MoE weights streaming waits at the weights streaming watermark fo
 		}
 }
 
-TEST_CASE("MPS MoE weights streaming stages TMCQ experts by whole tile rows")
+static void _moe_weights_streaming_tmcq_case(const int slot, int* const __case_result__)
 {
-	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_MOE_WEIGHTS_STREAMING_FORWARD, CCV_NNC_BACKEND_MPS));
 	// TMCQ experts are whole 16-row tile rows, so a slot copy moves one expert's tiles exactly. The
 	// streamed outputs must match the same weights without streaming, through decode (in-place
 	// tile decode) and prefill. The payload is random bits, all of which are valid TMCQ codes.
@@ -784,7 +784,9 @@ TEST_CASE("MPS MoE weights streaming stages TMCQ experts by whole tile rows")
 	{
 		const ccv_nnc_tensor_param_t host_params = i < 2 ?
 			CPU_TENSOR_NHWC(16F, experts, n, k) : CPU_TENSOR_NHWC(16F, experts, k, n);
-		const ccv_nnc_tensor_param_t quantized_params = ccv_nnc_tensor_8i_rowwise_x(host_params, formats[i]);
+		// TMCQ naming the codebook slot (0: the built-in table).
+		const int format = ccv_nnc_codebook_with_slot(formats[i], slot);
+		const ccv_nnc_tensor_param_t quantized_params = ccv_nnc_tensor_8i_rowwise_x(host_params, format);
 		quantized_weights[i] = ccv_nnc_tensor_new(0, quantized_params, 0);
 		const int rows = experts * host_params.dim[1];
 		const int row_length = host_params.dim[2];
@@ -827,9 +829,9 @@ TEST_CASE("MPS MoE weights streaming stages TMCQ experts by whole tile rows")
 			streamed_weights[0], streamed_weights[1], streamed_weights[2],
 			reference_weights[0], reference_weights[1], reference_weights[2],
 			decode_indices, decode_counts, 4, 1, 31 + i, 2, 0, 0, &max_difference),
-			CCV_NNC_EXEC_SUCCESS, "TMCQ decode should execute across cold misses, a resident hit, and eviction");
+			CCV_NNC_EXEC_SUCCESS, "TMCQ decode should execute across cold misses, a resident hit, and eviction: slot=%d", slot);
 		REQUIRE(max_difference < 1e-3,
-			"streamed TMCQ decode should match the same weights without streaming (max difference %.8g)", max_difference);
+			"streamed TMCQ decode should match the same weights without streaming: slot=%d (max difference %.8g)", slot, max_difference);
 	}
 	// Short multi-row calls through resident slots, then prefill that stages or loads fully.
 	const int verify_counts[] = { 1, 1, 2, 2 };
@@ -837,8 +839,8 @@ TEST_CASE("MPS MoE weights streaming stages TMCQ experts by whole tile rows")
 		streamed_weights[0], streamed_weights[1], streamed_weights[2],
 		reference_weights[0], reference_weights[1], reference_weights[2],
 		decode_indices, verify_counts, 4, 6, 41, 8, RESIDENT_INDICES, 0, &max_difference), CCV_NNC_EXEC_SUCCESS,
-		"a short TMCQ multi-row call should decode through the resident pool");
-	REQUIRE(max_difference < 1e-3, "resident TMCQ multi-row decode should match (max difference %.8g)", max_difference);
+		"a short TMCQ multi-row call should decode through the resident pool: slot=%d", slot);
+	REQUIRE(max_difference < 1e-3, "resident TMCQ multi-row decode should match: slot=%d (max difference %.8g)", slot, max_difference);
 	const int prefill_lengths[] = { 64, 512, 3072 };
 	for (i = 0; i < 3; i++)
 	{
@@ -848,9 +850,9 @@ TEST_CASE("MPS MoE weights streaming stages TMCQ experts by whole tile rows")
 			streamed_weights[0], streamed_weights[1], streamed_weights[2],
 			reference_weights[0], reference_weights[1], reference_weights[2],
 			decode_indices, prefill_counts, 4, m, 47 + i, 2, i == 2 ? FULL_INDICES : STAGED_INDICES, i % 2, &max_difference),
-			CCV_NNC_EXEC_SUCCESS, "TMCQ prefill should execute: m=%d", m);
+			CCV_NNC_EXEC_SUCCESS, "TMCQ prefill should execute: slot=%d m=%d", slot, m);
 		REQUIRE(max_difference < 1e-3,
-			"streamed TMCQ prefill should match the same weights without streaming: m=%d (max difference %.8g)", m, max_difference);
+			"streamed TMCQ prefill should match the same weights without streaming: slot=%d m=%d (max difference %.8g)", slot, m, max_difference);
 	}
 	for (i = 0; i < 3; i++)
 	{
@@ -859,6 +861,29 @@ TEST_CASE("MPS MoE weights streaming stages TMCQ experts by whole tile rows")
 		ccv_nnc_tensor_free(quantized_weights[i]);
 		unlink(paths[i]);
 	}
+}
+
+TEST_CASE("MPS MoE weights streaming stages TMCQ experts by whole tile rows")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_MOE_WEIGHTS_STREAMING_FORWARD, CCV_NNC_BACKEND_MPS));
+	_moe_weights_streaming_tmcq_case(0, __case_result__);
+}
+
+TEST_CASE("MPS MoE weights streaming stages TMCQ experts with an external codebook")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_MOE_WEIGHTS_STREAMING_FORWARD, CCV_NNC_BACKEND_MPS));
+	// A random 512-pair table: the resident bank keeps the codebook slot of its source weights.
+	int8_t pairs[1024];
+	uint32_t state = 0x2545f491u;
+	int i;
+	for (i = 0; i < 1024; i++)
+	{
+		state = state * 1664525u + 1013904223u;
+		pairs[i] = (int8_t)((int)((state >> 8) % 255) - 127);
+	}
+	const int slot = ccv_nnc_codebook_register(pairs, 512);
+	REQUIRE(slot > 0, "the random table should register");
+	_moe_weights_streaming_tmcq_case(slot, __case_result__);
 }
 
 #include "case_main.h"

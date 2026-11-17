@@ -8,7 +8,7 @@
 #include <3rdparty/dsfmt/dSFMT.h>
 #include <math.h>
 #include <string.h>
-#include <nnc/ccv_nnc_tmcq_table.inc>
+#include <nnc/ccv_nnc_trellis_builtin_table.inc>
 
 TEST_SETUP()
 {
@@ -571,13 +571,13 @@ TEST_CASE("MPS segmented SwiGLU soft caps rowwise decode and grouped prefill")
 	_segmented_swiglu_mps_rowwise_case(CCV_NNC_QX_8I_ROWWISE_IQ2_XXS, 0, 1, swiglu, "IQ2_XXS grouped prefill with soft caps", __case_result__);
 }
 
-// TMCQ v1.2 reference decode, written from the codec definition (CCV_NNC_QX_8I_ROWWISE_TMCQ_N16)
+// TMCQ reference decode, written from the codec definition (CCV_NNC_QX_8I_ROWWISE_TMCQ_N16)
 // rather than the library's CPU codec: weight t of a 16 x 16 tile reads the 15-bit LSB-first window of
 // weight t | 1, ending at bit E_{t|1} = (((t | 1) + 1) * n) >> 4 of the tile's 16n bits and wrapping
-// inside the tile, and takes half t & 1 of pair (cw * 0x83DCD12D) >> 23 of the frozen table.
+// inside the tile, and takes half t & 1 of pair (cw * 0x83DCD12D) >> 23 of the built-in table.
 static int _segmented_swiglu_tmcq_q8(const uint32_t cw, const int half)
 {
-	return ccv_nnc_tmcq_p2_table[2 * ((cw * 0x83DCD12Du) >> 23) + half];
+	return ccv_nnc_trellis_builtin_table[2 * ((cw * 0x83DCD12Du) >> 23) + half];
 }
 
 static void _segmented_swiglu_tmcq_decode(const uint8_t* const payload, const int rows, const int cols, const int n, int8_t* const codes)

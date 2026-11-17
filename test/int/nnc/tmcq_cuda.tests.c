@@ -6,7 +6,7 @@
 #include <nnc/ccv_nnc_easy.h>
 #include <3rdparty/dsfmt/dSFMT.h>
 #include <math.h>
-#include "nnc/ccv_nnc_tmcq_table.inc"
+#include "nnc/ccv_nnc_trellis_builtin_table.inc"
 
 TEST_SETUP()
 {
@@ -31,10 +31,10 @@ static const int tmcq_formats[] = {
 	CCV_NNC_QX_8I_ROWWISE_TMCQ_N32,
 };
 
-// The v1.2 code of a 15-bit window for weight parity `parity`: T[2 ((cw * 0x83DCD12D) >> 23) + parity].
+// The code of a 15-bit window for weight parity `parity`: T[2 ((cw * 0x83DCD12D) >> 23) + parity].
 static int _tmcq_code(const uint32_t cw, const int parity)
 {
-	return ccv_nnc_tmcq_p2_table[2 * ((cw * 0x83DCD12Du) >> 23) + parity];
+	return ccv_nnc_trellis_builtin_table[2 * ((cw * 0x83DCD12Du) >> 23) + parity];
 }
 
 // An independent decode, bit by bit and per weight, of the codec definition (see CCV_NNC_QX_8I_ROWWISE_TMCQ_N16):
@@ -116,31 +116,31 @@ static size_t _tmcq_fill(ccv_nnc_tensor_t* const tensor, const int datatype, con
 
 TEST_CASE("TMCQ reference decode reads the expected codes of a fixed payload")
 {
-	// Codes read by hand off ccv_nnc_tmcq_table.inc (16 entries per line). All-zero bits are pair 0 = (54, -52) for
-	// every weight pair; all-one bits are cw = 0x7fff, k = 0xE4B9AED3 >> 23 = 457 = (44, -3).
+	// Codes read by hand off ccv_nnc_trellis_builtin_table.inc (16 entries per line). All-zero bits are pair 0 = (27, -27) for
+	// every weight pair; all-one bits are cw = 0x7fff, k = 0xE4B9AED3 >> 23 = 457 = (21, -1).
 	const int n = 16;
 	uint8_t payload[16 * 16 * 2] = {0};
 	int8_t codes[16 * 16];
 	_tmcq_reference_codes(payload, 16, 16, n, codes);
 	int i;
 	for (i = 0; i < 256; i++)
-		REQUIRE_EQ(codes[i], i % 2 ? -52 : 54, "zero bits decode to pair 0");
+		REQUIRE_EQ(codes[i], i % 2 ? -27 : 27, "zero bits decode to pair 0");
 	memset(payload, 0xff, sizeof(payload));
 	_tmcq_reference_codes(payload, 16, 16, n, codes);
 	for (i = 0; i < 256; i++)
-		REQUIRE_EQ(codes[i], i % 2 ? -3 : 44, "one bits decode to pair 457");
+		REQUIRE_EQ(codes[i], i % 2 ? -1 : 21, "one bits decode to pair 457");
 	// A single set bit at position 0 of a n = 16 tile: pair j reads the window ending at E_{2j+1} = 2j + 2, i.e.
 	// bits [2j - 13, 2j + 1] (mod 256), which holds bit 0 as bit 13 - 2j for 2j + 1 <= 14.
 	memset(payload, 0, sizeof(payload));
 	payload[0] = 1;
 	_tmcq_reference_codes(payload, 16, 16, n, codes);
-	// cw = 0x2000 -> k = 308 = (0, 21); cw = 0x2 -> k = 15 = (9, -4); past weight 13 the window is clear.
+	// cw = 0x2000 -> k = 308 = (0, 9); cw = 0x2 -> k = 15 = (4, -2); past weight 13 the window is clear.
 	REQUIRE_EQ(codes[0], 0, "pair 0 reads cw 0x2000");
-	REQUIRE_EQ(codes[1], 21, "pair 0 reads cw 0x2000");
-	REQUIRE_EQ(codes[12], 9, "pair 6 reads cw 0x2");
-	REQUIRE_EQ(codes[13], -4, "pair 6 reads cw 0x2");
-	REQUIRE_EQ(codes[14], 54, "pair 7 reads cw 0");
-	REQUIRE_EQ(codes[15], -52, "pair 7 reads cw 0");
+	REQUIRE_EQ(codes[1], 9, "pair 0 reads cw 0x2000");
+	REQUIRE_EQ(codes[12], 4, "pair 6 reads cw 0x2");
+	REQUIRE_EQ(codes[13], -2, "pair 6 reads cw 0x2");
+	REQUIRE_EQ(codes[14], 27, "pair 7 reads cw 0");
+	REQUIRE_EQ(codes[15], -27, "pair 7 reads cw 0");
 	for (i = 0; i < 256; i++)
 	{
 		const uint32_t cw = (i | 1) <= 14 ? 1u << (14 - (i | 1)) : 0;

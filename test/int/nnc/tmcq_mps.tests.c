@@ -9,12 +9,12 @@
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
-#include <nnc/ccv_nnc_tmcq_table.inc>
+#include <nnc/ccv_nnc_trellis_builtin_table.inc>
 
 // Metal TMCQ tests: the int8 and fp decode kernels, the selected (MoE expert) int8 decode, the TMCQ
 // GEMV (M = 1..3) and the decode-then-GEMM paths. Every expected value comes from tmcq_ref_q8 /
-// tmcq_ref_decode below, written from the TMCQ v1.2 spec at the byte level (only the frozen pair
-// table ccv_nnc_tmcq_p2_table is shared), independent of the Metal helpers in
+// tmcq_ref_decode below, written from the TMCQ format at the byte level (only the pair table is shared: the
+// built-in ccv_nnc_trellis_builtin_table), independent of the Metal helpers in
 // lib/nnc/mfa/kernels/TMCQDecodeSource.hpp. Any bit string is a valid
 // TMCQ payload, so payloads are random bytes.
 //
@@ -46,7 +46,7 @@ static int tmcq_rate_of(const int format)
 static int tmcq_ref_q8(const uint32_t cw, const int half)
 {
 	const uint32_t k = (cw * 0x83DCD12Du) >> 23;
-	return ccv_nnc_tmcq_p2_table[2 * k + half];
+	return ccv_nnc_trellis_builtin_table[2 * k + half];
 }
 
 // Weight t (row t / 16, column t % 16) of tile `tile`: the 15-bit LSB-first window of weight t | 1,
@@ -221,16 +221,16 @@ static const int tmcq_datatypes[] = { CCV_32F, CCV_16F, CCV_16BF };
 TEST_CASE("tmcq reference decode fixed vectors")
 {
 	// CPU-only checks of the reference itself (no GPU needed). All-zero codewords: cw = 0 selects pair
-	// 0 of the frozen table, (54, -52): even weights take 54, odd weights -52.
+	// 0 of the built-in table, (27, -27): even weights take 27, odd weights -27.
 	uint8_t zeros[128] = {0}; // tile 1 at n = 32 is bytes 64 .. 127
-	REQUIRE_EQ(tmcq_ref_decode(zeros, 0, 16, 0), 54, "zero payload decodes even weights to pair 0's first code");
-	REQUIRE_EQ(tmcq_ref_decode(zeros, 1, 32, 255), -52, "zero payload decodes odd weights to pair 0's second code");
+	REQUIRE_EQ(tmcq_ref_decode(zeros, 0, 16, 0), 27, "zero payload decodes even weights to pair 0's first code");
+	REQUIRE_EQ(tmcq_ref_decode(zeros, 1, 32, 255), -27, "zero payload decodes odd weights to pair 0's second code");
 	// All-ones windows give cw = 0x7fff, pair (0x7fff * 0x83DCD12D) >> 23, recomputed here.
 	const uint32_t k = (0x7fffu * 0x83DCD12Du) >> 23;
 	uint8_t ones[64];
 	memset(ones, 0xff, sizeof(ones));
-	REQUIRE_EQ(tmcq_ref_decode(ones, 0, 22, 16), ccv_nnc_tmcq_p2_table[2 * k], "all-ones payload decodes an even weight to pair k's first code");
-	REQUIRE_EQ(tmcq_ref_decode(ones, 0, 22, 17), ccv_nnc_tmcq_p2_table[2 * k + 1], "all-ones payload decodes an odd weight to pair k's second code");
+	REQUIRE_EQ(tmcq_ref_decode(ones, 0, 22, 16), ccv_nnc_trellis_builtin_table[2 * k], "all-ones payload decodes an even weight to pair k's first code");
+	REQUIRE_EQ(tmcq_ref_decode(ones, 0, 22, 17), ccv_nnc_trellis_builtin_table[2 * k + 1], "all-ones payload decodes an odd weight to pair k's second code");
 	// Weights 0 and 1 share weight 1's window. With n = 16 it ends at E_1 = 2, so it takes bits 243..255
 	// of the tile's end, then bits 0 and 1: bit 1 is the codeword's top bit (1 << 14), bit 0 is 1 << 13.
 	uint8_t second[32] = {0};
@@ -629,7 +629,7 @@ TEST_CASE("mps tmcq gemv covers K from 256 to 7168 and N from 16 to 4096")
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_MPS));
 	// The GEMV splits a tile row's K / 16 tiles over 2 streams in each of 4 SIMD groups. TMCQ GEMM
 	// requires K % 256 == 0, so K / 16 is a multiple of 16 and every stream runs the same number of
-	// steps: K = 256 is the shortest (2 steps per stream), K = 7168 the DeepSeek hidden width.
+	// steps: K = 256 is the shortest (2 steps per stream), K = 7168 a wide hidden size.
 	const int formats[] = { CCV_NNC_QX_8I_ROWWISE_TMCQ_N16, CCV_NNC_QX_8I_ROWWISE_TMCQ_N22, CCV_NNC_QX_8I_ROWWISE_TMCQ_N32 };
 	const int datatypes[] = { CCV_16F, CCV_32F };
 	const int ks[] = { 256, 512, 4096, 7168 };
@@ -747,6 +747,87 @@ TEST_CASE("mps tmcq index select is rejected")
 	ccv_nnc_tensor_free(hindices);
 	ccv_nnc_tensor_free(gq);
 	ccv_nnc_tensor_free(hq);
+}
+
+
+// Tile-row boundaries of the int8 decode, which runs in blocks of 2 neighbouring tiles x 16 rows: 1, 3, 13 and 17 tile
+// rows (16 x 256, 48 x 256, 208 x 768, 272 x 512). GPU int8 decode, CPU decode and the one-hot GEMV (M = 1 .. 3) must equal the
+// reference bit for bit.
+TEST_CASE("mps tmcq decode is exact across odd tile-row counts")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_MPS));
+	static const int shapes[][2] = { { 16, 256 }, { 48, 256 }, { 208, 768 }, { 272, 512 } };
+	static const int formats[] = { CCV_NNC_QX_8I_ROWWISE_TMCQ_N16, CCV_NNC_QX_8I_ROWWISE_TMCQ_N22, CCV_NNC_QX_8I_ROWWISE_TMCQ_N32 };
+	int s, f;
+	for (s = 0; s < (int)(sizeof(shapes) / sizeof(shapes[0])); s++)
+		for (f = 0; f < (int)(sizeof(formats) / sizeof(formats[0])); f++)
+		{
+			const int rows = shapes[s][0], cols = shapes[s][1], format = formats[f];
+			const int n = tmcq_rate_of(format);
+			ccv_nnc_tensor_t* const hq = ccv_nnc_tensor_new(0, ccv_nnc_tensor_8i_rowwise_x(tmcq_params(CCV_TENSOR_CPU_MEMORY, CCV_16F, rows, cols), format), 0);
+			ccv_nnc_tensor_t* const gq = ccv_nnc_tensor_new(0, ccv_nnc_tensor_8i_rowwise_x(tmcq_params(CCV_TENSOR_GPU_MEMORY, CCV_16F, rows, cols), format), 0);
+			const size_t size = ccv_nnc_tensor_data_size_without_padding(hq->info);
+			float* const scales = (float*)ccmalloc(sizeof(float) * rows);
+			tmcq_fill_weights(hq, CCV_16F, rows, cols, n, 0, 0x7b0du + s * 8 + f, scales);
+			ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(hq), TENSOR_LIST(gq), 0);
+			int8_t* const q8 = (int8_t*)ccmalloc((size_t)rows * cols);
+			tmcq_ref_decode_matrix(hq->data.u8, rows, cols, n, q8);
+			size_t k;
+			// CPU decode.
+			uint16_t* const out = (uint16_t*)ccmalloc(sizeof(uint16_t) * rows * cols);
+			REQUIRE_EQ(ccv_nnc_dequantize_8i_rowwise_x(hq->data.u8, CCV_16F, CCV_TENSOR_CPU_MEMORY, size, cols, format, out, (size_t)rows * cols), 0, "TMCQ %dx%d n%d CPU decode runs", rows, cols, n);
+			size_t cpu_mismatches = 0;
+			for (k = 0; k < (size_t)rows * cols; k++)
+				cpu_mismatches += out[k] != tmcq_float_to_half_rne((float)q8[k] * scales[k / cols]);
+			ccfree(out);
+			REQUIRE_EQ((int)cpu_mismatches, 0, "TMCQ %dx%d n%d CPU decode", rows, cols, n);
+			// GPU int8 decode, codes and scales.
+			const size_t out_scale_offset = ((size_t)rows * cols + 127) & ~(size_t)127;
+			const size_t out_bytes = out_scale_offset + rows * 2;
+			ccv_nnc_tensor_t* const gout = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32S, (int)((out_bytes + 3) / 4)), 0);
+			ccv_nnc_tensor_t* const hout = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, (int)((out_bytes + 3) / 4)), 0);
+			ccv_nnc_mps_dequantize_8i_rowwise_x_to_8i_rowwise(gq->data.u8, CCV_16F, size, cols, format, gout->data.u8, (size_t)rows * cols, 0);
+			ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(gout), TENSOR_LIST(hout), 0);
+			REQUIRE_EQ(memcmp(hout->data.u8, q8, (size_t)rows * cols), 0, "TMCQ %dx%d n%d GPU codes", rows, cols, n);
+			REQUIRE_EQ(memcmp(hout->data.u8 + out_scale_offset, hq->data.u8 + tmcq_scale_offset(rows, cols, n), rows * 2), 0, "TMCQ %dx%d n%d GPU scales", rows, cols, n);
+			// One-hot GEMV, M = 1 .. 3: output (i, j) is fp16(q8[j, c] * scale[j]) for the hot column c of row i.
+			int m;
+			for (m = 1; m <= 3; m++)
+			{
+				ccv_nnc_tensor_t* const ha = ccv_nnc_tensor_new(0, tmcq_params(CCV_TENSOR_CPU_MEMORY, CCV_16F, m, cols), 0);
+				ccv_nnc_tensor_t* const ga = ccv_nnc_tensor_new(0, tmcq_params(CCV_TENSOR_GPU_MEMORY, CCV_16F, m, cols), 0);
+				ccv_nnc_tensor_t* const gb = ccv_nnc_tensor_new(0, tmcq_params(CCV_TENSOR_GPU_MEMORY, CCV_16F, m, rows), 0);
+				ccv_nnc_tensor_t* const hb = ccv_nnc_tensor_new(0, tmcq_params(CCV_TENSOR_CPU_MEMORY, CCV_16F, m, rows), 0);
+				int c0, i, j, status = CCV_NNC_EXEC_SUCCESS;
+				size_t mismatches = 0;
+				for (c0 = 0; c0 < cols; c0 += m)
+				{
+					memset(ha->data.u8, 0, (size_t)m * cols * 2);
+					for (i = 0; i < m; i++)
+						((uint16_t*)ha->data.u8)[(size_t)i * cols + (c0 + i) % cols] = 0x3c00;
+					ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha), TENSOR_LIST(ga), 0);
+					const int r = ccv_nnc_cmd_exec(CMD_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(0, 1)), ccv_nnc_no_hint, 0, TENSOR_LIST(ga, gq), TENSOR_LIST(gb), 0);
+					if (r != CCV_NNC_EXEC_SUCCESS)
+						status = r;
+					ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(gb), TENSOR_LIST(hb), 0);
+					for (i = 0; i < m; i++)
+						for (j = 0; j < rows; j++)
+							mismatches += ((uint16_t*)hb->data.u8)[(size_t)i * rows + j] != tmcq_float_to_half_rne((float)q8[(size_t)j * cols + (c0 + i) % cols] * scales[j]);
+				}
+				REQUIRE_EQ(status, CCV_NNC_EXEC_SUCCESS, "TMCQ %dx%d n%d GEMV M=%d runs", rows, cols, n, m);
+				REQUIRE_EQ((int)mismatches, 0, "TMCQ %dx%d n%d GEMV M=%d one-hot", rows, cols, n, m);
+				ccv_nnc_tensor_free(hb);
+				ccv_nnc_tensor_free(gb);
+				ccv_nnc_tensor_free(ga);
+				ccv_nnc_tensor_free(ha);
+			}
+			ccv_nnc_tensor_free(hout);
+			ccv_nnc_tensor_free(gout);
+			ccfree(q8);
+			ccfree(scales);
+			ccv_nnc_tensor_free(gq);
+			ccv_nnc_tensor_free(hq);
+		}
 }
 
 #endif

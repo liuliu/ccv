@@ -7,7 +7,7 @@
 #include <nnc/ccv_nnc_internal.h>
 #include <nnc/mps/ccv_nnc_mps.h>
 #include <3rdparty/dsfmt/dSFMT.h>
-#include <nnc/ccv_nnc_tmcq_table.inc>
+#include <nnc/ccv_nnc_trellis_builtin_table.inc>
 #ifdef HAVE_MPS
 #include <dispatch/dispatch.h>
 #endif
@@ -1818,11 +1818,11 @@ static void _mps_segmented_packed_weights(dsfmt_t* const dsfmt, const int format
 	ccfree(scales);
 }
 
-// TMCQ v1.2 reference decode, written from the codec definition (CCV_NNC_QX_8I_ROWWISE_TMCQ_N16)
+// TMCQ reference decode, written from the codec definition (CCV_NNC_QX_8I_ROWWISE_TMCQ_N16)
 // rather than the library's CPU codec: weight t of a 16 x 16 tile (tiles row-major over the grid,
 // weights row-major in a tile) reads the 15-bit LSB-first window of weight t | 1, ending at bit
 // (((t | 1) + 1) * n) >> 4 of the tile's 16n bits and wrapping inside the tile; q8 is half t & 1 of
-// pair (cw * 0x83DCD12D) >> 23 of the frozen table ccv_nnc_tmcq_p2_table.
+// pair (cw * 0x83DCD12D) >> 23 of the built-in table ccv_nnc_trellis_builtin_table.
 // The output is row scale x q8 in `datatype`, like the CPU dequantizer.
 static void _mps_tmcq_dequantize(const uint8_t* const packed, const int datatype, const size_t count, const int k, const int format, void* const output)
 {
@@ -1854,7 +1854,7 @@ static void _mps_tmcq_dequantize(const uint8_t* const packed, const int datatype
 					cw |= (uint32_t)((packed[bit >> 3] >> (bit & 7)) & 1) << j;
 				}
 				const int row = 16 * tr + t / 16;
-				values[(size_t)row * k + 16 * tc + t % 16] = scales[row] * ccv_nnc_tmcq_p2_table[2 * ((cw * 0x83DCD12Du) >> 23) + (t & 1)];
+				values[(size_t)row * k + 16 * tc + t % 16] = scales[row] * ccv_nnc_trellis_builtin_table[2 * ((cw * 0x83DCD12Du) >> 23) + (t & 1)];
 			}
 		}
 	if (datatype == CCV_16F)

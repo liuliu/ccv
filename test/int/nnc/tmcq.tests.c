@@ -6,7 +6,10 @@
 #include <nnc/ccv_nnc_easy.h>
 #include "3rdparty/dsfmt/dSFMT.h"
 #include "3rdparty/sqlite3/sqlite3.h"
-#include "nnc/ccv_nnc_tmcq_table.inc"
+#include "nnc/ccv_nnc_trellis_builtin_table.inc"
+#include "nnc/ccv_nnc_codebook.h"
+#include "trellis_table_builtin.inc"
+#include "trellis_table_alt.inc"
 
 TEST_SETUP()
 {
@@ -19,12 +22,12 @@ static const int tmcq_formats[9] = {
 	CCV_NNC_QX_8I_ROWWISE_TMCQ_N28, CCV_NNC_QX_8I_ROWWISE_TMCQ_N30, CCV_NNC_QX_8I_ROWWISE_TMCQ_N32,
 };
 
-// Independent reference of the v1.2 code value: x = cw * 0x83DCD12D (mod 2^32), q8 = T[2 (x >> 23) + parity],
+// Independent reference of the code value: x = cw * 0x83DCD12D (mod 2^32), q8 = T[2 (x >> 23) + parity],
 // parity = t & 1 for weight t of a pair. The table itself is pinned by its SHA-256 below.
 static int _test_tmcq_q8(const unsigned cw, const int parity)
 {
 	const uint32_t x = (uint32_t)((uint64_t)cw * 0x83DCD12Dull);
-	return ccv_nnc_tmcq_p2_table[2 * (x >> 23) + parity];
+	return ccv_nnc_trellis_builtin_table[2 * (x >> 23) + parity];
 }
 
 static int _test_tmcq_bit(const uint8_t* const data, const size_t bit)
@@ -108,20 +111,20 @@ static void _test_tmcq_from_float(const float* const values, const int datatype,
 			((double*)out)[i] = values[i];
 }
 
-TEST_CASE("TMCQ code values follow the P2 pair codebook definition")
+TEST_CASE("TMCQ code values follow the built-in pair codebook definition")
 {
-	// k = (cw * 0x83DCD12D) >> 23, read by hand off ccv_nnc_tmcq_table.inc (16 entries per line, T[2k] and T[2k + 1]).
-	REQUIRE_EQ(_test_tmcq_q8(0, 0), 54, "zero state is pair 0, first weight");
-	REQUIRE_EQ(_test_tmcq_q8(0, 1), -52, "zero state is pair 0, second weight");
+	// k = (cw * 0x83DCD12D) >> 23, read by hand off ccv_nnc_trellis_builtin_table.inc (16 entries per line, T[2k] and T[2k + 1]).
+	REQUIRE_EQ(_test_tmcq_q8(0, 0), 27, "zero state is pair 0, first weight");
+	REQUIRE_EQ(_test_tmcq_q8(0, 1), -27, "zero state is pair 0, second weight");
 	// 1 * 0x83DCD12D >> 23 = 0x107 = 263 -> T[526], T[527].
-	REQUIRE_EQ(_test_tmcq_q8(1, 0), -18, "unit state is pair 263");
-	REQUIRE_EQ(_test_tmcq_q8(1, 1), -96, "unit state is pair 263");
+	REQUIRE_EQ(_test_tmcq_q8(1, 0), -11, "unit state is pair 263");
+	REQUIRE_EQ(_test_tmcq_q8(1, 1), -52, "unit state is pair 263");
 	// 0x7fff * 0x83DCD12D = 0x41EDE4B9AED3 -> low 32 bits 0xE4B9AED3 >> 23 = 0x1C9 = 457 -> T[914], T[915].
-	REQUIRE_EQ(_test_tmcq_q8(0x7fff, 0), 44, "all-ones state is pair 457");
-	REQUIRE_EQ(_test_tmcq_q8(0x7fff, 1), -3, "all-ones state is pair 457");
+	REQUIRE_EQ(_test_tmcq_q8(0x7fff, 0), 21, "all-ones state is pair 457");
+	REQUIRE_EQ(_test_tmcq_q8(0x7fff, 1), -1, "all-ones state is pair 457");
 	// 0x4000 * 0x83DCD12D = 0x20F7344B4000 -> 0x344B4000 >> 23 = 0x68 = 104 -> T[208], T[209].
-	REQUIRE_EQ(_test_tmcq_q8(0x4000, 0), -22, "top-bit state is pair 104");
-	REQUIRE_EQ(_test_tmcq_q8(0x4000, 1), -9, "top-bit state is pair 104");
+	REQUIRE_EQ(_test_tmcq_q8(0x4000, 0), -10, "top-bit state is pair 104");
+	REQUIRE_EQ(_test_tmcq_q8(0x4000, 1), -4, "top-bit state is pair 104");
 	int s, min_q = 127, max_q = -127;
 	for (s = 0; s < 32768; s++)
 	{
@@ -129,12 +132,12 @@ TEST_CASE("TMCQ code values follow the P2 pair codebook definition")
 		min_q = ccv_min(min_q, ccv_min(q0, q1));
 		max_q = ccv_max(max_q, ccv_max(q0, q1));
 	}
-	REQUIRE_EQ(min_q, -118, "smallest reachable code");
-	REQUIRE_EQ(max_q, 127, "largest reachable code");
+	REQUIRE_EQ(min_q, -127, "smallest reachable code");
+	REQUIRE_EQ(max_q, 114, "largest reachable code");
 	REQUIRE_EQ(ccv_nnc_8i_rowwise_x_tmcq_rate(CCV_NNC_QX_8I_ROWWISE_TMCQ_N16), 16, "lowest rate");
 	REQUIRE_EQ(ccv_nnc_8i_rowwise_x_tmcq_rate(CCV_NNC_QX_8I_ROWWISE_TMCQ_N32), 32, "highest rate");
-	REQUIRE_EQ(CCV_NNC_QX_8I_ROWWISE_TMCQ_N16, 13, "codec ids follow IQ1_M");
-	REQUIRE_EQ(CCV_NNC_QX_8I_ROWWISE_TMCQ_N32, 21, "codec ids are contiguous");
+	REQUIRE_EQ(CCV_NNC_QX_8I_ROWWISE_TMCQ_N16, 22, "codec ids follow the slots reserved for upstream formats (13 - 21)");
+	REQUIRE_EQ(CCV_NNC_QX_8I_ROWWISE_TMCQ_N32, 30, "codec ids are contiguous");
 }
 
 TEST_CASE("TMCQ CPU decode of fixed payloads writes tiles back in row-major order")
@@ -164,11 +167,11 @@ TEST_CASE("TMCQ CPU decode of fixed payloads writes tiles back in row-major orde
 			expected[i] = (float)((double)((float*)(packed + scale_offset))[i / cols] * q8[i]);
 		ccv_nnc_dequantize_8i_rowwise_x(packed, CCV_32F, CCV_TENSOR_CPU_MEMORY, size, cols, tmcq_formats[f], actual, count);
 		REQUIRE_ARRAY_EQ(float, expected, actual, count, "tail-biting windows, codebook and tile order match for n = %d", n);
-		// All-zero tiles are pair 0 everywhere: 54 on even columns, -52 on odd ones.
+		// All-zero tiles are pair 0 everywhere: 27 on even columns, -27 on odd ones.
 		memset(packed, 0, scale_offset);
 		ccv_nnc_dequantize_8i_rowwise_x(packed, CCV_32F, CCV_TENSOR_CPU_MEMORY, size, cols, tmcq_formats[f], actual, count);
 		for (i = 0; i < count; i++)
-			expected[i] = (float)((double)((float*)(packed + scale_offset))[i / cols] * (i % 2 ? -52 : 54));
+			expected[i] = (float)((double)((float*)(packed + scale_offset))[i / cols] * (i % 2 ? -27 : 27));
 		REQUIRE_ARRAY_EQ(float, expected, actual, count, "zero payload is the pair-0 code");
 		ccfree(actual);
 		ccfree(expected);
@@ -242,51 +245,22 @@ static void _test_tmcq_values(dsfmt_t* const dsfmt, float* const values, const i
 	}
 }
 
-static double _test_tmcq_randn(dsfmt_t* const dsfmt)
-{
-	const double u = dsfmt_genrand_open_close(dsfmt);
-	const double v = dsfmt_genrand_open_close(dsfmt);
-	return sqrt(-2 * log(u)) * cos(2 * M_PI * v);
-}
-
-static double _test_tmcq_weighted_sse(const float* const x, const float* const xhat, const int rows, const int cols, const float* const imatrix)
+static double _test_tmcq_sse(const float* const x, const float* const xhat, const int count)
 {
 	double sse = 0;
-	int i, j;
-	for (i = 0; i < rows; i++)
-		for (j = 0; j < cols; j++)
-		{
-			const double d = (double)x[i * cols + j] - xhat[i * cols + j];
-			sse += (imatrix ? imatrix[j] : 1) * d * d;
-		}
+	int i;
+	for (i = 0; i < count; i++)
+	{
+		const double d = (double)x[i] - xhat[i];
+		sse += d * d;
+	}
 	return sse;
 }
 
-static double _test_tmcq_hessian_error(const float* const x, const float* const xhat, const int rows, const int cols, const float* const hessian)
-{
-	double total = 0;
-	double* const e = ccmalloc(sizeof(double) * cols);
-	int i, j, k;
-	for (i = 0; i < rows; i++)
-	{
-		for (j = 0; j < cols; j++)
-			e[j] = (double)x[i * cols + j] - xhat[i * cols + j];
-		for (j = 0; j < cols; j++)
-		{
-			double v = 0;
-			for (k = 0; k < cols; k++)
-				v += hessian[j * cols + k] * e[k];
-			total += e[j] * v;
-		}
-	}
-	ccfree(e);
-	return total;
-}
-
 // Nearest baseline: walk each tile once pair by pair and greedily take the fresh bits whose code pair is
-// closest to the target pair (starting from state 0), keep the decoded codes, and give each row its optimal
-// weighted scale.
-static void _test_tmcq_nearest(const float* const x, const int rows, const int cols, const int n, const float* const imatrix, const float* const hessian, float* const xhat)
+// closest to the target pair (starting from state 0), keep the decoded codes, and give each row its
+// least-squares scale.
+static void _test_tmcq_nearest(const float* const x, const int rows, const int cols, const int n, float* const xhat)
 {
 	const int T = 16 * n;
 	const size_t scale_offset = _test_tmcq_scale_offset(rows, cols, n);
@@ -300,14 +274,10 @@ static void _test_tmcq_nearest(const float* const x, const int rows, const int c
 	int i, j, g, t;
 	for (i = 0; i < rows; i++)
 	{
-		double sum = 0, wsum = 0;
+		double sum = 0;
 		for (j = 0; j < cols; j++)
-		{
-			const double w = hessian ? hessian[j * cols + j] : imatrix ? imatrix[j] : 1;
-			sum += w * x[i * cols + j] * x[i * cols + j];
-			wsum += w;
-		}
-		scale[i] = sqrt(sum / wsum) / cb;
+			sum += (double)x[i * cols + j] * x[i * cols + j];
+		scale[i] = sqrt(sum / cols) / cb;
 	}
 	const int tile_cols = cols / 16;
 	for (g = 0; g < rows / 16 * tile_cols; g++)
@@ -348,19 +318,8 @@ static void _test_tmcq_nearest(const float* const x, const int rows, const int c
 		double num = 0, den = 0;
 		for (j = 0; j < cols; j++)
 		{
-			double hx = 0, hq = 0;
-			if (hessian)
-			{
-				int k;
-				for (k = 0; k < cols; k++)
-					hx += hessian[j * cols + k] * x[i * cols + k], hq += hessian[j * cols + k] * q8[i * cols + k];
-			} else {
-				const double w = imatrix ? imatrix[j] : 1;
-				hx = w * x[i * cols + j];
-				hq = w * q8[i * cols + j];
-			}
-			num += q8[i * cols + j] * hx;
-			den += q8[i * cols + j] * hq;
+			num += (double)q8[i * cols + j] * x[i * cols + j];
+			den += (double)q8[i * cols + j] * q8[i * cols + j];
 		}
 		const double sr = den > 0 ? num / den : 0;
 		for (j = 0; j < cols; j++)
@@ -398,11 +357,11 @@ TEST_CASE("TMCQ quantize then dequantize stays within the rate's error bound")
 		for (i = 0; i < 16; i++)
 			REQUIRE_EQ(packed[size + i], 0xa5, "quantizer preserves output guard bytes");
 		ccv_nnc_dequantize_8i_rowwise_x(packed, CCV_32F, CCV_TENSOR_CPU_MEMORY, size, cols, tmcq_formats[f], decoded, count);
-		const double relative = _test_tmcq_weighted_sse(values, decoded, rows, cols, 0) / energy;
+		const double relative = _test_tmcq_sse(values, decoded, count) / energy;
 		const int n = ccv_nnc_8i_rowwise_x_tmcq_rate(tmcq_formats[f]);
 		float* const nearest = ccmalloc(sizeof(float) * count);
-		_test_tmcq_nearest(values, rows, cols, n, 0, 0, nearest);
-		const double nearest_relative = _test_tmcq_weighted_sse(values, nearest, rows, cols, 0) / energy;
+		_test_tmcq_nearest(values, rows, cols, n, nearest);
+		const double nearest_relative = _test_tmcq_sse(values, nearest, count) / energy;
 		ccfree(nearest);
 		printf("\n\tTMCQ n = %d relative error %.6f (greedy nearest %.6f)", n, relative, nearest_relative);
 		REQUIRE(relative < bounds[f], "n = %d relative error %g within %g", n, relative, bounds[f]);
@@ -411,78 +370,6 @@ TEST_CASE("TMCQ quantize then dequantize stays within the rate's error bound")
 		previous = relative;
 		ccfree(packed);
 	}
-	ccfree(decoded);
-	ccfree(values);
-}
-
-TEST_CASE("TMCQ imatrix and Hessian paths beat the nearest baseline on their objectives")
-{
-	enum { rows = 32, cols = 256, count = rows * cols, samples = 1024 };
-	const int formats[3] = {CCV_NNC_QX_8I_ROWWISE_TMCQ_N16, CCV_NNC_QX_8I_ROWWISE_TMCQ_N22, CCV_NNC_QX_8I_ROWWISE_TMCQ_N32};
-	dsfmt_t dsfmt;
-	dsfmt_init_gen_rand(&dsfmt, 77);
-	float* const values = ccmalloc(sizeof(float) * count);
-	float* const decoded = ccmalloc(sizeof(float) * count);
-	float* const nearest = ccmalloc(sizeof(float) * count);
-	float* const hessian = ccmalloc(sizeof(float) * cols * cols);
-	float imatrix[cols];
-	_test_tmcq_values(&dsfmt, values, rows, cols);
-	// Correlated activations: an AR(0.9) Gaussian walk along the channels with log-normal channel gains.
-	double* const a = ccmalloc(sizeof(double) * samples * cols);
-	double sigma[cols];
-	int i, j, k, f;
-	for (j = 0; j < cols; j++)
-		sigma[j] = exp(0.5 * _test_tmcq_randn(&dsfmt));
-	for (i = 0; i < samples; i++)
-	{
-		double v = _test_tmcq_randn(&dsfmt);
-		for (j = 0; j < cols; j++)
-		{
-			if (j > 0)
-				v = 0.9 * v + sqrt(1 - 0.81) * _test_tmcq_randn(&dsfmt);
-			a[i * cols + j] = v * sigma[j];
-		}
-	}
-	for (j = 0; j < cols; j++)
-		for (k = 0; k < cols; k++)
-		{
-			double v = 0;
-			for (i = 0; i < samples; i++)
-				v += a[i * cols + j] * a[i * cols + k];
-			hessian[j * cols + k] = (float)(v / samples);
-		}
-	for (j = 0; j < cols; j++)
-		imatrix[j] = hessian[j * cols + j];
-	ccfree(a);
-	for (f = 0; f < 3; f++)
-	{
-		const int n = ccv_nnc_8i_rowwise_x_tmcq_rate(formats[f]);
-		const size_t size = ccv_nnc_8i_rowwise_x_data_size(formats[f], CCV_32F, count, cols);
-		uint8_t* const packed = ccmalloc(size);
-		REQUIRE_EQ(ccv_nnc_quantize_8i_rowwise_x(values, CCV_32F, CCV_TENSOR_CPU_MEMORY, count, cols, formats[f], 0, 0, 0, 0, packed, size), size, "plain quantization succeeds");
-		ccv_nnc_dequantize_8i_rowwise_x(packed, CCV_32F, CCV_TENSOR_CPU_MEMORY, size, cols, formats[f], decoded, count);
-		const double plain_w = _test_tmcq_weighted_sse(values, decoded, rows, cols, imatrix);
-		const double plain_h = _test_tmcq_hessian_error(values, decoded, rows, cols, hessian);
-		REQUIRE_EQ(ccv_nnc_quantize_8i_rowwise_x(values, CCV_32F, CCV_TENSOR_CPU_MEMORY, count, cols, formats[f], imatrix, cols, 0, 0, packed, size), size, "imatrix quantization succeeds");
-		ccv_nnc_dequantize_8i_rowwise_x(packed, CCV_32F, CCV_TENSOR_CPU_MEMORY, size, cols, formats[f], decoded, count);
-		const double imatrix_w = _test_tmcq_weighted_sse(values, decoded, rows, cols, imatrix);
-		const double imatrix_h = _test_tmcq_hessian_error(values, decoded, rows, cols, hessian);
-		_test_tmcq_nearest(values, rows, cols, n, imatrix, 0, nearest);
-		const double nearest_w = _test_tmcq_weighted_sse(values, nearest, rows, cols, imatrix);
-		REQUIRE_EQ(ccv_nnc_quantize_8i_rowwise_x(values, CCV_32F, CCV_TENSOR_CPU_MEMORY, count, cols, formats[f], 0, 0, hessian, cols * cols, packed, size), size, "Hessian quantization succeeds");
-		ccv_nnc_dequantize_8i_rowwise_x(packed, CCV_32F, CCV_TENSOR_CPU_MEMORY, size, cols, formats[f], decoded, count);
-		const double hessian_h = _test_tmcq_hessian_error(values, decoded, rows, cols, hessian);
-		_test_tmcq_nearest(values, rows, cols, n, 0, hessian, nearest);
-		const double nearest_h = _test_tmcq_hessian_error(values, nearest, rows, cols, hessian);
-		printf("\n\tTMCQ n = %d imatrix objective: plain %.6g imatrix %.6g nearest %.6g; Hessian objective: plain %.6g imatrix %.6g hessian %.6g nearest %.6g", n, plain_w, imatrix_w, nearest_w, plain_h, imatrix_h, hessian_h, nearest_h);
-		REQUIRE(imatrix_w < nearest_w, "imatrix trellis beats the nearest baseline for n = %d", n);
-		REQUIRE(imatrix_w < plain_w, "imatrix changes the objective for n = %d", n);
-		REQUIRE(hessian_h < nearest_h, "Hessian trellis beats the nearest baseline for n = %d", n);
-		REQUIRE(hessian_h < imatrix_h, "Hessian feedback beats the diagonal for n = %d", n);
-		ccfree(packed);
-	}
-	ccfree(hessian);
-	ccfree(nearest);
 	ccfree(decoded);
 	ccfree(values);
 }
@@ -542,65 +429,14 @@ TEST_CASE("TMCQ quantizes every precision with identical codes and source-precis
 	ccfree(reference);
 }
 
-TEST_CASE("TMCQ imatrix and Hessian slices quantize like independent calls")
-{
-	enum { rows = 48, cols = 256, count = rows * cols, slices = 3, slice_rows = rows / slices };
-	const int format = CCV_NNC_QX_8I_ROWWISE_TMCQ_N18;
-	dsfmt_t dsfmt;
-	dsfmt_init_gen_rand(&dsfmt, 5);
-	float* const values = ccmalloc(sizeof(float) * count);
-	float* const imatrix = ccmalloc(sizeof(float) * cols * slices);
-	float* const hessian = ccmalloc(sizeof(float) * cols * cols * slices);
-	_test_tmcq_values(&dsfmt, values, rows, cols);
-	int i, j, s, h;
-	for (i = 0; i < cols * slices; i++)
-		imatrix[i] = i % 13 == 0 ? 0 : 0.1f + (float)dsfmt_genrand_open_close(&dsfmt);
-	for (s = 0; s < slices; s++)
-		for (i = 0; i < cols; i++)
-			for (j = 0; j < cols; j++)
-				hessian[(s * cols + i) * cols + j] = i == j ? 1 + s + (i % 5) : 0.3f / (1 + abs(i - j) + s);
-	const size_t size = ccv_nnc_8i_rowwise_x_data_size(format, CCV_32F, count, cols);
-	const size_t slice_size = ccv_nnc_8i_rowwise_x_data_size(format, CCV_32F, slice_rows * cols, cols);
-	uint8_t* const packed = ccmalloc(size);
-	uint8_t* const slice_packed = ccmalloc(slice_size);
-	float* const whole = ccmalloc(sizeof(float) * count);
-	float* const sliced = ccmalloc(sizeof(float) * count);
-	for (h = 0; h < 2; h++)
-	{
-		const float* const im = h ? 0 : imatrix;
-		const float* const hs = h ? hessian : 0;
-		REQUIRE_EQ(ccv_nnc_quantize_8i_rowwise_x(values, CCV_32F, CCV_TENSOR_CPU_MEMORY, count, cols, format, im, im ? cols * slices : 0, hs, hs ? cols * cols * slices : 0, packed, size), size, "sliced quantization succeeds");
-		ccv_nnc_dequantize_8i_rowwise_x(packed, CCV_32F, CCV_TENSOR_CPU_MEMORY, size, cols, format, whole, count);
-		for (s = 0; s < slices; s++)
-		{
-			REQUIRE_EQ(ccv_nnc_quantize_8i_rowwise_x(values + s * slice_rows * cols, CCV_32F, CCV_TENSOR_CPU_MEMORY, slice_rows * cols, cols, format, im ? im + s * cols : 0, im ? cols : 0, hs ? hs + s * cols * cols : 0, hs ? cols * cols : 0, slice_packed, slice_size), slice_size, "independent slice quantizes");
-			ccv_nnc_dequantize_8i_rowwise_x(slice_packed, CCV_32F, CCV_TENSOR_CPU_MEMORY, slice_size, cols, format, sliced + s * slice_rows * cols, slice_rows * cols);
-		}
-		REQUIRE_ARRAY_EQ(float, whole, sliced, count, "%s slices match independent quantization", h ? "Hessian" : "imatrix");
-	}
-	ccfree(sliced);
-	ccfree(whole);
-	ccfree(slice_packed);
-	ccfree(packed);
-	ccfree(hessian);
-	ccfree(imatrix);
-	ccfree(values);
-}
-
-TEST_CASE("TMCQ rejects invalid shapes, H256 and slices that split tile rows")
+TEST_CASE("TMCQ rejects invalid shapes and H256")
 {
 	enum { cols = 256 };
 	static float values[64 * 512];
 	static uint8_t output[64 * 512];
-	static float hessian[3 * cols * cols];
-	float imatrix[2 * 512];
 	int i;
 	for (i = 0; i < 64 * 512; i++)
 		values[i] = sinf(i * 0.1f);
-	for (i = 0; i < 2 * 512; i++)
-		imatrix[i] = 1;
-	for (i = 0; i < 3 * cols; i++)
-		hessian[(i / cols) * cols * cols + (i % cols) * cols + i % cols] = 1;
 	const int format = CCV_NNC_QX_8I_ROWWISE_TMCQ_N24;
 	// Rows not a multiple of 16, K not a multiple of 256.
 	REQUIRE_EQ(ccv_nnc_8i_rowwise_x_data_size(format, CCV_32F, 15 * cols, cols), 0, "15 rows have no size");
@@ -614,14 +450,33 @@ TEST_CASE("TMCQ rejects invalid shapes, H256 and slices that split tile rows")
 	REQUIRE_EQ(ccv_nnc_quantize_8i_rowwise_x(values, CCV_32F, CCV_TENSOR_CPU_MEMORY, 16 * 128, 128, format, 0, 0, 0, 0, output, sizeof(output)), 0, "K = 128 must fail");
 	REQUIRE_EQ(ccv_nnc_quantize_8i_rowwise_x(values, CCV_32F, CCV_TENSOR_CPU_MEMORY, 16 * 384, 384, format, 0, 0, 0, 0, output, sizeof(output)), 0, "K = 384 must fail");
 	REQUIRE_EQ(ccv_nnc_quantize_8i_rowwise_x(values, CCV_32F, CCV_TENSOR_CPU_MEMORY, 16 * cols, cols, format | CCV_NNC_QX_8I_ROWWISE_HADAMARD_256, 0, 0, 0, 0, output, sizeof(output)), 0, "H256 must fail");
-	REQUIRE_EQ(ccv_nnc_quantize_8i_rowwise_x(values, CCV_32F, CCV_TENSOR_CPU_MEMORY, 16 * cols, cols, format | CCV_NNC_QX_8I_ROWWISE_HADAMARD_256, imatrix, cols, 0, 0, output, sizeof(output)), 0, "H256 with imatrix must fail");
-	REQUIRE_EQ(ccv_nnc_quantize_8i_rowwise_x(values, CCV_32F, CCV_TENSOR_CPU_MEMORY, 16 * 512, 512, format, imatrix, 2 * 512, 0, 0, output, sizeof(output)), 0, "imatrix slices of 8 rows must fail");
-	REQUIRE_EQ(ccv_nnc_quantize_8i_rowwise_x(values, CCV_32F, CCV_TENSOR_CPU_MEMORY, 48 * cols, cols, format, 0, 0, hessian, 2 * cols * cols, output, sizeof(output)), 0, "Hessian slices of 24 rows must fail");
 	REQUIRE_EQ(ccv_nnc_quantize_8i_rowwise_x(values, CCV_32F, CCV_TENSOR_CPU_MEMORY, 16 * cols, cols, format, 0, 0, 0, 0, output, ccv_nnc_8i_rowwise_x_data_size(format, CCV_32F, 16 * cols, cols) - 1), 0, "short output must fail");
 	for (i = 0; i < (int)sizeof(output); i++)
 		REQUIRE_EQ(output[i], 0xa5, "rejected calls leave the output untouched");
-	REQUIRE(ccv_nnc_quantize_8i_rowwise_x(values, CCV_32F, CCV_TENSOR_CPU_MEMORY, 32 * 512, 512, format, imatrix, 2 * 512, 0, 0, output, sizeof(output)) > 0, "imatrix slices of 16 rows are fine");
-	REQUIRE(ccv_nnc_quantize_8i_rowwise_x(values, CCV_32F, CCV_TENSOR_CPU_MEMORY, 48 * cols, cols, format, 0, 0, hessian, 3 * cols * cols, output, sizeof(output)) > 0, "Hessian slices of 16 rows are fine");
+}
+
+TEST_CASE("TMCQ quantizer returns 0 with an imatrix, a Hessian or a codebook slot")
+{
+	enum { rows = 16, cols = 256, count = rows * cols };
+	static float values[count];
+	static float hessian[cols * cols];
+	static uint8_t output[count * 4];
+	float imatrix[cols];
+	int i;
+	for (i = 0; i < count; i++)
+		values[i] = sinf(i * 0.1f) * 0.05f;
+	for (i = 0; i < cols; i++)
+		imatrix[i] = 1, hessian[i * cols + i] = 1;
+	const int format = CCV_NNC_QX_8I_ROWWISE_TMCQ_N20;
+	const size_t size = ccv_nnc_8i_rowwise_x_data_size(format, CCV_32F, count, cols);
+	REQUIRE(size > 0 && size <= sizeof(output), "16 x 256 has a size");
+	memset(output, 0xa5, sizeof(output));
+	REQUIRE_EQ(ccv_nnc_quantize_8i_rowwise_x(values, CCV_32F, CCV_TENSOR_CPU_MEMORY, count, cols, format, imatrix, cols, 0, 0, output, size), 0, "an imatrix must fail");
+	REQUIRE_EQ(ccv_nnc_quantize_8i_rowwise_x(values, CCV_32F, CCV_TENSOR_CPU_MEMORY, count, cols, format, 0, 0, hessian, cols * cols, output, size), 0, "a Hessian must fail");
+	REQUIRE_EQ(ccv_nnc_quantize_8i_rowwise_x(values, CCV_32F, CCV_TENSOR_CPU_MEMORY, count, cols, format | (1 << CCV_NNC_CODEBOOK_SLOT_SHIFT), 0, 0, 0, 0, output, size), 0, "a codebook slot must fail");
+	for (i = 0; i < (int)sizeof(output); i++)
+		REQUIRE_EQ(output[i], 0xa5, "rejected calls leave the output untouched");
+	REQUIRE_EQ(ccv_nnc_quantize_8i_rowwise_x(values, CCV_32F, CCV_TENSOR_CPU_MEMORY, count, cols, format, 0, 0, 0, 0, output, size), size, "the unweighted call quantizes");
 }
 
 TEST_CASE("TMCQ metadata and payload survive tensor persistence")
@@ -659,36 +514,42 @@ TEST_CASE("TMCQ metadata and payload survive tensor persistence")
 	ccv_nnc_tensor_free(source);
 }
 
-// Pair j covers weights 2j and 2j + 1 and shifts in f_j = E_{2j+1} - E_{2j-1} fresh bits (E_{-1} = 0).
-static int _test_tmcq_fresh(const int j, const int n)
+// Pair j covers weights 2j and 2j + 1, its window ends at E_j = (j + 1) n / 8 and it shifts in
+// f_j = E_j - E_{j-1} fresh bits (E_{-1} = 0).
+static int _test_trellis_fresh(const int j, const int n)
 {
-	return (2 * j + 2) * n / 16 - 2 * j * n / 16;
+	return (j + 1) * n / 8 - j * n / 8;
 }
 
-// Straightforward pair Viterbi over one tile in processing order j' = 0..127, j = (j' + rotation) mod 128.
-// start < 0: free ends. bp is 128 x 2^13 indexed by j'. Returns the end state.
-static int _test_tmcq_pass(const double* const y, const double* const w, const int n, const int rotation, const int start, uint8_t* const bp, double* const cost_out)
+// Straightforward pair Viterbi over one tile of W-bit states in processing order j' = 0..127,
+// j = (j' + rotation) mod 128. start < 0: free ends. bp is 128 x 2^(W - 2) indexed by j'. Returns the end state.
+static int _test_trellis_pass(const int window, const double* const y, const double* const w, const int n, const int rotation, const int start, uint8_t* const bp, double* const cost_out)
 {
-	double* cost = ccmalloc(sizeof(double) * 32768);
-	double* next = ccmalloc(sizeof(double) * 32768);
-	int s, step;
-	for (s = 0; s < 32768; s++)
+	const int states = 1 << window, stride = 1 << (window - 2);
+	double* cost = ccmalloc(sizeof(double) * states);
+	double* next = ccmalloc(sizeof(double) * states);
+	int* const best = ccmalloc(sizeof(int) * stride);
+	int s, step, low;
+	for (s = 0; s < states; s++)
 		cost[s] = start < 0 || s == start ? 0 : INFINITY;
 	for (step = 0; step < 128; step++)
 	{
 		const int j = (step + rotation) % 128;
-		const int f = _test_tmcq_fresh(j, n);
-		for (s = 0; s < 32768; s++)
+		const int f = _test_trellis_fresh(j, n);
+		for (low = 0; low < (1 << (window - f)); low++)
 		{
-			const int low = s & ((1 << (15 - f)) - 1);
-			int h, best_h = 0;
+			int h;
+			best[low] = low << f;
 			for (h = 1; h < (1 << f); h++)
-				if (cost[(low << f) | h] < cost[(low << f) | best_h])
-					best_h = h;
+				if (cost[(low << f) | h] < cost[best[low]])
+					best[low] = (low << f) | h;
+			bp[step * stride + low] = best[low] & ((1 << f) - 1);
+		}
+		for (s = 0; s < states; s++)
+		{
 			const double d0 = y[2 * j] - _test_tmcq_q8(s, 0);
 			const double d1 = y[2 * j + 1] - _test_tmcq_q8(s, 1);
-			next[s] = cost[(low << f) | best_h] + (w[2 * j] * (d0 * d0) + w[2 * j + 1] * (d1 * d1));
-			bp[step * 8192 + low] = best_h;
+			next[s] = cost[best[s & ((1 << (window - f)) - 1)]] + (w[2 * j] * (d0 * d0) + w[2 * j + 1] * (d1 * d1));
 		}
 		double* const swap = cost;
 		cost = next;
@@ -696,65 +557,62 @@ static int _test_tmcq_pass(const double* const y, const double* const w, const i
 	}
 	int end = start;
 	if (start < 0)
-		for (s = 1, end = 0; s < 32768; s++)
+		for (s = 1, end = 0; s < states; s++)
 			if (cost[s] < cost[end])
 				end = s;
 	*cost_out = cost[end];
+	ccfree(best);
 	ccfree(next);
 	ccfree(cost);
 	return end;
 }
 
-static int _test_tmcq_trace(const uint8_t* const bp, const int n, const int rotation, const int last, const int first, int s, int* const states)
+static int _test_trellis_trace(const int window, const uint8_t* const bp, const int n, const int rotation, const int last, const int first, int s, int* const states)
 {
+	const int stride = 1 << (window - 2);
 	int step;
 	for (step = last; step >= first; step--)
 	{
 		const int j = (step + rotation) % 128;
-		const int f = _test_tmcq_fresh(j, n);
+		const int f = _test_trellis_fresh(j, n);
 		if (states)
 			states[j] = s;
-		const int low = s & ((1 << (15 - f)) - 1);
-		s = (low << f) | bp[step * 8192 + low];
+		const int low = s & ((1 << (window - f)) - 1);
+		s = (low << f) | bp[step * stride + low];
 	}
 	return s;
 }
 
-// Tail-biting tile fit: mid = 0 is the plain two-pass (anchor s_127, the wrap-around), mid = 1 the v1.2 mid
-// anchor (s_63, the window ending at E_127 = 8n).
-static double _test_tmcq_fit_tile(const double* const y, const double* const w, const int n, const int mid, int* const states)
+// Tail-biting tile fit: mid = 0 is the plain two-pass (anchor s_127, the wrap-around), mid = 1 the mid
+// anchor (s_63, the window ending at E_63 = 8n).
+static double _test_trellis_fit_tile(const int window, const double* const y, const double* const w, const int n, const int mid, int* const states)
 {
-	uint8_t* const bp = ccmalloc(128 * 8192);
+	uint8_t* const bp = ccmalloc(128 << (window - 2));
 	double cost;
-	int s_star = _test_tmcq_pass(y, w, n, 0, -1, bp, &cost);
+	int s_star = _test_trellis_pass(window, y, w, n, 0, -1, bp, &cost);
 	if (mid)
-		s_star = _test_tmcq_trace(bp, n, 0, 127, 64, s_star, 0);
+		s_star = _test_trellis_trace(window, bp, n, 0, 127, 64, s_star, 0);
 	const int rotation = mid ? 64 : 0;
-	_test_tmcq_pass(y, w, n, rotation, s_star, bp, &cost);
-	const int s = _test_tmcq_trace(bp, n, rotation, 127, 0, s_star, states);
+	_test_trellis_pass(window, y, w, n, rotation, s_star, bp, &cost);
+	const int s = _test_trellis_trace(window, bp, n, rotation, 127, 0, s_star, states);
 	assert(s == s_star);
 	(void)s;
 	ccfree(bp);
 	return cost;
 }
 
-// imatrix-path TMCQ encoder written out from the spec, with either anchor. Writes the 32F output layout
-// and returns the summed Viterbi tile costs.
-static double _test_tmcq_encode(const float* const x, const int rows, const int cols, const int n, const float* const imatrix, const int mid, uint8_t* const output)
+// Unweighted trellis encoder written out from the format, with either anchor: the TMCQ 32F output (W = 15, code from
+// bit 0, float row scales). Row scale s = rms(row) / cb_rms, every pair weighted by s^2. Returns the summed Viterbi tile costs.
+static double _test_trellis_encode(const float* const x, const int rows, const int cols, const int n, const int window, const int mid, uint8_t* const output)
 {
 	const int T = 16 * n;
 	const size_t scale_offset = _test_tmcq_scale_offset(rows, cols, n);
 	memset(output, 0, scale_offset);
 	double cb = 0;
 	int s, i, j, k, tr, tc, t;
-	for (s = 0; s < 32768; s++)
+	for (s = 0; s < (1 << window); s++)
 		cb += (double)_test_tmcq_q8(s, 0) * _test_tmcq_q8(s, 0) + (double)_test_tmcq_q8(s, 1) * _test_tmcq_q8(s, 1);
-	cb = sqrt(cb / 65536);
-	double* const wc = ccmalloc(sizeof(double) * cols);
-	double sum_wc = 0;
-	for (k = 0; k < cols; k++)
-		sum_wc += (wc[k] = imatrix ? ccv_max((double)imatrix[k], 0) : 1);
-	int* const q = ccmalloc(sizeof(int) * rows * cols);
+	cb = sqrt(cb / (2 << window));
 	double total = 0;
 	for (tr = 0; tr < rows / 16; tr++)
 	{
@@ -763,9 +621,10 @@ static double _test_tmcq_encode(const float* const x, const int rows, const int 
 		{
 			double sum = 0;
 			for (k = 0; k < cols; k++)
-				sum += wc[k] * ((double)x[(tr * 16 + i) * cols + k] * x[(tr * 16 + i) * cols + k]);
-			const double sr = sum_wc > 0 ? sqrt(sum / sum_wc) / cb : 0;
+				sum += (double)x[(tr * 16 + i) * cols + k] * x[(tr * 16 + i) * cols + k];
+			const double sr = sqrt(sum / cols) / cb;
 			scale[i] = sr > 0 && isfinite(sr) ? sr : 0;
+			((float*)(output + scale_offset))[tr * 16 + i] = (float)scale[i];
 		}
 		for (tc = 0; tc < cols / 16; tc++)
 		{
@@ -774,78 +633,56 @@ static double _test_tmcq_encode(const float* const x, const int rows, const int 
 				for (j = 0; j < 16; j++)
 				{
 					y[i * 16 + j] = scale[i] > 0 ? x[(tr * 16 + i) * cols + tc * 16 + j] / scale[i] : 0;
-					w[i * 16 + j] = wc[tc * 16 + j] * (scale[i] * scale[i]);
+					w[i * 16 + j] = scale[i] * scale[i];
 				}
 			int states[128];
-			total += _test_tmcq_fit_tile(y, w, n, mid, states);
+			total += _test_trellis_fit_tile(window, y, w, n, mid, states);
 			const size_t g = (size_t)tr * (cols / 16) + tc;
 			int prev_end = 0;
-			for (t = 0; t < 256; t += 2)
+			for (t = 0; t < 128; t++)
 			{
-				const int end = (t + 2) * n / 16;
+				const int end = (t + 1) * n / 8;
 				int p;
 				for (p = prev_end; p < end; p++)
-					if ((states[t / 2] >> (14 - (end - 1 - p))) & 1)
+					if ((states[t] >> (window - 1 - (end - 1 - p))) & 1)
 						output[(g * T + p) / 8] |= 1 << ((g * T + p) % 8);
 				prev_end = end;
 			}
-			for (t = 0; t < 256; t++)
-				q[(tr * 16 + t / 16) * cols + tc * 16 + t % 16] = _test_tmcq_q8(states[t / 2], t & 1);
-		}
-		for (i = 0; i < 16; i++)
-		{
-			double num = 0, den = 0;
-			const int r = tr * 16 + i;
-			for (k = 0; k < cols; k++)
-			{
-				num += (double)q[r * cols + k] * (wc[k] * x[r * cols + k]);
-				den += (double)q[r * cols + k] * (wc[k] * (double)q[r * cols + k]);
-			}
-			const double sr = num / den;
-			((float*)(output + scale_offset))[r] = (float)(den > 0 && isfinite(sr) ? sr : scale[i]);
 		}
 	}
-	ccfree(q);
-	ccfree(wc);
 	return total;
 }
 
 TEST_CASE("TMCQ mid anchor matches an independent encoder and costs no more than the plain two-pass fit")
 {
-	enum { rows = 64, cols = 512, count = rows * cols };
-	const int formats[2] = {CCV_NNC_QX_8I_ROWWISE_TMCQ_N16, CCV_NNC_QX_8I_ROWWISE_TMCQ_N24};
+	enum { rows = 32, cols = 256, count = rows * cols };
+	static const int formats[2] = {
+		CCV_NNC_QX_8I_ROWWISE_TMCQ_N16,
+		CCV_NNC_QX_8I_ROWWISE_TMCQ_N24,
+	};
 	dsfmt_t dsfmt;
 	dsfmt_init_gen_rand(&dsfmt, 4242);
 	float* const values = ccmalloc(sizeof(float) * count);
-	float* const decoded = ccmalloc(sizeof(float) * count);
-	float imatrix[cols];
 	_test_tmcq_values(&dsfmt, values, rows, cols);
-	int i, f;
-	for (i = 0; i < cols; i++)
-		imatrix[i] = 0.2f + (float)dsfmt_genrand_open_close(&dsfmt) * 2;
-	for (f = 0; f < 2; f++)
+	int c;
+	for (c = 0; c < 2; c++)
 	{
-		const int n = ccv_nnc_8i_rowwise_x_tmcq_rate(formats[f]);
-		const size_t size = ccv_nnc_8i_rowwise_x_data_size(formats[f], CCV_32F, count, cols);
+		const int format = formats[c];
+		const int n = ccv_nnc_8i_rowwise_x_tmcq_rate(format);
+		const size_t size = ccv_nnc_8i_rowwise_x_data_size(format, CCV_32F, count, cols);
 		uint8_t* const packed = ccmalloc(size);
 		uint8_t* const mid = ccmalloc(size);
 		uint8_t* const plain = ccmalloc(size);
-		REQUIRE_EQ(ccv_nnc_quantize_8i_rowwise_x(values, CCV_32F, CCV_TENSOR_CPU_MEMORY, count, cols, formats[f], imatrix, cols, 0, 0, packed, size), size, "imatrix quantization succeeds");
-		const double mid_cost = _test_tmcq_encode(values, rows, cols, n, imatrix, 1, mid);
-		const double plain_cost = _test_tmcq_encode(values, rows, cols, n, imatrix, 0, plain);
-		REQUIRE_ARRAY_EQ(uint8_t, packed, mid, size, "library output matches the v1.2 pair encoder for n = %d", n);
-		ccv_nnc_dequantize_8i_rowwise_x(mid, CCV_32F, CCV_TENSOR_CPU_MEMORY, size, cols, formats[f], decoded, count);
-		const double mid_sse = _test_tmcq_weighted_sse(values, decoded, rows, cols, imatrix);
-		ccv_nnc_dequantize_8i_rowwise_x(plain, CCV_32F, CCV_TENSOR_CPU_MEMORY, size, cols, formats[f], decoded, count);
-		const double plain_sse = _test_tmcq_weighted_sse(values, decoded, rows, cols, imatrix);
-		printf("\n\tTMCQ n = %d trellis cost mid %.6g plain %.6g (%+.3f%%), weighted SSE after refit mid %.6g plain %.6g (%+.3f%%)", n, mid_cost, plain_cost, (mid_cost / plain_cost - 1) * 100, mid_sse, plain_sse, (mid_sse / plain_sse - 1) * 100);
+		REQUIRE_EQ(ccv_nnc_quantize_8i_rowwise_x(values, CCV_32F, CCV_TENSOR_CPU_MEMORY, count, cols, format, 0, 0, 0, 0, packed, size), size, "quantization succeeds");
+		const double mid_cost = _test_trellis_encode(values, rows, cols, n, 15, 1, mid);
+		const double plain_cost = _test_trellis_encode(values, rows, cols, n, 15, 0, plain);
+		REQUIRE_ARRAY_EQ(uint8_t, packed, mid, size, "library output matches the independent encoder for n = %d", n);
+		printf("\n\tTMCQ n = %d trellis cost mid %.6g plain %.6g (%+.3f%%)", n, mid_cost, plain_cost, (mid_cost / plain_cost - 1) * 100);
 		REQUIRE(mid_cost <= plain_cost, "mid anchor trellis cost %g is no more than plain %g for n = %d", mid_cost, plain_cost, n);
-		REQUIRE(mid_sse <= plain_sse, "mid anchor weighted error %g is no more than plain %g for n = %d", mid_sse, plain_sse, n);
 		ccfree(plain);
 		ccfree(mid);
 		ccfree(packed);
 	}
-	ccfree(decoded);
 	ccfree(values);
 }
 
@@ -914,90 +751,288 @@ static float _test_tmcq_golden_uniform(uint32_t* const state)
 	return (float)((int32_t)(_test_tmcq_xorshift(state) >> 8) - 8388608) / 8388608.f;
 }
 
-TEST_CASE("TMCQ P2 table matches the frozen SHA-256")
+TEST_CASE("built-in and alternate tables match their frozen SHA-256")
 {
-	REQUIRE_EQ(sizeof(ccv_nnc_tmcq_p2_table), 1024, "512 pairs of int8");
+	REQUIRE_EQ(sizeof(ccv_nnc_trellis_builtin_table), 1024, "512 pairs of int8");
 	char digest[65];
-	_test_sha256((const uint8_t*)ccv_nnc_tmcq_p2_table, sizeof(ccv_nnc_tmcq_p2_table), digest);
-	REQUIRE(strcmp(digest, "d58cf36d15b31e5b121334f704b15ad99bc39837ac5c096f0a37b7632763f34c") == 0, "table digest %s", digest);
+	_test_sha256((const uint8_t*)ccv_nnc_trellis_builtin_table, sizeof(ccv_nnc_trellis_builtin_table), digest);
+	REQUIRE(strcmp(digest, "830ff43f1222371bb131cfd15d12f26a3881e4ba96584f1484345cb0f1605a3a") == 0, "built-in table digest %s", digest);
+	REQUIRE_EQ(sizeof(test_trellis_table_alt), 16 + 1024, "the alternate asset holds 512 pairs of int8");
+	_test_sha256(test_trellis_table_alt + 16, 1024, digest);
+	REQUIRE(strcmp(digest, "d58cf36d15b31e5b121334f704b15ad99bc39837ac5c096f0a37b7632763f34c") == 0, "alternate table digest %s", digest);
 }
 
 TEST_CASE("TMCQ encoder golden vectors")
 {
-	// Inputs (all float32, generated in this order from one xorshift32 stream seeded 0x12345678):
-	//   W[16][256] = uniform();
-	//   imatrix[256] = ((x >> 9) + 2^21) / 2^21 for x = xorshift();
-	//   A[512][256] = uniform(), H[j][k] = (float)(sum_s A[s][j] A[s][k] / 512) with s ascending in double.
-	// Encoder v1.2 (P2 pair trellis, mid anchor s_63). Digests cover the whole 32F output: payload, zero padding to 128 bytes and the float row scales.
-	// Input digests (little-endian float32): W 2457d29c78ab867fd09946a2ca8b1c18baf38290b88174728302da8bdb2354e7,
-	// imatrix c277f046520b74ffd8434a5ece854a98715bfba8bee87f654e377a7ed0568598,
-	// H 3686ed3dd6195ab6b88eab8fd4859f7d14072dfe8ea63c519cfbf792e62f1612.
-	enum { rows = 16, cols = 256, count = rows * cols, samples = 512 };
-	static const char* const expected_digest[2][3] = {
-		{ // imatrix: n = 16, 22, 32.
-			"0de4e1b3a5d7f4c3b250c23ff76c3e7c31e75976f93aee22f2aaec3ea56b1163",
-			"e0e4b8eee76a6bf3a7c4bf5efe8f19d7f18ed4678cb71ba990ef4ed4076c4fda",
-			"e33101eaf3b1b91c9154843135e99eef99d2e39e4132bd5f4df4692b945b89c7",
-		},
-		{ // Hessian: n = 16, 22, 32.
-			"71c8225e8373a748497c540dc2deff2e55ea530de0b5395cb4ab81408a28caee",
-			"6ab0a806b50f94fb13bae366d5666cd873e134c50d20eae0a3ee49aad65396b3",
-			"a2e1836cfee7ce7d8705b7a03a7360bb3d51a6e9a8ad682c33ef4ce5cf2fa0aa",
-		},
+	// Input: W[16][256] = uniform() (float32) from one xorshift32 stream seeded 0x12345678, little-endian digest
+	// 2457d29c78ab867fd09946a2ca8b1c18baf38290b88174728302da8bdb2354e7. TMCQ encodes W (32F output: code, zero
+	// padding to 128 bytes, float row scales). The digests cover the whole output, which the independent encoder above reproduces byte for byte.
+	enum { rows = 16, cols = 256, count = rows * cols };
+	static const struct {
+		int format;
+		const char* digest;
+	} cases[3] = {
+		{CCV_NNC_QX_8I_ROWWISE_TMCQ_N16, "cff83612a4db5220f0ae3d87a4e228b0caa7072d06dd9a0d64853a4821447a0b"},
+		{CCV_NNC_QX_8I_ROWWISE_TMCQ_N22, "4a254f285455ef355284e5988afc9813ebf0e066c7cb99f9f93fa89d9e22a35c"},
+		{CCV_NNC_QX_8I_ROWWISE_TMCQ_N32, "bcea82123cef5d13e5de5f15cb49c93e252161f70bd8b89bdb483c2431f469ee"},
 	};
-	const int formats[3] = {CCV_NNC_QX_8I_ROWWISE_TMCQ_N16, CCV_NNC_QX_8I_ROWWISE_TMCQ_N22, CCV_NNC_QX_8I_ROWWISE_TMCQ_N32};
 	char abc[65];
 	_test_sha256((const uint8_t*)"abc", 3, abc);
 	REQUIRE(strcmp(abc, "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad") == 0, "SHA-256 self check");
 	uint32_t state = 0x12345678;
 	float* const values = ccmalloc(sizeof(float) * count);
-	float imatrix[cols];
-	float* const hessian = ccmalloc(sizeof(float) * cols * cols);
-	float* const a = ccmalloc(sizeof(float) * samples * cols);
-	int i, j, k, f, path;
+	int i, c;
 	for (i = 0; i < count; i++)
 		values[i] = _test_tmcq_golden_uniform(&state);
-	for (i = 0; i < cols; i++)
-		imatrix[i] = (float)((_test_tmcq_xorshift(&state) >> 9) + 2097152) / 2097152.f;
-	for (i = 0; i < samples * cols; i++)
-		a[i] = _test_tmcq_golden_uniform(&state);
-	for (j = 0; j < cols; j++)
-		for (k = 0; k < cols; k++)
-		{
-			double v = 0;
-			int s;
-			for (s = 0; s < samples; s++)
-				v += (double)a[s * cols + j] * a[s * cols + k];
-			hessian[j * cols + k] = (float)(v / samples);
-		}
-	ccfree(a);
-	for (path = 0; path < 2; path++)
-		for (f = 0; f < 3; f++)
-		{
-			const size_t size = ccv_nnc_8i_rowwise_x_data_size(formats[f], CCV_32F, count, cols);
-			uint8_t* const packed = ccmalloc(size);
-			REQUIRE_EQ(ccv_nnc_quantize_8i_rowwise_x(values, CCV_32F, CCV_TENSOR_CPU_MEMORY, count, cols, formats[f], path ? 0 : imatrix, path ? 0 : cols, path ? hessian : 0, path ? cols * cols : 0, packed, size), size, "golden input quantizes");
-			char digest[65];
-			_test_sha256(packed, size, digest);
-			const int n = ccv_nnc_8i_rowwise_x_tmcq_rate(formats[f]);
-			const size_t scale_offset = _test_tmcq_scale_offset(rows, cols, n);
-			printf("\n\tTMCQ golden %s n = %d size %zu sha256 %s first bytes", path ? "hessian" : "imatrix", n, size, digest);
-			for (i = 0; i < 16; i++)
-				printf(" %02x", packed[i]);
-			printf(" scale[0] %.9g", ((float*)(packed + scale_offset))[0]);
-			REQUIRE(strcmp(digest, expected_digest[path][f]) == 0, "golden digest for %s n = %d", path ? "hessian" : "imatrix", n);
-			if (!path)
-			{
-				// The imatrix digests are cross-checked against the independent pair encoder above.
-				uint8_t* const independent = ccmalloc(size);
-				_test_tmcq_encode(values, rows, cols, n, imatrix, 1, independent);
-				REQUIRE_ARRAY_EQ(uint8_t, packed, independent, size, "independent encoder reproduces the golden imatrix payload for n = %d", n);
-				ccfree(independent);
-			}
-			ccfree(packed);
-		}
-	ccfree(hessian);
+	char digest[65];
+	_test_sha256((const uint8_t*)values, sizeof(float) * count, digest);
+	REQUIRE(strcmp(digest, "2457d29c78ab867fd09946a2ca8b1c18baf38290b88174728302da8bdb2354e7") == 0, "golden input digest %s", digest);
+	for (c = 0; c < 3; c++)
+	{
+		const int format = cases[c].format;
+		const int n = ccv_nnc_8i_rowwise_x_tmcq_rate(format);
+		const size_t size = ccv_nnc_8i_rowwise_x_data_size(format, CCV_32F, count, cols);
+		uint8_t* const packed = ccmalloc(size);
+		REQUIRE_EQ(ccv_nnc_quantize_8i_rowwise_x(values, CCV_32F, CCV_TENSOR_CPU_MEMORY, count, cols, format, 0, 0, 0, 0, packed, size), size, "golden input quantizes");
+		_test_sha256(packed, size, digest);
+		printf("\n\tTMCQ golden n = %d size %zu sha256 %s", n, size, digest);
+		REQUIRE(strcmp(digest, cases[c].digest) == 0, "golden digest for n = %d", n);
+		uint8_t* const independent = ccmalloc(size);
+		_test_trellis_encode(values, rows, cols, n, 15, 1, independent);
+		REQUIRE_ARRAY_EQ(uint8_t, packed, independent, size, "independent encoder reproduces the golden output for n = %d", n);
+		ccfree(independent);
+		ccfree(packed);
+	}
 	ccfree(values);
+}
+
+
+
+// _test_tmcq_decode with a pair table of 2^log2_entries pairs: k = (cw * 0x83DCD12D mod 2^32) >> (32 - log2_entries).
+static void _test_tmcq_decode_table(const uint8_t* const payload, const int rows, const int cols, const int n, const int8_t* const table, const int log2_entries, int* const q8)
+{
+	const int T = 16 * n;
+	const int tile_cols = cols / 16;
+	int g, t, j;
+	for (g = 0; g < rows / 16 * tile_cols; g++)
+	{
+		const int tr = g / tile_cols, tc = g % tile_cols;
+		for (t = 0; t < 256; t++)
+		{
+			const int end = ((t | 1) + 1) * n / 16;
+			unsigned cw = 0;
+			for (j = 0; j < 15; j++)
+			{
+				const int p = ((end - 15 + j) % T + T) % T;
+				cw |= (unsigned)_test_tmcq_bit(payload, (size_t)g * T + p) << j;
+			}
+			const uint32_t x = (uint32_t)((uint64_t)cw * 0x83DCD12Dull);
+			q8[(tr * 16 + t / 16) * cols + tc * 16 + t % 16] = table[2 * (x >> (32 - log2_entries)) + (t & 1)];
+		}
+	}
+}
+
+// Writes the bytes of a serialized codebook (valid or not) as __ccv_codebook__/<id>, the way the exporter stores it.
+static int _test_write_codebook_bytes(sqlite3* const db, const int id, const uint8_t* const bytes, const int size)
+{
+	ccv_nnc_tensor_t* const tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(8U, size), 0);
+	memcpy(tensor->data.u8, bytes, size);
+	char name[64];
+	snprintf(name, sizeof(name), CCV_NNC_CODEBOOK_TENSOR_PREFIX "%d", id);
+	const int result = ccv_nnc_tensor_write(tensor, db, name, 0);
+	ccv_nnc_tensor_free(tensor);
+	return result;
+}
+
+static void _test_store_u32(uint8_t* const p, const uint32_t v)
+{
+	p[0] = (uint8_t)v, p[1] = (uint8_t)(v >> 8), p[2] = (uint8_t)(v >> 16), p[3] = (uint8_t)(v >> 24);
+}
+
+TEST_CASE("codebook container matches the built-in table asset byte for byte")
+{
+	const int slot = ccv_nnc_codebook_register_serialized(test_trellis_table_builtin, sizeof(test_trellis_table_builtin));
+	REQUIRE(slot >= 1, "the built-in table registers, slot %d", slot);
+	REQUIRE_EQ(ccv_nnc_codebook_register_serialized(test_trellis_table_builtin, sizeof(test_trellis_table_builtin)), slot, "the same content takes the same slot");
+	int entries = 0;
+	uint32_t crc = 0;
+	const int8_t* const table = ccv_nnc_codebook_get(slot, &entries, &crc);
+	REQUIRE(table, "the slot has its table");
+	REQUIRE_EQ(entries, 512, "the built-in table has 512 pairs");
+	REQUIRE_EQ(crc, 0x4b7574dcu, "table crc32 matches zlib.crc32 of the asset data");
+	char digest[65];
+	_test_sha256((const uint8_t*)table, 1024, digest);
+	REQUIRE(strcmp(digest, "830ff43f1222371bb131cfd15d12f26a3881e4ba96584f1484345cb0f1605a3a") == 0, "table digest %s", digest);
+	uint8_t serialized[16 + 4096];
+	REQUIRE_EQ(ccv_nnc_codebook_serialize(slot, serialized, sizeof(serialized)), sizeof(test_trellis_table_builtin), "serialized size");
+	REQUIRE_EQ(memcmp(serialized, test_trellis_table_builtin, sizeof(test_trellis_table_builtin)), 0, "ccv serializes exactly like the asset container");
+	REQUIRE_EQ(ccv_nnc_codebook_serialize(slot, serialized, sizeof(test_trellis_table_builtin) - 1), 0, "short buffer is refused");
+	// The built-in table is slot 0: the same 1024 bytes and zlib crc32 as the asset.
+	const int8_t* const builtin = ccv_nnc_codebook_get(0, &entries, &crc);
+	REQUIRE(builtin && memcmp(builtin, ccv_nnc_trellis_builtin_table, sizeof(ccv_nnc_trellis_builtin_table)) == 0, "slot 0 is the built-in table");
+	REQUIRE(memcmp(builtin, test_trellis_table_builtin + 16, 1024) == 0, "slot 0 is the asset table");
+	REQUIRE_EQ(entries, 512, "the built-in table has 512 pairs");
+	REQUIRE_EQ(crc, 0x4b7574dcu, "built-in table crc32");
+	// The alternate table registers as a file codebook with its bytes and crc32.
+	const int slot_alt = ccv_nnc_codebook_register_serialized(test_trellis_table_alt, sizeof(test_trellis_table_alt));
+	REQUIRE(slot_alt >= 1, "the alternate table registers, slot %d", slot_alt);
+	const int8_t* const alt = ccv_nnc_codebook_get(slot_alt, &entries, &crc);
+	REQUIRE(alt && memcmp(alt, test_trellis_table_alt + 16, 1024) == 0, "the slot holds the alternate table");
+	REQUIRE_EQ(entries, 512, "the alternate table has 512 pairs");
+	REQUIRE_EQ(crc, 0xfd995f08u, "alternate table crc32");
+	REQUIRE(ccv_nnc_codebook_get(255, 0, 0) == 0, "unregistered slots have no table");
+	// Corrupt containers.
+	uint8_t bad[sizeof(test_trellis_table_builtin)];
+	memcpy(bad, test_trellis_table_builtin, sizeof(bad));
+	bad[0] = 'X';
+	REQUIRE_EQ(ccv_nnc_codebook_register_serialized(bad, sizeof(bad)), -1, "wrong magic fails");
+	memcpy(bad, test_trellis_table_builtin, sizeof(bad));
+	bad[100] ^= 1;
+	REQUIRE_EQ(ccv_nnc_codebook_register_serialized(bad, sizeof(bad)), -1, "wrong crc fails");
+	REQUIRE_EQ(ccv_nnc_codebook_register_serialized(test_trellis_table_builtin, sizeof(test_trellis_table_builtin) - 1), -1, "truncated container fails");
+	REQUIRE_EQ(ccv_nnc_codebook_register_serialized(test_trellis_table_builtin, 15), -1, "truncated header fails");
+	memcpy(bad, test_trellis_table_builtin, sizeof(bad));
+	_test_store_u32(bad + 8, 1024);
+	REQUIRE_EQ(ccv_nnc_codebook_register_serialized(bad, sizeof(bad)), -1, "entries that do not match the size fail");
+	memcpy(bad, test_trellis_table_builtin, sizeof(bad));
+	_test_store_u32(bad + 8, 513);
+	REQUIRE_EQ(ccv_nnc_codebook_register_serialized(bad, 16 + 1026), -1, "entries other than 512 / 1024 / 2048 fail");
+	memcpy(bad, test_trellis_table_builtin, sizeof(bad));
+	bad[16 + 7] = 0x80;
+	_test_store_u32(bad + 12, ccv_nnc_codebook_crc32(bad + 16, 1024));
+	REQUIRE_EQ(ccv_nnc_codebook_register_serialized(bad, sizeof(bad)), -1, "-128 fails even with a matching crc");
+}
+
+TEST_CASE("TMCQ weights with a codebook id read their codebook from the checkpoint, TMCQ files without one read as before")
+{
+	enum { rows = 32, cols = 256, n = 24 };
+	// A nonzero codebook id (reserved bits 16 - 23) is the file's codebook; 0 is the built-in table.
+	const int tmcq = CCV_NNC_QX_8I_ROWWISE_TMCQ_N24;
+	REQUIRE(ccv_nnc_8i_rowwise_x_is_tmcq(tmcq | (5 << 16)), "TMCQ with a slot is TMCQ");
+	REQUIRE_EQ(ccv_nnc_8i_rowwise_x_tmcq_rate(tmcq | (5 << 16)), n, "the slot keeps the rate");
+	REQUIRE_EQ(ccv_nnc_8i_rowwise_x_kernel_format(tmcq | (5 << 16)), tmcq, "kernels see TMCQ without the slot");
+	REQUIRE_EQ(ccv_nnc_8i_rowwise_x_data_size(tmcq | (5 << 16), CCV_32F, rows * cols, cols), ccv_nnc_8i_rowwise_x_data_size(tmcq, CCV_32F, rows * cols, cols), "a slot keeps the TMCQ size");
+	ccv_nnc_tensor_t* const source = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, cols), 0);
+	int i;
+	for (i = 0; i < rows * cols; i++)
+		source->data.f32[i] = sinf(i * 0.37f) * (1 + i % 3);
+	ccv_nnc_tensor_t* const packed = ccv_nnc_tensor_new(0, ccv_nnc_tensor_8i_rowwise_x(source->info, tmcq), 0);
+	const size_t size = ccv_nnc_tensor_data_size_without_padding(packed->info);
+	REQUIRE_EQ(ccv_nnc_quantize_8i_rowwise_x(source->data.f32, CCV_32F, CCV_TENSOR_CPU_MEMORY, rows * cols, cols, tmcq, 0, 0, 0, 0, packed->data.u8, size), size, "TMCQ quantizes");
+	uint8_t* const scratch = ccmalloc(size);
+	REQUIRE_EQ(ccv_nnc_quantize_8i_rowwise_x(source->data.f32, CCV_32F, CCV_TENSOR_CPU_MEMORY, rows * cols, cols, tmcq | (1 << 16), 0, 0, 0, 0, scratch, size), 0, "ccv does not fit TMCQ with a slot");
+	ccfree(scratch);
+	// Codebooks: the alternate 512-pair table and a synthetic 2048-pair table.
+	const int slot_alt = ccv_nnc_codebook_register_serialized(test_trellis_table_alt, sizeof(test_trellis_table_alt));
+	int8_t big[4096];
+	for (i = 0; i < 4096; i++)
+		big[i] = (int8_t)((i * 37 + 11) % 255 - 127);
+	const int slot_big = ccv_nnc_codebook_register(big, 2048);
+	REQUIRE(slot_alt >= 1 && slot_big >= 1 && slot_big != slot_alt, "both register");
+	sqlite3* db = 0;
+	REQUIRE_EQ(sqlite3_open(":memory:", &db), SQLITE_OK, "in-memory database opens");
+	// The old file layout: TMCQ, reserved == codec, reads back unchanged.
+	REQUIRE_EQ(ccv_nnc_tensor_write(packed, db, "old", 0), CCV_IO_FINAL, "TMCQ writes");
+	ccv_nnc_tensor_t* restored = 0;
+	REQUIRE_EQ(ccv_nnc_tensor_read(db, "old", 0, 0, 0, &restored), CCV_IO_FINAL, "TMCQ reads");
+	REQUIRE_EQ(restored->info.reserved, tmcq, "the TMCQ reserved field is unchanged");
+	REQUIRE_EQ(memcmp(restored->data.u8, packed->data.u8, size), 0, "TMCQ payload is unchanged");
+	ccv_nnc_tensor_free(restored);
+	REQUIRE_EQ(ccv_nnc_tensor_write_codebook(db, slot_alt, 3), CCV_IO_FINAL, "the alternate table writes as id 3");
+	REQUIRE_EQ(ccv_nnc_tensor_write_codebook(db, slot_big, 7), CCV_IO_FINAL, "the big table writes as id 7");
+	REQUIRE_EQ(ccv_nnc_tensor_write_codebook(db, 0, 1), CCV_IO_ERROR, "the built-in table is never written");
+	REQUIRE_EQ(ccv_nnc_tensor_read_codebook(db, 3), slot_alt, "id 3 reads back as the alternate slot");
+	REQUIRE_EQ(ccv_nnc_tensor_read_codebook(db, 4), -1, "a missing id fails");
+	REQUIRE_EQ(ccv_nnc_tensor_read_codebook(db, 0), -1, "id 0 is not a file codebook");
+	const int ids[2] = { 3, 7 };
+	const int slots[2] = { slot_alt, slot_big };
+	int c;
+	float* const a = ccmalloc(sizeof(float) * rows * cols);
+	float* const builtin = ccmalloc(sizeof(float) * rows * cols);
+	int* const q8 = ccmalloc(sizeof(int) * rows * cols);
+	ccv_nnc_dequantize_8i_rowwise_x(packed->data.u8, CCV_32F, CCV_TENSOR_CPU_MEMORY, size, cols, tmcq, builtin, rows * cols);
+	for (c = 0; c < 2; c++)
+	{
+		ccv_nnc_tensor_t* const external = ccv_nnc_tensor_new(0, ccv_nnc_tensor_8i_rowwise_x(source->info, tmcq | (ids[c] << 16)), 0);
+		memcpy(external->data.u8, packed->data.u8, size);
+		char name[32];
+		snprintf(name, sizeof(name), "w%d", c);
+		REQUIRE_EQ(ccv_nnc_tensor_write(external, db, name, 0), CCV_IO_FINAL, "TMCQ writes with its file id");
+		restored = 0;
+		REQUIRE_EQ(ccv_nnc_tensor_read(db, name, 0, 0, 0, &restored), CCV_IO_FINAL, "TMCQ with a file id reads");
+		REQUIRE_EQ(restored->info.reserved, tmcq | (slots[c] << 16), "the file id becomes the process slot");
+		REQUIRE_EQ(memcmp(restored->data.u8, packed->data.u8, size), 0, "TMCQ payload with a file id is unchanged");
+		int entries = 0;
+		const int8_t* const table = ccv_nnc_codebook_get(ccv_nnc_8i_rowwise_x_codebook_slot(restored->info.reserved), &entries, 0);
+		_test_tmcq_decode_table(packed->data.u8, rows, cols, n, table, ccv_nnc_codebook_log2_entries(entries), q8);
+		ccv_nnc_dequantize_8i_rowwise_x(restored->data.u8, CCV_32F, CCV_TENSOR_CPU_MEMORY, size, cols, restored->info.reserved, a, rows * cols);
+		const uint8_t* const scales = packed->data.u8 + _test_tmcq_scale_offset(rows, cols, n);
+		int same_as_builtin = 1;
+		for (i = 0; i < rows * cols; i++)
+		{
+			REQUIRE_EQ_WITH_TOLERANCE(a[i], (float)(_test_tmcq_load_scale(scales, CCV_32F, i / cols) * q8[i]), 0, "CPU decode with codebook %d matches the reference at %d", c, i);
+			same_as_builtin = same_as_builtin && a[i] == builtin[i];
+		}
+		REQUIRE(!same_as_builtin, "codebook %d does not decode like the built-in table", c);
+		ccv_nnc_tensor_free(restored);
+		// A metadata read maps the id too, and so does a read into caller params that still hold the file id.
+		restored = 0;
+		REQUIRE_EQ(ccv_nnc_tensor_read(db, name, 0, CCV_NNC_TENSOR_READ_METADATA_ONLY, 0, &restored), CCV_IO_FINAL, "metadata reads");
+		REQUIRE_EQ(restored->info.reserved, tmcq | (slots[c] << 16), "metadata carries the process slot");
+		ccv_nnc_tensor_free(restored);
+		restored = 0;
+		REQUIRE_EQ(ccv_nnc_tensor_read(db, name, 0, 0, &external->info, &restored), CCV_IO_FINAL, "read into caller params");
+		REQUIRE_EQ(restored->info.reserved, tmcq | (slots[c] << 16), "caller params get the process slot");
+		ccv_nnc_tensor_free(restored);
+		ccv_nnc_tensor_free(external);
+	}
+	// A second file with the same table under another id resolves to the same slot.
+	sqlite3* db2 = 0;
+	REQUIRE_EQ(sqlite3_open(":memory:", &db2), SQLITE_OK, "second database opens");
+	REQUIRE_EQ(_test_write_codebook_bytes(db2, 9, test_trellis_table_alt, sizeof(test_trellis_table_alt)), CCV_IO_FINAL, "codebook bytes write");
+	REQUIRE_EQ(ccv_nnc_tensor_read_codebook(db2, 9), slot_alt, "another file, another id, the same slot");
+	// Inconsistent or broken files fail instead of decoding with the built-in table.
+	struct {
+		const char* name;
+		int reserved;
+	} invalid[] = {
+		{ "missing", tmcq | (5 << 16) },
+		{ "bad_magic", tmcq | (11 << 16) },
+		{ "bad_crc", tmcq | (12 << 16) },
+		{ "bad_entries", tmcq | (13 << 16) },
+		{ "truncated", tmcq | (14 << 16) },
+	};
+	uint8_t bad[sizeof(test_trellis_table_alt)];
+	memcpy(bad, test_trellis_table_alt, sizeof(bad));
+	bad[3] = 'X';
+	REQUIRE_EQ(_test_write_codebook_bytes(db2, 11, bad, sizeof(bad)), CCV_IO_FINAL, "codebook bytes write");
+	memcpy(bad, test_trellis_table_alt, sizeof(bad));
+	bad[200] ^= 4;
+	REQUIRE_EQ(_test_write_codebook_bytes(db2, 12, bad, sizeof(bad)), CCV_IO_FINAL, "codebook bytes write");
+	memcpy(bad, test_trellis_table_alt, sizeof(bad));
+	_test_store_u32(bad + 8, 1000);
+	REQUIRE_EQ(_test_write_codebook_bytes(db2, 13, bad, sizeof(bad)), CCV_IO_FINAL, "codebook bytes write");
+	REQUIRE_EQ(_test_write_codebook_bytes(db2, 14, test_trellis_table_alt, sizeof(test_trellis_table_alt) - 2), CCV_IO_FINAL, "codebook bytes write");
+	for (i = 0; i < (int)(sizeof(invalid) / sizeof(invalid[0])); i++)
+	{
+		ccv_nnc_tensor_param_t params = ccv_nnc_tensor_8i_rowwise_x(source->info, tmcq);
+		params.reserved = invalid[i].reserved;
+		ccv_nnc_tensor_t* const weight = ccv_nnc_tensor_new(0, params, 0);
+		memcpy(weight->data.u8, packed->data.u8, size);
+		REQUIRE_EQ(ccv_nnc_tensor_write(weight, db2, invalid[i].name, 0), CCV_IO_FINAL, "writes");
+		ccv_nnc_tensor_free(weight);
+		restored = 0;
+		REQUIRE_EQ(ccv_nnc_tensor_read(db2, invalid[i].name, 0, 0, 0, &restored), CCV_IO_ERROR, "%s fails", invalid[i].name);
+		REQUIRE(restored == 0, "%s leaves no tensor", invalid[i].name);
+		REQUIRE_EQ(ccv_nnc_tensor_read(db2, invalid[i].name, 0, CCV_NNC_TENSOR_READ_METADATA_ONLY, 0, &restored), CCV_IO_ERROR, "%s metadata fails", invalid[i].name);
+	}
+	sqlite3_close(db2);
+	sqlite3_close(db);
+	ccfree(q8);
+	ccfree(builtin);
+	ccfree(a);
+	ccv_nnc_tensor_free(packed);
+	ccv_nnc_tensor_free(source);
 }
 
 #include "case_main.h"
