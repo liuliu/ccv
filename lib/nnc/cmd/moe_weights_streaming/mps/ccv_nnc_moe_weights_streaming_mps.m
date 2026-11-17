@@ -2,6 +2,7 @@
 #include "ccv_internal.h"
 #include "nnc/ccv_nnc.h"
 #include "nnc/ccv_nnc_easy.h"
+#include "nnc/ccv_nnc_codebook.h"
 #include "nnc/ccv_nnc_internal.h"
 #include "nnc/mps/ccv_nnc_mps.h"
 #import <Foundation/Foundation.h>
@@ -201,8 +202,11 @@ static int _ccv_nnc_moe_weight_layout(const ccv_nnc_tensor_param_t source_info, 
 		// TMCQ tiles span 16 rows: an expert slot must hold whole tile rows over whole 256-weight
 		// groups, so that copying payload_per_expert bytes moves exactly that expert's tiles. Then
 		// the per-row formula below (rows x K / 256 x 16n bits, a multiple of 8) is its tile grid.
+		// The resident bank keeps the reserved field, so a TMCQ codebook slot (bits 16 - 23) carries over to it; no
+		// other modifier bit is taken.
 		if (ccv_nnc_8i_rowwise_x_is_tmcq(source_info.reserved) &&
-			((source_info.dim[1] % 16) != 0 || (source_info.dim[2] % 256) != 0 || (source_info.reserved & ~CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK)))
+			((source_info.dim[1] % 16) != 0 || (source_info.dim[2] % 256) != 0 ||
+			 (source_info.reserved & ~(CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK | CCV_NNC_CODEBOOK_SLOT_MASK))))
 			return 0;
 		const size_t group_size = (size_t)ccv_nnc_8i_rowwise_x_group_size(source_info.reserved);
 		const size_t group_bits = (size_t)ccv_nnc_8i_rowwise_x_group_bits(source_info.reserved);

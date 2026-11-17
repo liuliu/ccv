@@ -1268,6 +1268,27 @@ inline float stable_sigmoid(const float value)
 // lanes share each activation load. The codes come from a threadgroup half2 copy of the pair
 // table. Gate and up each finish their whole dot product and take their row scale before the clamp
 // and SiLU, as the other formats do.
+// An external codebook (TMCQ with a codebook slot): the half2 buffer (ccv_nnc_mfa_codebook_buffer) at buffer(15) of every kernel goes to
+// segmented_int8_swiglu_routes, which copies it into the half2 table after the K-split sums in route_scratch (sized for
+// the table) instead of the built-in table; lookups only change their shift.
+static void rewriteTMCQCodebook(std::string& shader, const uint32_t log2)
+{
+  tmcq_codebook_rewrite(shader, log2);
+  CCV_NNC_MFA_PRECONDITION(tmcq_codebook_replace(shader,
+    "  threadgroup float* route_scratch,\n  uint threadgroup_position,",
+    "  threadgroup float* route_scratch,\n  device const uint4* codebook,\n  uint threadgroup_position,") == 1);
+  CCV_NNC_MFA_PRECONDITION(tmcq_codebook_replace(shader,
+    "route_expert, route_scratch, threadgroup_position",
+    "route_expert, route_scratch, codebook, threadgroup_position") >= 1);
+  CCV_NNC_MFA_PRECONDITION(tmcq_codebook_replace(shader,
+    "  uint threadgroup_position [[threadgroup_position_in_grid]],",
+    "  device const uint4* codebook [[buffer(15)]],\n  uint threadgroup_position [[threadgroup_position_in_grid]],") >= 1);
+  CCV_NNC_MFA_PRECONDITION(tmcq_codebook_replace(shader,
+    "  tmcq_w2_load_table(table, simdgroup_index * 32u + lane, 32u * k_simdgroups);",
+    "  tmcq_codebook_load(table, codebook, simdgroup_index * 32u + lane, 32u * k_simdgroups);") == 1);
+  CCV_NNC_MFA_PRECONDITION(tmcq_codebook_replace(shader, " * 16 + 512]", " * 16 + TMCQ_CODEBOOK_ENTRIES]") >= 1);
+}
+
 static std::string buildTMCQShader(
   const SegmentedInt8SwiGLUKernelDescriptor& descriptor, const uint32_t rate)
 {
@@ -1614,6 +1635,8 @@ SegmentedInt8SwiGLUKernel::SegmentedInt8SwiGLUKernel(
   }
   if (const uint32_t rate = segmentedTMCQRate(descriptor.format)) {
     source = buildTMCQShader(descriptor, rate);
+    if (const uint32_t log2 = tmcq_codebook_log2(descriptor.format))
+      rewriteTMCQCodebook(source, log2);
     auto string = NS::String::string(source.c_str(), NS::UTF8StringEncoding);
     NS::Error* error = nil;
     library = NS::TransferPtr(device->newLibrary(string, nil, &error));

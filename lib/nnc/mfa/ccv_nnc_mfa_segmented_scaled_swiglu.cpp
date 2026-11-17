@@ -6,6 +6,7 @@ using namespace ccv::nnc;
 #include "kernels/NAInt8MatMulKernelDescriptor.hpp"
 #include "kernels/NAInt8MatMulDescriptor.hpp"
 #include "kernels/SegmentedScaledGEMMKernel.hpp"
+#include "kernels/TMCQDecodeSource.hpp"
 #include "kernels/SegmentedScaledGEMMKernelDescriptor.hpp"
 #include "kernels/SegmentedScaledGEMMDescriptor.hpp"
 #include "kernels/Int8MatMulDescriptor.hpp"
@@ -248,6 +249,12 @@ static void encode_projection(
   encoder->setBuffer(scratch, a_layout.scale_offset, 3);
   encoder->setBuffer(weight, weight_offset + weight_scale_offset, 4);
   encoder->setBuffer(scratch, p_layout.records_offset, 5);
+  if (tmcq_codebook_log2(execution.segmented_desc.format)) {
+    // External codebook (TMCQ with a codebook slot) of the fused tile decode, see ccv_nnc_mfa_segmented_scaled_swiglu_params_t::codebook.
+    CCV_NNC_MFA_PRECONDITION(params.codebook != nullptr);
+    encoder->setBuffer(params.codebook, 0, 7);
+    encoder->useResource(params.codebook, MTL::ResourceUsageRead);
+  }
   encoder->dispatchThreadgroups(
     scratch,
     p_layout.dispatch_offset,
@@ -327,6 +334,7 @@ void ccv_nnc_mfa_encode_segmented_scaled_swiglu(
         .rows_per_expert = params.N,
         .expert_count = params.expert_count,
         .bincount = params.bincount,
+        .codebook = params.codebook,
       };
       decode_scratch_size =
         ccv_nnc_mfa_dequantize_8i_rowwise_x_selected_reserved_scratch_size(decode_params);
@@ -453,6 +461,7 @@ void ccv_nnc_mfa_encode_segmented_scaled_swiglu(
       .rows_per_expert = params.N,
       .expert_count = params.expert_count,
       .bincount = params.bincount,
+      .codebook = params.codebook,
     };
     decode_scratch_size =
       ccv_nnc_mfa_dequantize_8i_rowwise_x_selected_reserved_scratch_size(decode_params);

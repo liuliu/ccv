@@ -1139,11 +1139,27 @@ Int8GemvKernel::Int8GemvKernel(Int8GemvKernelDescriptor descriptor, MTL::Device*
   }
 }
 
+// An external codebook (tmcq_codebook_log2(format) != 0) for the TMCQ GEMV: the generated kernel takes the
+// table, already half2, as `device const uint4* codebook [[buffer(5)]]` and copies it into the same threadgroup half2
+// array the built-in kernel fills from the constant built-in table, sized for the table; the lookups only change their
+// shift.
+static void rewrite_w1_codebook(std::string& shader, const uint32_t log2)
+{
+  CCV_NNC_MFA_PRECONDITION(log2 >= 9 && log2 <= 11);
+  tmcq_codebook_rewrite(shader, log2);
+  CCV_NNC_MFA_PRECONDITION(tmcq_codebook_replace(shader,
+    "  threadgroup half2 tmcq_tg[512];\n  tmcq_w1_load_table(tmcq_tg, sgitg * 32u + tiisg, S * 32u);\n",
+    "  threadgroup half2 tmcq_tg[TMCQ_CODEBOOK_ENTRIES];\n  tmcq_codebook_load(tmcq_tg, codebook, sgitg * 32u + tiisg, S * 32u);\n") == 1);
+  CCV_NNC_MFA_PRECONDITION(tmcq_codebook_replace(shader, "  uint tgpig [[threadgroup_position_in_grid]],", "  device const uint4* codebook [[buffer(5)]],\n  uint tgpig [[threadgroup_position_in_grid]],") == 1);
+}
+
 std::string Int8GemvKernel::createSource() const noexcept {
   std::string shader = createConstants() + "\n";
   if (is_tmcq(format)) {
     CCV_NNC_MFA_PRECONDITION(mrows >= 1 && mrows <= 3);
     append_tmcq_kernel(shader, format, mrows, fusedBias);
+    if (tmcq_codebook_log2(format))
+      rewrite_w1_codebook(shader, tmcq_codebook_log2(format));
     return shader;
   }
   if (format != 0) {

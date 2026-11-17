@@ -156,7 +156,8 @@ SegmentedScaledGEMMKernel::SegmentedScaledGEMMKernel(
   useBias = descriptor.useBias;
   loadM = descriptor.loadM;
   format = descriptor.format;
-  CCV_NNC_MFA_PRECONDITION(format == 0 || ((format & ~CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK) == 0 && !useBias));
+  // Bits 16 - 23 of a TMCQ format may name an external codebook's log2 entry count (TMCQDecodeSource.hpp).
+  CCV_NNC_MFA_PRECONDITION(format == 0 || (((format & ~CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK) == 0 || (segmentedTMCQRate(format) && tmcq_codebook_log2(format))) && !useBias));
 
   source = createSource();
   auto string = NS::String::string(source.c_str(), NS::UTF8StringEncoding);
@@ -182,7 +183,8 @@ uint32_t SegmentedScaledGEMMKernel::maxTileRecords(uint32_t originalM, uint32_t 
 
 bool SegmentedScaledGEMMKernel::fusesPackedFormat(uint32_t format, uint64_t M, uint32_t binCount) noexcept
 {
-  if (format == 0 || (format & ~CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK) != 0)
+  // A TMCQ format may carry an external codebook's log2 entry count in bits 16 - 23; nothing else takes modifier bits.
+  if (format == 0 || ((format & ~CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK) != 0 && !(segmentedTMCQRate(format) && tmcq_codebook_log2(format))))
     return false;
   // TMCQ's register decoder decodes each weight again for every 32-row tile. On M5 Ultra (DeepSeek
   // routed shapes) it beat expanding the selected experts from 2 to 256 rows per bin over 384
@@ -535,7 +537,7 @@ __attribute__((always_inline)) inline void decode_weight_tiles(thread register_t
 )";
     }
     source += R"(
-// Four M16/N32/K16 operations form a SIMD group's M32/N32/K32 update.
+// Four 16 x 32 x 16 (M x N x K) operations form a SIMD group's 32 x 32 x 32 update.
 __attribute__((always_inline)) inline void multiply_register_tiles(thread accumulator_tile& accum,
     thread const register_tile& a, thread const register_tile& b) {
   constexpr auto descriptor = matmul2d_descriptor(
@@ -686,7 +688,21 @@ inline void multiply_register(const device int8_t* A, const device uchar* B, dec
     multiply_register<false>(A_buf, B_buf, tables, C_buf, A_scale_buf, B_scale_buf, rows, lane);
 }
 )";
-    return source.ToString();
+    std::string shader = source.ToString();
+    if (const uint32_t log2 = tmcq_codebook_log2(format)) {
+      // An external codebook (TMCQ with a codebook slot): the half2 buffer (ccv_nnc_mfa_codebook_buffer) at buffer(7) fills the same
+      // threadgroup ushort table the built-in kernel copies from tmcq_w3_table, sized for the table; lookups only
+      // change their shift.
+      tmcq_codebook_rewrite(shader, log2);
+      const std::string simdgroups = std::to_string(executionSIMDGroups);
+      CCV_NNC_MFA_PRECONDITION(tmcq_codebook_replace(shader,
+        "  threadgroup ushort table[512];\n  for (uint i = sgid * 32u + lane; i < 512u; i += " + simdgroups + "u * 32u)\n    table[i] = tmcq_w3_table[i];\n",
+        "  threadgroup ushort table[TMCQ_CODEBOOK_ENTRIES];\n  for (uint i = sgid * 32u + lane; i < TMCQ_CODEBOOK_ENTRIES; i += " + simdgroups + "u * 32u)\n    table[i] = as_type<ushort>(char2(codebook[i]));\n") == 1);
+      CCV_NNC_MFA_PRECONDITION(tmcq_codebook_replace(shader,
+        "    device const TileRecord* records [[buffer(5)]],\n    uint3 tgid [[threadgroup_position_in_grid]],",
+        "    device const TileRecord* records [[buffer(5)]],\n    device const half2* codebook [[buffer(7)]],\n    uint3 tgid [[threadgroup_position_in_grid]],") == 1);
+    }
+    return shader;
   }
   if (format) {
     source += R"(

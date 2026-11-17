@@ -1,4 +1,5 @@
 #include "Dequantize8iRowwiseXDescriptor.hpp"
+#include "TMCQDecodeSource.hpp"
 #include "Dequantize8iRowwiseXKernel.hpp"
 #include "../ccv_nnc_mfa.hpp"
 #include "../ccv_nnc_mfa_hash.hpp"
@@ -140,7 +141,8 @@ std::pair<Dequantize8iRowwiseXKernelDescriptor, PipelineValue<Dequantize8iRowwis
 	(void)binaryArchiveToWrite;
 	(void)pathToWrite;
 	if (is_tmcq(format)) {
-		CCV_NNC_MFA_PRECONDITION((format & ~CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK) == 0);
+		// Bits 16 - 23: log2 of an external codebook's entry count, 0 for the built-in table (TMCQDecodeSource.hpp).
+		CCV_NNC_MFA_PRECONDITION(tmcq_codebook_format_ok(format));
 		CCV_NNC_MFA_PRECONDITION(rowLength > 0 && (rowLength % 256) == 0 && (length % rowLength) == 0 && (rowCount() % 16) == 0);
 	}
 	auto createKernel =
@@ -270,7 +272,9 @@ std::pair<Dequantize8iRowwiseXKernelDescriptor, PipelineValue<Dequantize8iRowwis
 	(void)pathToWrite;
 	if (is_tmcq(format)) {
 		// Tiles span 16 rows, so every expert must start on a tile row.
-		CCV_NNC_MFA_PRECONDITION((format & ~CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK) == 0);
+		// Bits 16 - 23: log2 of an external codebook's entry count, 0 for the built-in table (TMCQDecodeSource.hpp).
+		CCV_NNC_MFA_PRECONDITION((format & ~(CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK | 0xff0000u)) == 0);
+		CCV_NNC_MFA_PRECONDITION(((format >> 16) & 0xffu) == 0 || (((format >> 16) & 0xffu) >= 9 && ((format >> 16) & 0xffu) <= 11));
 		CCV_NNC_MFA_PRECONDITION(rowLength > 0 && (rowLength % 256) == 0 && (rowsPerExpert % 16) == 0);
 	}
 	auto createKernel =

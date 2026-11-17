@@ -92,7 +92,7 @@ static int _ccv_nnc_index_select_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hin
 		} else {
 			const ccv_nnc_mfa_index_select_8i_rowwise_x_params_t params = {
 				.data_type = mtl_data_type,
-				.format = (uint32_t)a->info.reserved,
+				.format = (uint32_t)ccv_nnc_8i_rowwise_x_kernel_format(a->info.reserved),
 				.row_length = (uint64_t)a->info.dim[1],
 				.input_length = (uint64_t)ccv_nnc_tensor_count(a->info),
 				.output_length = (uint64_t)ccv_nnc_tensor_count(b->info),

@@ -1,4 +1,6 @@
 #include "ccv_nnc_mfa.hpp"
+#include "kernels/TMCQDecodeSource.hpp"
+#include "kernels/SegmentedInt8GemvDescriptor.hpp"
 using namespace ccv::nnc;
 
 #include "kernels/ShaderCache.hpp"
@@ -147,7 +149,7 @@ void ccv_nnc_mfa_encode_segmented_scaled_gemm(
     ++num_tensors;
   CCV_NNC_MFA_PRECONDITION((num_tensors == 5) || (num_tensors == 6));
   CCV_NNC_MFA_PRECONDITION(params.format == 0 ||
-    ((params.format & ~CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK) == 0 && params.use_neural_accelerators &&
+    (((params.format & ~CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK) == 0 || (segmentedTMCQRate(params.format) && tmcq_codebook_log2(params.format))) && params.use_neural_accelerators &&
       !params.fused_bias && params.N % 256 == 0 && params.K % 256 == 0));
   if (!params.use_neural_accelerators) {
     CCV_NNC_MFA_PRECONDITION(params.data_type == MTL::DataTypeFloat && !params.fused_bias && num_tensors == 5);
@@ -309,6 +311,12 @@ void ccv_nnc_mfa_encode_segmented_scaled_gemm(
     encoder->setBuffer(scratch, p_layout.records_offset, 5);
     if (num_tensors >= 6)
       encoder->setBuffer(tensors[5], tensor_offsets[5], 6);
+    if (tmcq_codebook_log2(params.format)) {
+      // External codebook (TMCQ with a codebook slot), see ccv_nnc_mfa_segmented_scaled_gemm_params_t::codebook.
+      CCV_NNC_MFA_PRECONDITION(params.codebook != nullptr);
+      encoder->setBuffer(params.codebook, 0, 7);
+      encoder->useResource(params.codebook, MTL::ResourceUsageRead);
+    }
     encoder->dispatchThreadgroups(
         scratch,
         p_layout.dispatch_offset,

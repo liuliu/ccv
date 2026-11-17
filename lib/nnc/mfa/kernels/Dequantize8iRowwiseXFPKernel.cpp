@@ -230,11 +230,32 @@ MTL::Size Dequantize8iRowwiseXFPKernel::gridSize(uint32_t groups, uint32_t group
 	return MTL::Size((groups + groupsPerThreadgroup - 1) / groupsPerThreadgroup, 1, 1);
 }
 
+// An external codebook (tmcq_codebook_log2(format) != 0) for the TMCQ floating-point decode: the kernel takes the table
+// as `device const uint4* codebook [[buffer(3)]]`, copies it into threadgroup half2 before any thread returns and
+// reads it through tmcq_codebook_char2 instead of the constant tmcq_table.
+static void rewrite_fp_codebook(std::string& shader, const uint32_t log2)
+{
+	CCV_NNC_MFA_PRECONDITION(log2 >= 9 && log2 <= 11);
+	tmcq_codebook_rewrite(shader, log2);
+	CCV_NNC_MFA_PRECONDITION(tmcq_codebook_replace(shader, "\n\n  uint3 tgid [[threadgroup_position_in_grid]],", "\n  device const uint4* codebook [[buffer(3)]],\n\n  uint3 tgid [[threadgroup_position_in_grid]],") == 1);
+	CCV_NNC_MFA_PRECONDITION(tmcq_codebook_replace(shader, "  const uint x = tgid.x * threadgroup_size + lid;\n",
+		"  threadgroup half2 tmcq_codes[TMCQ_CODEBOOK_ENTRIES];\n"
+		"  tmcq_codebook_load(tmcq_codes, codebook, lid, threadgroup_size);\n"
+		"  threadgroup_barrier(mem_flags::mem_threadgroup);\n"
+		"  const tmcq_codebook_char2 tmcq_ext = { tmcq_codes };\n"
+		"  const uint x = tgid.x * threadgroup_size + lid;\n") == 1);
+	CCV_NNC_MFA_PRECONDITION(tmcq_codebook_replace(shader, "q, tmcq_table);", "q, tmcq_ext);") == 1);
+}
+
 std::string Dequantize8iRowwiseXFPKernel::createSource() const noexcept
 {
 	const uint32_t codec = format & CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK;
-	if (is_tmcq(format))
-		return createConstants() + "\n" + create_tmcq_fp_source(format);
+	if (is_tmcq(format)) {
+		std::string shader = createConstants() + "\n" + create_tmcq_fp_source(format);
+		if (tmcq_codebook_log2(format))
+			rewrite_fp_codebook(shader, tmcq_codebook_log2(format));
+		return shader;
+	}
 	std::string shader = createConstants() + "\n";
 	if (codec == CCV_NNC_QX_8I_ROWWISE_IQ2_XXS) {
 		append_compact_grid(shader, "iq2xxs_grid", ccv_nnc_8i_rowwise_packed_iq2xxs_grid, 256, [](const uint16_t value) { return (uint32_t)value; });

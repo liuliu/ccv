@@ -2,6 +2,7 @@
 #include "SegmentedInt8GemvKernel.hpp"
 #include "../ccv_nnc_mfa.hpp"
 #include "../ccv_nnc_mfa_error.hpp"
+#include "TMCQDecodeSource.hpp"
 #include "../ccv_nnc_mfa_hash.hpp"
 
 bool SegmentedInt8GemvDescriptor::operator==(const SegmentedInt8GemvDescriptor& rhs) const
@@ -220,9 +221,13 @@ uint32_t segmentedInt8GemvSIMDGroupsPerThreadgroup(const uint32_t format)
 
 uint32_t segmentedTMCQRate(const uint32_t format)
 {
-  if (format < CCV_NNC_QX_8I_ROWWISE_TMCQ_N16 || format > CCV_NNC_QX_8I_ROWWISE_TMCQ_N32)
+  // Bits 16 - 23 may name an external codebook's log2 entry count (TMCQDecodeSource.hpp); no other modifier bits.
+  if (!tmcq_codebook_format_ok(format))
     return 0;
-  return 16 + 2 * (format - CCV_NNC_QX_8I_ROWWISE_TMCQ_N16);
+  const uint32_t codec = format & 0xffu;
+  if ((format & ~(0xffu | 0xff0000u)) || codec < CCV_NNC_QX_8I_ROWWISE_TMCQ_N16 || codec > CCV_NNC_QX_8I_ROWWISE_TMCQ_N32)
+    return 0;
+  return 16 + 2 * (codec - CCV_NNC_QX_8I_ROWWISE_TMCQ_N16);
 }
 
 uint32_t segmentedInt8GemvRowsPerThreadgroup(const uint32_t format)

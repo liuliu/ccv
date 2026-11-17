@@ -1,4 +1,5 @@
 #include "ccv_nnc_mfa.hpp"
+#include "kernels/TMCQDecodeSource.hpp"
 #include "kernels/SegmentedInt8GemvDescriptor.hpp"
 #include "kernels/SegmentedInt8GemvKernel.hpp"
 using namespace ccv::nnc;
@@ -101,6 +102,12 @@ void ccv_nnc_mfa_encode_segmented_int8_gemv(
     encoder->setBuffer(tensors[5], tensor_offsets[5], 4);
   encoder->setBuffer(tensors[1], tensor_offsets[1], 5);
   encoder->setBuffer(tensors[2], tensor_offsets[2], 6);
+  if (tmcq_codebook_log2(params.format)) {
+    // External codebook (TMCQ with a codebook slot), see ccv_nnc_mfa_segmented_int8_gemv_params_t::codebook.
+    CCV_NNC_MFA_PRECONDITION(params.codebook != nullptr);
+    encoder->setBuffer(params.codebook, 0, 11);
+    encoder->useResource(params.codebook, MTL::ResourceUsageRead);
+  }
 
   encoder->useResource(tensors[0], MTL::ResourceUsageRead);
   encoder->useResource(tensors[1], MTL::ResourceUsageRead);

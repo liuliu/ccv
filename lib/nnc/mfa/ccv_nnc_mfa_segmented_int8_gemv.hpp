@@ -13,6 +13,9 @@ typedef struct {
   uint32_t bincount;
   // A shared expert's Q8_0 rows (K wide, one activation row) that interleave with the routed ones.
   uint32_t shared_rows;
+  // The external codebook of a TMCQ format whose bits 16 - 23 hold its log2 entry count (ccv_nnc_mfa_codebook_format);
+  // bound at buffer(11). NULL for the built-in table.
+  mtl_buffer_t* codebook;
 } ccv_nnc_mfa_segmented_int8_gemv_params_t;
 
 #ifdef __cplusplus

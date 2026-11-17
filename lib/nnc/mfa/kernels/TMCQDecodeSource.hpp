@@ -3,16 +3,17 @@
 
 #include <stdint.h>
 #include <string>
+#include "../ccv_nnc_mfa_error.hpp"
 
-// The frozen v1.2 pair codebook, ccv_nnc_tmcq_p2_table[1024] (512 pairs, interleaved int8). The Metal
-// table below is generated from it, so the .inc stays the only copy.
-#include "../../ccv_nnc_tmcq_table.inc"
+// The built-in pair codebook of TMCQ, ccv_nnc_trellis_builtin_table[1024] (512 pairs, interleaved int8). The Metal
+// tables below are generated from it, so the .inc file stays the only copy.
+#include "../../ccv_nnc_trellis_builtin_table.inc"
 
 // Metal helpers shared by every kernel that decodes CCV_NNC_QX_8I_ROWWISE_TMCQ_N* weights.
 // Codec definition: see CCV_NNC_QX_8I_ROWWISE_TMCQ_N16 in ccv_nnc.h. A tile is 16 * n bits = n / 2
 // little-endian 32-bit words (n is even), so every tile starts on a word boundary. Weight t's window
 // is the 15-bit window ending at E_t = floor((t + 1) n / 16); weight 0's window wraps from the tile's
-// end. v1.2 decodes weights in pairs: weights 2j and 2j + 1 both read the window of weight 2j + 1,
+// end. TMCQ decodes weights in pairs: weights 2j and 2j + 1 both read the window of weight 2j + 1,
 // cw, and take entry k = (cw * 0x83DCD12D) >> 23 of the 512-pair table as (q8[2j], q8[2j + 1]).
 static const char* const ccv_nnc_mfa_tmcq_decode_helpers = R"(
 // The 32 bits of the little-endian pair (lo, hi) starting at bit o (0 <= o < 32).
@@ -171,20 +172,24 @@ static inline std::string tmcq_w1_loop_source(const uint32_t unroll, const std::
   return s;
 }
 
-// MSL for the table (`constant char2 tmcq_table[512]`) followed by the helpers.
+// MSL for `constant char2 tmcq_table[512]` holding `table` followed by the helpers.
+static inline std::string ccv_nnc_mfa_tmcq_decode_source_of(const int8_t* const table)
+{
+  std::string s = "constant char2 tmcq_table[512] = {\n";
+  for (int i = 0; i < 512; i++)
+  {
+    s += "char2(" + std::to_string(table[2 * i]) + ", " + std::to_string(table[2 * i + 1]) + ")";
+    s += (i % 8 == 7) ? ",\n" : ", ";
+  }
+  s += "};\n";
+  s += ccv_nnc_mfa_tmcq_decode_helpers;
+  return s;
+}
+
+// tmcq_table is the built-in table.
 static inline const char* ccv_nnc_mfa_tmcq_decode_source()
 {
-  static const std::string source = [] {
-    std::string s = "constant char2 tmcq_table[512] = {\n";
-    for (int i = 0; i < 512; i++)
-    {
-      s += "char2(" + std::to_string(ccv_nnc_tmcq_p2_table[2 * i]) + ", " + std::to_string(ccv_nnc_tmcq_p2_table[2 * i + 1]) + ")";
-      s += (i % 8 == 7) ? ",\n" : ", ";
-    }
-    s += "};\n";
-    s += ccv_nnc_mfa_tmcq_decode_helpers;
-    return s;
-  }();
+  static const std::string source = ccv_nnc_mfa_tmcq_decode_source_of(ccv_nnc_trellis_builtin_table);
   return source.c_str();
 }
 
@@ -220,7 +225,7 @@ inline uint4 tmcq_w3_decode_row16_words(device const uint* tile, uint n, uint r,
 }
 )";
 
-// MSL for `constant ushort tmcq_w3_table[512]` (entry i is ccv_nnc_tmcq_p2_table[2 i] in the low byte
+// MSL for `constant ushort tmcq_w3_table[512]` (entry i is ccv_nnc_trellis_builtin_table[2 i] in the low byte
 // and [2 i + 1] in the high byte) followed by the tmcq_w3_* helpers. Append after
 // ccv_nnc_mfa_tmcq_decode_source(), which defines tmcq_funnel.
 static inline const char* tmcq_w3_decode_source()
@@ -229,7 +234,7 @@ static inline const char* tmcq_w3_decode_source()
     std::string s = "constant ushort tmcq_w3_table[512] = {\n";
     for (int i = 0; i < 512; i++)
     {
-      const unsigned value = (unsigned)(uint8_t)ccv_nnc_tmcq_p2_table[2 * i] | ((unsigned)(uint8_t)ccv_nnc_tmcq_p2_table[2 * i + 1] << 8);
+      const unsigned value = (unsigned)(uint8_t)ccv_nnc_trellis_builtin_table[2 * i] | ((unsigned)(uint8_t)ccv_nnc_trellis_builtin_table[2 * i + 1] << 8);
       s += std::to_string(value) + "u";
       s += (i % 16 == 15) ? ",\n" : ", ";
     }
@@ -301,7 +306,7 @@ inline void tmcq_w2_decode_rows(device const uint* tile, uint r0, thread half4* 
 }
 )";
 
-// MSL for `constant half2 tmcq_w2_table[512]`, generated from ccv_nnc_tmcq_p2_table, followed by the
+// MSL for `constant half2 tmcq_w2_table[512]`, generated from ccv_nnc_trellis_builtin_table, followed by the
 // W2 helpers. Goes after ccv_nnc_mfa_tmcq_decode_source(), whose tmcq_funnel the helpers use.
 static inline const char* ccv_nnc_mfa_tmcq_w2_source()
 {
@@ -309,7 +314,7 @@ static inline const char* ccv_nnc_mfa_tmcq_w2_source()
     std::string s = "constant half2 tmcq_w2_table[512] = {\n";
     for (int i = 0; i < 512; i++)
     {
-      s += "half2(" + std::to_string(ccv_nnc_tmcq_p2_table[2 * i]) + ", " + std::to_string(ccv_nnc_tmcq_p2_table[2 * i + 1]) + ")";
+      s += "half2(" + std::to_string(ccv_nnc_trellis_builtin_table[2 * i]) + ", " + std::to_string(ccv_nnc_trellis_builtin_table[2 * i + 1]) + ")";
       s += (i % 8 == 7) ? ",\n" : ", ";
     }
     s += "};\n";
@@ -317,6 +322,84 @@ static inline const char* ccv_nnc_mfa_tmcq_w2_source()
     return s;
   }();
   return source.c_str();
+}
+
+// External codebooks (ccv_nnc_codebook.h). In the format of an MFA params struct, bits 16 - 23 of a TMCQ format
+// hold log2 of the entry count of an external codebook (9, 10 or 11), 0 for the built-in table: the dispatch puts
+// it there in place of the tensor's slot, so the pipeline key carries the table size and the table itself is a
+// buffer. With 0 every kernel is generated exactly as before, with the compile-time constant table.
+static inline uint32_t tmcq_codebook_log2(const uint32_t format)
+{
+  return (format >> 16) & 0xffu;
+}
+
+// The format bits an MFA TMCQ kernel accepts: the codec and the codebook's log2 (bits 16 - 23).
+static inline bool tmcq_codebook_format_ok(const uint32_t format)
+{
+  const uint32_t log2 = tmcq_codebook_log2(format);
+  if (log2 != 0 && (log2 < 9 || log2 > 11))
+    return false;
+  return (format & ~(0xffu | 0xff0000u)) == 0;
+}
+
+// MSL helpers for an external codebook of 1 << log2 pairs: the index shift and entry count, a copy of the table into
+// threadgroup memory, and accessors that read that copy like the built-in tables. The buffer holds the pairs already
+// converted to half2 (ccv_nnc_mfa_codebook_buffer; int8 values are exact in half), so the copy is plain 16-byte moves
+// and the GEMV lookups are the same float2(table[k]) as with the built-in half2 copy. Storage and lookups go through
+// these helpers only, so a different threadgroup layout changes this function alone.
+static inline std::string tmcq_codebook_source(const uint32_t log2)
+{
+  std::string s;
+  s += "constant uint tmcq_codebook_shift = " + std::to_string(32 - log2) + "u;\n";
+  s += "#define TMCQ_CODEBOOK_ENTRIES " + std::to_string(1u << log2) + "u\n";
+  s += R"(
+// Lane `index` of `count` threads copies the table, four pairs per 16-byte load (the buffer starts at offset 0). The
+// caller adds the barrier.
+inline void tmcq_codebook_load(threadgroup half2* table, device const uint4* codebook, uint index, uint count)
+{
+  for (uint i = index; i < TMCQ_CODEBOOK_ENTRIES / 4u; i += count)
+    ((threadgroup uint4*)table)[i] = codebook[i];
+}
+
+// The copy read as char2 (tmcq_decode_row16) and as ushort pairs, q8[2 k] in the low byte (the
+// tmcq_w3 helpers).
+struct tmcq_codebook_char2
+{
+  threadgroup const half2* t;
+  char2 operator[](uint i) const { return char2(t[i]); }
+};
+
+struct tmcq_codebook_ushort
+{
+  threadgroup const half2* t;
+  ushort operator[](uint i) const { return as_type<ushort>(char2(t[i])); }
+};
+)";
+  return s;
+}
+
+// Replaces every `from` in `text` with `to`; returns the number of replacements.
+static inline size_t tmcq_codebook_replace(std::string& text, const std::string& from, const std::string& to)
+{
+  size_t count = 0;
+  size_t at = 0;
+  while ((at = text.find(from, at)) != std::string::npos) {
+    text.replace(at, from.size(), to);
+    at += to.size();
+    count++;
+  }
+  return count;
+}
+
+// Rewrites a generated shader for an external codebook: the helpers go after the first `using namespace metal;`,
+// every pair index takes the codebook's shift instead of 23.
+static inline void tmcq_codebook_rewrite(std::string& shader, const uint32_t log2)
+{
+  const std::string anchor = "using namespace metal;\n";
+  const size_t at = shader.find(anchor);
+  CCV_NNC_MFA_PRECONDITION(at != std::string::npos);
+  shader.insert(at + anchor.size(), tmcq_codebook_source(log2));
+  CCV_NNC_MFA_PRECONDITION(tmcq_codebook_replace(shader, "0x83DCD12Du) >> 23", "0x83DCD12Du) >> tmcq_codebook_shift") > 0);
 }
 
 #endif

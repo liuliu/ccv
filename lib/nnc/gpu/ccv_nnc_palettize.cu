@@ -7,7 +7,7 @@ extern "C" {
 }
 #include <nnc/gpu/ccv_nnc_compat.h>
 #include <type_traits>
-#include "../ccv_nnc_tmcq_table.inc"
+#include "../ccv_nnc_trellis_builtin_table.inc"
 
 template<typename NUM>
 __global__ void _ccv_nnc_q4_slow(const size_t count, const size_t length, const int number_in_blocks, const int number_in_blocks_2, const uint8_t* const a, NUM* const b)
@@ -1290,7 +1290,7 @@ static __global__ void _ccv_nnc_dequantize_8i_rowwise_x_fp_2d_oct_hadamard_256(c
 // starts on a word boundary. A warp decodes whole tiles: lanes load the words of a tile in one coalesced load, and
 // lane L decodes tile weights 8 L .. 8 L + 7 (pairs 4 L .. 4 L + 3), i.e. row L / 2, columns (L & 1) * 8 .. + 7.
 //
-// The v1.2 P2 codebook (ccv_nnc_tmcq_table.inc) is passed by value as a __grid_constant__ kernel parameter, so every
+// The built-in pair codebook (ccv_nnc_trellis_builtin_table.inc) is passed by value as a __grid_constant__ kernel parameter, so every
 // device gets it without a symbol upload. Each block copies it to shared memory once; entry k, read as a
 // little-endian uint16, is the code pair (T[2k], T[2k + 1]) in output byte order.
 typedef struct {
@@ -1301,10 +1301,10 @@ typedef struct {
 
 static const ccv_nnc_8i_rowwise_x_tmcq_table_t* _ccv_nnc_8i_rowwise_x_tmcq_table(void)
 {
-	static_assert(sizeof(ccv_nnc_tmcq_p2_table) == sizeof(ccv_nnc_8i_rowwise_x_tmcq_table_t), "the P2 table is 1024 bytes");
+	static_assert(sizeof(ccv_nnc_trellis_builtin_table) == sizeof(ccv_nnc_8i_rowwise_x_tmcq_table_t), "the built-in table is 1024 bytes");
 	static const ccv_nnc_8i_rowwise_x_tmcq_table_t table = [] {
 		ccv_nnc_8i_rowwise_x_tmcq_table_t t;
-		memcpy(&t, ccv_nnc_tmcq_p2_table, sizeof(t));
+		memcpy(&t, ccv_nnc_trellis_builtin_table, sizeof(t));
 		return t;
 	}();
 	return &table;
@@ -1498,6 +1498,8 @@ static void _ccv_nnc_dequantize_8i_rowwise_x_fp_launch(const int format, const s
 {
 	if (ccv_nnc_8i_rowwise_x_is_tmcq(format))
 	{
+		// External pair codebooks (ccv_nnc_codebook.h) are Metal only for now.
+		assert(!((format >> 16) & 0xff) && "the CUDA TMCQ decode reads the built-in table only");
 		_ccv_nnc_dequantize_8i_rowwise_x_tmcq_fp_launch(format, output_length, row_length, input, scales, output, stream);
 		return;
 	}
@@ -1832,6 +1834,8 @@ void ccv_nnc_compat_dequantize_8i_rowwise_x_fp(const void* input, const int data
 {
 	assert(datatype == CCV_16F || datatype == CCV_16BF || datatype == CCV_32F || datatype == CCV_64F);
 	assert(row_length > 0);
+	// Only the built-in codebook on CUDA.
+	assert(ccv_nnc_8i_rowwise_x_codebook_slot(format) == 0);
 	assert(output_length % row_length == 0);
 	if (format & CCV_NNC_QX_8I_ROWWISE_HADAMARD_256)
 	{
@@ -1928,6 +1932,8 @@ void ccv_nnc_compat_dequantize_8i_rowwise_x_fp_hadamard_256(const void* input, c
 void ccv_nnc_compat_dequantize_8i_rowwise_x(const void* input, const int datatype, const size_t input_length, const size_t row_length, const int format, void* output, const size_t output_length, ccv_nnc_stream_context_t* const stream_context)
 {
 	assert(datatype == CCV_16F || datatype == CCV_16BF || datatype == CCV_32F || datatype == CCV_64F);
+	// Only the built-in codebook on CUDA.
+	assert(ccv_nnc_8i_rowwise_x_codebook_slot(format) == 0);
 	// Every group holds a multiple of 8 values, thus 8 codes never straddle a row (TMCQ tiles, which span 16
 	// rows, are decoded by their own kernel below).
 	assert(row_length > 0 && row_length % 8 == 0);
@@ -1945,6 +1951,8 @@ void ccv_nnc_compat_dequantize_8i_rowwise_x(const void* input, const int datatyp
 	const uint8_t* const u8 = (const uint8_t*)input;
 	if (ccv_nnc_8i_rowwise_x_is_tmcq(format))
 	{
+		// External pair codebooks (ccv_nnc_codebook.h) are Metal only for now.
+		assert(!((format >> 16) & 0xff) && "the CUDA TMCQ decode reads the built-in table only");
 		// A TMCQ tile spans 16 rows: each warp writes 16 rows x 16 bytes of one tile, with a row stride of row_length.
 		_ccv_nnc_8i_rowwise_x_tmcq_check(format, output_length, row_length, u8);
 		const size_t pair_count = output_length / 512;

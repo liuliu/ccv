@@ -118,7 +118,9 @@ std::size_t std::hash<Dequantize8iRowwiseXFPDescriptor>::operator()(const Dequan
 }
 
 std::pair<Dequantize8iRowwiseXFPKernelDescriptor, PipelineValue<Dequantize8iRowwiseXFPKernel>*> Dequantize8iRowwiseXFPDescriptor::findKernel(MTL::Device* const device, const DeviceProperties& dprops, NS::Array* const binaryArchivesToRead, MTL::BinaryArchive* const binaryArchiveToWrite, const std::string& pathToWrite, std::unordered_map<Dequantize8iRowwiseXFPKernelDescriptor, std::unique_ptr<Dequantize8iRowwiseXFPKernel>> *const libraryCache) const noexcept {
-	CCV_NNC_MFA_PRECONDITION((format & ~(CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK | CCV_NNC_QX_8I_ROWWISE_HADAMARD_256)) == 0);
+	// TMCQ may carry log2 of an external codebook's entry count in bits 16 - 23 (TMCQDecodeSource.hpp).
+	CCV_NNC_MFA_PRECONDITION((format & ~(CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK | CCV_NNC_QX_8I_ROWWISE_HADAMARD_256 | (is_tmcq(format) ? 0xff0000u : 0u))) == 0);
+	CCV_NNC_MFA_PRECONDITION(((format >> 16) & 0xffu) == 0 || (((format >> 16) & 0xffu) >= 9 && ((format >> 16) & 0xffu) <= 11));
 	CCV_NNC_MFA_PRECONDITION(rowLength > 0 && length % rowLength == 0);
 	CCV_NNC_MFA_PRECONDITION(!(format & CCV_NNC_QX_8I_ROWWISE_HADAMARD_256) || rowLength % 256 == 0);
 	// TMCQ tiles span 16 rows and 16 columns, and the codec does not combine with H256.

@@ -102,6 +102,12 @@ void ccv_nnc_mfa_encode_scaled_gemv(ccv_nnc_mfa_context_t* context, ccv_nnc_mfa_
     encoder->setBuffer(tensors[3], tensor_offsets[3], NS::UInteger(4));
   }
 
+  if ((params.format >> 16) & 0xffu) {
+    // External codebook (TMCQ only), see ccv_nnc_mfa_scaled_gemv_params_t::codebook.
+    CCV_NNC_MFA_PRECONDITION(params.codebook != nullptr);
+    encoder->setBuffer(params.codebook, 0, NS::UInteger(5));
+    encoder->useResource(params.codebook, MTL::ResourceUsageRead);
+  }
   encoder->setComputePipelineState(pipeline.get());
   encoder->useResource(tensors[0], MTL::ResourceUsageRead);
   encoder->useResource(tensors[1], MTL::ResourceUsageRead);

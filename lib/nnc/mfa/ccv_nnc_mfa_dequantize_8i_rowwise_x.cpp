@@ -90,6 +90,12 @@ void ccv_nnc_mfa_encode_dequantize_8i_rowwise_x(ccv_nnc_mfa_context_t* context, 
 	encoder->setComputePipelineState(pipeline.get());
 	encoder->useResource(tensors[0], MTL::ResourceUsageRead);
 	encoder->useResource(tensors[1], MTL::ResourceUsageWrite);
+	if ((params.format >> 16) & 0xffu) {
+		// External codebook (TMCQ only), see ccv_nnc_mfa_dequantize_8i_rowwise_x_params_t::codebook.
+		CCV_NNC_MFA_PRECONDITION(params.codebook != nullptr);
+		encoder->setBuffer(params.codebook, 0, NS::UInteger(5));
+		encoder->useResource(params.codebook, MTL::ResourceUsageRead);
+	}
 
 	MTL::Size gridSize = kernel->gridSize(descriptor.dispatchItems());
 	CCV_NNC_MFA_PRECONDITION(gridSize.width > 0 && gridSize.height > 0 && gridSize.depth > 0);
@@ -155,6 +161,12 @@ void ccv_nnc_mfa_encode_dequantize_8i_rowwise_x_selected(ccv_nnc_mfa_context_t* 
 	encoder->setBuffer(tensors[3], tensor_offsets[3], NS::UInteger(2));
 	encoder->setBuffer(tensors[0], tensor_offsets[0] + (size_t)descriptor.inputScaleOffset(), NS::UInteger(3));
 	encoder->setBuffer(tensors[3], tensor_offsets[3] + (size_t)descriptor.outputScaleOffset(), NS::UInteger(4));
+	if ((params.format >> 16) & 0xffu) {
+		// External codebook (TMCQ only), see ccv_nnc_mfa_dequantize_8i_rowwise_x_params_t::codebook.
+		CCV_NNC_MFA_PRECONDITION(params.codebook != nullptr);
+		encoder->setBuffer(params.codebook, 0, NS::UInteger(5));
+		encoder->useResource(params.codebook, MTL::ResourceUsageRead);
+	}
 
 	encoder->dispatchThreadgroups(tensors[4], tensor_offsets[4] + scratch_layout.dispatch_offset, kernel->threadgroupSize);
 	command_batch->finishCommand(encoder);

@@ -226,6 +226,7 @@ static inline ccv_nnc_tensor_param_t ccv_nnc_tensor_8i_rowwise(const ccv_nnc_ten
 	return new_params;
 }
 
+/* TMCQ, with the built-in table (codebook slot 0) or the codebook in its slot. */
 static inline int ccv_nnc_8i_rowwise_x_is_tmcq(const int format)
 {
 	const int codec = format & CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK;
@@ -237,6 +238,34 @@ static inline int ccv_nnc_8i_rowwise_x_tmcq_rate(const int format)
 {
 	assert(ccv_nnc_8i_rowwise_x_is_tmcq(format));
 	return 16 + 2 * ((format & CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK) - CCV_NNC_QX_8I_ROWWISE_TMCQ_N16);
+}
+
+/* The codebook slot of a format / reserved field (0 is the built-in table, see ccv_nnc_codebook.h). */
+static inline int ccv_nnc_8i_rowwise_x_codebook_slot(const int format)
+{
+	return (format & CCV_NNC_QX_8I_ROWWISE_CODEBOOK_SLOT_MASK) >> CCV_NNC_QX_8I_ROWWISE_CODEBOOK_SLOT_SHIFT;
+}
+
+/* The codec (bits 0 - 7). */
+static inline int ccv_nnc_8i_rowwise_x_codec(const int format)
+{
+	return format & CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK;
+}
+
+/* The format handed to kernels and their descriptors: the codec and the modifier bits, without the codebook slot.
+ * For a slot 0 tensor this is its reserved field unchanged. */
+static inline int ccv_nnc_8i_rowwise_x_kernel_format(const int format)
+{
+	return format & ~CCV_NNC_QX_8I_ROWWISE_CODEBOOK_SLOT_MASK;
+}
+
+/* Whether the codec may name the codebook slot of format: TMCQ any (0 is the built-in table), every other codec
+ * only slot 0. */
+static inline int ccv_nnc_8i_rowwise_x_codebook_is_valid(const int format)
+{
+	if (ccv_nnc_8i_rowwise_x_is_tmcq(format))
+		return 1;
+	return ccv_nnc_8i_rowwise_x_codebook_slot(format) == 0;
 }
 
 static inline int ccv_nnc_8i_rowwise_x_group_size(const int format)

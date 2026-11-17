@@ -1209,6 +1209,16 @@ std::string SegmentedInt8GemvKernel::createSource() const noexcept {
   if (format != 0) {
     if (const uint32_t rate = segmentedTMCQRate(format)) {
       append_tmcq_m1_kernel(shader, rate, fusedBias);
+      if (const uint32_t log2 = tmcq_codebook_log2(format)) {
+        // An external codebook (TMCQ with a codebook slot), already half2: `device const uint4* codebook [[buffer(11)]]` is copied into the
+        // same threadgroup half2 array, sized for the table; the lookups only change their shift.
+        tmcq_codebook_rewrite(shader, log2);
+        CCV_NNC_MFA_PRECONDITION(tmcq_codebook_replace(shader,
+          "  threadgroup half2 tmcq_tg[512];\n  tmcq_w1_load_table(tmcq_tg, sgitg * 32u + tiisg, S * 32u);\n",
+          "  threadgroup half2 tmcq_tg[TMCQ_CODEBOOK_ENTRIES];\n  tmcq_codebook_load(tmcq_tg, codebook, sgitg * 32u + tiisg, S * 32u);\n") == 1);
+        CCV_NNC_MFA_PRECONDITION(tmcq_codebook_replace(shader, "  uint tgpig_position [[threadgroup_position_in_grid]],",
+          "  device const uint4* codebook [[buffer(11)]],\n  uint tgpig_position [[threadgroup_position_in_grid]],") == 1);
+      }
       return shader;
     }
     if (format == CCV_NNC_QX_8I_ROWWISE_Q6_K) {

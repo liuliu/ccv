@@ -2,6 +2,7 @@
 #include "ccv_internal.h"
 #include "nnc/ccv_nnc_internal.h"
 #include "nnc/ccv_nnc_easy.h"
+#include "nnc/ccv_nnc_codebook.h"
 
 void ccv_nnc_mps_depalettize(const void* input, const int datatype, const size_t input_length, const int qbits, const int number_in_blocks, void* output, const size_t output_length, void* const command_buffer)
 {
@@ -87,6 +88,23 @@ void ccv_nnc_mps_dequantize_8i_rowwise(const void* input, const int datatype, co
 	ccv_nnc_stream_context_finish_command_batch(0, command_batch);
 }
 
+// The MFA format of a TMCQ tensor format whose bits 16 - 23 name a codebook slot (ccv_nnc_codebook.h): the
+// slot is replaced by log2 of the table's entry count, and *codebook is the table's buffer (NULL for slot 0).
+static uint32_t _ccv_nnc_mps_codebook_format(ccv_nnc_mfa_context_t* const context, const int format, mtl_buffer_t** const codebook)
+{
+	const int slot = ccv_nnc_codebook_slot_of(format);
+	// Kernels see the codec without the slot (ccv_nnc_8i_rowwise_x_kernel_format).
+	const uint32_t kernel = (uint32_t)ccv_nnc_8i_rowwise_x_kernel_format(format);
+	*codebook = NULL;
+	if (!slot)
+		return kernel;
+	assert(ccv_nnc_8i_rowwise_x_is_tmcq(format) && "codebook slots exist for TMCQ only");
+	int entries = 0;
+	*codebook = ccv_nnc_mfa_codebook_buffer(context, slot, &entries);
+	assert(*codebook && "the tensor names a codebook slot that is not registered");
+	return (kernel & ~(uint32_t)CCV_NNC_CODEBOOK_SLOT_MASK) | ((uint32_t)ccv_nnc_codebook_log2_entries(entries) << 16);
+}
+
 void ccv_nnc_mps_dequantize_8i_rowwise_x(const void* input, const int datatype, const size_t input_length, const size_t row_length, const int format, void* output, const size_t output_length, void* const command_buffer)
 {
 	uint32_t mtl_data_type = UINT32_MAX;
@@ -108,13 +126,17 @@ void ccv_nnc_mps_dequantize_8i_rowwise_x(const void* input, const int datatype, 
 		}
 	}
 	assert(mtl_data_type != UINT32_MAX);
+	ccv_nnc_mfa_context_t* context = ccv_nnc_default_mfa_context();
+	// An external codebook is supported for TMCQ.
+	mtl_buffer_t* codebook = NULL;
+	const uint32_t mfa_format = _ccv_nnc_mps_codebook_format(context, format, &codebook);
 	ccv_nnc_mfa_dequantize_8i_rowwise_x_fp_params_t params = {
 		.data_type = mtl_data_type,
-		.format = (uint32_t)format,
+		.format = mfa_format,
 		.row_length = row_length,
 		.length = output_length,
+		.codebook = codebook,
 	};
-	ccv_nnc_mfa_context_t* context = ccv_nnc_default_mfa_context();
 
 	ccv_nnc_mfa_prepare_dequantize_8i_rowwise_x_fp(context, params);
 
@@ -156,13 +178,16 @@ void ccv_nnc_mps_dequantize_8i_rowwise_x_to_8i_rowwise(const void* input, const 
 	}
 	assert(mtl_data_type != UINT32_MAX);
 	assert(!(format & CCV_NNC_QX_8I_ROWWISE_HADAMARD_256));
+	ccv_nnc_mfa_context_t* context = ccv_nnc_default_mfa_context();
+	mtl_buffer_t* codebook = NULL;
+	const uint32_t mfa_format = _ccv_nnc_mps_codebook_format(context, format & (CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK | CCV_NNC_CODEBOOK_SLOT_MASK), &codebook);
 	ccv_nnc_mfa_dequantize_8i_rowwise_x_params_t params = {
 		.data_type = mtl_data_type,
-		.format = (uint32_t)format & CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK,
+		.format = mfa_format,
 		.row_length = row_length,
 		.length = output_length,
+		.codebook = codebook,
 	};
-	ccv_nnc_mfa_context_t* context = ccv_nnc_default_mfa_context();
 
 	ccv_nnc_mfa_prepare_dequantize_8i_rowwise_x(context, params);
 

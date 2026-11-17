@@ -58,6 +58,12 @@ void ccv_nnc_mfa_encode_dequantize_8i_rowwise_x_fp(ccv_nnc_mfa_context_t* contex
 	encoder->setComputePipelineState(pipeline.get());
 	encoder->useResource(tensors[0], MTL::ResourceUsageRead);
 	encoder->useResource(tensors[1], MTL::ResourceUsageWrite);
+	if ((params.format >> 16) & 0xffu) {
+		// External codebook (TMCQ only), see ccv_nnc_mfa_dequantize_8i_rowwise_x_fp_params_t::codebook.
+		CCV_NNC_MFA_PRECONDITION(params.codebook != nullptr);
+		encoder->setBuffer(params.codebook, 0, NS::UInteger(3));
+		encoder->useResource(params.codebook, MTL::ResourceUsageRead);
+	}
 
 	MTL::Size gridSize = kernel->gridSize(descriptor.totalGroups(), descriptor.groupSize());
 	CCV_NNC_MFA_PRECONDITION(gridSize.width > 0 && gridSize.height > 0 && gridSize.depth > 0);
