@@ -312,6 +312,10 @@ typedef struct {
 			int state_checkpoint_count; /**< [causal_convolution.state_checkpoint_count] Number of rows past kernel_size - 1 the next rows keep, so the rows before each of the last tokens are kept too. */
 		} causal_convolution;
 		struct {
+			float epsilon; /**< [attention_residual.epsilon] The epsilon of the RMS normalization of each state. */
+			float scale; /**< [attention_residual.scale] The scale applied to the dot products of the queries and the normalized states. */
+		} attention_residual;
+		struct {
 			float min; /**< [clamp.min] The minimum, NaN is no min. */
 			float max; /**< [clamp.max] The maximum, NaN is no max. */
 		} clamp;
@@ -5045,6 +5049,20 @@ CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_rotate_half(const char* const name);
  * @return A model that is applied with two or three inputs and generates two outputs.
  */
 CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_causal_convolution(const int kernel_size, const int silu, const int state_checkpoint_count, const int has_dynamic_weights, const int is_trainable, const char* const name);
+/**
+ * An attention residual: each output is, for one learned query, a softmax mixture of the
+ * RMS-normalized states, scored by the query's dot product with them. Inputs are the block states
+ * [n, ..., C] and the partial state [..., C], which is the last state; there is an output [..., C]
+ * for each query. The model owns its queries [queries, C]. On Metal, there may be up to 16 states,
+ * the partial state included, and up to 4 queries.
+ * @param queries The number of queries, and of outputs.
+ * @param epsilon The epsilon of the RMS normalization of each state.
+ * @param scale The scale applied to the dot products of the queries and the normalized states.
+ * @param is_trainable Whether the queries are trainable.
+ * @param name The unique name of the model.
+ * @return A model that is applied with two inputs and generates an output for each query.
+ */
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_attention_residual(const int queries, const float epsilon, const float scale, const int is_trainable, const char* const name);
 /**
  * Apply the gated delta recurrent update.
  * Inputs are (q, k, v, decay / log_decay, beta, state_in), and outputs are (y, state_out).

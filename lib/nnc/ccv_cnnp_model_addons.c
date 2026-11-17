@@ -2867,6 +2867,86 @@ static ccv_cnnp_model_t* _ccv_cnnp_causal_convolution_copy(const ccv_cnnp_model_
 	return ccv_cnnp_causal_convolution(self->kernel_size, self->silu, self->state_checkpoint_count, self->has_dynamic_weights, self->super.is_trainable, super->name);
 }
 
+// MARK - Attention Residual Layer
+
+typedef struct {
+	ccv_cnnp_model_t super;
+	ccv_nnc_tensor_symbol_t weights;
+	int queries;
+	float epsilon;
+	float scale;
+	ccv_nnc_tensor_symbol_t outputs[1];
+} ccv_cnnp_model_attention_residual_t;
+
+static void _ccv_cnnp_attention_residual_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
+{
+	PRINT(CCV_CLI_VERBOSE, "[cnnp_attention_residual_build] -\n");
+	ccv_cnnp_model_attention_residual_t* const self = (ccv_cnnp_model_attention_residual_t*)super;
+	assert(input_size == 2);
+	assert(output_size == self->queries);
+	const ccv_nnc_tensor_param_t params = ccv_nnc_tensor_symbol_params(graph, inputs[1]);
+	const int channels = params.dim[ccv_nnc_tensor_nd(params.dim) - 1];
+	ccv_nnc_tensor_param_t weights_params = params;
+	memset(weights_params.dim, 0, sizeof(weights_params.dim));
+	weights_params.dim[0] = self->queries;
+	weights_params.dim[1] = channels;
+	if (!self->weights.graph)
+		self->weights = ccv_nnc_tensor_symbol_new(graph, weights_params, "weights");
+	const ccv_nnc_tensor_symbol_t weights = ccv_cnnp_model_get_symbol(super, self->weights);
+	const ccv_nnc_cmd_t cmd = CMD_ATTENTION_RESIDUAL_FORWARD(self->epsilon, self->scale);
+	int i;
+	// Every output has the partial state's shape.
+	for (i = 0; i < output_size; i++)
+		outputs[i] = ccv_nnc_tensor_symbol_new(graph, params, 0);
+	ccv_nnc_graph_exec_symbol_new(graph, cmd, TENSOR_SYMBOL_LIST(inputs[0], inputs[1], weights), outputs, output_size, "attention_residual");
+}
+
+static void _ccv_cnnp_attention_residual_init_states(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_cnnp_state_initializer_f initializer, void* const context)
+{
+	ccv_cnnp_model_attention_residual_t* const self = (ccv_cnnp_model_attention_residual_t*)super;
+	// Zero queries weigh every state the same.
+	initializer(context, CMD_SET_FORWARD(0), ccv_nnc_no_hint, 0, 0, self->weights);
+}
+
+static void _ccv_cnnp_attention_residual_add_to_parameter(ccv_cnnp_model_t* const super, const ccv_cnnp_add_to_array_f add_to_array, void* const parameters, const int is_trainable)
+{
+	ccv_cnnp_model_attention_residual_t* const self = (ccv_cnnp_model_attention_residual_t*)super;
+	add_to_array(parameters, self->weights, is_trainable);
+}
+
+static ccv_cnnp_model_t* _ccv_cnnp_attention_residual_copy(const ccv_cnnp_model_t* const self, void* const context);
+
+static const ccv_cnnp_model_vtab_t ccv_cnnp_attention_residual_isa = {
+	.build = _ccv_cnnp_attention_residual_build,
+	.init_states = _ccv_cnnp_attention_residual_init_states,
+	.add_to_parameter = _ccv_cnnp_attention_residual_add_to_parameter,
+	.copy = _ccv_cnnp_attention_residual_copy,
+};
+
+ccv_cnnp_model_t* ccv_cnnp_attention_residual(const int queries, const float epsilon, const float scale, const int is_trainable, const char* const name)
+{
+	assert(queries >= 1);
+	ccv_cnnp_model_attention_residual_t* const model_attention_residual = (ccv_cnnp_model_attention_residual_t*)cccalloc(1, sizeof(ccv_cnnp_model_attention_residual_t) + sizeof(ccv_nnc_tensor_symbol_t) * (queries - 1));
+	model_attention_residual->super.isa = &ccv_cnnp_attention_residual_isa;
+	model_attention_residual->super.input_size = 2;
+	model_attention_residual->super.outputs = model_attention_residual->outputs;
+	model_attention_residual->super.output_size = queries;
+	model_attention_residual->super.is_trainable = is_trainable;
+	model_attention_residual->weights.d = CCV_NNC_NO_TENSOR_SYMBOL;
+	model_attention_residual->weights.graph = 0;
+	model_attention_residual->queries = queries;
+	model_attention_residual->epsilon = epsilon;
+	model_attention_residual->scale = scale;
+	ccv_cnnp_model_copy_name(&model_attention_residual->super, name);
+	return (ccv_cnnp_model_t*)model_attention_residual;
+}
+
+static ccv_cnnp_model_t* _ccv_cnnp_attention_residual_copy(const ccv_cnnp_model_t* const super, void* const context)
+{
+	const ccv_cnnp_model_attention_residual_t* const self = (const ccv_cnnp_model_attention_residual_t*)super;
+	return ccv_cnnp_attention_residual(self->queries, self->epsilon, self->scale, self->super.is_trainable, super->name);
+}
+
 // MARK - Gated Delta Layer
 
 typedef struct {
