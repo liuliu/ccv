@@ -45,7 +45,7 @@ kernel void attention_residual(
   uint lid [[thread_index_in_threadgroup]])
 {
   const uint row = tgid.x;
-  const uint rows = tgpg.x;
+  const uniform<uint> rows = make_uniform(tgpg.x);
   const uint state_count = block_count + 1;
   // Each SIMD group's share of a state's sum of squares and of its dot product with each query.
   threadgroup float partials[MAX_STATES * (Q + 1)][SIMD_GROUPS];

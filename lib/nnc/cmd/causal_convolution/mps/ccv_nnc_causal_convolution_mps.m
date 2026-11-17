@@ -77,7 +77,6 @@ static int _ccv_nnc_causal_convolution_forw(const ccv_nnc_cmd_t cmd, const ccv_n
 			.silu = cmd.info.causal_convolution.silu != 0,
 			.dynamic_weight_groups = groups,
 		};
-		ccv_nnc_mfa_prepare_causal_convolution(context, params);
 		// x, the previous rows, the weights, y, the next rows and the dynamic weights, if any.
 		mtl_buffer_t* tensors[7] = {};
 		size_t offsets[6] = {};

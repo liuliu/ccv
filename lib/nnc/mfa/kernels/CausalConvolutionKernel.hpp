@@ -18,6 +18,7 @@ struct CausalConvolutionKernel {
 
 private:
   std::string createSource() const noexcept;
+  std::string createConstants() const noexcept;
 };
 
 #endif

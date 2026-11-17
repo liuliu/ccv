@@ -3,6 +3,7 @@
 
 #include <functional>
 #include <memory>
+#include <simd/simd.h>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -26,12 +27,16 @@ struct std::hash<CausalConvolutionKernelDescriptor> {
 
 struct CausalConvolutionKernel;
 
-// Sizes are bound at encode time, so one pipeline serves every shape.
 struct CausalConvolutionDescriptor {
   bool silu;
   // Per-token dynamic weights add to the weights of each channel group.
   bool dynamicWeights;
   GEMMOperandPrecision memoryPrecision;
+  // Function constants of the pipeline. The tokens and the batches come from the grid.
+  uint32_t channels;
+  uint32_t kernelSize;
+  uint32_t nextRows;
+  uint32_t dynamicWeightGroups;
 
   bool operator==(const CausalConvolutionDescriptor& rhs) const;
   std::pair<CausalConvolutionKernelDescriptor, PipelineValue<CausalConvolutionKernel>*> findKernel(MTL::Device* const device, const DeviceProperties& dprops, NS::Array* const binaryArchivesToRead, MTL::BinaryArchive* const binaryArchiveToWrite, const std::string& pathToWrite, std::unordered_map<CausalConvolutionKernelDescriptor, std::unique_ptr<CausalConvolutionKernel>>* const libraryCache) const noexcept;
