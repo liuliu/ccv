@@ -67,8 +67,8 @@ struct AttentionR1Descriptor {
 
   bool attentionSinks;
 
-  /// A relative-position bias [batch, R, Hq, extent], with causal attention.
-  bool relativeBias = false;
+  /// A relative-position bias [batch, R, Hq, extent], with causal attention. 0 is no bias.
+  uint32_t relativeBiasExtent = 0;
 
   uint32_t simdgroups;
 

@@ -38,7 +38,7 @@ bool NAAttentionDescriptor::operator==(const NAAttentionDescriptor& rhs) const {
   isVarlen == rhs.isVarlen &&
   attentionSinks == rhs.attentionSinks &&
   sinksPerQuery == rhs.sinksPerQuery &&
-  relativeBias == rhs.relativeBias &&
+  relativeBiasExtent == rhs.relativeBiasExtent &&
   slidingWindow == rhs.slidingWindow &&
   (loadStrides || maskBatchStride == rhs.maskBatchStride) &&
   loadC == rhs.loadC &&
@@ -77,7 +77,8 @@ std::size_t std::hash<NAAttentionDescriptor>::operator()(const NAAttentionDescri
   seed = combine_32(seed, pack_32(simd::ushort2 {
       (uint16_t)(hash.masked ? 1 : 0),
       (uint16_t)(hash.isVarlen ? 1 : 0) }));
-  seed = combine_32(seed, (hash.attentionSinks ? 1 : 0) | (hash.sinksPerQuery ? 2 : 0) | (hash.relativeBias ? 4 : 0));
+  seed = combine_32(seed, (hash.attentionSinks ? 1 : 0) | (hash.sinksPerQuery ? 2 : 0));
+  seed = combine_32(seed, hash.relativeBiasExtent);
   seed = combine_32(seed, hash.slidingWindow);
   seed = combine_32(seed, hash.loadStrides ? 0 : hash.maskBatchStride);
   seed = combine_32(seed, pack_32(simd::ushort2 { hash.type.value, 0 } ));
@@ -157,7 +158,7 @@ NAAttentionKernelDescriptor NAAttentionDescriptor::kernelDescriptor(MTL::Device 
   descriptor.hasRemainderC = !loadC || isVarlen || matrixDimensions[1] % (blockDimensions[1] * ((isCausal || masked) ? 1 : 2)) != 0;
   descriptor.loadStrides = loadStrides;
   descriptor.sinksPerQuery = sinksPerQuery;
-  descriptor.relativeBias = relativeBias;
+  descriptor.relativeBias = relativeBiasExtent > 0;
   return descriptor;
 }
 
@@ -168,7 +169,7 @@ uint16_t NAAttentionDescriptor::splitKV(simd::ushort3 blockDimensions, uint16_t 
       masked ||
       isVarlen ||
       sinksPerQuery ||
-      relativeBias ||
+      relativeBiasExtent > 0 ||
       slidingWindow > 0) {
     return 1;
   }
@@ -229,6 +230,8 @@ std::pair<NAAttentionKernelDescriptor, PipelineValue<NAAttentionKernel> *> NAAtt
       constants->setConstantValue(&splitKV, MTL::DataTypeUInt, NS::UInteger(19));
       constants->setConstantValue(&batchDimension, MTL::DataTypeUInt, NS::UInteger(20));
     }
+    if (type.value == AttentionKernelType::forward && relativeBiasExtent > 0)
+      constants->setConstantValue(&relativeBiasExtent, MTL::DataTypeUInt, NS::UInteger(21));
 
     NS::String* swiftName = NS::String::string(name, NS::UTF8StringEncoding);
     NS::Error* error = nil;

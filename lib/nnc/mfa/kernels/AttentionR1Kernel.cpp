@@ -46,7 +46,7 @@ using namespace metal;
     if (attentionSinks)
       source += "    device const real* Sinks [[buffer(19)]],\n    constant uint& Sink_head_stride [[buffer(20)]],\n";
     if (relativeBias)
-      source += "    device const real* Relative_bias [[buffer(23)]],\n    constant uint& Relative_bias_extent [[buffer(24)]],\n";
+      source += "    device const real* Relative_bias [[buffer(23)]],\n";
     source += R"(
     uint3 tgid [[threadgroup_position_in_grid]],
     uint3 grid [[threadgroups_per_grid]],
@@ -158,7 +158,7 @@ kernel void attention_r1_cooperative(
   if (attentionSinks)
     source += "    device const real* Sinks [[buffer(19)]],\n    constant uint& Sink_head_stride [[buffer(20)]],\n";
   if (relativeBias)
-    source += "    device const real* Relative_bias [[buffer(23)]],\n    constant uint& Relative_bias_extent [[buffer(24)]],\n";
+    source += "    device const real* Relative_bias [[buffer(23)]],\n";
   source += R"(
     threadgroup float* scratch [[threadgroup(0)]],
     uint3 tgid [[threadgroup_position_in_grid]],
@@ -300,5 +300,7 @@ std::string AttentionR1Kernel::createConstants() const noexcept {
   defines += "constant bool CAUSAL [[function_constant(8)]];\n";
   defines += "constant uint REDUCE_SG [[function_constant(9)]];\n";
   defines += "constant uint HEADS_PER_SIMD [[function_constant(10)]];\n";
+  if (relativeBias)
+    defines += "constant uint Relative_bias_extent [[function_constant(11)]];\n";
   return defines;
 }

@@ -128,7 +128,7 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
       AttentionR1Descriptor attentionDesc = AttentionR1Descriptor::select(
           attentionR1Precision, keyCount, hash.Hq, hash.Hk, hash.D, hash.alpha, true, hash.attention_sinks,
           hash.R, hash.is_causal, batch_sizes[0], context->device_properties.coreCount);
-      attentionDesc.relativeBias = hash.relative_bias_extent > 0;
+      attentionDesc.relativeBiasExtent = hash.relative_bias_extent;
       auto pool = NS::AutoreleasePool::alloc()->init();
       auto &shaderCache = context->kernel_cache;
       DeviceProperties dprops = DeviceProperties();
@@ -161,7 +161,6 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
         if (hash.relative_bias_extent > 0) {
           encoder->useResource(tensors[9], MTL::ResourceUsageRead);
           encoder->setBuffer(tensors[9], tensor_offsets[9], 23);
-          encoder->setBytes(&params.relative_bias_extent, sizeof(params.relative_bias_extent), 24);
         }
         encoder->dispatchThreadgroups(
             attentionDesc.mode == AttentionR1Descriptor::Mode::cooperative
@@ -197,7 +196,6 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
       if (hash.relative_bias_extent > 0) {
         encoder->useResource(tensors[9], MTL::ResourceUsageRead);
         encoder->setBuffer(tensors[9], tensor_offsets[9], 23);
-        encoder->setBytes(&params.relative_bias_extent, sizeof(params.relative_bias_extent), 24);
       }
       encoder->dispatchThreadgroups(
           MTL::Size(hash.Hq / (attentionDesc.simdgroups / hash.R * attentionDesc.headsPerSIMD), batch_sizes[0], attentionDesc.workgroups),
@@ -504,7 +502,7 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
       attentionDesc.isVarlen = hash.is_varlen;
       attentionDesc.attentionSinks = hash.attention_sinks;
       attentionDesc.sinksPerQuery = hash.sinks_per_query;
-      attentionDesc.relativeBias = hash.relative_bias_extent > 0;
+      attentionDesc.relativeBiasExtent = hash.relative_bias_extent;
       attentionDesc.slidingWindow = hash.sliding_window;
       attentionDesc.loadR = (ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M);
       attentionDesc.loadC = (!hash.masked && !hash.is_varlen && hash.R <= 4) || (ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_ATTENTION_SPECIALIZING_C);
@@ -680,7 +678,6 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
       if (hash.relative_bias_extent > 0) {
         encoder->useResource(tensors[9], MTL::ResourceUsageRead);
         encoder->setBuffer(tensors[9], tensor_offsets[9], 23);
-        encoder->setBytes(&params.relative_bias_extent, sizeof(params.relative_bias_extent), 24);
       }
 
       // Calculate the grid size.
@@ -720,7 +717,7 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
     attentionDesc.isVarlen = hash.is_varlen;
     attentionDesc.attentionSinks = hash.attention_sinks;
     attentionDesc.sinksPerQuery = hash.sinks_per_query;
-    attentionDesc.relativeBias = hash.relative_bias_extent > 0;
+    attentionDesc.relativeBiasExtent = hash.relative_bias_extent;
     attentionDesc.slidingWindow = hash.sliding_window;
     if (hash.masked && batch_sizes[1] > 1) {
       attentionDesc.maskBatchStride = hash.R * hash.C;
@@ -863,7 +860,6 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
       if (hash.relative_bias_extent > 0) {
         encoder->useResource(tensors[9], MTL::ResourceUsageRead);
         encoder->setBuffer(tensors[9], tensor_offsets[9], 23);
-        encoder->setBytes(&params.relative_bias_extent, sizeof(params.relative_bias_extent), 24);
       }
     
       MTL::Size gridSize

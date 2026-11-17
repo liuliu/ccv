@@ -14,7 +14,7 @@ bool AttentionR1Descriptor::operator==(const AttentionR1Descriptor& rhs) const {
       D == rhs.D && R == rhs.R && isCausal == rhs.isCausal &&
       scale == rhs.scale &&
       attentionSinks == rhs.attentionSinks &&
-      relativeBias == rhs.relativeBias &&
+      relativeBiasExtent == rhs.relativeBiasExtent &&
       simdgroups == rhs.simdgroups && headsPerSIMD == rhs.headsPerSIMD &&
       reductionSIMDGroups == rhs.reductionSIMDGroups &&
       workgroups == rhs.workgroups &&
@@ -119,7 +119,8 @@ std::size_t std::hash<AttentionR1Descriptor>::operator()(const AttentionR1Descri
   seed = combine_32(seed, hash.headsPerSIMD);
   seed = combine_32(seed, hash.isCausal ? 1 : 0);
   seed = combine_32(seed, hash.loadC ? 1 : 0);
-  seed = combine_32(seed, (hash.attentionSinks ? 1 : 0) | (hash.relativeBias ? 2 : 0));
+  seed = combine_32(seed, hash.attentionSinks ? 1 : 0);
+  seed = combine_32(seed, hash.relativeBiasExtent);
   seed = combine_32(seed, uint32_t(std::hash<float>{}(hash.scale)));
   return seed;
 }
@@ -152,7 +153,7 @@ std::pair<AttentionR1KernelDescriptor, PipelineValue<AttentionR1Kernel>*> Attent
   kernelDesc.memoryPrecision = memoryPrecision;
   kernelDesc.loadC = loadC;
   kernelDesc.attentionSinks = attentionSinks;
-  kernelDesc.relativeBias = relativeBias;
+  kernelDesc.relativeBias = relativeBiasExtent > 0;
 
   auto createPipeline =
   [=](MTL::Library* library, const char* functionNameString) -> MTL::ComputePipelineState* {
@@ -169,6 +170,8 @@ std::pair<AttentionR1KernelDescriptor, PipelineValue<AttentionR1Kernel>*> Attent
     constants->setConstantValue(&isCausal, MTL::DataTypeBool, NS::UInteger(8));
     constants->setConstantValue(&reductionSIMDGroups, MTL::DataTypeUInt, NS::UInteger(9));
     constants->setConstantValue(&headsPerSIMD, MTL::DataTypeUInt, NS::UInteger(10));
+    if (relativeBiasExtent > 0)
+      constants->setConstantValue(&relativeBiasExtent, MTL::DataTypeUInt, NS::UInteger(11));
     float scale = this->scale;
     constants->setConstantValue(&scale, MTL::DataTypeFloat, NS::UInteger(6));
 

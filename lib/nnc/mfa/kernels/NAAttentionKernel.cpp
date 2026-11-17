@@ -582,6 +582,11 @@ constant uint SplitKV_blocks_per_split = (SplitKV_c_blocks + SplitKV_splits - 1)
 )";
     }
   }
+  if (type.value == AttentionKernelType::forward && relativeBias) {
+    source += R"(
+constant uint Relative_bias_extent [[function_constant(21)]];
+)";
+  }
   for (const auto& operand : operands) {
     if (loadStrides) continue;
     source.SetValue("OPERAND_NAME", operand.name());
@@ -781,7 +786,6 @@ std::string NAAttentionKernel::createBufferBindings() const noexcept {
     output += "  device const ";
     output += memoryName(AttentionOperand::Q);
     output += "* Relative_bias_buf [[buffer(23)]],\n";
-    output += "  constant uint& Relative_bias_extent [[buffer(24)]],\n";
   }
   if (type.value == AttentionKernelType::forward && loadC) {
     output += "  const device uint* C_buf [[buffer(21)]],\n";

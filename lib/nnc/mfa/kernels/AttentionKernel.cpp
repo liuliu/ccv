@@ -638,6 +638,8 @@ std::string AttentionKernel::createConstants() const noexcept {
   }
   if (type.value == AttentionKernelType::forward)
     output += "  constant bool attention_sinks [[function_constant(28)]];\n";
+  if (type.value == AttentionKernelType::forward && relativeBias)
+    output += "  constant uint Relative_bias_extent [[function_constant(29)]];\n";
   std::string dimensions;
   if (!loadR) dimensions += "constant uint R [[function_constant(0)]];\n";
   if (!loadC) dimensions += "constant uint C [[function_constant(1)]];\n";
@@ -713,7 +715,6 @@ std::string AttentionKernel::createBufferBindings() const noexcept {
     output += "  device const ";
     output += memoryName(AttentionOperand::Q);
     output += "* Relative_bias_buf [[buffer(23)]],\n";
-    output += "  constant uint& Relative_bias_extent [[buffer(24)]],\n";
   }
   if (loadR || loadC)
     output += "  constant uint* dimensions [[buffer(21)]],\n";
