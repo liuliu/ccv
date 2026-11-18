@@ -34,6 +34,8 @@ typedef struct {
 
 // Gate / up share readiness; down can load while SwiGLU executes.
 enum { CCV_NNC_MOE_READINESS_COUNT = 2 };
+// The three slot pools, the slot, last-used, plan and route generation buffers, and the readiness buffers.
+enum { CCV_NNC_MOE_RESIDENT_BUFFER_COUNT = 3 + 5 + CCV_NNC_MOE_READINESS_COUNT };
 
 @interface MFAMoEWeightsStreamingState : NSObject {
 @public
@@ -63,6 +65,8 @@ enum { CCV_NNC_MOE_READINESS_COUNT = 2 };
 	id<MTLBuffer> gpu_route_generation_buffer;
 	id<MTLBuffer> gpu_ready_generation_buffers[CCV_NNC_MOE_READINESS_COUNT];
 	uint32_t gpu_last_encoded_generation;
+	// The slot pools and plan buffers stay resident across command buffers.
+	int is_resident;
 }
 @end
 
@@ -79,8 +83,15 @@ enum { CCV_NNC_MOE_READINESS_COUNT = 2 };
 	return self;
 }
 
+static int _ccv_nnc_moe_resident_buffers(MFAMoEWeightsStreamingState* const state, id<MTLBuffer>* const buffers);
+
 - (void)dealloc
 {
+	if (is_resident)
+	{
+		id<MTLBuffer> buffers[CCV_NNC_MOE_RESIDENT_BUFFER_COUNT];
+		ccv_nnc_mps_remove_resident_buffers(buffers, _ccv_nnc_moe_resident_buffers(self, buffers));
+	}
 	int i;
 	for (i = 0; i < 3; i++)
 	{
@@ -103,6 +114,24 @@ enum { CCV_NNC_MOE_READINESS_COUNT = 2 };
 	[super dealloc];
 }
 @end
+
+// Every buffer a decode step binds: the slot pools and the plan, slot and readiness buffers.
+static int _ccv_nnc_moe_resident_buffers(MFAMoEWeightsStreamingState* const state, id<MTLBuffer>* const buffers)
+{
+	int count = 0;
+	int i;
+	for (i = 0; i < 3; i++)
+		buffers[count++] = state->resident_buffers[i];
+	buffers[count++] = state->gpu_logical_to_slot_buffer;
+	buffers[count++] = state->gpu_slot_to_logical_buffer;
+	buffers[count++] = state->gpu_last_used_buffer;
+	buffers[count++] = state->gpu_plan_buffer;
+	buffers[count++] = state->gpu_route_generation_buffer;
+	for (i = 0; i < CCV_NNC_MOE_READINESS_COUNT; i++)
+		buffers[count++] = state->gpu_ready_generation_buffers[i];
+	assert(count == CCV_NNC_MOE_RESIDENT_BUFFER_COUNT);
+	return count;
+}
 
 static char ccv_nnc_moe_weights_streaming_state_key;
 static char ccv_nnc_moe_weights_streaming_projection_keys[3];
@@ -391,6 +420,8 @@ static MFAMoEWeightsStreamingState* _ccv_nnc_moe_state_for_inputs(ccv_nnc_tensor
 			}
 			__atomic_store_n((uint32_t*)state->gpu_ready_generation_buffers[i].contents, 0, __ATOMIC_RELEASE);
 		}
+		id<MTLBuffer> resident[CCV_NNC_MOE_RESIDENT_BUFFER_COUNT];
+		state->is_resident = ccv_nnc_mps_add_resident_buffers(resident, _ccv_nnc_moe_resident_buffers(state, resident));
 		objc_setAssociatedObject(gate_source, &ccv_nnc_moe_weights_streaming_state_key,
 			state, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
 		[state release];

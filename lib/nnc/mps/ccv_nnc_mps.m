@@ -568,6 +568,61 @@ void* mppinmemory(void* const ptr, int* const status)
 	return mapping;
 }
 
+API_AVAILABLE(macos(15.0), ios(18.0), macCatalyst(18.0), tvos(18.0), visionos(2.0))
+static id<MTLResidencySet> _ccv_nnc_mps_shared_residency_set(void)
+{
+	static dispatch_once_t once;
+	static id<MTLResidencySet> residency_set;
+	dispatch_once(&once, ^{
+		MTLResidencySetDescriptor* const descriptor = [MTLResidencySetDescriptor new];
+		descriptor.label = @"Resident buffers";
+		descriptor.initialCapacity = 512;
+		NSError* error = nil;
+		residency_set = [ccv_nnc_default_device() newResidencySetWithDescriptor:descriptor error:&error];
+		[descriptor release];
+		if (residency_set)
+			[_ccv_nnc_default_queue() addResidencySet:residency_set];
+		else
+			fprintf(stderr, "ccv: Metal residency set creation failed: %s\n", error ? error.localizedDescription.UTF8String : "unknown error");
+	});
+	return residency_set;
+}
+
+int ccv_nnc_mps_add_resident_buffers(id<MTLBuffer> const* const buffers, const int count)
+{
+	if (@available(macOS 15.0, iOS 18.0, macCatalyst 18.0, tvOS 18.0, visionOS 2.0, *)) {
+		id<MTLResidencySet> const residency_set = _ccv_nnc_mps_shared_residency_set();
+		if (!residency_set)
+			return 0;
+		@synchronized(residency_set) {
+			int i;
+			for (i = 0; i < count; i++)
+				if (buffers[i])
+					[residency_set addAllocation:buffers[i]];
+			[residency_set commit];
+			[residency_set requestResidency];
+		}
+		return 1;
+	}
+	return 0;
+}
+
+void ccv_nnc_mps_remove_resident_buffers(id<MTLBuffer> const* const buffers, const int count)
+{
+	if (@available(macOS 15.0, iOS 18.0, macCatalyst 18.0, tvOS 18.0, visionOS 2.0, *)) {
+		id<MTLResidencySet> const residency_set = _ccv_nnc_mps_shared_residency_set();
+		if (!residency_set)
+			return;
+		@synchronized(residency_set) {
+			int i;
+			for (i = 0; i < count; i++)
+				if (buffers[i])
+					[residency_set removeAllocation:buffers[i]];
+			[residency_set commit];
+		}
+	}
+}
+
 int mpunpinmemory(void* const ptr)
 {
 	MTLWholeFileMapping* const mapping = (MTLWholeFileMapping*)ptr;
