@@ -107,28 +107,33 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
     const bool useAttentionR1 =
         params.type == 0 &&
         !params.use_quantized_attention &&
-        !hash.masked &&
+        // A mask [1, 1, R, C] of one batch, without a sliding window.
+        (!hash.masked || (batch_sizes[0] == 1 && hash.sliding_window == 0)) &&
         !hash.is_varlen &&
         // With a relative-position bias, also when the sliding window covers every key, or when
-        // one row reads the last keys of a cache bound with more than its window.
-        (hash.sliding_window == 0 || (hash.relative_bias_extent > 0 && (hash.sliding_window >= hash.C || (hash.R == 1 && batch_sizes[0] == 1)))) &&
+        // the rows read the last keys of a cache bound with more than their windows.
+        (hash.sliding_window == 0 || (hash.relative_bias_extent > 0 && (hash.sliding_window >= hash.C || batch_sizes[0] == 1))) &&
         (hash.relative_bias_extent == 0 || hash.is_causal) &&
-        !hash.sinks_per_query &&
         attentionR1DataType &&
-        (hash.R == 1 || hash.R == 2) &&
-        !tensors[5] && // Saved logsumexp requires the general attention path.
+        hash.R >= 1 && hash.R <= 8 &&
+        // Decode never feeds a backward pass, so a bound softmax_lse is left unwritten.
         hash.C > 0 &&
         (hash.D == 128 || hash.D == 256) &&
         hash.Hk > 0 &&
         (hash.Hq % hash.Hk) == 0;
     if (useAttentionR1) {
-      // The keys the row reads, and where they start in the bound keys and values (FP16 or BF16).
-      const uint32_t keyCount = hash.sliding_window > 0 && hash.sliding_window < hash.C ? hash.sliding_window : hash.C;
+      // The keys the rows read, and where they start in the bound keys and values (FP16 or BF16):
+      // with a sliding window, the last row's window and the R - 1 keys before it.
+      const uint32_t keyCount = hash.sliding_window > 0 && hash.sliding_window + hash.R - 1 < hash.C ? hash.sliding_window + hash.R - 1 : hash.C;
       const size_t keyOffset = (size_t)(hash.C - keyCount) * hash.Hk * hash.D * 2;
       AttentionR1Descriptor attentionDesc = AttentionR1Descriptor::select(
           attentionR1Precision, keyCount, hash.Hq, hash.Hk, hash.D, hash.alpha, true, hash.attention_sinks,
           hash.R, hash.is_causal, batch_sizes[0], context->device_properties.coreCount);
+      attentionDesc.sinksPerQuery = hash.sinks_per_query;
       attentionDesc.relativeBiasExtent = hash.relative_bias_extent;
+      // Rows start their windows at different keys only when the keys exceed a window.
+      attentionDesc.slidingWindow = hash.sliding_window > 0 && keyCount > hash.sliding_window ? hash.sliding_window : 0;
+      attentionDesc.masked = hash.masked;
       auto pool = NS::AutoreleasePool::alloc()->init();
       auto &shaderCache = context->kernel_cache;
       DeviceProperties dprops = DeviceProperties();
@@ -162,10 +167,14 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
           encoder->useResource(tensors[9], MTL::ResourceUsageRead);
           encoder->setBuffer(tensors[9], tensor_offsets[9], 23);
         }
+        if (hash.masked) {
+          encoder->useResource(tensors[4], MTL::ResourceUsageRead);
+          encoder->setBuffer(tensors[4], tensor_offsets[4], 15);
+        }
         encoder->dispatchThreadgroups(
             attentionDesc.mode == AttentionR1Descriptor::Mode::cooperative
                 ? MTL::Size(hash.Hq, batch_sizes[0], hash.R)
-                : MTL::Size(hash.Hq / (attentionDesc.simdgroups / hash.R * attentionDesc.headsPerSIMD), batch_sizes[0], 1),
+                : MTL::Size(hash.Hq / attentionDesc.headsPerGroup, batch_sizes[0], 1),
             MTL::Size(threadgroupSize, 1, 1));
         command_batch->finishCommand(encoder);
         return;
@@ -197,8 +206,12 @@ void ccv_nnc_mfa_encode_attention(mfa::context* context, ccv_nnc_mfa_attention_p
         encoder->useResource(tensors[9], MTL::ResourceUsageRead);
         encoder->setBuffer(tensors[9], tensor_offsets[9], 23);
       }
+      if (hash.masked) {
+        encoder->useResource(tensors[4], MTL::ResourceUsageRead);
+        encoder->setBuffer(tensors[4], tensor_offsets[4], 15);
+      }
       encoder->dispatchThreadgroups(
-          MTL::Size(hash.Hq / (attentionDesc.simdgroups / hash.R * attentionDesc.headsPerSIMD), batch_sizes[0], attentionDesc.workgroups),
+          MTL::Size(hash.Hq / attentionDesc.headsPerGroup, batch_sizes[0], attentionDesc.workgroups),
           MTL::Size(threadgroupSize, 1, 1));
       command_batch->finishCommand(encoder);
 

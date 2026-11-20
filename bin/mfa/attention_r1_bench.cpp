@@ -42,7 +42,7 @@ int main(int argc, char** argv)
   const int heads_per_simd = argc > 17 ? atoi(argv[17]) : 0;
   const int upcast = 1;
   if (std::min({r,c,d,b,hq,hk,timed}) <= 0 || hq % hk || hq > USHRT_MAX || d > USHRT_MAX ||
-      r > 2 || (d != 128 && d != 256) || causal > 1 || precision > 1 || profile > 1 || partitions > 1024 || reduce_simds > 32 || heads_per_group > 16 || direct_simds > 32 || heads_per_simd > 2 ||
+      r > 8 || (d != 128 && d != 256) || causal > 1 || precision > 1 || profile > 1 || partitions > 1024 || reduce_simds > 32 || heads_per_group > 16 || direct_simds > 32 || heads_per_simd > 2 ||
       (direct_simds && (partitions || heads_per_group || heads_per_simd)) ||
       (heads_per_group && ((hq/hk) % heads_per_group || heads_per_group*r > 32)) ||
       (!profile && (partitions || reduce_simds || heads_per_group || direct_simds || heads_per_simd)) || (flags & ~3) || uint64_t(r) * b > INT_MAX || r > INT_MAX - 128 || c > INT_MAX - 128)
@@ -100,8 +100,11 @@ int main(int argc, char** argv)
       c, hq, hk, d, params.alpha, true, false, r, causal, b, context->device_properties.coreCount);
   if (partitions) {
     if (descriptor.mode == AttentionR1Descriptor::Mode::cooperative) {
+      // One head of one row for each SIMD group.
       descriptor.simdgroups = r;
+      descriptor.headsPerGroup = 1;
       descriptor.headsPerSIMD = 1;
+      descriptor.rowsPerSIMD = 1;
     }
     descriptor.workgroups = partitions;
     descriptor.mode = partitions == 1 ? AttentionR1Descriptor::Mode::direct : AttentionR1Descriptor::Mode::splitReduce;
@@ -109,11 +112,14 @@ int main(int argc, char** argv)
   if (reduce_simds) descriptor.reductionSIMDGroups = reduce_simds;
   if (heads_per_group || heads_per_simd) {
     if (descriptor.mode == AttentionR1Descriptor::Mode::cooperative) return 2;
-    const uint32_t group_heads = heads_per_group ? heads_per_group : descriptor.simdgroups * descriptor.headsPerSIMD / r;
+    const uint32_t group_heads = heads_per_group ? heads_per_group : descriptor.headsPerGroup;
     const uint32_t per_simd = heads_per_simd ? heads_per_simd : descriptor.headsPerSIMD;
     if (group_heads % per_simd) return 2;
+    // One row for each SIMD group.
     descriptor.simdgroups = group_heads * r / per_simd;
+    descriptor.headsPerGroup = group_heads;
     descriptor.headsPerSIMD = per_simd;
+    descriptor.rowsPerSIMD = 1;
   }
   if (direct_simds) {
     descriptor.simdgroups = direct_simds;
@@ -125,7 +131,7 @@ int main(int argc, char** argv)
   const bool cooperative = descriptor.mode == AttentionR1Descriptor::Mode::cooperative;
   const bool split = descriptor.mode == AttentionR1Descriptor::Mode::splitReduce;
   printf("profile_scratch=production profile=%d overridden=%d partitions=%u heads_per_group=%u reduce_simds=%u cooperative=%d direct_simds=%u heads_per_simd=%u\n",
-      profile, !!(partitions || reduce_simds || heads_per_group || direct_simds || heads_per_simd), descriptor.workgroups, cooperative ? 0 : descriptor.simdgroups*descriptor.headsPerSIMD/r, descriptor.reductionSIMDGroups, cooperative, cooperative ? descriptor.simdgroups : 0, descriptor.headsPerSIMD);
+      profile, !!(partitions || reduce_simds || heads_per_group || direct_simds || heads_per_simd), descriptor.workgroups, cooperative ? 0 : descriptor.headsPerGroup, descriptor.reductionSIMDGroups, cooperative, cooperative ? descriptor.simdgroups : 0, descriptor.headsPerSIMD);
   auto pipeline = context->kernel_cache.findKernel<AttentionR1Kernel, AttentionR1Descriptor, AttentionR1KernelDescriptor>(
       descriptor, context->device.get(), context->device_properties);
   unsigned char shader_digest[CC_SHA256_DIGEST_LENGTH];
@@ -171,7 +177,7 @@ int main(int argc, char** argv)
           encoder->useResource(destination, MTL::ResourceUsageWrite);
           encoder->setBuffer(destination, 0, 3);
           encoder->setBytes(&c_length, sizeof(c_length), 4);
-          encoder->dispatchThreadgroups(cooperative ? MTL::Size(hq,b,r) : MTL::Size(hq/(descriptor.simdgroups/r*descriptor.headsPerSIMD),b,descriptor.workgroups), MTL::Size(32*descriptor.simdgroups,1,1));
+          encoder->dispatchThreadgroups(cooperative ? MTL::Size(hq,b,r) : MTL::Size(hq/descriptor.headsPerGroup,b,descriptor.workgroups), MTL::Size(32*descriptor.simdgroups,1,1));
           batch->finishCommand(encoder);
         }
         if (split && (stage == 1 || stage == 3)) {

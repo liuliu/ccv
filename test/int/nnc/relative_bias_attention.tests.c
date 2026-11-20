@@ -240,6 +240,35 @@ TEST_CASE("attention with a relative-position bias runs two decode rows and shor
 	_relative_bias_attention_case(__case_name__, __case_result__, 1, 2, 60, 48, 8, 128, 1024, 0, SINKS_NONE, CCV_16F);
 }
 
+TEST_CASE("attention with a relative-position bias runs up to eight verify rows through the decode kernel")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SCALED_DOT_PRODUCT_ATTENTION_FORWARD, CCV_NNC_BACKEND_MPS));
+	// Verify rows of a full layer with a sink for each query: split across workgroups over long
+	// caches, a block of keys shorter than 16 at the end, and short caches split across workgroups
+	// and read together by one workgroup for each query and head; only short caches give a sink
+	// enough weight that reading another query's moves the output.
+	_relative_bias_attention_case(__case_name__, __case_result__, 1, 3, 4099, 48, 8, 128, 1024, 0, SINKS_PER_QUERY, CCV_16F);
+	_relative_bias_attention_case(__case_name__, __case_result__, 1, 8, 9000, 48, 8, 128, 1024, 0, SINKS_PER_QUERY, CCV_16F);
+	_relative_bias_attention_case(__case_name__, __case_result__, 1, 5, 1500, 48, 8, 128, 1024, 0, SINKS_PER_HEAD, CCV_16F);
+	_relative_bias_attention_case(__case_name__, __case_result__, 1, 8, 100, 48, 8, 128, 1024, 0, SINKS_PER_QUERY, CCV_16F);
+	_relative_bias_attention_case(__case_name__, __case_result__, 1, 8, 60, 48, 8, 128, 1024, 0, SINKS_PER_QUERY, CCV_16F);
+	// Sliding-window rows over the last keys of a cache bound with exactly and more than the last
+	// row's window and the keys before it, so each row's window starts at a different key; then a
+	// window shorter than the extent, and one short enough for the cooperative kernel.
+	_relative_bias_attention_case(__case_name__, __case_result__, 1, 4, 1027, 48, 8, 128, 1024, 1024, SINKS_PER_QUERY, CCV_16F);
+	_relative_bias_attention_case(__case_name__, __case_result__, 1, 8, 3000, 48, 8, 128, 1024, 1024, SINKS_PER_QUERY, CCV_16F);
+	_relative_bias_attention_case(__case_name__, __case_result__, 1, 6, 1500, 48, 8, 128, 1024, 200, SINKS_PER_QUERY, CCV_16F);
+	_relative_bias_attention_case(__case_name__, __case_result__, 1, 2, 1500, 48, 8, 128, 1024, 40, SINKS_PER_QUERY, CCV_16F);
+	// Two heads of a SIMD group (D = 128 with four query heads to a key head), and heads of 256,
+	// the last with the largest workgroup: four heads of four groups of two rows, 512 threads.
+	_relative_bias_attention_case(__case_name__, __case_result__, 1, 4, 5000, 32, 8, 128, 64, 0, SINKS_PER_QUERY, CCV_16F);
+	_relative_bias_attention_case(__case_name__, __case_result__, 1, 3, 5000, 16, 4, 256, 64, 0, SINKS_PER_HEAD, CCV_16F);
+	_relative_bias_attention_case(__case_name__, __case_result__, 1, 8, 5000, 16, 4, 256, 64, 0, SINKS_PER_QUERY, CCV_16F);
+	// Sinks for each query without a bias, and bfloat.
+	_relative_bias_attention_case(__case_name__, __case_result__, 1, 8, 2500, 48, 8, 128, 0, 0, SINKS_PER_QUERY, CCV_16F);
+	_relative_bias_attention_case(__case_name__, __case_result__, 1, 8, 3000, 48, 8, 128, 1024, 1024, SINKS_PER_QUERY, CCV_16BF);
+}
+
 TEST_CASE("attention with a relative-position bias runs in bfloat precision")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SCALED_DOT_PRODUCT_ATTENTION_FORWARD, CCV_NNC_BACKEND_MPS));
