@@ -153,10 +153,15 @@ TEST_CASE("TMCQ CUDA dequantization matches the CPU decode bit for bit")
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_GPU_CUBLAS));
 #ifdef HAVE_CUDA
 	const int datatypes[] = {CCV_32F, CCV_16F, CCV_16BF, CCV_64F};
+	// K % 256, and K % 16 only: the MoE down projection K = 1152 (72 tiles per tile row), K = 272 and 48 (odd tile
+	// counts).
 	const int shapes[][2] = {
 		{16, 256},
 		{48, 768},
 		{32, 4096},
+		{32, 1152},
+		{16, 272},
+		{48, 48},
 	};
 	dsfmt_t dsfmt;
 	dsfmt_init_gen_rand(&dsfmt, 13);
@@ -166,7 +171,7 @@ TEST_CASE("TMCQ CUDA dequantization matches the CPU decode bit for bit")
 			for (s = 0; s < sizeof(shapes) / sizeof(shapes[0]); s++)
 				for (unaligned = 0; unaligned < 2; unaligned++)
 				{
-					if (unaligned && s != 1)
+					if (unaligned && s != 1 && s != 4)
 						continue;
 					const int format = tmcq_formats[f];
 					const int n = ccv_nnc_8i_rowwise_x_tmcq_rate(format);
@@ -180,7 +185,11 @@ TEST_CASE("TMCQ CUDA dequantization matches the CPU decode bit for bit")
 					ccv_nnc_tensor_t* const q = ccv_nnc_tensor_new(0, ccv_nnc_tensor_8i_rowwise_x(host_params, format), 0);
 					ccv_nnc_tensor_t* const gq = ccv_nnc_tensor_new(0, ccv_nnc_tensor_8i_rowwise_x(gpu_params, format), 0);
 					const size_t qsize = ccv_nnc_tensor_data_size_without_padding(q->info);
-					REQUIRE_EQ(qsize, ((((size_t)rows * (k / 256) * 16 * n + 7) / 8 + 127) & ~(size_t)127) + (size_t)rows * CCV_GET_DATA_TYPE_SIZE(datatypes[d]), "TMCQ payload size follows the tile layout");
+					REQUIRE_EQ(qsize, ((((size_t)rows / 16 * (k / 16) * 16 * n + 7) / 8 + 127) & ~(size_t)127) + (size_t)rows * CCV_GET_DATA_TYPE_SIZE(datatypes[d]), "TMCQ payload size follows the tile layout");
+					if (k % 256 == 0)
+					{
+						REQUIRE_EQ(qsize, ((((size_t)rows * (k / 256) * 16 * n + 7) / 8 + 127) & ~(size_t)127) + (size_t)rows * CCV_GET_DATA_TYPE_SIZE(datatypes[d]), "K %% 256 keeps the row-wise size");
+					}
 					const size_t scale_offset = _tmcq_fill(q, datatypes[d], rows, 0.01, &dsfmt);
 					// Expected: the reference codes times the row scales, narrowed like the CPU decode.
 					int8_t* const codes = (int8_t*)ccmalloc(count);
@@ -221,11 +230,18 @@ TEST_CASE("TMCQ CUDA int8 row-wise conversion matches the CPU codes and copies t
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_GPU_CUBLAS));
 #ifdef HAVE_CUDA
 	const int datatypes[] = {CCV_32F, CCV_16F, CCV_16BF, CCV_64F};
+	// K = 1152 (an even tile count, the tile pair kernel), K = 272, 48 and 16 (odd counts, one tile per warp), and four
+	// stacked 2304 x 1152 MoE experts.
 	const int shapes[][2] = {
 		{16, 256},
 		{64, 512},
 		{32, 4096},
 		{2048, 256},
+		{48, 1152},
+		{16, 272},
+		{32, 48},
+		{16, 16},
+		{4 * 2304, 1152},
 	};
 	dsfmt_t dsfmt;
 	dsfmt_init_gen_rand(&dsfmt, 17);
@@ -453,11 +469,17 @@ TEST_CASE("cublas forward gemm with TMCQ weights matches CPU across rates, row c
 	const double tolerances[] = {1e-4, 1e-3, 5e-3};
 	const double fallback_tolerances[] = {1e-4, 2e-2, 5e-2};
 	// M = 1 and 4 run the int8 GEMV, 64 and 512 the int8 CUTLASS GEMM.
+	// The MoE down projection (N = 2304, K = 1152) and K = 272 (an odd tile count) at the same row counts.
 	const int shapes[][3] = {
 		{1, 2048, 4096},
 		{4, 1024, 2048},
 		{64, 384, 768},
 		{512, 512, 1024},
+		{1, 2304, 1152},
+		{4, 2304, 1152},
+		{64, 2304, 1152},
+		{1, 64, 272},
+		{64, 128, 272},
 	};
 	dsfmt_t dsfmt;
 	dsfmt_init_gen_rand(&dsfmt, 29);
@@ -634,44 +656,50 @@ TEST_CASE("cublas forward gemm with CPU-quantized TMCQ weights matches the CPU d
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_GPU_CUBLAS));
 	// M = 1 runs the int8 GEMV on the converted weights; the reference multiplies the CPU dequantized FP32 weights.
-	const int m = 1, n = 64, k = 512;
+	// K = 1152 and 272 are not multiples of 256 (the tile grid is (n / 16) x (k / 16)).
+	static const int shapes[][2] = { { 64, 512 }, { 64, 1152 }, { 64, 272 } };
 	dsfmt_t dsfmt;
 	dsfmt_init_gen_rand(&dsfmt, 41);
-	const int format = CCV_NNC_QX_8I_ROWWISE_TMCQ_N24;
-	ccv_nnc_tensor_t* const w = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, n, k), 0);
-	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, m, k), 0);
-	int i, j;
-	for (i = 0; i < n * k; i++)
-		w->data.f32[i] = (dsfmt_genrand_open_close(&dsfmt) * 2 - 1) * 0.1;
-	for (i = 0; i < m * k; i++)
-		a->data.f32[i] = dsfmt_genrand_open_close(&dsfmt) * 2 - 1;
-	ccv_nnc_tensor_t* const q = ccv_nnc_tensor_new(0, ccv_nnc_tensor_8i_rowwise_x(CPU_TENSOR_NHWC(32F, n, k), format), 0);
-	const size_t qsize = ccv_nnc_tensor_data_size_without_padding(q->info);
-	REQUIRE_EQ(ccv_nnc_quantize_8i_rowwise_x(w->data.f32, CCV_32F, CCV_TENSOR_CPU_MEMORY, n * k, k, format, 0, 0, 0, 0, q->data.u8, qsize), qsize, "TMCQ quantization fills the payload");
-	ccv_nnc_dequantize_8i_rowwise_x(q->data.u8, CCV_32F, CCV_TENSOR_CPU_MEMORY, qsize, k, format, w->data.f32, n * k);
-	ccv_nnc_tensor_t* const ga = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, m, k), 0);
-	ccv_nnc_tensor_t* const gq = ccv_nnc_tensor_new(0, ccv_nnc_tensor_8i_rowwise_x(GPU_TENSOR_NHWC(000, 32F, n, k), format), 0);
-	ccv_nnc_tensor_t* const gb = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, m, n), 0);
-	ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, m, n), 0);
-	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(a, q), TENSOR_LIST(ga, gq), 0);
-	REQUIRE_EQ(ccv_nnc_cmd_exec(CMD_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(0, 1)), ccv_nnc_no_hint, 0, TENSOR_LIST(ga, gq), TENSOR_LIST(gb), 0), CCV_NNC_EXEC_SUCCESS, "TMCQ GEMV runs");
-	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(gb), TENSOR_LIST(b), 0);
-	double max_rel = 0;
-	for (j = 0; j < n; j++)
+	int c;
+	for (c = 0; c < 3; c++)
 	{
-		double expected = 0;
-		for (i = 0; i < k; i++)
-			expected += (double)a->data.f32[i] * w->data.f32[j * k + i];
-		max_rel = ccv_max(max_rel, fabs(b->data.f32[j] - expected) / ccv_max(1.0, fabs(expected)));
+		const int m = 1, n = shapes[c][0], k = shapes[c][1];
+		const int format = CCV_NNC_QX_8I_ROWWISE_TMCQ_N24;
+		ccv_nnc_tensor_t* const w = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, n, k), 0);
+		ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, m, k), 0);
+		int i, j;
+		for (i = 0; i < n * k; i++)
+			w->data.f32[i] = (dsfmt_genrand_open_close(&dsfmt) * 2 - 1) * 0.1;
+		for (i = 0; i < m * k; i++)
+			a->data.f32[i] = dsfmt_genrand_open_close(&dsfmt) * 2 - 1;
+		ccv_nnc_tensor_t* const q = ccv_nnc_tensor_new(0, ccv_nnc_tensor_8i_rowwise_x(CPU_TENSOR_NHWC(32F, n, k), format), 0);
+		const size_t qsize = ccv_nnc_tensor_data_size_without_padding(q->info);
+		REQUIRE_EQ(ccv_nnc_quantize_8i_rowwise_x(w->data.f32, CCV_32F, CCV_TENSOR_CPU_MEMORY, n * k, k, format, 0, 0, 0, 0, q->data.u8, qsize), qsize, "TMCQ quantization fills the payload");
+		ccv_nnc_dequantize_8i_rowwise_x(q->data.u8, CCV_32F, CCV_TENSOR_CPU_MEMORY, qsize, k, format, w->data.f32, n * k);
+		ccv_nnc_tensor_t* const ga = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, m, k), 0);
+		ccv_nnc_tensor_t* const gq = ccv_nnc_tensor_new(0, ccv_nnc_tensor_8i_rowwise_x(GPU_TENSOR_NHWC(000, 32F, n, k), format), 0);
+		ccv_nnc_tensor_t* const gb = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, m, n), 0);
+		ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, m, n), 0);
+		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(a, q), TENSOR_LIST(ga, gq), 0);
+		REQUIRE_EQ(ccv_nnc_cmd_exec(CMD_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(0, 1)), ccv_nnc_no_hint, 0, TENSOR_LIST(ga, gq), TENSOR_LIST(gb), 0), CCV_NNC_EXEC_SUCCESS, "TMCQ GEMV runs");
+		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(gb), TENSOR_LIST(b), 0);
+		double max_rel = 0;
+		for (j = 0; j < n; j++)
+		{
+			double expected = 0;
+			for (i = 0; i < k; i++)
+				expected += (double)a->data.f32[i] * w->data.f32[j * k + i];
+			max_rel = ccv_max(max_rel, fabs(b->data.f32[j] - expected) / ccv_max(1.0, fabs(expected)));
+		}
+		REQUIRE(max_rel <= 1e-4, "TMCQ GEMV on CPU-quantized weights should match: %g", max_rel);
+		ccv_nnc_tensor_free(b);
+		ccv_nnc_tensor_free(gb);
+		ccv_nnc_tensor_free(gq);
+		ccv_nnc_tensor_free(ga);
+		ccv_nnc_tensor_free(q);
+		ccv_nnc_tensor_free(a);
+		ccv_nnc_tensor_free(w);
 	}
-	REQUIRE(max_rel <= 1e-4, "TMCQ GEMV on CPU-quantized weights should match: %g", max_rel);
-	ccv_nnc_tensor_free(b);
-	ccv_nnc_tensor_free(gb);
-	ccv_nnc_tensor_free(gq);
-	ccv_nnc_tensor_free(ga);
-	ccv_nnc_tensor_free(q);
-	ccv_nnc_tensor_free(a);
-	ccv_nnc_tensor_free(w);
 }
 
 TEST_CASE("CUDA index select rejects TMCQ embeddings")
