@@ -199,19 +199,17 @@ static int _ccv_nnc_moe_weight_layout(const ccv_nnc_tensor_param_t source_info, 
 	if (subtype == CCV_NNC_QX_8I_ROWWISE)
 		payload_per_expert = (size_t)source_info.dim[1] * source_info.dim[2];
 	else if (subtype == CCV_NNC_QX_8I_ROWWISE_X) {
-		// TMCQ tiles span 16 rows: an expert slot must hold whole tile rows over whole 256-weight
-		// groups, so that copying payload_per_expert bytes moves exactly that expert's tiles. Then
-		// the per-row formula below (rows x K / 256 x 16n bits, a multiple of 8) is its tile grid.
+		// TMCQ tiles span 16 rows: an expert slot must hold whole tile rows over whole tiles (N % 16,
+		// K % 16), so that copying payload_per_expert bytes moves exactly that expert's tiles, the
+		// (N / 16) (K / 16) tiles of 16n bits each (a whole number of words).
 		// The resident bank keeps the reserved field, so a TMCQ codebook slot (bits 16 - 23) carries over to it; no
 		// other modifier bit is taken.
-		if (ccv_nnc_8i_rowwise_x_is_tmcq(source_info.reserved) &&
-			((source_info.dim[1] % 16) != 0 || (source_info.dim[2] % 256) != 0 ||
+		const int tmcq = ccv_nnc_8i_rowwise_x_is_tmcq(source_info.reserved);
+		if (tmcq &&
+			((source_info.dim[1] % 16) != 0 || (source_info.dim[2] % 16) != 0 ||
 			 (source_info.reserved & ~(CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK | CCV_NNC_CODEBOOK_SLOT_MASK))))
 			return 0;
-		const size_t group_size = (size_t)ccv_nnc_8i_rowwise_x_group_size(source_info.reserved);
-		const size_t group_bits = (size_t)ccv_nnc_8i_rowwise_x_group_bits(source_info.reserved);
-		const size_t groups_per_row = ((size_t)source_info.dim[2] + group_size - 1) / group_size;
-		const size_t payload_bits = (size_t)source_info.dim[1] * groups_per_row * group_bits;
+		const size_t payload_bits = (size_t)ccv_nnc_8i_rowwise_x_payload_bits(source_info.reserved, (uint64_t)source_info.dim[1], (uint64_t)source_info.dim[2]);
 		if (payload_bits & 7)
 			return 0;
 		payload_per_expert = payload_bits >> 3;

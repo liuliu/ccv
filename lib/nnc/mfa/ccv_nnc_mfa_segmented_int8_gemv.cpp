@@ -48,14 +48,14 @@ void ccv_nnc_mfa_encode_segmented_int8_gemv(
   CCV_NNC_MFA_PRECONDITION(params.M > 0 && params.N > 0 && params.K > 0);
   CCV_NNC_MFA_PRECONDITION(params.expert_count > 0 && params.bincount > 0);
   CCV_NNC_MFA_PRECONDITION((params.K % 4) == 0);
-  // TMCQ has its own N % 16 / K % 256 precondition below.
+  // TMCQ has its own N % 16 / K % 16 precondition below.
   CCV_NNC_MFA_PRECONDITION(
     params.format == 0 || segmentedTMCQRate(params.format) ||
     ((params.K % 256) == 0 && (params.N % 256) == 0));
-  // TMCQ tiles span 16 rows and its kernel takes one activation row per route; it has no
-  // modifier bits (no Hadamard rotation).
+  // TMCQ tiles span 16 rows and 16 columns (a tile loop over any K / 16) and its kernel takes one activation row per
+  // route; it has no modifier bits (no Hadamard rotation).
   CCV_NNC_MFA_PRECONDITION(
-    !segmentedTMCQRate(params.format) || ((params.N % 16) == 0 && (params.K % 256) == 0));
+    !segmentedTMCQRate(params.format) || ((params.N % 16) == 0 && (params.K % 16) == 0));
   // TMCQ tiles are read as 32-bit words: the weight offset and the expert stride must keep that.
   CCV_NNC_MFA_PRECONDITION(
     !segmentedTMCQRate(params.format) || (tensor_offsets[3] % 4) == 0);

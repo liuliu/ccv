@@ -2,6 +2,7 @@
 #include "SegmentedInt8GemvDescriptor.hpp"
 #include "../ccv_nnc_mfa.hpp"
 #include "../ccv_nnc_mfa_error.hpp"
+#include "TMCQDecodeSource.hpp"
 #include "../ccv_nnc_mfa_hash.hpp"
 
 bool SegmentedInt8SwiGLUDescriptor::operator==(const SegmentedInt8SwiGLUDescriptor& rhs) const
@@ -61,11 +62,10 @@ uint32_t SegmentedInt8SwiGLUDescriptor::groupsPerRow() const noexcept
 
 uint64_t SegmentedInt8SwiGLUDescriptor::inputScaleOffset() const noexcept
 {
-  // TMCQ: rows x K x n / 16 bits (16n bits per 256-weight tile), which needs N % 16 == 0 and
-  // K % 256 == 0 to be the tile grid's size.
+  // TMCQ: (rows / 16) (K / 16) tiles of 16n bits (tmcq_tile_count), for N % 16 == 0 and K % 16 == 0.
   if (const uint32_t rate = segmentedTMCQRate(format)) {
     const uint64_t payloadBits =
-      (uint64_t)expertCount * matrixDimensions[0] * groupsPerRow() * 16 * rate;
+      tmcq_tile_count((uint64_t)expertCount * matrixDimensions[0], matrixDimensions[1]) * 16 * rate;
     const uint64_t payloadBytes = (payloadBits + 7) / 8;
     return (payloadBytes + 127) & ~UINT64_C(127);
   }
@@ -109,9 +109,9 @@ uint64_t SegmentedInt8SwiGLUDescriptor::inputScaleOffset() const noexcept
 uint64_t SegmentedInt8SwiGLUDescriptor::weightExpertStride() const noexcept
 {
   if (const uint32_t rate = segmentedTMCQRate(format)) {
-    CCV_NNC_MFA_PRECONDITION((matrixDimensions[0] % 16) == 0 && (matrixDimensions[1] % 256) == 0);
+    CCV_NNC_MFA_PRECONDITION((matrixDimensions[0] % 16) == 0 && (matrixDimensions[1] % 16) == 0);
     const uint64_t expertBits =
-      (uint64_t)matrixDimensions[0] * groupsPerRow() * 16 * rate;
+      tmcq_tile_count(matrixDimensions[0], matrixDimensions[1]) * 16 * rate;
     // Tiles are read as 32-bit words.
     CCV_NNC_MFA_PRECONDITION((expertBits % 32) == 0);
     return expertBits / 8;

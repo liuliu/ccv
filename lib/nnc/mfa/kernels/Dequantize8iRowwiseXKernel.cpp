@@ -251,13 +251,32 @@ static bool is_tmcq(const uint32_t format)
 	return codec >= CCV_NNC_QX_8I_ROWWISE_TMCQ_N16 && codec <= CCV_NNC_QX_8I_ROWWISE_TMCQ_N32;
 }
 
+// The 2-tile block map of tile_pair_row_column covers 16 tiles_per_row threads of a tile row only for an even
+// tiles_per_row. For an odd one the last 16 threads (from 16 (tiles_per_row - 1), a multiple of 32) take the last tile,
+// one row each, so every (row, tile column) segment is still decoded by exactly one of the 16 tiles_per_row threads.
+static void tile_pair_tail_source(std::string& shader)
+{
+	const std::string body = "  return uint2(tile_row * 16u + ((in_tile_row & 31u) >> 1), (in_tile_row >> 5) * 2u + (in_tile_row & 1u));\n";
+	const size_t at = shader.find(body);
+	CCV_NNC_MFA_PRECONDITION(at != std::string::npos && shader.find(body, at + 1) == std::string::npos);
+	shader.insert(at,
+		"  // An odd tiles_per_row: the last 16 threads of the tile row take its last tile, one row each.\n"
+		"  if ((tiles_per_row & 1u) && in_tile_row >= 16u * (tiles_per_row - 1u))\n"
+		"    return uint2(tile_row * 16u + (in_tile_row & 15u), tiles_per_row - 1u);\n");
+	const std::string note = "Needs tiles_per_row even (row_length % 256 == 0 here).";
+	const size_t comment = shader.find(note);
+	if (comment != std::string::npos)
+		shader.replace(comment, note.size(), "An odd tiles_per_row ends in 16 threads on its last tile.");
+}
+
 // TMCQ int8 decode. A tile spans 16 rows, so the per-group kernels above do not apply. Thread
 // mapping: one thread per row segment, i.e. the 16 weights one output row takes from one tile.
 // Threads go in blocks of 2 neighbouring tiles x 16 rows (tile_pair_row_column): the 32 lanes of a
 // SIMD group read the n adjacent words of two tiles (coalesced) and write 32-byte pieces of 16 output
 // rows. dispatch_items (see the descriptors) is max(rows * K / 16, scale bytes); total_groups /
-// groups_per_expert count tiles.
-static std::string create_tmcq_source(const uint32_t format)
+// groups_per_expert count tiles. `tail` (an odd tiles_per_row, K % 32 == 16) gives the last tile of every tile row to
+// 16 threads of its own (tile_pair_tail_source); without it the source is the original one for even tiles_per_row.
+static std::string create_tmcq_source(const uint32_t format, const bool tail)
 {
 	const uint32_t n = 16 + 2 * ((format & CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK) - CCV_NNC_QX_8I_ROWWISE_TMCQ_N16);
 	std::string shader = R"(
@@ -369,6 +388,8 @@ kernel void dequantize_8i_rowwise_x_selected_plan(
   dispatch_args[2] = 1;
 }
 )";
+	if (tail)
+		tile_pair_tail_source(shader);
 	return shader;
 }
 
@@ -377,6 +398,7 @@ kernel void dequantize_8i_rowwise_x_selected_plan(
 Dequantize8iRowwiseXKernel::Dequantize8iRowwiseXKernel(Dequantize8iRowwiseXKernelDescriptor descriptor, MTL::Device* const device)
 {
 	format = descriptor.format;
+	tileTail = descriptor.tileTail;
 	source = createSource();
 	threadgroupSize = MTL::Size(256, 1, 1);
 
@@ -735,7 +757,7 @@ static void rewrite_decode_codebook(std::string& shader, const uint32_t log2)
 std::string Dequantize8iRowwiseXKernel::createSource() const noexcept
 {
 	if (is_tmcq(format)) {
-		std::string shader = createConstants() + "\n" + create_tmcq_source(format);
+		std::string shader = createConstants() + "\n" + create_tmcq_source(format, (tileTail & 1) != 0);
 		if (tmcq_codebook_log2(format))
 			rewrite_decode_codebook(shader, tmcq_codebook_log2(format));
 		return shader;

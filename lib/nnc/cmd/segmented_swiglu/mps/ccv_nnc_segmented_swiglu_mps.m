@@ -103,8 +103,9 @@ static int _ccv_nnc_segmented_swiglu_shared_forw(const float clamp, const float 
 		gate_rowwise && up_rowwise && ((gate_w->info.datatype & 0xff) << 12) == a->info.datatype;
 	if (!dense_weights && !rowwise_weights)
 		return CCV_NNC_EXEC_INVALID;
+	// TMCQ is a 16 x 16 tile grid (K % 16, N % 16); the other packed codecs take whole 256-weight blocks.
 	const int rowwise_shape_supported = gate_format == 0 ?
-		(K % 4) == 0 : (K % 256) == 0 && (N % 256) == 0;
+		(K % 4) == 0 : ccv_nnc_8i_rowwise_x_is_tmcq(gate_format) ? (K % 16) == 0 && (N % 16) == 0 : (K % 256) == 0 && (N % 256) == 0;
 	if (rowwise_weights && !rowwise_shape_supported)
 		return CCV_NNC_EXEC_INVALID;
 	// TMCQ shared weights take the matrix paths below, as in SWIGLU_FORWARD.
@@ -364,7 +365,8 @@ static int _ccv_nnc_segmented_swiglu_routed_forw(const ccv_nnc_cmd_t cmd, ccv_nn
 	mtl_buffer_t* codebook;
 	if (!_ccv_nnc_segmented_swiglu_codebook(gate_w, up_w, &gate_codebook_format, &codebook))
 		return CCV_NNC_EXEC_INVALID;
-	const int rowwise_shape_supported = gate_format == 0 ? (K % 4) == 0 : (K % 256) == 0 && (N % 256) == 0;
+	// TMCQ is a 16 x 16 tile grid (K % 16, N % 16); the other packed codecs take whole 256-weight blocks.
+	const int rowwise_shape_supported = gate_format == 0 ? (K % 4) == 0 : ccv_nnc_8i_rowwise_x_is_tmcq(gate_format) ? (K % 16) == 0 && (N % 16) == 0 : (K % 256) == 0 && (N % 256) == 0;
 	const uint64_t mtl_datatype = _ccv_nnc_segmented_swiglu_mtl_datatype(a->info.datatype);
 	ccv_nnc_mfa_context_t* const context = ccv_nnc_default_mfa_context();
 	const int use_neural_accelerators =
@@ -378,7 +380,7 @@ static int _ccv_nnc_segmented_swiglu_routed_forw(const ccv_nnc_cmd_t cmd, ccv_nn
 	// expert's weights once per row, so it wins at about one row per expert and loses once
 	// rows share experts (on M5 Max, 0.86x at 36 rows when consecutive tokens share half).
 	const int fused_packed_matrix_supported =
-		ccv_nnc_mfa_segmented_scaled_gemm_fuses_packed_format(gate_format, M, bincount) &&
+		ccv_nnc_mfa_segmented_scaled_gemm_fuses_packed_format(gate_format, M, bincount, N, K) &&
 		a->info.datatype == CCV_32F && use_neural_accelerators;
 	const int direct_small_batch =
 		input_shape_supported && (!fused_packed_matrix_supported || input_rows == 1 || M <= 36) &&
@@ -409,7 +411,7 @@ static int _ccv_nnc_segmented_swiglu_routed_forw(const ccv_nnc_cmd_t cmd, ccv_nn
 		 gate_format == CCV_NNC_QX_8I_ROWWISE_Q2_K ||
 		 gate_format == CCV_NNC_QX_8I_ROWWISE_IQ1_S ||
 		 gate_format == CCV_NNC_QX_8I_ROWWISE_IQ1_M ||
-		 // TMCQ (no modifier bits): one SIMD group per 16-row tile row; N % 256 above covers N % 16.
+		 // TMCQ (no modifier bits): one threadgroup per 16-row tile row (N % 16 and K % 16 above).
 		 (ccv_nnc_8i_rowwise_x_is_tmcq(gate_format) && !(gate_format & ~CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK) &&
 		  // The kernel reads tiles as 32-bit words.
 		  (gate_w->dataof % 4) == 0 && (up_w->dataof % 4) == 0));

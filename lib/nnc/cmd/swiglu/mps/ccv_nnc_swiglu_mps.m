@@ -107,13 +107,13 @@ static int _ccv_nnc_swiglu_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hi
 		gate_rowwise && up_rowwise && ((gate_w->info.datatype & 0xff) << 12) == a->info.datatype;
 	if (!dense_weights && !rowwise_weights)
 		return CCV_NNC_EXEC_INVALID;
+	// TMCQ is a 16 x 16 tile grid (K % 16, N % 16); the other packed codecs take whole 256-weight blocks.
 	const int rowwise_shape_supported = gate_format == 0 ?
-		(K % 4) == 0 : (K % 256) == 0 && (N % 256) == 0;
+		(K % 4) == 0 : ccv_nnc_8i_rowwise_x_is_tmcq(gate_format) ? (K % 16) == 0 && (N % 16) == 0 : (K % 256) == 0 && (N % 256) == 0;
 	if (rowwise_weights && !rowwise_shape_supported)
 		return CCV_NNC_EXEC_INVALID;
 	// TMCQ weights have no direct row kernel here: they take the matrix paths below, which decode
-	// their 16 x 16 tiles first (N % 256 covers the tiles' N % 16). No TMCQ codec takes a Hadamard
-	// rotation.
+	// their 16 x 16 tiles first (N % 16 and K % 16 above). No TMCQ codec takes a Hadamard rotation.
 	if (rowwise_weights && ccv_nnc_8i_rowwise_x_is_tmcq(gate_format) && (gate_format & ~CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK))
 		return CCV_NNC_EXEC_INVALID;
 

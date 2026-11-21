@@ -47,11 +47,15 @@ void ccv_nnc_mfa_encode_segmented_int8_swiglu(
   CCV_NNC_MFA_PRECONDITION(tensorCount == (params.shared_rows > 0 ? 11 : 7));
   CCV_NNC_MFA_PRECONDITION(params.shared_rows == 0 || (params.K % 4) == 0);
   CCV_NNC_MFA_PRECONDITION(params.shared_format == 0 || params.shared_format == CCV_NNC_QX_8I_ROWWISE_Q5_K || params.shared_format == CCV_NNC_QX_8I_ROWWISE_Q6_K);
-  CCV_NNC_MFA_PRECONDITION(params.shared_format == 0 || (params.shared_rows % 256) == 0);
+  // Q5_K / Q6_K shared rows are whole 256-weight blocks of the same K.
+  CCV_NNC_MFA_PRECONDITION(params.shared_format == 0 || ((params.shared_rows % 256) == 0 && (params.K % 256) == 0));
   CCV_NNC_MFA_PRECONDITION(
     params.M > 0 && params.N > 0 && params.K > 0 &&
     params.expert_count > 0 && params.bincount > 0);
-  CCV_NNC_MFA_PRECONDITION(params.K % 256 == 0 && params.N % 256 == 0);
+  // TMCQ: whole 16 x 16 tiles (one threadgroup per tile row, a tile loop over any K / 16); the other codecs take
+  // whole 256-weight blocks.
+  CCV_NNC_MFA_PRECONDITION(segmentedTMCQRate(params.format) ?
+    (params.K % 16 == 0 && params.N % 16 == 0) : (params.K % 256 == 0 && params.N % 256 == 0));
   CCV_NNC_MFA_PRECONDITION(
     params.format == CCV_NNC_QX_8I_ROWWISE_IQ2_XXS ||
     params.format == CCV_NNC_QX_8I_ROWWISE_IQ2_XS ||

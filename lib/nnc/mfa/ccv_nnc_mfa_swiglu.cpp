@@ -223,10 +223,12 @@ void ccv_nnc_mfa_encode_scaled_swiglu(
     ++num_tensors;
   CCV_NNC_MFA_PRECONDITION(num_tensors == 4);
   CCV_NNC_MFA_PRECONDITION(params.M > 0 && params.N > 0 && params.K > 0);
+  // TMCQ weights (16 x 16 tiles, N % 16 and K % 16) are decoded to int8 rows below like every packed format, which
+  // take whole 256-weight blocks; TMCQ carries no modifier bits but an external codebook's log2 entry count (bits 16 -
+  // 23).
   CCV_NNC_MFA_PRECONDITION(
-    params.format == 0 || ((params.N % 256) == 0 && (params.K % 256) == 0));
-  // TMCQ weights (16 x 16 tiles) are decoded to int8 rows below like every packed format; N % 256
-  // covers their N % 16, and they carry no modifier bits but an external codebook's log2 entry count (bits 16 - 23).
+    params.format == 0 || (segmentedTMCQRate(params.format & CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK) ?
+      ((params.N % 16) == 0 && (params.K % 16) == 0) : ((params.N % 256) == 0 && (params.K % 256) == 0)));
   CCV_NNC_MFA_PRECONDITION(!segmentedTMCQRate(params.format & CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK) ||
     (params.format & ~(CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK | 0xff0000u)) == 0);
   CCV_NNC_MFA_PRECONDITION(!(params.format & 0xff0000u) || params.codebook != nullptr);

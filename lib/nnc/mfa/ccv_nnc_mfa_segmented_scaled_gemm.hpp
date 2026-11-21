@@ -25,8 +25,9 @@ extern "C" {
 void ccv_nnc_mfa_prepare_segmented_scaled_gemm(ccv_nnc_mfa_context_t* context, ccv_nnc_mfa_segmented_scaled_gemm_params_t params);
 size_t ccv_nnc_mfa_segmented_scaled_gemm_reserved_scratch_size(ccv_nnc_mfa_segmented_scaled_gemm_params_t params);
 void ccv_nnc_mfa_encode_segmented_scaled_gemm(ccv_nnc_mfa_context_t* context, ccv_nnc_mfa_segmented_scaled_gemm_params_t params, mtl_command_batch_t* command_batch, mtl_buffer_t** tensors, size_t* tensor_offsets);
-// Whether packed weights in this format should be decoded per tile rather than expanded into scratch.
-int ccv_nnc_mfa_segmented_scaled_gemm_fuses_packed_format(uint32_t format, uint64_t M, uint32_t bincount);
+// Whether packed weights in this format should be decoded per tile rather than expanded into scratch, for N x K
+// weights per expert (the tile decoders need whole column and K blocks, see SegmentedScaledGEMMKernel).
+int ccv_nnc_mfa_segmented_scaled_gemm_fuses_packed_format(uint32_t format, uint64_t M, uint32_t bincount, uint32_t N, uint32_t K);
 
 #ifdef __cplusplus
 } // extern "C"

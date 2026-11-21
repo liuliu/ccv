@@ -76,8 +76,8 @@ uint32_t SegmentedInt8GemvDescriptor::groupsPerRow() const noexcept
 
 uint32_t SegmentedInt8GemvDescriptor::groupBits() const noexcept
 {
-  // 16 * n bits per tile. With N % 16 == 0 and K % 256 == 0, the row-wise payload formula below
-  // (rows x K / 256 x 16n bits = rows x K x n / 16 bits) is also the size of the tile grid.
+  // 16 * n bits per tile; the payload is (rows / 16) (K / 16) such tiles (tmcq_tile_count), for N % 16 == 0 and
+  // K % 16 == 0.
   if (const uint32_t rate = segmentedTMCQRate(format))
     return 16 * rate;
   switch (format) {
@@ -116,7 +116,8 @@ uint64_t SegmentedInt8GemvDescriptor::inputScaleOffset() const noexcept
   const uint32_t K = matrixDimensions[1];
   if (format == 0)
     return ((uint64_t)expertCount * N * K + 127) & ~UINT64_C(127);
-  const uint64_t payloadBits =
+  const uint64_t payloadBits = segmentedTMCQRate(format) ?
+    tmcq_tile_count((uint64_t)expertCount * N, K) * groupBits() :
     (uint64_t)expertCount * N * groupsPerRow() * groupBits();
   const uint64_t payloadBytes = (payloadBits + 7) / 8;
   return (payloadBytes + 127) & ~UINT64_C(127);
@@ -128,7 +129,9 @@ uint64_t SegmentedInt8GemvDescriptor::weightExpertStride() const noexcept
   const uint32_t K = matrixDimensions[1];
   if (format == 0)
     return (uint64_t)N * K;
-  const uint64_t expertBits = (uint64_t)N * groupsPerRow() * groupBits();
+  const uint64_t expertBits = segmentedTMCQRate(format) ?
+    tmcq_tile_count(N, K) * groupBits() :
+    (uint64_t)N * groupsPerRow() * groupBits();
   CCV_NNC_MFA_PRECONDITION((expertBits % 8) == 0);
   // TMCQ experts are whole tile rows read as 32-bit words.
   CCV_NNC_MFA_PRECONDITION(!segmentedTMCQRate(format) || ((N % 16) == 0 && (expertBits % 32) == 0));

@@ -57,9 +57,10 @@ void ccv_nnc_mfa_encode_scaled_gemv(ccv_nnc_mfa_context_t* context, ccv_nnc_mfa_
     CCV_NNC_MFA_PRECONDITION(params.batch_stride_output > 0);
     CCV_NNC_MFA_PRECONDITION(params.batch_stride_scale > 0);
   }
-  // TMCQ tiles span 16 rows, so TMCQ only needs N % 16; its kernel reads the payload as 32-bit words.
+  // TMCQ tiles span 16 rows and 16 columns, so TMCQ needs N % 16 and K % 16; its kernel reads the payload as 32-bit
+  // words.
   if (is_tmcq(params.format)) {
-    CCV_NNC_MFA_PRECONDITION((params.ncols % 256) == 0 && (params.nrows % 16) == 0);
+    CCV_NNC_MFA_PRECONDITION((params.ncols % 16) == 0 && (params.nrows % 16) == 0);
     CCV_NNC_MFA_PRECONDITION((tensor_offsets[0] % 4) == 0 && (batchDimension == 1 || (params.batch_stride_weights % 4) == 0));
   } else {
     CCV_NNC_MFA_PRECONDITION(params.format == 0 || ((params.ncols % 256) == 0 && (params.nrows % 256) == 0));

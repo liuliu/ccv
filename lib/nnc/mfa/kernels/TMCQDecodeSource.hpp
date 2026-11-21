@@ -333,6 +333,23 @@ static inline uint32_t tmcq_codebook_log2(const uint32_t format)
   return (format >> 16) & 0xffu;
 }
 
+// The 16 x 16 tile grid of a rows x cols TMCQ weight (rows % 16 == 0, cols % 16 == 0): rows / 16 tile rows of
+// cols / 16 tiles, tile-row-major. Every size and offset is a whole number of tiles; with cols % 256 != 0 the row-wise
+// "groups of 256 weights per row" count ceil(cols / 256) is not the tile count (cols = 1152 has 4.5 tiles' worth of
+// bits per row, cols = 272 has 17 tiles per tile row).
+static inline uint64_t tmcq_tile_count(const uint64_t rows, const uint64_t cols)
+{
+  // The CPU codec's count (ccv_nnc_8i_rowwise_x_tile_count), so sizes and offsets agree with ccv_nnc_tensor_data_size.
+  return (rows / 16) * (cols / 16);
+}
+
+// Bytes of the tiles of `rows` rows (rows % 16 == 0) at tile_bits = 16 n bits per tile (n even, a whole number of
+// 32-bit words per tile).
+static inline uint64_t tmcq_tile_rows_bytes(const uint64_t rows, const uint64_t cols, const uint32_t tile_bits)
+{
+  return tmcq_tile_count(rows, cols) * tile_bits / 8;
+}
+
 // The format bits an MFA TMCQ kernel accepts: the codec and the codebook's log2 (bits 16 - 23).
 static inline bool tmcq_codebook_format_ok(const uint32_t format)
 {

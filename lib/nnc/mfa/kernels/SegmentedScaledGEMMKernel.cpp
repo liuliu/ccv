@@ -181,10 +181,14 @@ uint32_t SegmentedScaledGEMMKernel::maxTileRecords(uint32_t originalM, uint32_t 
   return bincount * (tilesPerBin > 0 ? tilesPerBin : 1u);
 }
 
-bool SegmentedScaledGEMMKernel::fusesPackedFormat(uint32_t format, uint64_t M, uint32_t binCount) noexcept
+bool SegmentedScaledGEMMKernel::fusesPackedFormat(uint32_t format, uint64_t M, uint32_t binCount, uint32_t N, uint32_t K) noexcept
 {
   // A TMCQ format may carry an external codebook's log2 entry count in bits 16 - 23; nothing else takes modifier bits.
   if (format == 0 || ((format & ~CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK) != 0 && !(segmentedTMCQRate(format) && tmcq_codebook_log2(format))))
+    return false;
+  // Whole decoder blocks: TMCQ's register tiles are 32 x 64 x 64 (BLOCK_N = 64 columns, K in steps of 64); the other
+  // packed decoders assume every packed row is whole 256-weight groups and every 128 or 256 column tile is full.
+  if (segmentedTMCQRate(format) ? ((N % 64) != 0 || (K % 64) != 0) : ((N % 256) != 0 || (K % 256) != 0))
     return false;
   // TMCQ's register decoder decodes each weight again for every 32-row tile. On M5 Ultra (DeepSeek
   // routed shapes) it beat expanding the selected experts from 2 to 256 rows per bin over 384
@@ -214,8 +218,10 @@ std::string SegmentedScaledGEMMKernel::createSource() const noexcept
   if (tmcqRate) {
     // The weight is a grid of 16 x 16 tiles, 2n bytes each, row-major over the grid. An expert's
     // rows and a SIMD group's first row are multiples of 16, so their byte offset is still rows times
-    // the average row size K / 256 * 2n; only addressing inside a SIMD group's rows is by tile.
-    packedRowBytes = "(K / 256u * " + std::to_string(2 * tmcqRate) + "u)";
+    // the average row size K / 16 tiles x 2n bytes / 16 rows = K n / 128 bytes, a whole number since the fused
+    // path takes K % 64 == 0 (fusesPackedFormat): K / 64 * n / 2. Only addressing inside a SIMD group's rows is by
+    // tile.
+    packedRowBytes = "(K / 64u * " + std::to_string(tmcqRate / 2) + "u)";
     source.SetValue("TMCQ_RATE", std::to_string(tmcqRate));
   } else if (format) {
     Dequantize8iRowwiseXDescriptor packed = {};

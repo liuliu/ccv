@@ -6,6 +6,7 @@ using namespace ccv::nnc;
 #include "kernels/NAInt8MatMulKernelDescriptor.hpp"
 #include "kernels/NAInt8MatMulDescriptor.hpp"
 #include "kernels/SegmentedScaledGEMMKernel.hpp"
+#include "kernels/SegmentedInt8GemvDescriptor.hpp"
 #include "kernels/TMCQDecodeSource.hpp"
 #include "kernels/SegmentedScaledGEMMKernelDescriptor.hpp"
 #include "kernels/SegmentedScaledGEMMDescriptor.hpp"
@@ -89,7 +90,7 @@ static ccv_nnc_mfa_segmented_scaled_swiglu_plan_layout_t plan_layout(
     activation_layout(params);
   const size_t records_offset = align_up(a_layout.scratch_bytes, 256);
   // Packed kernels may use 16-row tiles; keep the existing unpacked allocation.
-  const uint32_t block_m = SegmentedScaledGEMMKernel::fusesPackedFormat(params.format, params.M, params.bincount) ? 16 : kSegmentedScaledSwiGLUBlockM;
+  const uint32_t block_m = SegmentedScaledGEMMKernel::fusesPackedFormat(params.format, params.M, params.bincount, params.N, params.K) ? 16 : kSegmentedScaledSwiGLUBlockM;
   const size_t records_per_bin = (params.M + block_m - 1) / block_m;
   const size_t records = (size_t)params.bincount *
     (records_per_bin > 0 ? records_per_bin : (size_t)1);
@@ -141,7 +142,7 @@ static ccv_nnc_mfa_segmented_scaled_swiglu_execution_t execution(
   segmented_desc.binCount = params.bincount;
   segmented_desc.useBias = false;
   segmented_desc.loadM = params.loadM;
-  segmented_desc.format = SegmentedScaledGEMMKernel::fusesPackedFormat(params.format, params.M, params.bincount) ? params.format : 0;
+  segmented_desc.format = SegmentedScaledGEMMKernel::fusesPackedFormat(params.format, params.M, params.bincount, params.N, params.K) ? params.format : 0;
 
   auto pool = NS::AutoreleasePool::alloc()->init();
   auto& shader_cache = context->kernel_cache;
@@ -285,8 +286,12 @@ void ccv_nnc_mfa_encode_segmented_scaled_swiglu(
   CCV_NNC_MFA_PRECONDITION(
     params.M > 0 && params.N > 0 && params.K > 0 &&
     params.expert_count > 0 && params.bincount > 0);
+  // TMCQ is a 16 x 16 tile grid: the selected-expert decode takes N % 16 and K % 16, and the fused tile path is taken
+  // only for the shapes SegmentedScaledGEMMKernel::fusesPackedFormat accepts. The other codecs take whole 256-weight
+  // blocks.
   CCV_NNC_MFA_PRECONDITION(
-    params.format == 0 || ((params.N % 256) == 0 && (params.K % 256) == 0));
+    params.format == 0 || (segmentedTMCQRate(params.format) ?
+      ((params.N % 16) == 0 && (params.K % 16) == 0) : ((params.N % 256) == 0 && (params.K % 256) == 0)));
 
   if (!params.use_neural_accelerators) {
     CCV_NNC_MFA_PRECONDITION(

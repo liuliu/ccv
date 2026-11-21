@@ -40,7 +40,8 @@ uint32_t Dequantize8iRowwiseXDescriptor::rowCount() const noexcept {
 }
 
 uint32_t Dequantize8iRowwiseXDescriptor::groupSize() const noexcept {
-	// A TMCQ group is one 16 x 16 tile, so groupsPerRow() * rowCount() counts tiles.
+	// A TMCQ group is one 16 x 16 tile of 256 weights; it spans 16 rows, so the tiles are counted by totalGroups()
+	// (tmcq_tile_count), not by groupsPerRow() * rowCount().
 	if (is_tmcq(format))
 		return 256;
 	switch (format) {
@@ -102,7 +103,15 @@ uint32_t Dequantize8iRowwiseXDescriptor::groupBits() const noexcept {
 }
 
 uint32_t Dequantize8iRowwiseXDescriptor::totalGroups() const noexcept {
+	// TMCQ: the tiles of the 16 x 16 grid, (rows / 16) (K / 16) for any K % 16 == 0 (the kernels index tiles).
+	if (is_tmcq(format))
+		return (uint32_t)tmcq_tile_count(rowCount(), rowLength);
 	return rowCount() * groupsPerRow();
+}
+
+uint32_t Dequantize8iRowwiseXDescriptor::tileTail() const noexcept {
+	// An odd number of tiles per row takes the tail mapping (see Dequantize8iRowwiseXKernelDescriptor::tileTail).
+	return is_tmcq(format) ? ((rowLength / 16) & 1) : 0;
 }
 
 uint64_t Dequantize8iRowwiseXDescriptor::inputScaleOffset() const noexcept {
@@ -143,7 +152,8 @@ std::pair<Dequantize8iRowwiseXKernelDescriptor, PipelineValue<Dequantize8iRowwis
 	if (is_tmcq(format)) {
 		// Bits 16 - 23: log2 of an external codebook's entry count, 0 for the built-in table (TMCQDecodeSource.hpp).
 		CCV_NNC_MFA_PRECONDITION(tmcq_codebook_format_ok(format));
-		CCV_NNC_MFA_PRECONDITION(rowLength > 0 && (rowLength % 256) == 0 && (length % rowLength) == 0 && (rowCount() % 16) == 0);
+		// The 16 x 16 tile grid: whole tiles in both directions.
+		CCV_NNC_MFA_PRECONDITION(rowLength > 0 && (rowLength % 16) == 0 && (length % rowLength) == 0 && (rowCount() % 16) == 0);
 	}
 	auto createKernel =
 	[=](Dequantize8iRowwiseXKernelDescriptor descriptor) -> Dequantize8iRowwiseXKernel* {
@@ -159,6 +169,7 @@ std::pair<Dequantize8iRowwiseXKernelDescriptor, PipelineValue<Dequantize8iRowwis
 
 	Dequantize8iRowwiseXKernelDescriptor kernelDesc;
 	kernelDesc.format = format;
+	kernelDesc.tileTail = tileTail();
 
 	auto createPipeline =
 	[=](MTL::Library* library) -> MTL::ComputePipelineState* {
@@ -233,6 +244,9 @@ uint32_t Dequantize8iRowwiseXSelectedDescriptor::groupBits() const noexcept {
 }
 
 uint32_t Dequantize8iRowwiseXSelectedDescriptor::groupsPerExpert() const noexcept {
+	// TMCQ: the expert's tiles (rowsPerExpert % 16 == 0), see Dequantize8iRowwiseXDescriptor::totalGroups.
+	if (is_tmcq(format))
+		return (uint32_t)tmcq_tile_count(rowsPerExpert, rowLength);
 	return rowsPerExpert * groupsPerRow();
 }
 
@@ -275,7 +289,7 @@ std::pair<Dequantize8iRowwiseXKernelDescriptor, PipelineValue<Dequantize8iRowwis
 		// Bits 16 - 23: log2 of an external codebook's entry count, 0 for the built-in table (TMCQDecodeSource.hpp).
 		CCV_NNC_MFA_PRECONDITION((format & ~(CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK | 0xff0000u)) == 0);
 		CCV_NNC_MFA_PRECONDITION(((format >> 16) & 0xffu) == 0 || (((format >> 16) & 0xffu) >= 9 && ((format >> 16) & 0xffu) <= 11));
-		CCV_NNC_MFA_PRECONDITION(rowLength > 0 && (rowLength % 256) == 0 && (rowsPerExpert % 16) == 0);
+		CCV_NNC_MFA_PRECONDITION(rowLength > 0 && (rowLength % 16) == 0 && (rowsPerExpert % 16) == 0);
 	}
 	auto createKernel =
 	[=](Dequantize8iRowwiseXKernelDescriptor descriptor) -> Dequantize8iRowwiseXKernel* {
@@ -291,6 +305,8 @@ std::pair<Dequantize8iRowwiseXKernelDescriptor, PipelineValue<Dequantize8iRowwis
 
 	Dequantize8iRowwiseXKernelDescriptor kernelDesc;
 	kernelDesc.format = format;
+	// An odd number of tiles per row takes the tail mapping (see Dequantize8iRowwiseXKernelDescriptor::tileTail).
+	kernelDesc.tileTail = is_tmcq(format) ? ((rowLength / 16) & 1) : 0;
 
 	auto createPipeline =
 	[=](MTL::Library* library, const char* const functionName) -> MTL::ComputePipelineState* {

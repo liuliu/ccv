@@ -3,6 +3,7 @@
 #include "../ccv_nnc_mfa.hpp"
 #include "../ccv_nnc_mfa_hash.hpp"
 #include "../ccv_nnc_mfa_error.hpp"
+#include "TMCQDecodeSource.hpp"
 
 namespace {
 
@@ -99,6 +100,9 @@ uint32_t Dequantize8iRowwiseXFPDescriptor::groupBits() const noexcept {
 }
 
 uint32_t Dequantize8iRowwiseXFPDescriptor::totalGroups() const noexcept {
+	// TMCQ: the tiles of the 16 x 16 grid for any K % 16 == 0 (tmcq_tile_count).
+	if (is_tmcq(format))
+		return (uint32_t)tmcq_tile_count(rowCount(), rowLength);
 	return rowCount() * groupsPerRow();
 }
 
@@ -124,7 +128,7 @@ std::pair<Dequantize8iRowwiseXFPKernelDescriptor, PipelineValue<Dequantize8iRoww
 	CCV_NNC_MFA_PRECONDITION(rowLength > 0 && length % rowLength == 0);
 	CCV_NNC_MFA_PRECONDITION(!(format & CCV_NNC_QX_8I_ROWWISE_HADAMARD_256) || rowLength % 256 == 0);
 	// TMCQ tiles span 16 rows and 16 columns, and the codec does not combine with H256.
-	CCV_NNC_MFA_PRECONDITION(!is_tmcq(format) || (!(format & CCV_NNC_QX_8I_ROWWISE_HADAMARD_256) && rowLength % 256 == 0 && rowCount() % 16 == 0));
+	CCV_NNC_MFA_PRECONDITION(!is_tmcq(format) || (!(format & CCV_NNC_QX_8I_ROWWISE_HADAMARD_256) && rowLength % 16 == 0 && rowCount() % 16 == 0));
 	(void)dprops;
 	(void)binaryArchivesToRead;
 	(void)binaryArchiveToWrite;

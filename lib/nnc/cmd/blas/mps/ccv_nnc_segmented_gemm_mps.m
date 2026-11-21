@@ -290,11 +290,12 @@ static int _ccv_nnc_segmented_gemm_routed_forw(const ccv_nnc_cmd_t cmd, const cc
 		if (!ccv_nnc_mfa_codebook_format(ccv_nnc_default_mfa_context(), w_codebook_slot, &w_8i_rowwise_x_codebook_format, &w_codebook))
 			return CCV_NNC_EXEC_INVALID;
 		// TMCQ weights are 16 x 16 tiles: each expert must be whole tile rows (N % 16) over whole
-		// 256-weight groups (K % 256), and no codec takes a Hadamard rotation with them. The GEMV
-		// decodes tiles in place; prefill decodes them per weight block or expands the selected experts.
+		// tiles (K % 16), and no codec takes a Hadamard rotation with them. The GEMV decodes tiles in
+		// place; prefill decodes them per weight block (N % 64 and K % 64, see
+		// ccv_nnc_mfa_segmented_scaled_gemm_fuses_packed_format) or expands the selected experts.
 		const int w_tmcq = ccv_nnc_8i_rowwise_x_is_tmcq(w_8i_rowwise_x_format);
 		const int w_tmcq_supported = !w_tmcq ||
-			(!(w_8i_rowwise_x_format & CCV_NNC_QX_8I_ROWWISE_HADAMARD_256) && (b_cols % 16) == 0 && (w_rows % 256) == 0 &&
+			(!(w_8i_rowwise_x_format & CCV_NNC_QX_8I_ROWWISE_HADAMARD_256) && (b_cols % 16) == 0 && (w_rows % 16) == 0 &&
 			 // The kernels read tiles as 32-bit words.
 			 (w->dataof % 4) == 0);
 		const int a_datatype = CCV_GET_DATA_TYPE(a->info.datatype) == CCV_QX ? ((a->info.datatype & 0xff) << 12) : a->info.datatype;
@@ -367,9 +368,9 @@ static int _ccv_nnc_segmented_gemm_routed_forw(const ccv_nnc_cmd_t cmd, const cc
 			(CCV_GET_DATA_TYPE(b->info.datatype) != CCV_QX) &&
 			(!bias || CCV_GET_DATA_TYPE(bias->info.datatype) != CCV_QX) &&
 			((w_rows % 4) == 0) &&
-			// TMCQ: K % 256 and N % 16 (whole tile rows), as the dense GEMV gate.
+			// TMCQ: K % 16 and N % 16 (whole tiles), as the dense GEMV gate.
 			(!w_8i_rowwise_x_format ||
-				(w_tmcq ? ((w_rows % 256) == 0 && (b_cols % 16) == 0) : ((w_rows % 256) == 0 && (b_cols % 256) == 0))) &&
+				(w_tmcq ? ((w_rows % 16) == 0 && (b_cols % 16) == 0) : ((w_rows % 256) == 0 && (b_cols % 256) == 0))) &&
 			w_tmcq_supported &&
 			!is_transpose_a &&
 			is_transpose_w &&
@@ -487,9 +488,9 @@ static int _ccv_nnc_segmented_gemm_routed_forw(const ccv_nnc_cmd_t cmd, const cc
 			ccv_nnc_mfa_segmented_scaled_gemm_params_t params = {
 				.data_type = mtl_data_type,
 				// Packed weights can be decoded per tile instead of expanding the expert bank into scratch.
+				// The predicate takes the shape: N % 64 and K % 64 for TMCQ, N % 256 and K % 256 for the others.
 				.format = use_neural_accelerators && !bias &&
-					(b_cols % 256) == 0 && (w_rows % 256) == 0 &&
-					ccv_nnc_mfa_segmented_scaled_gemm_fuses_packed_format(w_8i_rowwise_x_format, b_rows, bincount) ? w_8i_rowwise_x_codebook_format : 0,
+					ccv_nnc_mfa_segmented_scaled_gemm_fuses_packed_format(w_8i_rowwise_x_format, b_rows, bincount, (uint32_t)b_cols, (uint32_t)w_rows) ? w_8i_rowwise_x_codebook_format : 0,
 				.M = (uint32_t)(b_rows + ccv_max(bincount - 2, 0)) / ccv_max(bincount - 1, 1),
 				.N = (uint32_t)b_cols,
 				.K = (uint32_t)w_rows,
