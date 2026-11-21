@@ -16,6 +16,8 @@ void ccv_nnc_mfa_encode_mul(ccv_nnc_mfa_context_t* context, ccv_nnc_mfa_mul_para
     ((params.channel_broadcast == 1 || params.channel_broadcast == 2) && params.channel_count > 0 && params.channel_length > 0));
   CCV_NNC_MFA_PRECONDITION(!params.row_broadcast ||
     ((params.row_broadcast == 1 || params.row_broadcast == 2) && !params.channel_broadcast && params.row_length > 0 && params.length % params.row_length == 0));
+  CCV_NNC_MFA_PRECONDITION(!params.column_broadcast ||
+    ((params.column_broadcast == 1 || params.column_broadcast == 2) && !params.channel_broadcast && !params.row_broadcast && params.column_length > 0 && params.length % params.column_length == 0));
   auto encoder = command_batch->startCommand();
   for (int i = 0; i < 3; i++)
     encoder->setBuffer(tensors[i], tensor_offsets[i], NS::UInteger(i));
@@ -38,10 +40,17 @@ void ccv_nnc_mfa_encode_mul(ccv_nnc_mfa_context_t* context, ccv_nnc_mfa_mul_para
   descriptor.channel_broadcast = params.channel_broadcast;
   descriptor.channel_count = params.channel_broadcast ? params.channel_count : 0;
   descriptor.channel_length = params.channel_broadcast ? params.channel_length : 0;
+  descriptor.column_broadcast = params.column_broadcast;
+  // One value for the whole input is a row no index reaches the end of, whatever the length, so that
+  // every length shares a pipeline.
+  descriptor.column_length = !params.column_broadcast ? 0 : (params.column_length == params.length ? UINT32_MAX : params.column_length);
   const size_t vector_alignment = params.data_type == MTL::DataTypeFloat ? 16 : 8;
   const bool vectorized = params.length % 4 == 0 && (!params.channel_broadcast || params.channel_length % 4 == 0) &&
     (!params.row_broadcast || (params.row_length % 4 == 0 &&
-      tensor_offsets[0] % vector_alignment == 0 && tensor_offsets[1] % vector_alignment == 0 && tensor_offsets[2] % vector_alignment == 0));
+      tensor_offsets[0] % vector_alignment == 0 && tensor_offsets[1] % vector_alignment == 0 && tensor_offsets[2] % vector_alignment == 0)) &&
+    // The column input is read a value at a time; the full input and the output by vectors.
+    (!params.column_broadcast || (params.column_length % 4 == 0 &&
+      tensor_offsets[params.column_broadcast == 1 ? 1 : 0] % vector_alignment == 0 && tensor_offsets[2] % vector_alignment == 0));
   if (vectorized && !params.loadM && params.length % (4 * threadgroup_width) == 0) {
     descriptor.value = 0;
   } else if (vectorized) {

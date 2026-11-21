@@ -7067,6 +7067,115 @@ TEST_CASE("MFA row broadcast add and multiply match CPU with offset outputs, in-
 		ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA);
 }
 
+TEST_CASE("MFA column broadcast multiply matches CPU with a value for each row, unaligned and in place")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_MUL_FORWARD, CCV_NNC_BACKEND_MPS));
+	// The full input's shape, then the column's: its leading axes are the full input's, the rest 1.
+	const struct {
+		int nd;
+		int full[3];
+		int column[3];
+		int offsets[3];
+	} shapes[] = {
+		{3, {1, 1, 3072}, {1, 1, 1}, {4, 4, 4}}, // A query scaled at decode: one value for everything.
+		{3, {1, 24, 128}, {1, 1, 1}, {4, 4, 4}},
+		{3, {8, 1, 128}, {1, 1, 1}, {4, 4, 4}}, // One value for every row count, which share a pipeline.
+		{3, {16, 1, 128}, {1, 1, 1}, {4, 4, 4}},
+		{3, {3, 5, 7}, {1, 1, 1}, {4, 4, 4}},
+		{3, {5, 24, 128}, {5, 1, 1}, {4, 4, 4}}, // A query scaled at prefill: a value for each token.
+		{3, {5, 24, 16}, {5, 24, 1}, {4, 4, 4}},
+		{2, {37, 3072}, {37, 1}, {4, 4, 4}},
+		{2, {7, 6}, {7, 1}, {4, 4, 4}}, // Rows not a multiple of four.
+		{3, {3, 4, 127}, {3, 4, 1}, {4, 4, 4}},
+		{2, {9, 256}, {9, 1}, {3, 4, 4}}, // Only the full input is unaligned.
+		{2, {9, 256}, {9, 1}, {4, 3, 4}}, // Only the column is unaligned.
+		{2, {9, 256}, {9, 1}, {4, 4, 3}}, // Only the output is unaligned.
+	};
+	const int datatypes[] = { CCV_32F, CCV_16F, CCV_16BF };
+	const uint64_t old_flags = ccv_nnc_flags();
+	ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA);
+	dsfmt_t dsfmt;
+	dsfmt_init_gen_rand(&dsfmt, 19);
+	int d, s, i, j, reverse, dynamic, inplace;
+	for (d = 0; d < 3; d++)
+		for (s = 0; s < sizeof(shapes) / sizeof(shapes[0]); s++)
+		{
+			ccv_nnc_tensor_param_t params[3];
+			for (i = 0; i < 3; i++)
+			{
+				memset(&params[i], 0, sizeof(params[i]));
+				params[i].type = CCV_TENSOR_CPU_MEMORY;
+				params[i].format = CCV_TENSOR_FORMAT_NHWC;
+				params[i].datatype = CCV_32F;
+				for (j = 0; j < shapes[s].nd; j++)
+					params[i].dim[j] = i == 1 ? shapes[s].column[j] : shapes[s].full[j];
+			}
+			ccv_nnc_tensor_t* cpu[3];
+			ccv_nnc_tensor_t* host[3];
+			ccv_nnc_tensor_t* storage[3];
+			ccv_nnc_tensor_view_t* gpu[3];
+			for (i = 0; i < 3; i++)
+			{
+				cpu[i] = ccv_nnc_tensor_new(0, params[i], 0);
+				const int count = ccv_nnc_tensor_count(params[i]);
+				if (i < 2)
+					for (j = 0; j < count; j++)
+						cpu[i]->data.f32[j] = dsfmt_genrand_open_close(&dsfmt) * 4 - 2;
+				params[i].datatype = datatypes[d];
+				host[i] = ccv_nnc_tensor_new(0, params[i], 0);
+				params[i].type = CCV_TENSOR_GPU_MEMORY;
+				ccv_nnc_tensor_param_t storage_params = params[i];
+				memset(storage_params.dim, 0, sizeof(storage_params.dim));
+				storage_params.dim[0] = count + 8;
+				storage[i] = ccv_nnc_tensor_new(0, storage_params, 0);
+				int stride[CCV_NNC_MAX_DIM_ALLOC];
+				ccv_nnc_tensor_get_stride(params[i].dim, stride);
+				int ofs[CCV_NNC_MAX_DIM_ALLOC] = {};
+				ofs[shapes[s].nd - 1] = shapes[s].offsets[i];
+				gpu[i] = ccv_nnc_tensor_view_new(storage[i], params[i], ofs, stride);
+			}
+			const int count = ccv_nnc_tensor_count(cpu[2]->info);
+			ccv_nnc_tensor_t* const result = ccv_nnc_tensor_new(0, cpu[2]->info, 0);
+			ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(cpu[0], cpu[1]), TENSOR_LIST(host[0], host[1]), 0);
+			ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(host[0], host[1]), TENSOR_LIST(cpu[0], cpu[1]), 0);
+			ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(host[0], host[1]), TENSOR_LIST((ccv_nnc_tensor_t*)gpu[0], (ccv_nnc_tensor_t*)gpu[1]), 0);
+			// The value each output reads from the column: its row's.
+			const int column_count = ccv_nnc_tensor_count(cpu[1]->info);
+			for (j = 0; j < count; j++)
+				cpu[2]->data.f32[j] = cpu[0]->data.f32[j] * cpu[1]->data.f32[j / (count / column_count)];
+			for (reverse = 0; reverse < 2; reverse++)
+				for (dynamic = 0; dynamic < 2; dynamic++)
+				{
+					if (dynamic)
+						ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M);
+					else
+						ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M);
+					for (inplace = 0; inplace < 2; inplace++)
+					{
+						ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(host[0]), TENSOR_LIST((ccv_nnc_tensor_t*)gpu[0]), 0);
+						// In place writes the full input.
+						ccv_nnc_tensor_view_t* const output = inplace ? gpu[0] : gpu[2];
+						REQUIRE_EQ(CCV_NNC_EXEC_SUCCESS, ccv_nnc_cmd_exec(CMD_MUL_FORWARD(1), ccv_nnc_no_hint, 0, TENSOR_LIST((ccv_nnc_tensor_t*)gpu[reverse], (ccv_nnc_tensor_t*)gpu[1 - reverse]), TENSOR_LIST((ccv_nnc_tensor_t*)output), 0), "column broadcast should execute");
+						ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST((ccv_nnc_tensor_t*)output), TENSOR_LIST(host[2]), 0);
+						ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(host[2]), TENSOR_LIST(result), 0);
+						REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, cpu[2]->data.f32, result->data.f32, count, d == 0 ? 1e-6 : (d == 1 ? 2e-3 : 2e-2), "column broadcast should match CPU for datatype %d shape %d reverse %d dynamic %d inplace %d", datatypes[d], s, reverse, dynamic, inplace);
+					}
+				}
+			ccv_nnc_tensor_free(result);
+			for (i = 0; i < 3; i++)
+			{
+				ccv_nnc_tensor_view_free(gpu[i]);
+				ccv_nnc_tensor_free(storage[i]);
+				ccv_nnc_tensor_free(host[i]);
+				ccv_nnc_tensor_free(cpu[i]);
+			}
+		}
+	if (!(old_flags & CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M))
+		ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M);
+	if (old_flags & CCV_NNC_DISABLE_MFA)
+		ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA);
+}
+
 TEST_CASE("set fills a tensor view, zeros of whole words by a blit and the rest through MPSGraph")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SET_FORWARD, CCV_NNC_BACKEND_MPS));

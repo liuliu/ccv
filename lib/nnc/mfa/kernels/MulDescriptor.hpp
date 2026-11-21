@@ -12,14 +12,15 @@ struct MulKernelDescriptor {
   bool loadM;
   uint8_t row_broadcast;
   uint8_t channel_broadcast;
+  uint8_t column_broadcast;
   GEMMOperandPrecision memoryPrecision;
-  constexpr bool operator==(const MulKernelDescriptor &rhs) const { return value == rhs.value && row_broadcast == rhs.row_broadcast && channel_broadcast == rhs.channel_broadcast && loadM == rhs.loadM && memoryPrecision == rhs.memoryPrecision; }
+  constexpr bool operator==(const MulKernelDescriptor &rhs) const { return value == rhs.value && row_broadcast == rhs.row_broadcast && channel_broadcast == rhs.channel_broadcast && column_broadcast == rhs.column_broadcast && loadM == rhs.loadM && memoryPrecision == rhs.memoryPrecision; }
 };
 
 template<>
 struct std::hash<MulKernelDescriptor>
 {
-  std::size_t operator()(const MulKernelDescriptor& hash) const noexcept { return (size_t)hash.value | ((size_t)hash.loadM << 8) | ((size_t)hash.memoryPrecision.value << 9) | ((size_t)hash.channel_broadcast << 17) | ((size_t)hash.row_broadcast << 25); }
+  std::size_t operator()(const MulKernelDescriptor& hash) const noexcept { return (size_t)hash.value | ((size_t)hash.loadM << 8) | ((size_t)hash.memoryPrecision.value << 9) | ((size_t)hash.channel_broadcast << 17) | ((size_t)hash.row_broadcast << 25) | ((size_t)hash.column_broadcast << 33); }
 };
 
 struct MulKernel;
@@ -41,6 +42,10 @@ struct MulDescriptor {
   uint32_t channel_length;
 
   uint32_t row_length;
+
+  uint8_t column_broadcast;
+
+  uint32_t column_length;
 
   bool operator==(const MulDescriptor& rhs) const;
 

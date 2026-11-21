@@ -63,13 +63,16 @@ static int _ccv_nnc_mul_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 	}
 	const ccv_nnc_tensor_view_t* const b = (const ccv_nnc_tensor_view_t*)inputs[1];
 	const uint8_t row_broadcast = _ccv_nnc_mps_row_broadcast(a, b, c);
-	const uint8_t channel_broadcast = row_broadcast ? 0 : _ccv_nnc_mps_channel_broadcast(a->info, b->info, c->info);
+	// Before the channel broadcast, which [1, 1, D] op [1, 1, 1] also matches but which can't run in place.
+	int column_length = 0;
+	const uint8_t column_broadcast = row_broadcast ? 0 : _ccv_nnc_mps_column_broadcast(a, b, c, &column_length);
+	const uint8_t channel_broadcast = row_broadcast || column_broadcast ? 0 : _ccv_nnc_mps_channel_broadcast(a->info, b->info, c->info);
 	@autoreleasepool {
 		ccv_nnc_mfa_context_t* const context = ccv_nnc_default_mfa_context();
 		const size_t count = ccv_nnc_tensor_count(c->info);
 		const uint32_t mtl_data_type = a->info.datatype == CCV_32F ? 3 : (a->info.datatype == CCV_16F ? 16 : (a->info.datatype == CCV_16BF ? 121 : UINT32_MAX));
 		if (p == 1 && a->info.datatype == b->info.datatype && a->info.datatype == c->info.datatype &&
-			(row_broadcast || channel_broadcast || (memcmp(a->info.dim, c->info.dim, sizeof(c->info.dim)) == 0 &&
+			(row_broadcast || column_broadcast || channel_broadcast || (memcmp(a->info.dim, c->info.dim, sizeof(c->info.dim)) == 0 &&
 			memcmp(b->info.dim, c->info.dim, sizeof(c->info.dim)) == 0)) &&
 			(!channel_broadcast || (mpgetbuffer(inputs[0]) != mpgetbuffer(outputs[0]) && mpgetbuffer(inputs[1]) != mpgetbuffer(outputs[0]))) &&
 			mtl_data_type != UINT32_MAX && count > 0 && count <= UINT32_MAX &&
@@ -85,6 +88,8 @@ static int _ccv_nnc_mul_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 				.channel_broadcast = channel_broadcast,
 				.channel_count = channel_broadcast ? c->info.dim[1] : 0,
 				.channel_length = channel_broadcast ? c->info.dim[2] : 0,
+				.column_broadcast = column_broadcast,
+				.column_length = column_broadcast ? (uint32_t)column_length : 0,
 			};
 			ccv_nnc_mfa_prepare_mul(context, params);
 			mtl_command_batch_t* const command_batch = ccv_nnc_stream_context_start_command_batch(stream_context);

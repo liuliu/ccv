@@ -19,6 +19,7 @@ struct MulKernel {
   uint8_t row_broadcast;
 
   uint8_t channel_broadcast;
+  uint8_t column_broadcast;
 
   GEMMOperandPrecision memoryPrecision;
 

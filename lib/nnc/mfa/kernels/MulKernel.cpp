@@ -7,6 +7,7 @@ MulKernel::MulKernel(MulKernelDescriptor descriptor, MTL::Device *const device) 
   loadM = descriptor.loadM;
   row_broadcast = descriptor.row_broadcast;
   channel_broadcast = descriptor.channel_broadcast;
+  column_broadcast = descriptor.column_broadcast;
   memoryPrecision = descriptor.memoryPrecision;
   source = createSource();
   threadgroupMemoryAllocation = createThreadgroupMemoryAllocation();
@@ -27,9 +28,11 @@ std::string MulKernel::createSource() const noexcept {
   source.SetValue("REAL", value == 2 ? "real" : "real4");
   for (int i = 0; i < 2; i++) {
     const bool channel_weight = channel_broadcast & (1u << i);
-    source.SetValue("REAL" + std::to_string(i), value == 2 || channel_weight ? "real" : "real4");
-    source.SetValue("INDEX" + std::to_string(i), row_broadcast & (1u << i) ? "idx % row_length" : (!channel_broadcast ? "idx" :
-      (channel_weight ? "(idx / channel_length) % channel_count" : "(idx / channel_length / channel_count) * channel_length + idx % channel_length")));
+    // A column input has a value for each row, which every value (or vector) of the row reads.
+    const bool column = column_broadcast & (1u << i);
+    source.SetValue("REAL" + std::to_string(i), value == 2 || channel_weight || column ? "real" : "real4");
+    source.SetValue("INDEX" + std::to_string(i), row_broadcast & (1u << i) ? "idx % row_length" : (column ? "idx / column_length" : (!channel_broadcast ? "idx" :
+      (channel_weight ? "(idx / channel_length) % channel_count" : "(idx / channel_length / channel_count) * channel_length + idx % channel_length"))));
   }
   source.SetValue("LOAD_M", loadM ? "const device uint *loadM [[buffer(3)]]," : "");
   source.SetValue("COUNT", loadM ? "const uniform<uint> count = make_uniform(loadM[0]);" : "");
@@ -68,5 +71,7 @@ std::string MulKernel::createConstants() const noexcept {
   }
   if (row_broadcast)
     defines += "constant uint row_length [[function_constant(3)]];\n";
+  if (column_broadcast)
+    defines += "constant uint column_length [[function_constant(4)]];\n";
   return defines;
 }

@@ -52,4 +52,49 @@ static inline uint8_t _ccv_nnc_mps_row_broadcast(const ccv_nnc_tensor_view_t* co
 	return row_broadcast;
 }
 
+// A contiguous column, a value for each row, can be reused across its row of a full-sized input:
+// [..., L...] op [..., 1...], where the column's leading axes are the output's and the rest are 1, and
+// a row is the output's trailing axes. The full input may be the output in place; the column may not
+// overlap it. Returns the column input's bit, and the row's length in column_length.
+static inline uint8_t _ccv_nnc_mps_column_broadcast(const ccv_nnc_tensor_view_t* const a, const ccv_nnc_tensor_view_t* const b, const ccv_nnc_tensor_view_t* const c, int* const column_length)
+{
+	const int c_nd = ccv_nnc_tensor_nd(c->info.dim);
+	if (c_nd < 1 || ccv_nnc_tensor_nd(a->info.dim) != c_nd || ccv_nnc_tensor_nd(b->info.dim) != c_nd ||
+		!CCV_IS_TENSOR_CONTIGUOUS(a) || !CCV_IS_TENSOR_CONTIGUOUS(b) || !CCV_IS_TENSOR_CONTIGUOUS(c))
+		return 0;
+	uint8_t column_broadcast = 0;
+	const ccv_nnc_tensor_view_t* column = 0;
+	if (memcmp(a->info.dim, c->info.dim, sizeof(c->info.dim)) == 0)
+		column_broadcast = 2, column = b;
+	else if (memcmp(b->info.dim, c->info.dim, sizeof(c->info.dim)) == 0)
+		column_broadcast = 1, column = a;
+	else
+		return 0;
+	int k = c_nd;
+	while (k > 0 && column->info.dim[k - 1] == 1)
+		--k;
+	int i;
+	for (i = 0; i < k; i++)
+		if (column->info.dim[i] != c->info.dim[i])
+			return 0;
+	size_t length = 1;
+	for (i = k; i < c_nd; i++)
+		length *= c->info.dim[i];
+	// A row of one is the elementwise path.
+	if (length <= 1 || length > UINT32_MAX)
+		return 0;
+	const ccv_nnc_tensor_t* const inputs[] = { (const ccv_nnc_tensor_t*)a, (const ccv_nnc_tensor_t*)b };
+	const size_t c_size = ccv_nnc_tensor_data_size_without_padding(c->info);
+	for (i = 0; i < 2; i++)
+		if (mpgetbuffer(inputs[i]) == mpgetbuffer((const ccv_nnc_tensor_t*)c))
+		{
+			const size_t input_size = ccv_nnc_tensor_data_size_without_padding(inputs[i]->info);
+			const int overlap = inputs[i]->dataof < c->dataof + c_size && c->dataof < inputs[i]->dataof + input_size;
+			if (overlap && ((column_broadcast & (1u << i)) || inputs[i]->dataof != c->dataof))
+				return 0;
+		}
+	*column_length = (int)length;
+	return column_broadcast;
+}
+
 #endif
