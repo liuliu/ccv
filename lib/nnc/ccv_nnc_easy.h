@@ -328,6 +328,26 @@ static inline int ccv_nnc_8i_rowwise_x_group_bits(const int format)
 	}
 }
 
+/* The 16 x 16 tiles of a row_count x row_length TMCQ tensor: (row_count / 16) tile rows of row_length / 16 tiles
+ * each. */
+static inline uint64_t ccv_nnc_8i_rowwise_x_tile_count(const uint64_t row_count, const uint64_t row_length)
+{
+	return (row_count / 16) * (row_length / 16);
+}
+
+/* Bits of the packed payload of a row_count x row_length tensor. A TMCQ group is one 16 x 16 tile that spans 16
+ * rows, so the payload is (row_count / 16) (row_length / 16) tiles of group_bits each, which needs only
+ * row_length % 16 (with row_length % 256 it equals the row-wise formula below, byte for byte). Every other codec has
+ * ceil(row_length / group_size) groups per row. */
+static inline uint64_t ccv_nnc_8i_rowwise_x_payload_bits(const int format, const uint64_t row_count, const uint64_t row_length)
+{
+	const uint64_t group_bits = (uint64_t)ccv_nnc_8i_rowwise_x_group_bits(format);
+	if (ccv_nnc_8i_rowwise_x_is_tmcq(format))
+		return ccv_nnc_8i_rowwise_x_tile_count(row_count, row_length) * group_bits;
+	const uint64_t group_size = (uint64_t)ccv_nnc_8i_rowwise_x_group_size(format);
+	return row_count * ((row_length + group_size - 1) / group_size) * group_bits;
+}
+
 static inline ccv_nnc_tensor_param_t ccv_nnc_tensor_8i_rowwise_x(const ccv_nnc_tensor_param_t params, const int format)
 {
 	assert(params.datatype == CCV_16F || params.datatype == CCV_32F || params.datatype == CCV_64F || params.datatype == CCV_16BF);
@@ -338,8 +358,8 @@ static inline ccv_nnc_tensor_param_t ccv_nnc_tensor_8i_rowwise_x(const ccv_nnc_t
 	}
 	if (ccv_nnc_8i_rowwise_x_is_tmcq(format))
 	{
-		// Tiles span 16 rows and 16 columns; with row_length % 256 the payload size matches the row-wise formula.
-		assert(nd > 0 && params.dim[nd - 1] > 0 && params.dim[nd - 1] % 256 == 0);
+		// Tiles span 16 rows and 16 columns (ccv_nnc_8i_rowwise_x_payload_bits).
+		assert(nd > 0 && params.dim[nd - 1] > 0 && params.dim[nd - 1] % 16 == 0);
 		assert((ccv_nnc_tensor_count(params) / params.dim[nd - 1]) % 16 == 0);
 		assert(!(format & CCV_NNC_QX_8I_ROWWISE_HADAMARD_256));
 	}
@@ -386,10 +406,7 @@ static inline size_t ccv_nnc_tensor_data_size_without_padding(const ccv_nnc_tens
 			assert(row_length > 0);
 			assert(count % row_length == 0);
 			const ssize_t row_count = count / row_length;
-			const ssize_t group_size = ccv_nnc_8i_rowwise_x_group_size(params.reserved);
-			const ssize_t groups_per_row = (row_length + group_size - 1) / group_size;
-			const ssize_t group_bits = ccv_nnc_8i_rowwise_x_group_bits(params.reserved);
-			const ssize_t payload_size = (row_count * groups_per_row * group_bits + 7) / 8;
+			const ssize_t payload_size = (ssize_t)((ccv_nnc_8i_rowwise_x_payload_bits(params.reserved, row_count, row_length) + 7) / 8);
 			const ssize_t scale_offset = (payload_size + 127) & -128;
 			data_size = scale_offset + row_count * CCV_GET_DATA_TYPE_SIZE(qx_datatype);
 		} else {

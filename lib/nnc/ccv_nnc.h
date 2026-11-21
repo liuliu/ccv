@@ -1192,7 +1192,8 @@ enum {
 	 * (bits E - 15 .. E - 1, wrapping inside the tile), takes k = ((uint32_t)cw * 0x83DCD12D) >> 23 and gets
 	 * the int8 codes q8[2j] = T[2k], q8[2j + 1] = T[2k + 1] from the 1024-byte built-in table T in
 	 * ccv_nnc_trellis_builtin_table.inc. The weight is row_scale * q8 like every other row-wise-x codec. One value per even rate n = 16..32; requires row_count % 16 == 0 and
-	 * row_length % 256 == 0. A nonzero codebook slot (reserved bits 16 - 23, see ccv_nnc_codebook.h) replaces T
+	 * row_length % 16 == 0 (the payload is (row_count / 16) (row_length / 16) tiles of 2 n bytes, see
+	 * ccv_nnc_8i_rowwise_x_payload_bits; a kernel that needs more checks it itself). A nonzero codebook slot (reserved bits 16 - 23, see ccv_nnc_codebook.h) replaces T
 	 * with that codebook of P = 512, 1024 or 2048 pairs, and k = (cw * 0x83DCD12D) >> (32 - log2 P). ccv builds
 	 * in only that table, the table of files without a codebook; other tables come with the file
 	 * (__ccv_codebook__/<id>). */

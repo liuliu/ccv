@@ -35,10 +35,8 @@ static size_t _ccv_nnc_8i_rowwise_packed_scale_offset(const int format, const si
 	assert(row_length > 0);
 	assert(input_length % row_length == 0);
 	const size_t row_count = input_length / row_length;
-	const size_t group_size = ccv_nnc_8i_rowwise_x_group_size(format);
-	const size_t groups_per_row = (row_length + group_size - 1) / group_size;
-	const size_t group_bits = ccv_nnc_8i_rowwise_x_group_bits(format);
-	const size_t payload_size = (row_count * groups_per_row * group_bits + 7) / 8;
+	// TMCQ: whole 16 x 16 tiles, (row_count / 16) (row_length / 16) of them (ccv_nnc_8i_rowwise_x_payload_bits).
+	const size_t payload_size = (size_t)((ccv_nnc_8i_rowwise_x_payload_bits(format, row_count, row_length) + 7) / 8);
 	return (payload_size + 127) & -128;
 }
 
@@ -48,7 +46,7 @@ CCV_WARN_UNUSED(size_t) ccv_nnc_8i_rowwise_x_data_size(const int format, const i
 		((format & CCV_NNC_QX_8I_ROWWISE_HADAMARD_256) && row_length % 256 != 0))
 		return 0;
 	if (ccv_nnc_8i_rowwise_x_is_tmcq(format) &&
-		(row_length % 256 != 0 || (input_length / row_length) % 16 != 0 || (format & CCV_NNC_QX_8I_ROWWISE_HADAMARD_256)))
+		(row_length % 16 != 0 || (input_length / row_length) % 16 != 0 || (format & CCV_NNC_QX_8I_ROWWISE_HADAMARD_256)))
 		return 0;
 	assert(datatype == CCV_16F || datatype == CCV_16BF || datatype == CCV_32F || datatype == CCV_64F);
 	assert(row_length > 0);
@@ -2843,7 +2841,7 @@ CCV_WARN_UNUSED(size_t) ccv_nnc_quantize_8i_rowwise_x(const void* input, const i
 	if (ccv_nnc_8i_rowwise_x_is_tmcq(format))
 	{
 		// TMCQ: whole 16 x 16 tiles, unweighted (no imatrix or Hessian).
-		if (imatrix || imatrix_length || hessian || hessian_length || row_length % 256 != 0 || row_count == 0 || row_count % 16 != 0 ||
+		if (imatrix || imatrix_length || hessian || hessian_length || row_length % 16 != 0 || row_count == 0 || row_count % 16 != 0 ||
 			(format & CCV_NNC_QX_8I_ROWWISE_HADAMARD_256))
 			return 0;
 	}
@@ -2884,7 +2882,7 @@ int ccv_nnc_dequantize_8i_rowwise_x(const void* input, const int datatype, const
 	{
 		// Each tile writes 16 rows x 16 columns back to row-major output.
 		assert(!(format & CCV_NNC_QX_8I_ROWWISE_HADAMARD_256));
-		assert(row_length % 256 == 0 && row_count % 16 == 0);
+		assert(row_length % 16 == 0 && row_count % 16 == 0);
 		const int n = ccv_nnc_8i_rowwise_x_tmcq_rate(format);
 		// Slot 0 is the built-in table, any other the codebook in the slot (registered, checked above).
 		int entries = 0;
