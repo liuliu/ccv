@@ -505,14 +505,17 @@ TEST_CASE("cublas forward gemm with TMCQ weights falls back to the dequantized w
 	const double fallback_tolerances[] = {1e-4, 2e-2, 5e-2};
 	dsfmt_t dsfmt;
 	dsfmt_init_gen_rand(&dsfmt, 31);
-	int d;
+	// K = 512, the MoE down projection K = 1152 and K = 272 (an odd tile count per tile row).
+	const int ks[] = {512, 1152, 272};
+	int d, k;
 	for (d = 0; d < sizeof(datatypes) / sizeof(datatypes[0]); d++)
-	{
-		int fast_path;
-		const double max_rel = _tmcq_gemm_max_rel_diff(datatypes[d], tmcq_formats[d * 3 + 1], 1, 1, 64, 256, 512, &dsfmt, &fast_path, 0);
-		REQUIRE(!fast_path, "a misaligned bias takes the dequantizing fallback");
-		REQUIRE(max_rel <= fallback_tolerances[d], "TMCQ fallback GEMM should match the CPU reference: datatype=%x max_rel=%g", datatypes[d], max_rel);
-	}
+		for (k = 0; k < sizeof(ks) / sizeof(ks[0]); k++)
+		{
+			int fast_path;
+			const double max_rel = _tmcq_gemm_max_rel_diff(datatypes[d], tmcq_formats[(d * 3 + 1 + k) % 9], 1, 1, 64, 256, ks[k], &dsfmt, &fast_path, 0);
+			REQUIRE(!fast_path, "a misaligned bias takes the dequantizing fallback");
+			REQUIRE(max_rel <= fallback_tolerances[d], "TMCQ fallback GEMM should match the CPU reference: datatype=%x k=%d max_rel=%g", datatypes[d], ks[k], max_rel);
+		}
 }
 
 TEST_CASE("cublas forward gemm with TMCQ weights runs the CUTLASS int8 GEMM from M = 5 to 2048")
@@ -530,11 +533,14 @@ TEST_CASE("cublas forward gemm with TMCQ weights runs the CUTLASS int8 GEMM from
 	const double tolerances[] = {1e-4, 1e-3, 5e-3};
 	// Each M picks a different CUTLASS tile in _ccv_nnc_8i_rowwise_cutlass_gemm_dispatch: 16 x 128 (n >= 8192), 64 x 64,
 	// 128 x 128 and 256 x 128.
+	// The MoE down projection (N = 2304, K = 1152) and K = 272 (17 tiles per tile row) run CUTLASS too (K % 16).
 	const int shapes[][3] = {
 		{5, 8192, 512},
 		{64, 384, 768},
 		{512, 512, 1024},
 		{2048, 256, 1024},
+		{64, 2304, 1152},
+		{256, 128, 272},
 	};
 	size_t workspace_size;
 	// 16-byte aligned dummies: only the device and the shapes decide.
@@ -583,8 +589,9 @@ TEST_CASE("TMCQ CUDA dequantization matches ccv_nnc_dequantize_8i_rowwise_x on C
 					continue;
 				const int format = tmcq_formats[f];
 				const int n = ccv_nnc_8i_rowwise_x_tmcq_rate(format);
+				// Random payloads at K = 768, 1152 and 272 (by rate); encoder payloads at K = 256 and 272.
 				const int rows = source ? 32 : 48;
-				const int k = source ? 256 : 768;
+				const int k = source ? (f % 2 ? 272 : 256) : (f % 3 == 0 ? 768 : f % 3 == 1 ? 1152 : 272);
 				const size_t count = (size_t)rows * k;
 				ccv_nnc_tensor_param_t host_params = CPU_TENSOR_NHWC(32F, rows, k);
 				host_params.datatype = datatypes[d];
@@ -705,15 +712,23 @@ TEST_CASE("cublas forward gemm with CPU-quantized TMCQ weights matches the CPU d
 TEST_CASE("CUDA index select rejects TMCQ embeddings")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_INDEX_SELECT_FORWARD, CCV_NNC_BACKEND_GPU_REF));
-	ccv_nnc_tensor_t* const ga = ccv_nnc_tensor_new(0, ccv_nnc_tensor_8i_rowwise_x(GPU_TENSOR_NHWC(000, 16F, 32, 256), CCV_NNC_QX_8I_ROWWISE_TMCQ_N16), 0);
-	ccv_nnc_tensor_t* const gindices = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32S, 2), 0);
-	ccv_nnc_tensor_t* const gb = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, 2, 256), 0);
-	ccv_nnc_cmd_t cmd = CMD_INDEX_SELECT_FORWARD();
-	cmd.backend = CCV_NNC_BACKEND_GPU_REF;
-	REQUIRE_EQ(ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(ga, gindices), TENSOR_LIST(gb), 0), CCV_NNC_EXEC_INVALID, "a TMCQ row cannot be gathered on its own");
-	ccv_nnc_tensor_free(gb);
-	ccv_nnc_tensor_free(gindices);
-	ccv_nnc_tensor_free(ga);
+	// A tile spans 16 rows. K = 256 and K = 272 (off the old 256 grid).
+	const int formats[] = {CCV_NNC_QX_8I_ROWWISE_TMCQ_N16, CCV_NNC_QX_8I_ROWWISE_TMCQ_N24};
+	const int ks[] = {256, 272};
+	int f, k;
+	for (f = 0; f < sizeof(formats) / sizeof(formats[0]); f++)
+		for (k = 0; k < sizeof(ks) / sizeof(ks[0]); k++)
+		{
+			ccv_nnc_tensor_t* const ga = ccv_nnc_tensor_new(0, ccv_nnc_tensor_8i_rowwise_x(GPU_TENSOR_NHWC(000, 16F, 32, ks[k]), formats[f]), 0);
+			ccv_nnc_tensor_t* const gindices = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32S, 2), 0);
+			ccv_nnc_tensor_t* const gb = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, 2, ks[k]), 0);
+			ccv_nnc_cmd_t cmd = CMD_INDEX_SELECT_FORWARD();
+			cmd.backend = CCV_NNC_BACKEND_GPU_REF;
+			REQUIRE_EQ(ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(ga, gindices), TENSOR_LIST(gb), 0), CCV_NNC_EXEC_INVALID, "a TMCQ row cannot be gathered on its own: format=%x k=%d", formats[f], ks[k]);
+			ccv_nnc_tensor_free(gb);
+			ccv_nnc_tensor_free(gindices);
+			ccv_nnc_tensor_free(ga);
+		}
 }
 
 #include "case_main.h"

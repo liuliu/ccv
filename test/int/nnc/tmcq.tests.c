@@ -1187,4 +1187,52 @@ TEST_CASE("TMCQ quantizes K = 1152 and K = 272 into payloads that decode as the 
 	}
 }
 
+TEST_CASE("TMCQ at K = 1152 and K = 272 survives tensor persistence, also with experts")
+{
+	// 2D tensors and a 3D tensor of 2 experts (its rows are the rows of both experts).
+	static const int shapes[][3] = { { 0, 32, 1152 }, { 0, 48, 272 }, { 2, 16, 1152 }, { 2, 32, 272 } };
+	const int format = CCV_NNC_QX_8I_ROWWISE_TMCQ_N24;
+	dsfmt_t dsfmt;
+	dsfmt_init_gen_rand(&dsfmt, 1152);
+	sqlite3* db = 0;
+	REQUIRE_EQ(sqlite3_open(":memory:", &db), SQLITE_OK, "in-memory database opens");
+	int s;
+	for (s = 0; s < 4; s++)
+	{
+		const int experts = shapes[s][0], rows = shapes[s][1], cols = shapes[s][2];
+		const int count = (experts ? experts : 1) * rows * cols;
+		const ccv_nnc_tensor_param_t params = experts ? CPU_TENSOR_NHWC(16F, experts, rows, cols) : CPU_TENSOR_NHWC(16F, rows, cols);
+		float* const values = ccmalloc(sizeof(float) * count);
+		uint16_t* const half = ccmalloc(sizeof(uint16_t) * count);
+		_test_tmcq_values(&dsfmt, values, count / cols, cols);
+		ccv_float_to_half_precision(values, half, count);
+		ccv_nnc_tensor_t* const packed = ccv_nnc_tensor_new(0, ccv_nnc_tensor_8i_rowwise_x(params, format), 0);
+		const size_t size = ccv_nnc_tensor_data_size_without_padding(packed->info);
+		REQUIRE_EQ(size, ccv_nnc_8i_rowwise_x_data_size(format, CCV_16F, count, cols), "shape %d tensor size matches", s);
+		REQUIRE_EQ(ccv_nnc_quantize_8i_rowwise_x(half, CCV_16F, CCV_TENSOR_CPU_MEMORY, count, cols, format, 0, 0, 0, 0, packed->data.u8, size), size, "shape %d quantizes", s);
+		char name[48];
+		snprintf(name, sizeof(name), "w_%d", s);
+		REQUIRE_EQ(ccv_nnc_tensor_write(packed, db, name, 0), CCV_IO_FINAL, "%s writes", name);
+		ccv_nnc_tensor_t* restored = 0;
+		REQUIRE_EQ(ccv_nnc_tensor_read(db, name, 0, 0, 0, &restored), CCV_IO_FINAL, "%s reads", name);
+		REQUIRE_EQ(restored->info.reserved, format, "%s codec persists", name);
+		REQUIRE_EQ(restored->info.datatype, packed->info.datatype, "%s source precision persists", name);
+		REQUIRE_EQ(ccv_nnc_tensor_nd(restored->info.dim), experts ? 3 : 2, "%s keeps its dimensions", name);
+		REQUIRE_EQ(ccv_nnc_tensor_data_size_without_padding(restored->info), size, "%s size persists", name);
+		REQUIRE_EQ(memcmp(restored->data.u8, packed->data.u8, size), 0, "%s payload and scales persist", name);
+		uint16_t* const a = ccmalloc(sizeof(uint16_t) * count);
+		uint16_t* const b = ccmalloc(sizeof(uint16_t) * count);
+		REQUIRE_EQ(ccv_nnc_dequantize_8i_rowwise_x(packed->data.u8, CCV_16F, CCV_TENSOR_CPU_MEMORY, size, cols, format, a, count), 0, "%s source decodes", name);
+		REQUIRE_EQ(ccv_nnc_dequantize_8i_rowwise_x(restored->data.u8, CCV_16F, CCV_TENSOR_CPU_MEMORY, size, cols, restored->info.reserved, b, count), 0, "%s restored decodes", name);
+		REQUIRE_ARRAY_EQ(uint16_t, a, b, count, "%s restored tensor decodes the same", name);
+		ccfree(b);
+		ccfree(a);
+		ccv_nnc_tensor_free(restored);
+		ccv_nnc_tensor_free(packed);
+		ccfree(half);
+		ccfree(values);
+	}
+	sqlite3_close(db);
+}
+
 #include "case_main.h"
