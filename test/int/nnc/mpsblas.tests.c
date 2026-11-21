@@ -7067,6 +7067,71 @@ TEST_CASE("MFA row broadcast add and multiply match CPU with offset outputs, in-
 		ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA);
 }
 
+TEST_CASE("set fills a tensor view, zeros of whole words by a blit and the rest through MPSGraph")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SET_FORWARD, CCV_NNC_BACKEND_MPS));
+	const struct {
+		int datatype;
+		int count;
+		int offset;
+		float value;
+	} cases[] = {
+		{CCV_32F, 1000, 0, 0},
+		{CCV_16F, 1000, 0, 0},
+		{CCV_16F, 999, 0, 0}, // Not whole words.
+		{CCV_16F, 1000, 2, 0}, // A view a word in.
+		{CCV_16F, 1000, 1, 0}, // A view half a word in.
+		{CCV_32F, 1000, 0, -0.0}, // Negative zero is not all zero bytes.
+		{CCV_32F, 1000, 3, 1.5},
+		{CCV_32S, 1000, 0, 0},
+	};
+	int c, i;
+	for (c = 0; c < sizeof(cases) / sizeof(cases[0]); c++)
+	{
+		// The storage holds ones before the view and after it.
+		const int datatype = cases[c].datatype;
+		const int total = cases[c].offset + cases[c].count + 3;
+		ccv_nnc_tensor_t* const ones = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, total), 0);
+		for (i = 0; i < total; i++)
+			ones->data.f32[i] = 1;
+		ccv_nnc_tensor_param_t params = GPU_TENSOR_NHWC(000, 32F, total);
+		params.datatype = datatype;
+		ccv_nnc_tensor_param_t host_params = params;
+		host_params.type = CCV_TENSOR_CPU_MEMORY;
+		ccv_nnc_tensor_t* const host = ccv_nnc_tensor_new(0, host_params, 0);
+		if (datatype == CCV_32S)
+			for (i = 0; i < total; i++)
+				host->data.i32[i] = 1;
+		else
+			ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ones), TENSOR_LIST(host), 0);
+		ccv_nnc_tensor_t* const storage = ccv_nnc_tensor_new(0, params, 0);
+		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(host), TENSOR_LIST(storage), 0);
+		ccv_nnc_tensor_param_t view_params = params;
+		view_params.dim[0] = cases[c].count;
+		ccv_nnc_tensor_view_t* const view = ccv_nnc_tensor_view_new(storage, view_params, DIM_ALLOC(cases[c].offset), DIM_ALLOC(1));
+		REQUIRE_EQ(CCV_NNC_EXEC_SUCCESS, ccv_nnc_cmd_exec(CMD_SET_FORWARD(cases[c].value), ccv_nnc_no_hint, 0, 0, 0, TENSOR_LIST((ccv_nnc_tensor_t*)view), 0), "set should execute");
+		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(storage), TENSOR_LIST(host), 0);
+		ccv_nnc_tensor_t* const result = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, total), 0);
+		if (datatype == CCV_32S)
+			for (i = 0; i < total; i++)
+				result->data.f32[i] = host->data.i32[i];
+		else
+			ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(host), TENSOR_LIST(result), 0);
+		for (i = 0; i < total; i++)
+		{
+			const int inside = i >= cases[c].offset && i < cases[c].offset + cases[c].count;
+			REQUIRE_EQ_WITH_TOLERANCE(result->data.f32[i], inside ? cases[c].value : 1, 1e-6, "case %d element %d", c, i);
+			if (inside && datatype == CCV_32F)
+				REQUIRE_EQ(!!signbit(result->data.f32[i]), !!signbit(cases[c].value), "case %d element %d keeps the sign of zero", c, i);
+		}
+		ccv_nnc_tensor_free(result);
+		ccv_nnc_tensor_view_free(view);
+		ccv_nnc_tensor_free(storage);
+		ccv_nnc_tensor_free(host);
+		ccv_nnc_tensor_free(ones);
+	}
+}
+
 TEST_CASE("MFA row broadcast preserves overlapping, disjoint and strided views")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_MUL_FORWARD, CCV_NNC_BACKEND_MPS) && ccv_nnc_cmd_ok(CCV_NNC_ADD_FORWARD, CCV_NNC_BACKEND_MPS));
