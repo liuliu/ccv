@@ -406,6 +406,11 @@ static inline size_t ccv_nnc_tensor_data_size_without_padding(const ccv_nnc_tens
 			assert(row_length > 0);
 			assert(count % row_length == 0);
 			const ssize_t row_count = count / row_length;
+			// The TMCQ tile grid rounds down, so a shape off the grid would be under-allocated.
+			if (ccv_nnc_8i_rowwise_x_is_tmcq(params.reserved))
+			{
+				assert(row_length % 16 == 0 && row_count % 16 == 0);
+			}
 			const ssize_t payload_size = (ssize_t)((ccv_nnc_8i_rowwise_x_payload_bits(params.reserved, row_count, row_length) + 7) / 8);
 			const ssize_t scale_offset = (payload_size + 127) & -128;
 			data_size = scale_offset + row_count * CCV_GET_DATA_TYPE_SIZE(qx_datatype);
