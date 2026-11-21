@@ -346,17 +346,21 @@ void cufileread(const int fd, const off_t file_offset, void* const buf, const si
 	};
 	CUfileHandle_t file_handle;
 	const CUfileError_t status = cuFileHandleRegister(&file_handle, &file_descr);
-	if (status.err != CU_FILE_SUCCESS)
+	if (status.err == CU_FILE_SUCCESS)
 	{
+		const ssize_t read_size = cuFileRead(file_handle, buf, size, file_offset, 0);
+		cuFileHandleDeregister(file_handle);
+		if (read_size == (ssize_t)size)
+			return;
+		// cuFile took the file but did not deliver the bytes, which leaves buf as it was. Seen in
+		// compatibility mode as "cufile_posix_read failed ... Bad address" in cufile.log.
+		PRINT(CCV_CLI_ERROR, "[%s:%d]:CUFILE - Error: read %zd of %zu bytes\n", __FILE__, __LINE__, read_size, size);
+	} else
 		PRINT(CCV_CLI_ERROR, "[%s:%d]:CUFILE - Error: %s\n", __FILE__, __LINE__, CUFILE_ERRSTR(status.err));
-		void* bufptr = mmap(0, size, PROT_READ, MAP_PRIVATE, fd, file_offset);
-		madvise(bufptr, size, MADV_SEQUENTIAL | MADV_WILLNEED);
-		cumemcpy(buf, CCV_TENSOR_GPU_MEMORY, bufptr, CCV_TENSOR_CPU_MEMORY, size);
-		munmap(bufptr, size);
-		return;
-	}
-	cuFileRead(file_handle, buf, size, file_offset, 0);
-	cuFileHandleDeregister(file_handle);
+	void* bufptr = mmap(0, size, PROT_READ, MAP_PRIVATE, fd, file_offset);
+	madvise(bufptr, size, MADV_SEQUENTIAL | MADV_WILLNEED);
+	cumemcpy(buf, CCV_TENSOR_GPU_MEMORY, bufptr, CCV_TENSOR_CPU_MEMORY, size);
+	munmap(bufptr, size);
 }
 
 typedef struct {
