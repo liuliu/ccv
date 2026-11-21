@@ -1388,7 +1388,7 @@ static size_t _ccv_nnc_8i_rowwise_x_tmcq_blocks(const size_t warp_tasks)
 	return ccv_min((warp_tasks + CCV_NNC_8I_ROWWISE_X_TMCQ_WARPS - 1) / CCV_NNC_8I_ROWWISE_X_TMCQ_WARPS, (size_t)sm_count * blocks_per_sm);
 }
 
-// One warp converts a pair of horizontally adjacent tiles (a tile row holds row_length / 16 tiles, an even count),
+// One warp converts a pair of horizontally adjacent tiles (a tile row holds row_length / 16 tiles, here an even count),
 // so that each of the 16 rows gets 32 contiguous bytes, one full sector: lanes 0 .. 15 load the words of the left
 // tile and lanes 16 .. 31 those of the right one, in one load. Lane 2 r then writes row r of the left tile and lane
 // 2 r + 1 row r of the right tile, 16 bytes each, after swapping halves. Consecutive warps take consecutive pairs.
@@ -1420,6 +1420,26 @@ static __global__ void __launch_bounds__(CCV_NNC_8I_ROWWISE_X_TMCQ_WARPS * 32) _
 			((uint2*)dest)[0] = make_uint2(out.x, out.y);
 			((uint2*)dest)[1] = make_uint2(out.z, out.w);
 		}
+	}
+}
+
+// The same conversion one tile per warp, for tile rows of an odd number of tiles (row_length % 32 == 16), where the
+// pairs above would straddle two tile rows: lane L writes the 8 bytes of row L / 2, columns (L & 1) * 8 .. + 7.
+template<int N>
+static __global__ void __launch_bounds__(CCV_NNC_8I_ROWWISE_X_TMCQ_WARPS * 32) _ccv_nnc_dequantize_8i_rowwise_x_tmcq_8i_single(const size_t tile_count, const size_t tiles_per_row, const size_t row_length, const uint32_t* const input, uint8_t* const output, const __grid_constant__ ccv_nnc_8i_rowwise_x_tmcq_table_t table)
+{
+	__shared__ uint32_t shared_table[256];
+	const uint16_t* const codebook = _ccv_nnc_8i_rowwise_x_tmcq_shared_table(table, shared_table);
+	const int lane = threadIdx.x & 31;
+	const size_t warp_count = (size_t)gridDim.x * CCV_NNC_8I_ROWWISE_X_TMCQ_WARPS;
+	for (size_t g = (size_t)blockIdx.x * CCV_NNC_8I_ROWWISE_X_TMCQ_WARPS + (threadIdx.x >> 5); g < tile_count; g += warp_count)
+	{
+		const uint32_t word = lane < N / 2 ? input[g * (N / 2) + lane] : 0;
+		const uint2 packed = _ccv_nnc_8i_rowwise_x_tmcq_decode_oct<N>(codebook, word, 0, lane);
+		const size_t tr = g / tiles_per_row;
+		const size_t row = tr * 16 + (lane >> 1);
+		const size_t col = (g - tr * tiles_per_row) * 16 + (lane & 1) * 8;
+		*(uint2*)(output + row * row_length + col) = packed;
 	}
 }
 
@@ -1473,7 +1493,7 @@ static void _ccv_nnc_8i_rowwise_x_tmcq_check(const int format, const size_t outp
 	// Tiles span 16 rows and 16 columns; the codec defines no rotation. The words of a tile are loaded as aligned
 	// 32-bit words.
 	assert(!(format & CCV_NNC_QX_8I_ROWWISE_HADAMARD_256));
-	assert(row_length % 256 == 0);
+	assert(row_length % 16 == 0);
 	assert((output_length / row_length) % 16 == 0);
 	assert(((uintptr_t)input & 3) == 0);
 }
@@ -1846,8 +1866,8 @@ void ccv_nnc_compat_dequantize_8i_rowwise_x_fp(const void* input, const int data
 	const size_t row_count = output_length / row_length;
 	const size_t group_size = ccv_nnc_8i_rowwise_x_group_size(format);
 	const size_t groups_per_row = (row_length + group_size - 1) / group_size;
-	const size_t group_bits = ccv_nnc_8i_rowwise_x_group_bits(format);
-	const size_t payload_size = (row_count * groups_per_row * group_bits + 7) / 8;
+	// TMCQ: (row_count / 16) (row_length / 16) whole tiles, any row_length % 16 (ccv_nnc_8i_rowwise_x_payload_bits).
+	const size_t payload_size = (size_t)((ccv_nnc_8i_rowwise_x_payload_bits(format, row_count, row_length) + 7) / 8);
 	const size_t scale_offset = (payload_size + 127) & ~(size_t)127;
 	const size_t scale_size = row_count * CCV_GET_DATA_TYPE_SIZE(datatype);
 	assert(input_length >= scale_offset + scale_size);
@@ -1915,8 +1935,8 @@ void ccv_nnc_compat_dequantize_8i_rowwise_x_fp_hadamard_256(const void* input, c
 	const size_t row_count = output_length / row_length;
 	const size_t group_size = ccv_nnc_8i_rowwise_x_group_size(format);
 	const size_t groups_per_row = (row_length + group_size - 1) / group_size;
-	const size_t group_bits = ccv_nnc_8i_rowwise_x_group_bits(format);
-	const size_t payload_size = (row_count * groups_per_row * group_bits + 7) / 8;
+	// TMCQ: (row_count / 16) (row_length / 16) whole tiles, any row_length % 16 (ccv_nnc_8i_rowwise_x_payload_bits).
+	const size_t payload_size = (size_t)((ccv_nnc_8i_rowwise_x_payload_bits(format, row_count, row_length) + 7) / 8);
 	const size_t scale_offset = (payload_size + 127) & ~(size_t)127;
 	assert(input_length >= scale_offset + row_count * CCV_GET_DATA_TYPE_SIZE(datatype));
 	cudaStream_t stream = ccv_nnc_stream_context_get_stream(stream_context);
@@ -1942,8 +1962,8 @@ void ccv_nnc_compat_dequantize_8i_rowwise_x(const void* input, const int datatyp
 	const size_t row_count = output_length / row_length;
 	const size_t group_size = ccv_nnc_8i_rowwise_x_group_size(format);
 	const size_t groups_per_row = (row_length + group_size - 1) / group_size;
-	const size_t group_bits = ccv_nnc_8i_rowwise_x_group_bits(format);
-	const size_t payload_size = (row_count * groups_per_row * group_bits + 7) / 8;
+	// TMCQ: (row_count / 16) (row_length / 16) whole tiles, any row_length % 16 (ccv_nnc_8i_rowwise_x_payload_bits).
+	const size_t payload_size = (size_t)((ccv_nnc_8i_rowwise_x_payload_bits(format, row_count, row_length) + 7) / 8);
 	const size_t scale_offset = (payload_size + 127) & ~(size_t)127;
 	const size_t scale_size = row_count * CCV_GET_DATA_TYPE_SIZE(datatype);
 	assert(input_length >= scale_offset + scale_size);
@@ -1955,14 +1975,26 @@ void ccv_nnc_compat_dequantize_8i_rowwise_x(const void* input, const int datatyp
 		assert(!((format >> 16) & 0xff) && "the CUDA TMCQ decode reads the built-in table only");
 		// A TMCQ tile spans 16 rows: each warp writes 16 rows x 16 bytes of one tile, with a row stride of row_length.
 		_ccv_nnc_8i_rowwise_x_tmcq_check(format, output_length, row_length, u8);
-		const size_t pair_count = output_length / 512;
-		const size_t blocks = _ccv_nnc_8i_rowwise_x_tmcq_blocks(pair_count);
-		const int aligned = ((uintptr_t)output & 15) == 0;
-#define KERNEL(n) _ccv_nnc_dequantize_8i_rowwise_x_tmcq_8i<n><<<blocks, CCV_NNC_8I_ROWWISE_X_TMCQ_WARPS * 32, 0, stream>>>(pair_count, row_length / 32, row_length, (const uint32_t*)u8, (uint8_t*)output, aligned, table)
 		const ccv_nnc_8i_rowwise_x_tmcq_table_t& table = *_ccv_nnc_8i_rowwise_x_tmcq_table();
-		if (pair_count)
-			CCV_NNC_8I_ROWWISE_X_TMCQ_DISPATCH(format, KERNEL);
+		if (row_length % 32 == 0)
+		{
+			// An even number of tiles per tile row: one warp per pair of adjacent tiles.
+			const size_t pair_count = output_length / 512;
+			const size_t blocks = _ccv_nnc_8i_rowwise_x_tmcq_blocks(pair_count);
+			const int aligned = ((uintptr_t)output & 15) == 0;
+#define KERNEL(n) _ccv_nnc_dequantize_8i_rowwise_x_tmcq_8i<n><<<blocks, CCV_NNC_8I_ROWWISE_X_TMCQ_WARPS * 32, 0, stream>>>(pair_count, row_length / 32, row_length, (const uint32_t*)u8, (uint8_t*)output, aligned, table)
+			if (pair_count)
+				CCV_NNC_8I_ROWWISE_X_TMCQ_DISPATCH(format, KERNEL);
 #undef KERNEL
+		} else {
+			// row_length % 32 == 16: one warp per tile, 8-byte stores (output is 8-byte aligned, asserted above).
+			const size_t tile_count = output_length / 256;
+			const size_t blocks = _ccv_nnc_8i_rowwise_x_tmcq_blocks(tile_count);
+#define KERNEL(n) _ccv_nnc_dequantize_8i_rowwise_x_tmcq_8i_single<n><<<blocks, CCV_NNC_8I_ROWWISE_X_TMCQ_WARPS * 32, 0, stream>>>(tile_count, row_length / 16, row_length, (const uint32_t*)u8, (uint8_t*)output, table)
+			if (tile_count)
+				CCV_NNC_8I_ROWWISE_X_TMCQ_DISPATCH(format, KERNEL);
+#undef KERNEL
+		}
 		CUDA_ENFORCE(cudaMemcpyAsync((uint8_t*)output + ((output_length + 127) & ~(size_t)127), u8 + scale_offset, scale_size, cudaMemcpyDeviceToDevice, stream));
 		return;
 	}
