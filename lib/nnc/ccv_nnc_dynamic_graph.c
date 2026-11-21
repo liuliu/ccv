@@ -29,13 +29,14 @@ ccv_nnc_dynamic_graph_t* ccv_nnc_dynamic_graph_new(void)
 	return graph;
 }
 
-static void _ccv_nnc_tensor_variable_wait_fast_fence(ccv_nnc_tensor_view_t* const tensor_view)
+static int _ccv_nnc_tensor_variable_wait_fast_fence(ccv_nnc_tensor_view_t* const tensor_view)
 {
 #ifdef HAVE_MPS
 	ccv_nnc_tensor_t* const tensor = (ccv_nnc_tensor_t*)CCV_NNC_TENSOR_VIEW(tensor_view);
 	if (CCV_TENSOR_GET_MEMORY(tensor->info.type) == CCV_TENSOR_CPU_MEMORY)
-		ccv_nnc_mps_tensor_fast_fence_wait(tensor);
+		return ccv_nnc_mps_tensor_fast_fence_wait(tensor);
 #endif
+	return 0;
 }
 
 static void _ccv_nnc_tensor_variable_free(ccv_nnc_dynamic_graph_t* const graph, const ccv_nnc_tensor_variable_t tensor_variable, const int zeroing)
@@ -382,11 +383,11 @@ ccv_nnc_tensor_t* ccv_nnc_tensor_from_variable_impl(ccv_nnc_dynamic_graph_t* con
 	return (ccv_nnc_tensor_t*)tensor_variable->tensor_view;
 }
 
-void ccv_nnc_tensor_variable_wait(ccv_nnc_dynamic_graph_t* const graph, const ccv_nnc_tensor_variable_t tensor_variable)
+int ccv_nnc_tensor_variable_wait(ccv_nnc_dynamic_graph_t* const graph, const ccv_nnc_tensor_variable_t tensor_variable)
 {
 	if (!tensor_variable || !tensor_variable->tensor_view)
-		return;
-	_ccv_nnc_tensor_variable_wait_fast_fence(tensor_variable->tensor_view);
+		return 0;
+	return _ccv_nnc_tensor_variable_wait_fast_fence(tensor_variable->tensor_view);
 }
 
 static void _ccv_nnc_tensor_symbol_extra_new(ccv_nnc_dynamic_graph_t* const graph, const ccv_nnc_tensor_variable_t tensor_variable, const ccv_nnc_tensor_symbol_t symbol)
