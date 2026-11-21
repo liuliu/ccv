@@ -1161,13 +1161,19 @@ TEST_CASE("mps tmcq gemm rejects K % 16 != 0 and rows % 16 != 0 without assertin
 		{
 			const int n_dim = shapes[s][0], k_dim = shapes[s][1];
 			const int format = CCV_NNC_QX_8I_ROWWISE_TMCQ_N22;
-			ccv_nnc_tensor_param_t wp = tmcq_params(CCV_TENSOR_GPU_MEMORY, CCV_16F, n_dim, k_dim);
+			// An off-grid TMCQ tensor cannot be allocated (ccv_nnc_tensor_data_size asserts), so allocate the
+			// enclosing tile grid and present the off-grid shape only to the command.
+			ccv_nnc_tensor_param_t wp = tmcq_params(CCV_TENSOR_GPU_MEMORY, CCV_16F, (n_dim + 15) / 16 * 16, (k_dim + 15) / 16 * 16);
 			wp.datatype = ((CCV_16F >> 12) & 0xff) | CCV_QX | CCV_NNC_QX_8I_ROWWISE_X;
 			wp.reserved = format;
 			ccv_nnc_tensor_t* const gq = ccv_nnc_tensor_new(0, wp, 0);
+			const ccv_nnc_tensor_param_t grid = gq->info;
+			gq->info.dim[0] = n_dim;
+			gq->info.dim[1] = k_dim;
 			ccv_nnc_tensor_t* const ga = ccv_nnc_tensor_new(0, tmcq_params(CCV_TENSOR_GPU_MEMORY, CCV_16F, m, k_dim), 0);
 			ccv_nnc_tensor_t* const gb = ccv_nnc_tensor_new(0, tmcq_params(CCV_TENSOR_GPU_MEMORY, CCV_16F, m, n_dim), 0);
 			const int status = ccv_nnc_cmd_exec(CMD_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(0, 1)), ccv_nnc_no_hint, 0, TENSOR_LIST(ga, gq), TENSOR_LIST(gb), 0);
+			gq->info = grid;
 			REQUIRE_EQ(status, CCV_NNC_EXEC_INVALID, "TMCQ N=%d K=%d M=%d is not a whole tile grid", n_dim, k_dim, m);
 			ccv_nnc_tensor_free(gb);
 			ccv_nnc_tensor_free(ga);
