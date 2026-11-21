@@ -78,9 +78,10 @@ static void tmcq_ref_decode_matrix(const uint8_t* const payload, const int rows,
 				q8[(size_t)(tr * 16 + t / 16) * cols + tc * 16 + t % 16] = (int8_t)tmcq_ref_decode(payload, (size_t)tr * tiles_per_row + tc, n, t);
 }
 
+// The tile grid: (rows / 16) (cols / 16) tiles of 2 n bytes (the row-wise rows (cols / 256) 16 n bits when cols % 256 == 0).
 static size_t tmcq_payload_bytes(const int rows, const int cols, const int n)
 {
-	return ((size_t)rows * (cols / 256) * 16 * n + 7) / 8;
+	return (size_t)(rows / 16) * (cols / 16) * 2 * n;
 }
 
 static size_t tmcq_scale_offset(const int rows, const int cols, const int n)
@@ -202,6 +203,28 @@ static ccv_nnc_tensor_param_t tmcq_params(const int type, const int datatype, co
 		.dim = { rows, cols, 0 },
 	};
 	return params;
+}
+
+// TMCQ weights [rows, cols]. ccv_nnc_tensor_8i_rowwise_x for cols % 256 == 0; for any other cols % 16 == 0 the same
+// parameters made directly, so the Metal paths run before the CPU side takes K % 16 (its tensor constructor asserts
+// cols % 256 until then). The tensor is never smaller than the tile grid: the CPU size counts ceil(cols / 256) groups
+// of 256 weights per row until it counts tiles.
+static ccv_nnc_tensor_param_t tmcq_x_params(const int type, const int datatype, const int rows, const int cols, const int format)
+{
+	if (cols % 256 == 0)
+		return ccv_nnc_tensor_8i_rowwise_x(tmcq_params(type, datatype, rows, cols), format);
+	ccv_nnc_tensor_param_t params = tmcq_params(type, datatype, rows, cols);
+	params.datatype = ((datatype >> 12) & 0xff) | CCV_QX | CCV_NNC_QX_8I_ROWWISE_X;
+	params.reserved = format;
+	return params;
+}
+
+// Whether the CPU codec takes this K % 16 shape (its size is the tile grid's): the CPU decode checks and the
+// tensor-size equality below need it. Before that the Metal checks still run and the CPU ones are skipped.
+static int tmcq_cpu_takes(const int format, const int datatype, const int rows, const int cols)
+{
+	const size_t scale_offset = (tmcq_payload_bytes(rows, cols, tmcq_rate_of(format)) + 127) & ~(size_t)127;
+	return ccv_nnc_8i_rowwise_x_data_size(format, datatype, (size_t)rows * cols, cols) == scale_offset + (size_t)rows * CCV_GET_DATA_TYPE_SIZE(datatype);
 }
 
 static const int tmcq_formats[] = {
@@ -528,8 +551,8 @@ static float tmcq_bias_value(const int col)
 static int tmcq_gemm_compare(const int datatype, const int format, const int use_bias, const int m_dim, const int n_dim, const int k_dim, double* const max_rel_cpu, double* const max_rel_dense)
 {
 	const int n = tmcq_rate_of(format);
-	ccv_nnc_tensor_t* const hq = ccv_nnc_tensor_new(0, ccv_nnc_tensor_8i_rowwise_x(tmcq_params(CCV_TENSOR_CPU_MEMORY, datatype, n_dim, k_dim), format), 0);
-	ccv_nnc_tensor_t* const gq = ccv_nnc_tensor_new(0, ccv_nnc_tensor_8i_rowwise_x(tmcq_params(CCV_TENSOR_GPU_MEMORY, datatype, n_dim, k_dim), format), 0);
+	ccv_nnc_tensor_t* const hq = ccv_nnc_tensor_new(0, tmcq_x_params(CCV_TENSOR_CPU_MEMORY, datatype, n_dim, k_dim, format), 0);
+	ccv_nnc_tensor_t* const gq = ccv_nnc_tensor_new(0, tmcq_x_params(CCV_TENSOR_GPU_MEMORY, datatype, n_dim, k_dim, format), 0);
 	ccv_nnc_tensor_t* const hw = ccv_nnc_tensor_new(0, tmcq_params(CCV_TENSOR_CPU_MEMORY, datatype, n_dim, k_dim), 0);
 	ccv_nnc_tensor_t* const gw = ccv_nnc_tensor_new(0, tmcq_params(CCV_TENSOR_GPU_MEMORY, datatype, n_dim, k_dim), 0);
 	ccv_nnc_tensor_t* const ha = ccv_nnc_tensor_new(0, tmcq_params(CCV_TENSOR_CPU_MEMORY, datatype, m_dim, k_dim), 0);
@@ -557,14 +580,15 @@ static int tmcq_gemm_compare(const int datatype, const int format, const int use
 	if (use_bias)
 		for (j = 0; j < n_dim; j++)
 			tmcq_store_value(datatype, hbias->data.u8, j, tmcq_bias_value(j));
+	int status;
 	if (use_bias)
 	{
 		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(hq, hw, ha, hbias), TENSOR_LIST(gq, gw, ga, gbias), 0);
-		ccv_nnc_cmd_exec(CMD_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(0, 1)), ccv_nnc_no_hint, 0, TENSOR_LIST(ga, gq, gbias), TENSOR_LIST(gbq), 0);
+		status = ccv_nnc_cmd_exec(CMD_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(0, 1)), ccv_nnc_no_hint, 0, TENSOR_LIST(ga, gq, gbias), TENSOR_LIST(gbq), 0);
 		ccv_nnc_cmd_exec(CMD_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(0, 1)), ccv_nnc_no_hint, 0, TENSOR_LIST(ga, gw, gbias), TENSOR_LIST(gbd), 0);
 	} else {
 		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(hq, hw, ha), TENSOR_LIST(gq, gw, ga), 0);
-		ccv_nnc_cmd_exec(CMD_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(0, 1)), ccv_nnc_no_hint, 0, TENSOR_LIST(ga, gq), TENSOR_LIST(gbq), 0);
+		status = ccv_nnc_cmd_exec(CMD_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(0, 1)), ccv_nnc_no_hint, 0, TENSOR_LIST(ga, gq), TENSOR_LIST(gbq), 0);
 		ccv_nnc_cmd_exec(CMD_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(0, 1)), ccv_nnc_no_hint, 0, TENSOR_LIST(ga, gw), TENSOR_LIST(gbd), 0);
 	}
 	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(gbq, gbd), TENSOR_LIST(hbq, hbd), 0);
@@ -598,7 +622,7 @@ static int tmcq_gemm_compare(const int datatype, const int format, const int use
 	ccv_nnc_tensor_free(hw);
 	ccv_nnc_tensor_free(gq);
 	ccv_nnc_tensor_free(hq);
-	return 0;
+	return status;
 }
 
 static double tmcq_tolerance(const int datatype)
@@ -827,6 +851,327 @@ TEST_CASE("mps tmcq decode is exact across odd tile-row counts")
 			ccfree(scales);
 			ccv_nnc_tensor_free(gq);
 			ccv_nnc_tensor_free(hq);
+		}
+}
+
+// K % 16 (rows % 16): K = 1152 (72 tiles a tile row, K % 256 != 0 but K % 64 == 0), 272 (17 tiles, odd), 16 and 48
+// (1 and 3 tiles), 288 (18 tiles, K % 32 == 0 but K % 64 != 0), 320 (20 tiles, K % 64 == 0 under 512) and 784 (49
+// tiles). The Metal decodes must equal the byte-level reference bit for bit; the CPU decode is compared too once the CPU
+// codec takes the shape (tmcq_cpu_takes).
+static const int tmcq_k16_shapes[][2] = { { 2304, 1152 }, { 48, 272 }, { 32, 16 }, { 16, 48 }, { 32, 288 }, { 48, 320 }, { 16, 784 } };
+static const int tmcq_k16_formats[] = { CCV_NNC_QX_8I_ROWWISE_TMCQ_N16, CCV_NNC_QX_8I_ROWWISE_TMCQ_N18, CCV_NNC_QX_8I_ROWWISE_TMCQ_N22, CCV_NNC_QX_8I_ROWWISE_TMCQ_N32 };
+
+TEST_CASE("mps tmcq int8 and fp decodes are exact at K % 16 (K = 1152, 272, 16, 48, 288, 320, 784)")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_MPS));
+	int s, f, d, cpu_skipped = 0;
+	for (s = 0; s < (int)(sizeof(tmcq_k16_shapes) / sizeof(tmcq_k16_shapes[0])); s++)
+		for (f = 0; f < (int)(sizeof(tmcq_k16_formats) / sizeof(tmcq_k16_formats[0])); f++)
+			for (d = 0; d < (int)(sizeof(tmcq_datatypes) / sizeof(tmcq_datatypes[0])); d++)
+			{
+				const int rows = tmcq_k16_shapes[s][0], cols = tmcq_k16_shapes[s][1];
+				const int format = tmcq_k16_formats[f];
+				const int datatype = tmcq_datatypes[d];
+				// The 2304 x 1152 grid at FP16 only.
+				if (rows > 1024 && datatype != CCV_16F)
+					continue;
+				const int n = tmcq_rate_of(format);
+				const size_t scale_size = CCV_GET_DATA_TYPE_SIZE(datatype);
+				const size_t count = (size_t)rows * cols;
+				ccv_nnc_tensor_t* const hq = ccv_nnc_tensor_new(0, tmcq_x_params(CCV_TENSOR_CPU_MEMORY, datatype, rows, cols, format), 0);
+				ccv_nnc_tensor_t* const gq = ccv_nnc_tensor_new(0, tmcq_x_params(CCV_TENSOR_GPU_MEMORY, datatype, rows, cols, format), 0);
+				const size_t qsize = ccv_nnc_tensor_data_size_without_padding(hq->info);
+				REQUIRE(qsize >= tmcq_scale_offset(rows, cols, n) + rows * scale_size, "TMCQ %dx%d n%d: the tensor holds the tile grid", rows, cols, n);
+				float* const scales = (float*)ccmalloc(sizeof(float) * rows);
+				tmcq_fill_weights(hq, datatype, rows, cols, n, 0, 0x16a0u + s * 64 + f * 4 + d, scales);
+				ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(hq), TENSOR_LIST(gq), 0);
+				int8_t* const q8 = (int8_t*)ccmalloc(count);
+				tmcq_ref_decode_matrix(hq->data.u8, rows, cols, n, q8);
+				// GPU int8 decode: codes and the row scales.
+				const size_t out_scale_offset = (count + 127) & ~(size_t)127;
+				const size_t out_bytes = out_scale_offset + rows * scale_size;
+				ccv_nnc_tensor_t* const gout = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32S, (int)((out_bytes + 3) / 4)), 0);
+				ccv_nnc_tensor_t* const hout = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, (int)((out_bytes + 3) / 4)), 0);
+				ccv_nnc_mps_dequantize_8i_rowwise_x_to_8i_rowwise(gq->data.u8, datatype, qsize, cols, format, gout->data.u8, count, 0);
+				ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(gout), TENSOR_LIST(hout), 0);
+				size_t i, mismatches = 0, first = (size_t)-1;
+				for (i = 0; i < count; i++)
+					if ((int8_t)hout->data.u8[i] != q8[i])
+					{
+						if (first == (size_t)-1)
+							first = i;
+						mismatches++;
+					}
+				REQUIRE_EQ(mismatches, 0, "TMCQ %dx%d n%d datatype=%x int8 decode: %zu mismatches, first at row %zu col %zu", rows, cols, n, datatype, mismatches, first == (size_t)-1 ? 0 : first / cols, first == (size_t)-1 ? 0 : first % cols);
+				REQUIRE_EQ(memcmp(hout->data.u8 + out_scale_offset, hq->data.u8 + tmcq_scale_offset(rows, cols, n), rows * scale_size), 0, "TMCQ %dx%d n%d datatype=%x int8 decode copies the row scales", rows, cols, n, datatype);
+				ccv_nnc_tensor_free(hout);
+				ccv_nnc_tensor_free(gout);
+				// GPU fp decode, against q8 * scale rounded to nearest (see the K % 256 fp decode case).
+				ccv_nnc_tensor_t* const gfp = ccv_nnc_tensor_new(0, tmcq_params(CCV_TENSOR_GPU_MEMORY, datatype, rows, cols), 0);
+				ccv_nnc_tensor_t* const hfp = ccv_nnc_tensor_new(0, tmcq_params(CCV_TENSOR_CPU_MEMORY, datatype, rows, cols), 0);
+				REQUIRE_EQ(ccv_nnc_dequantize_8i_rowwise_x(gq->data.u8, datatype, CCV_TENSOR_GPU_MEMORY, qsize, cols, format, gfp->data.u8, count), 0, "TMCQ %dx%d n%d datatype=%x GPU fp decode runs", rows, cols, n, datatype);
+				ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(gfp), TENSOR_LIST(hfp), 0);
+				mismatches = 0;
+				for (i = 0; i < count; i++)
+				{
+					uint8_t expected[4];
+					tmcq_store_value(datatype, expected, 0, (float)((double)scales[i / cols] * q8[i]));
+					mismatches += memcmp(expected, hfp->data.u8 + i * scale_size, scale_size) != 0;
+				}
+				REQUIRE_EQ(mismatches, 0, "TMCQ %dx%d n%d datatype=%x fp decode: %zu mismatches", rows, cols, n, datatype, mismatches);
+				// CPU decode (FP32 is exact against the same products).
+				if (tmcq_cpu_takes(format, datatype, rows, cols))
+				{
+					ccv_nnc_tensor_t* const href = ccv_nnc_tensor_new(0, tmcq_params(CCV_TENSOR_CPU_MEMORY, datatype, rows, cols), 0);
+					REQUIRE_EQ(ccv_nnc_dequantize_8i_rowwise_x(hq->data.u8, datatype, CCV_TENSOR_CPU_MEMORY, qsize, cols, format, href->data.u8, count), 0, "TMCQ %dx%d n%d datatype=%x CPU decode runs", rows, cols, n, datatype);
+					if (datatype == CCV_32F)
+					{
+						REQUIRE_EQ(memcmp(href->data.u8, hfp->data.u8, count * scale_size), 0, "TMCQ %dx%d n%d CPU decode equals the GPU fp decode", rows, cols, n);
+					} else {
+						// The CPU narrows toward zero (see the K % 256 fp decode case): at most one ulp below.
+						size_t far = 0;
+						for (i = 0; i < count; i++)
+						{
+							const uint16_t c = ((const uint16_t*)href->data.u8)[i];
+							const uint16_t g = ((const uint16_t*)hfp->data.u8)[i];
+							far += c != g && !((c & 0x8000) == (g & 0x8000) && (uint16_t)(g & 0x7fff) == (uint16_t)((c & 0x7fff) + 1));
+						}
+						REQUIRE_EQ(far, 0, "TMCQ %dx%d n%d datatype=%x CPU decode is within its round-toward-zero ulp", rows, cols, n, datatype);
+					}
+					ccv_nnc_tensor_free(href);
+				} else
+					cpu_skipped++;
+				ccv_nnc_tensor_free(hfp);
+				ccv_nnc_tensor_free(gfp);
+				ccfree(q8);
+				ccfree(scales);
+				ccv_nnc_tensor_free(gq);
+				ccv_nnc_tensor_free(hq);
+			}
+	if (cpu_skipped)
+		printf("[tmcq k16] the CPU codec does not take K %% 16 yet: %d CPU decode comparisons skipped\n", cpu_skipped);
+}
+
+TEST_CASE("mps tmcq selected expert int8 decode is exact at K % 16 over 8 experts")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_MPS));
+	// (rows per expert, K): 17 tiles (odd) a tile row, 72 tiles (K = 1152) over 576-row experts, 1 tile.
+	static const int shapes[][2] = { { 48, 272 }, { 576, 1152 }, { 32, 16 } };
+	static const int formats[] = { CCV_NNC_QX_8I_ROWWISE_TMCQ_N18, CCV_NNC_QX_8I_ROWWISE_TMCQ_N32 };
+	const int expert_count = 8;
+	int s, f;
+	for (s = 0; s < (int)(sizeof(shapes) / sizeof(shapes[0])); s++)
+		for (f = 0; f < 2; f++)
+		{
+			const int rows_per_expert = shapes[s][0], cols = shapes[s][1];
+			const int rows = expert_count * rows_per_expert;
+			const int format = formats[f];
+			const int datatype = CCV_16F;
+			const int n = tmcq_rate_of(format);
+			const size_t scale_size = 2;
+			ccv_nnc_tensor_t* const hq = ccv_nnc_tensor_new(0, tmcq_x_params(CCV_TENSOR_CPU_MEMORY, datatype, rows, cols, format), 0);
+			ccv_nnc_tensor_t* const gq = ccv_nnc_tensor_new(0, tmcq_x_params(CCV_TENSOR_GPU_MEMORY, datatype, rows, cols, format), 0);
+			float* const scales = (float*)ccmalloc(sizeof(float) * rows);
+			tmcq_fill_weights(hq, datatype, rows, cols, n, 0, 0x5e16u + s * 2 + f, scales);
+			// Bins route to experts 6, 1, 3 and 7 (the bin of expert 4 is empty); the others keep the sentinel.
+			static const int indices[5] = { 6, 4, 1, 3, 7 };
+			static const int counts[5] = { 2, 0, 1, 5, 3 };
+			static const int selected[8] = { 0, 1, 0, 1, 0, 0, 1, 1 };
+			ccv_nnc_tensor_t* const hindices = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, 5), 0);
+			ccv_nnc_tensor_t* const hcounts = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, 5), 0);
+			memcpy(hindices->data.i32, indices, sizeof(indices));
+			memcpy(hcounts->data.i32, counts, sizeof(counts));
+			ccv_nnc_tensor_t* const gindices = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32S, 5), 0);
+			ccv_nnc_tensor_t* const gcounts = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32S, 5), 0);
+			const size_t out_scale_offset = ((size_t)rows * cols + 127) & ~(size_t)127;
+			const size_t out_bytes = out_scale_offset + rows * scale_size;
+			ccv_nnc_tensor_t* const hout = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, (int)((out_bytes + 3) / 4)), 0);
+			memset(hout->data.u8, 0x5a, out_bytes);
+			ccv_nnc_tensor_t* const gout = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32S, (int)((out_bytes + 3) / 4)), 0);
+			ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(hq, hindices, hcounts, hout), TENSOR_LIST(gq, gindices, gcounts, gout), 0);
+			const ccv_nnc_mfa_dequantize_8i_rowwise_x_selected_params_t params = {
+				.data_type = 16, // MTL::DataTypeHalf
+				.format = (uint32_t)format,
+				.row_length = cols,
+				.rows_per_expert = rows_per_expert,
+				.expert_count = expert_count,
+				.bincount = 5,
+			};
+			ccv_nnc_mfa_context_t* const context = ccv_nnc_default_mfa_context();
+			mtl_buffer_t* const scratch = ccv_nnc_mfa_request_scratch(context, ccv_nnc_mfa_dequantize_8i_rowwise_x_selected_reserved_scratch_size(params));
+			mtl_command_batch_t* const command_batch = ccv_nnc_stream_context_start_command_batch(0);
+			mtl_buffer_t* tensors[6] = {
+				(mtl_buffer_t*)gq->data.u8,
+				(mtl_buffer_t*)gindices->data.u8,
+				(mtl_buffer_t*)gcounts->data.u8,
+				(mtl_buffer_t*)gout->data.u8,
+				scratch,
+				NULL,
+			};
+			size_t tensor_offsets[5] = {
+				(size_t)gq->dataof,
+				(size_t)gindices->dataof,
+				(size_t)gcounts->dataof,
+				(size_t)gout->dataof,
+				0,
+			};
+			ccv_nnc_mfa_encode_dequantize_8i_rowwise_x_selected(context, params, command_batch, tensors, tensor_offsets);
+			ccv_nnc_stream_context_finish_command_batch(0, command_batch);
+			ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(gout), TENSOR_LIST(hout), 0);
+			int8_t* const expected = (int8_t*)ccmalloc((size_t)rows * cols);
+			tmcq_ref_decode_matrix(hq->data.u8, rows, cols, n, expected);
+			int e;
+			for (e = 0; e < expert_count; e++)
+			{
+				const size_t base = (size_t)e * rows_per_expert * cols;
+				size_t mismatches = 0, i;
+				for (i = 0; i < (size_t)rows_per_expert * cols; i++)
+					mismatches += hout->data.u8[base + i] != (selected[e] ? (uint8_t)expected[base + i] : 0x5a);
+				REQUIRE_EQ(mismatches, 0, "TMCQ %d x %dx%d n%d expert %d (%s): %zu mismatches", expert_count, rows_per_expert, cols, n, e, selected[e] ? "selected" : "keeps the sentinel", mismatches);
+				const uint8_t* const scale_out = hout->data.u8 + out_scale_offset + (size_t)e * rows_per_expert * scale_size;
+				const uint8_t* const scale_in = hq->data.u8 + tmcq_scale_offset(rows, cols, n) + (size_t)e * rows_per_expert * scale_size;
+				if (selected[e])
+				{
+					REQUIRE_EQ(memcmp(scale_out, scale_in, rows_per_expert * scale_size), 0, "TMCQ %dx%d n%d expert %d scales are copied", rows_per_expert, cols, n, e);
+				} else {
+					for (i = 0; i < rows_per_expert * scale_size; i++)
+						REQUIRE_EQ(scale_out[i], 0x5a, "TMCQ %dx%d n%d expert %d scales stay untouched", rows_per_expert, cols, n, e);
+				}
+			}
+			ccfree(expected);
+			ccfree(scales);
+			ccv_nnc_tensor_free(gout);
+			ccv_nnc_tensor_free(hout);
+			ccv_nnc_tensor_free(gcounts);
+			ccv_nnc_tensor_free(gindices);
+			ccv_nnc_tensor_free(hcounts);
+			ccv_nnc_tensor_free(hindices);
+			ccv_nnc_tensor_free(gq);
+			ccv_nnc_tensor_free(hq);
+		}
+}
+
+TEST_CASE("mps tmcq gemv (M = 1 .. 3) and gemm (M >= 4) at K % 16 match the reference")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_MPS));
+	const uint64_t old_flags = ccv_nnc_flags();
+	// (N, K): the 2304 x 1152 projection, 17 tiles a row at two widths, one and three tiles, 18 and 20 tiles.
+	static const int shapes[][2] = { { 2304, 1152 }, { 48, 272 }, { 1040, 272 }, { 32, 16 }, { 64, 48 }, { 528, 288 }, { 48, 320 } };
+	static const int formats[] = { CCV_NNC_QX_8I_ROWWISE_TMCQ_N16, CCV_NNC_QX_8I_ROWWISE_TMCQ_N18, CCV_NNC_QX_8I_ROWWISE_TMCQ_N32 };
+	static const int ms[] = { 1, 2, 3, 4, 16, 65 };
+	int pass, s, f, mi;
+	// Pass 0: default routing; 1: no ANE; 2: no ANE and no neural accelerators (Int8MatMul or the fp decode fallback).
+	for (pass = 0; pass < 3; pass++)
+	{
+		if (pass >= 1)
+			ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA_ANE);
+		if (pass >= 2)
+			ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS);
+		for (s = 0; s < (int)(sizeof(shapes) / sizeof(shapes[0])); s++)
+			for (f = 0; f < 3; f++)
+				for (mi = 0; mi < (int)(sizeof(ms) / sizeof(ms[0])); mi++)
+				{
+					const int m = ms[mi], n_dim = shapes[s][0], k_dim = shapes[s][1];
+					// The GEMV does not depend on the routing flags: once is enough.
+					if (m <= 3 && pass > 0)
+						continue;
+					const int datatype = (s + f + mi) % 3 == 0 ? CCV_32F : CCV_16F;
+					double max_rel_cpu = 0, max_rel_dense = 0;
+					const int status = tmcq_gemm_compare(datatype, formats[f], (mi + s) & 1, m, n_dim, k_dim, &max_rel_cpu, &max_rel_dense);
+					REQUIRE_EQ(status, CCV_NNC_EXEC_SUCCESS, "TMCQ pass=%d n=%d M=%d N=%d K=%d GEMM runs", pass, tmcq_rate_of(formats[f]), m, n_dim, k_dim);
+					if (m <= 3)
+					{
+						REQUIRE(max_rel_cpu < tmcq_tolerance(datatype), "TMCQ n=%d datatype=%x M=%d N=%d K=%d GEMV vs CPU max_rel=%g", tmcq_rate_of(formats[f]), datatype, m, n_dim, k_dim, max_rel_cpu);
+						REQUIRE(max_rel_dense < tmcq_tolerance(datatype), "TMCQ n=%d datatype=%x M=%d N=%d K=%d GEMV vs dense GPU max_rel=%g", tmcq_rate_of(formats[f]), datatype, m, n_dim, k_dim, max_rel_dense);
+					} else {
+						// As in the K % 256 prefill cases: the int8 scaled GEMM (passes 0 and 1, and FP32 Int8MatMul in pass 2)
+						// quantizes the activations (error ~ sqrt(K)); FP16 in pass 2 decodes to FP16 and equals the dense GEMM.
+						const double dense_bound = (pass < 2 || datatype == CCV_32F) ? 2e-3 * ccv_max(1.0, sqrt(k_dim / 1024.0)) : 0;
+						REQUIRE(max_rel_dense <= dense_bound, "TMCQ pass=%d n=%d datatype=%x M=%d N=%d K=%d GEMM vs dense GPU max_rel=%g bound=%g", pass, tmcq_rate_of(formats[f]), datatype, m, n_dim, k_dim, max_rel_dense, dense_bound);
+						REQUIRE(max_rel_cpu < 1e-2, "TMCQ pass=%d n=%d datatype=%x M=%d N=%d K=%d GEMM vs CPU max_rel=%g", pass, tmcq_rate_of(formats[f]), datatype, m, n_dim, k_dim, max_rel_cpu);
+					}
+				}
+	}
+	if (!(old_flags & CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS))
+		ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS);
+	if (!(old_flags & CCV_NNC_DISABLE_MFA_ANE))
+		ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA_ANE);
+}
+
+TEST_CASE("mps tmcq one-hot gemv is exact at K % 16")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_MPS));
+	// (rows, K, M): every column of a 17-tile row at M = 1 .. 3, and the 72-tile row of K = 1152 at M = 3.
+	static const int cases[][3] = { { 48, 272, 1 }, { 48, 272, 2 }, { 48, 272, 3 }, { 64, 1152, 3 }, { 32, 48, 2 } };
+	static const int formats[] = { CCV_NNC_QX_8I_ROWWISE_TMCQ_N18, CCV_NNC_QX_8I_ROWWISE_TMCQ_N32 };
+	int c, f;
+	for (c = 0; c < (int)(sizeof(cases) / sizeof(cases[0])); c++)
+		for (f = 0; f < 2; f++)
+		{
+			const int rows = cases[c][0], cols = cases[c][1], m = cases[c][2], format = formats[f];
+			const int n = tmcq_rate_of(format);
+			ccv_nnc_tensor_t* const hq = ccv_nnc_tensor_new(0, tmcq_x_params(CCV_TENSOR_CPU_MEMORY, CCV_16F, rows, cols, format), 0);
+			ccv_nnc_tensor_t* const gq = ccv_nnc_tensor_new(0, tmcq_x_params(CCV_TENSOR_GPU_MEMORY, CCV_16F, rows, cols, format), 0);
+			float* const scales = (float*)ccmalloc(sizeof(float) * rows);
+			tmcq_fill_weights(hq, CCV_16F, rows, cols, n, 0, 0x0e16u + c * 2 + f, scales);
+			ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(hq), TENSOR_LIST(gq), 0);
+			int8_t* const q8 = (int8_t*)ccmalloc((size_t)rows * cols);
+			tmcq_ref_decode_matrix(hq->data.u8, rows, cols, n, q8);
+			ccv_nnc_tensor_t* const ha = ccv_nnc_tensor_new(0, tmcq_params(CCV_TENSOR_CPU_MEMORY, CCV_16F, m, cols), 0);
+			ccv_nnc_tensor_t* const ga = ccv_nnc_tensor_new(0, tmcq_params(CCV_TENSOR_GPU_MEMORY, CCV_16F, m, cols), 0);
+			ccv_nnc_tensor_t* const gb = ccv_nnc_tensor_new(0, tmcq_params(CCV_TENSOR_GPU_MEMORY, CCV_16F, m, rows), 0);
+			ccv_nnc_tensor_t* const hb = ccv_nnc_tensor_new(0, tmcq_params(CCV_TENSOR_CPU_MEMORY, CCV_16F, m, rows), 0);
+			int c0, i, j, status = CCV_NNC_EXEC_SUCCESS;
+			size_t mismatches = 0;
+			for (c0 = 0; c0 < cols; c0 += m)
+			{
+				memset(ha->data.u8, 0, (size_t)m * cols * 2);
+				for (i = 0; i < m; i++)
+					((uint16_t*)ha->data.u8)[(size_t)i * cols + (c0 + i) % cols] = 0x3c00;
+				ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha), TENSOR_LIST(ga), 0);
+				const int r = ccv_nnc_cmd_exec(CMD_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(0, 1)), ccv_nnc_no_hint, 0, TENSOR_LIST(ga, gq), TENSOR_LIST(gb), 0);
+				if (r != CCV_NNC_EXEC_SUCCESS)
+					status = r;
+				ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(gb), TENSOR_LIST(hb), 0);
+				for (i = 0; i < m; i++)
+					for (j = 0; j < rows; j++)
+						mismatches += ((uint16_t*)hb->data.u8)[(size_t)i * rows + j] != tmcq_float_to_half_rne((float)q8[(size_t)j * cols + (c0 + i) % cols] * scales[j]);
+			}
+			REQUIRE_EQ(status, CCV_NNC_EXEC_SUCCESS, "TMCQ %dx%d n%d GEMV M=%d runs", rows, cols, n, m);
+			REQUIRE_EQ((int)mismatches, 0, "TMCQ %dx%d n%d GEMV M=%d one-hot", rows, cols, n, m);
+			ccv_nnc_tensor_free(hb);
+			ccv_nnc_tensor_free(gb);
+			ccv_nnc_tensor_free(ga);
+			ccv_nnc_tensor_free(ha);
+			ccfree(q8);
+			ccfree(scales);
+			ccv_nnc_tensor_free(gq);
+			ccv_nnc_tensor_free(hq);
+		}
+}
+
+TEST_CASE("mps tmcq gemm rejects K % 16 != 0 and rows % 16 != 0 without asserting")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_MPS));
+	// (N, K): K = 8 and 264 are not whole tiles; N = 40 is not whole tile rows.
+	static const int shapes[][2] = { { 32, 8 }, { 32, 264 }, { 40, 272 } };
+	int s, m;
+	for (s = 0; s < 3; s++)
+		for (m = 1; m <= 4; m += 3)
+		{
+			const int n_dim = shapes[s][0], k_dim = shapes[s][1];
+			const int format = CCV_NNC_QX_8I_ROWWISE_TMCQ_N22;
+			ccv_nnc_tensor_param_t wp = tmcq_params(CCV_TENSOR_GPU_MEMORY, CCV_16F, n_dim, k_dim);
+			wp.datatype = ((CCV_16F >> 12) & 0xff) | CCV_QX | CCV_NNC_QX_8I_ROWWISE_X;
+			wp.reserved = format;
+			ccv_nnc_tensor_t* const gq = ccv_nnc_tensor_new(0, wp, 0);
+			ccv_nnc_tensor_t* const ga = ccv_nnc_tensor_new(0, tmcq_params(CCV_TENSOR_GPU_MEMORY, CCV_16F, m, k_dim), 0);
+			ccv_nnc_tensor_t* const gb = ccv_nnc_tensor_new(0, tmcq_params(CCV_TENSOR_GPU_MEMORY, CCV_16F, m, n_dim), 0);
+			const int status = ccv_nnc_cmd_exec(CMD_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(0, 1)), ccv_nnc_no_hint, 0, TENSOR_LIST(ga, gq), TENSOR_LIST(gb), 0);
+			REQUIRE_EQ(status, CCV_NNC_EXEC_INVALID, "TMCQ N=%d K=%d M=%d is not a whole tile grid", n_dim, k_dim, m);
+			ccv_nnc_tensor_free(gb);
+			ccv_nnc_tensor_free(ga);
+			ccv_nnc_tensor_free(gq);
 		}
 }
 

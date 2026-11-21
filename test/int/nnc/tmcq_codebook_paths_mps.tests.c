@@ -127,15 +127,30 @@ static size_t total_rows(const weights_t* const w)
 	return (size_t)(w->experts ? w->experts : 1) * w->n;
 }
 
+// The tile grid: (rows / 16) (k / 16) tiles of 2 n bytes (rows (k / 256) 16 n bits when k % 256 == 0).
 static size_t payload_bytes(const weights_t* const w)
 {
-	return (total_rows(w) * (w->k / 256) * 16 * ccv_nnc_8i_rowwise_x_tmcq_rate(w->codec) + 7) / 8;
+	return (total_rows(w) / 16) * (w->k / 16) * 2 * ccv_nnc_8i_rowwise_x_tmcq_rate(w->codec);
+}
+
+// TMCQ parameters of the weights: ccv_nnc_tensor_8i_rowwise_x for k % 256 == 0, the same fields made directly for any
+// other k % 16 == 0 (the CPU tensor constructor asserts k % 256 until the CPU codec takes K % 16; its size is never
+// smaller than the tile grid).
+static ccv_nnc_tensor_param_t tmcq_x_params(const ccv_nnc_tensor_param_t params, const int format)
+{
+	const int nd = ccv_nnc_tensor_nd(params.dim);
+	if (params.dim[nd - 1] % 256 == 0)
+		return ccv_nnc_tensor_8i_rowwise_x(params, format);
+	ccv_nnc_tensor_param_t x = params;
+	x.datatype = ((params.datatype >> 12) & 0xff) | CCV_QX | CCV_NNC_QX_8I_ROWWISE_X;
+	x.reserved = format;
+	return x;
 }
 
 static weights_t weights_new(const int codec, const int datatype, const int experts, const int n, const int k, uint32_t seed)
 {
 	weights_t w = { .codec = codec, .datatype = datatype, .experts = experts, .n = n, .k = k };
-	w.size = ccv_nnc_tensor_data_size_without_padding(ccv_nnc_tensor_8i_rowwise_x(dense_params(CCV_TENSOR_CPU_MEMORY, datatype, experts, n, k), codec));
+	w.size = ccv_nnc_tensor_data_size_without_padding(tmcq_x_params(dense_params(CCV_TENSOR_CPU_MEMORY, datatype, experts, n, k), codec));
 	w.bytes = (uint8_t*)cccalloc(w.size, 1);
 	const size_t payload = payload_bytes(&w);
 	const size_t scale_offset = (payload + 127) & ~(size_t)127;
@@ -176,7 +191,7 @@ static ccv_nnc_tensor_t* gpu_tensor_from(const ccv_nnc_tensor_param_t cpu_params
 // The TMCQ weights on the GPU, naming codebook slot `slot`.
 static ccv_nnc_tensor_t* tmcq_gpu(const weights_t* const w, const int slot)
 {
-	return gpu_tensor_from(ccv_nnc_tensor_8i_rowwise_x(dense_params(CCV_TENSOR_CPU_MEMORY, w->datatype, w->experts, w->n, w->k), tmcq_with_slot(w->codec, slot)), w->bytes, w->size);
+	return gpu_tensor_from(tmcq_x_params(dense_params(CCV_TENSOR_CPU_MEMORY, w->datatype, w->experts, w->n, w->k), tmcq_with_slot(w->codec, slot)), w->bytes, w->size);
 }
 
 // TMCQ reference decode with the table of `slot`: tile g holds 16 n bits from bit 16 n g; weight t reads the 15-bit
@@ -709,6 +724,86 @@ TEST_CASE("mps tmcq codebook paths: an unregistered slot or mismatched gate and 
 	int i;
 	for (i = 0; i < 4; i++)
 		weights_free(&weights[i]);
+}
+
+// K % 16 on the same paths, built-in and random table: experts of N x K = 576 x 1152 (72 tiles a row; N % 64 and
+// K % 64, so the fused tile GEMM applies), 48 x 272 (17 tiles a row, odd; N % 64 != 0 and K % 64 != 0, so prefill
+// expands the selected experts) and 128 x 320 (20 tiles, K % 64 == 0 under 512: only the fused GEMM's K tail loop),
+// the shared expert and SwiGLU of the same N x K. Every run must succeed and equal the same codes decoded to
+// 8I_ROWWISE or dense weights bit for bit, or stay within tolerance of the 8I_ROWWISE run (other kernels there).
+TEST_CASE("mps tmcq codebook paths: K % 16 (K = 1152, 272, 320) equals the same codes decoded to 8i rowwise or dense weights")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SEGMENTED_SWIGLU_FORWARD, CCV_NNC_BACKEND_MPS) && ccv_nnc_cmd_ok(CCV_NNC_SEGMENTED_GEMM_FORWARD, CCV_NNC_BACKEND_MPS));
+	register_tables();
+	static const int shapes[][2] = { { 576, 1152 }, { 48, 272 }, { 128, 320 } };
+	static const int tables[] = { 0, TABLE_RANDOM };
+	static const char* const table_names[] = { "built-in", "random" };
+	int sh, p, d, ri, t;
+	for (sh = 0; sh < 3; sh++)
+		for (p = PATH_SEGMENTED_GEMM; p <= PATH_SWIGLU; p++)
+			for (d = 0; d < sizeof(datatypes) / sizeof(datatypes[0]); d++)
+				for (ri = 0; ri < sizeof(routings) / sizeof(routings[0]); ri++)
+				{
+					if (!path_takes((path_t)p, datatypes[d], ri))
+						continue;
+					const int n = shapes[sh][0], k = shapes[sh][1];
+					const uint32_t seed = 0x16000u * (sh + 1) + 0x1000u * (p + 1) + 0x10u * ri + datatypes[d];
+					const int experts = p == PATH_SWIGLU ? 0 : 8;
+					weights_t weights[4];
+					weights[0] = weights_new(CCV_NNC_QX_8I_ROWWISE_TMCQ_N18, datatypes[d], experts, n, k, seed + 1);
+					weights[1] = weights_new(CCV_NNC_QX_8I_ROWWISE_TMCQ_N18, datatypes[d], experts, n, k, seed + 2);
+					weights[2] = weights_new(CCV_NNC_QX_8I_ROWWISE_TMCQ_N22, datatypes[d], 0, n, k, seed + 3);
+					weights[3] = weights_new(CCV_NNC_QX_8I_ROWWISE_TMCQ_N22, datatypes[d], 0, n, k, seed + 4);
+					for (t = 0; t < 2; t++)
+					{
+						const int slot = t ? table_slots[tables[t]] : 0;
+						uint8_t* external;
+						size_t external_size;
+						REQUIRE_EQ(run_path((path_t)p, &routings[ri], datatypes[d], weights, slot, 0, &external, &external_size), CCV_NNC_EXEC_SUCCESS,
+							"%s %dx%d with the %s table should run: %s datatype=%d", path_names[p], n, k, table_names[t], routings[ri].name, datatypes[d]);
+						uint8_t* expected;
+						size_t expected_size;
+						int identical = 0;
+						double resident_max_rel = INFINITY;
+						if (p == PATH_SEGMENTED_SWIGLU_SHARED)
+						{
+							// The routed and shared parts run apart, on the same TMCQ weights.
+							REQUIRE_EQ(run_shared_parts(&routings[ri], datatypes[d], weights, slot, &expected, &expected_size), CCV_NNC_EXEC_SUCCESS,
+								"%s %dx%d parts with the %s table should run: %s datatype=%d", path_names[p], n, k, table_names[t], routings[ri].name, datatypes[d]);
+							identical = external_size == expected_size && memcmp(external, expected, expected_size) == 0;
+							resident_max_rel = max_rel_difference(datatypes[d], external, expected, expected_size);
+							ccfree(expected);
+						} else {
+							int reference;
+							const int last = p == PATH_SWIGLU && routings[ri].rows <= 6 ? 4 : 2;
+							for (reference = 1; reference <= last && !identical; reference++)
+							{
+								if (reference == 3)
+									continue;
+								if (reference == 4)
+								{
+									REQUIRE_EQ(run_swiglu_matrix_reference(&routings[ri], datatypes[d], weights, slot, &expected, &expected_size), CCV_NNC_EXEC_SUCCESS,
+										"%s %dx%d on 8i rowwise over 7 rows should run: %s datatype=%d", path_names[p], n, k, routings[ri].name, datatypes[d]);
+								} else {
+									REQUIRE_EQ(run_path((path_t)p, &routings[ri], datatypes[d], weights, slot, reference, &expected, &expected_size), CCV_NNC_EXEC_SUCCESS,
+										"%s %dx%d on the reference decode %d should run: %s datatype=%d", path_names[p], n, k, reference, routings[ri].name, datatypes[d]);
+								}
+								identical = external_size == expected_size && memcmp(external, expected, expected_size) == 0;
+								if (reference == 1)
+									resident_max_rel = max_rel_difference(datatypes[d], external, expected, expected_size);
+								ccfree(expected);
+							}
+						}
+						printf("[tmcq k16 paths] %s | %dx%d | %s | %s | %s table | %s (max rel %g)\n", path_names[p], n, k, routings[ri].name, datatypes[d] == CCV_32F ? "32F" : "16F",
+							table_names[t], identical ? "bit-identical" : "within tolerance?", resident_max_rel);
+						REQUIRE(identical || resident_max_rel < path_tolerance(datatypes[d]), "%s %dx%d with the %s table should match its decoded weights: %s datatype=%d max rel %g",
+							path_names[p], n, k, table_names[t], routings[ri].name, datatypes[d], resident_max_rel);
+						ccfree(external);
+					}
+					int i;
+					for (i = 0; i < 4; i++)
+						weights_free(&weights[i]);
+				}
 }
 
 #include "case_main.h"
