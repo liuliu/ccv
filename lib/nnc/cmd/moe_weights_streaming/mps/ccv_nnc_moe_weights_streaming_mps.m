@@ -10,6 +10,7 @@
 #import <errno.h>
 #import <fcntl.h>
 #import <limits.h>
+#import <pthread.h>
 #import <stdio.h>
 #import <stdatomic.h>
 #import <stdint.h>
@@ -69,6 +70,34 @@ enum { CCV_NNC_MOE_RESIDENT_BUFFER_COUNT = 3 + 5 + CCV_NNC_MOE_READINESS_COUNT }
 	int is_resident;
 }
 @end
+
+// A prompt chunk stages whole banks, each leased until the command buffer that reads it completes, and
+// the encode thread runs many layers ahead of the GPU. A bank is in flight from when its reader is
+// encoded until that command buffer completes. Past the weights streaming watermark, a call commits
+// and waits for the banks in flight. It never waits for a bank whose reader is yet to be encoded, as
+// that may be for this thread to do, so a call with none in flight always proceeds. Banks are only
+// counted while there is a watermark: one set later does not see those already in flight.
+static pthread_mutex_t _ccv_nnc_moe_in_flight_mutex = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t _ccv_nnc_moe_in_flight_completed = PTHREAD_COND_INITIALIZER;
+static size_t _ccv_nnc_moe_in_flight_bytes = 0;
+
+static void _ccv_nnc_moe_wait_for_in_flight(const size_t staged, ccv_nnc_stream_context_t* const stream_context)
+{
+	const size_t watermark = ccv_nnc_mps_weights_streaming_watermark_bytes();
+	if (watermark == 0)
+		return;
+	pthread_mutex_lock(&_ccv_nnc_moe_in_flight_mutex);
+	if (_ccv_nnc_moe_in_flight_bytes > 0 && _ccv_nnc_moe_in_flight_bytes + staged > watermark)
+	{
+		// Their readers may still sit in a command buffer that is not committed; submit it before waiting.
+		pthread_mutex_unlock(&_ccv_nnc_moe_in_flight_mutex);
+		ccv_nnc_stream_context_commit(stream_context);
+		pthread_mutex_lock(&_ccv_nnc_moe_in_flight_mutex);
+		while (_ccv_nnc_moe_in_flight_bytes > 0 && _ccv_nnc_moe_in_flight_bytes + staged > watermark)
+			pthread_cond_wait(&_ccv_nnc_moe_in_flight_completed, &_ccv_nnc_moe_in_flight_mutex);
+	}
+	pthread_mutex_unlock(&_ccv_nnc_moe_in_flight_mutex);
+}
 
 @implementation MFAMoEWeightsStreamingState
 - (instancetype)init
@@ -430,12 +459,13 @@ static MFAMoEWeightsStreamingState* _ccv_nnc_moe_state_for_inputs(ccv_nnc_tensor
 	return state;
 }
 
-static int _ccv_nnc_moe_prepare_prefill_buffers(MFAMoEWeightsStreamingState* const state)
+static int _ccv_nnc_moe_prepare_prefill_buffers(MFAMoEWeightsStreamingState* const state, ccv_nnc_stream_context_t* const stream_context)
 {
 	int i;
 	for (i = 0; i < 3; i++)
 		if (state->prefill_leases[i])
 			return 0;
+	_ccv_nnc_moe_wait_for_in_flight(state->source_layouts[0].size + state->source_layouts[1].size + state->source_layouts[2].size, stream_context);
 	for (i = 0; i < 3; i++)
 	{
 		ccv_nnc_mfa_durable_scratch_t* const lease = ccv_nnc_mfa_request_durable_scratch(
@@ -868,7 +898,7 @@ static int _ccv_nnc_moe_weights_streaming_forw(const ccv_nnc_cmd_t cmd, const cc
 	// selective loading until the larger prefill boundary (tuned on DS4).
 	const int full_prefill = tokens >= 4096 || (tokens >= 3072 &&
 		(size_t)state->resident_slot_count * 4 <= (size_t)state->expert_count);
-	if (prefill && !_ccv_nnc_moe_prepare_prefill_buffers(state))
+	if (prefill && !_ccv_nnc_moe_prepare_prefill_buffers(state, stream_context))
 		return CCV_NNC_EXEC_INVALID;
 	if (state->generation >= UINT32_MAX)
 		return CCV_NNC_EXEC_INVALID;
@@ -949,7 +979,7 @@ int ccv_nnc_mps_moe_weights_resolve(const ccv_nnc_tensor_t* const tensor, ccv_nn
 	return 1;
 }
 
-static ccv_nnc_mfa_durable_scratch_t* _ccv_nnc_moe_take_prefill_lease(const ccv_nnc_tensor_t* const tensor)
+static ccv_nnc_mfa_durable_scratch_t* _ccv_nnc_moe_take_prefill_lease(const ccv_nnc_tensor_t* const tensor, size_t* const staged)
 {
 	MFAMoEWeightsStreamingState* const state = _ccv_nnc_moe_weights_state(tensor);
 	if (!state)
@@ -964,6 +994,7 @@ static ccv_nnc_mfa_durable_scratch_t* _ccv_nnc_moe_take_prefill_lease(const ccv_
 	ccv_nnc_mfa_durable_scratch_t* const lease = state->prefill_leases[projection];
 	state->prefill_leases[projection] = 0;
 	state->prefill_buffers[projection] = nil;
+	*staged = lease ? state->source_layouts[projection].size : 0;
 	return lease;
 }
 
@@ -971,12 +1002,32 @@ void ccv_nnc_mps_moe_weights_finish_command_batch(ccv_nnc_tensor_t* const* const
 {
 	ccv_nnc_mfa_durable_scratch_t* failed[tensor_count > 0 ? tensor_count : 1];
 	int failed_count = 0;
+	size_t retired = 0;
 	int i;
 	for (i = 0; i < tensor_count; i++)
 	{
-		ccv_nnc_mfa_durable_scratch_t* const lease = _ccv_nnc_moe_take_prefill_lease(tensors[i]);
-		if (lease && !ccv_nnc_mfa_retire_durable_scratch(lease, command_batch))
+		size_t staged = 0;
+		ccv_nnc_mfa_durable_scratch_t* const lease = _ccv_nnc_moe_take_prefill_lease(tensors[i], &staged);
+		if (!lease)
+			continue;
+		if (ccv_nnc_mfa_retire_durable_scratch(lease, command_batch))
+			retired += staged;
+		else
 			failed[failed_count++] = lease;
+	}
+	// Without a watermark there is nothing to count, and no lock or handler to pay for.
+	if (retired > 0 && ccv_nnc_mps_weights_streaming_watermark_bytes() > 0)
+	{
+		// In flight from here until the command buffer completes.
+		pthread_mutex_lock(&_ccv_nnc_moe_in_flight_mutex);
+		_ccv_nnc_moe_in_flight_bytes += retired;
+		pthread_mutex_unlock(&_ccv_nnc_moe_in_flight_mutex);
+		[(id<MTLCommandBuffer>)command_batch->command_buffer addCompletedHandler:^(id<MTLCommandBuffer> _) {
+			pthread_mutex_lock(&_ccv_nnc_moe_in_flight_mutex);
+			_ccv_nnc_moe_in_flight_bytes -= retired;
+			pthread_cond_broadcast(&_ccv_nnc_moe_in_flight_completed);
+			pthread_mutex_unlock(&_ccv_nnc_moe_in_flight_mutex);
+		}];
 	}
 	ccv_nnc_stream_context_finish_command_batch(stream_context, command_batch);
 	if (failed_count > 0)

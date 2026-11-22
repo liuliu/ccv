@@ -49,6 +49,8 @@ void ccv_nnc_deinit_stream_signal(ccv_nnc_stream_signal_t* const signal);
 CCV_WARN_UNUSED(int) ccv_nnc_gpu_device_count(void);
 void ccv_nnc_mps_set_queue_watermark(int watermark);
 CCV_WARN_UNUSED(int) ccv_nnc_mps_queue_watermark(void);
+void ccv_nnc_mps_set_weights_streaming_watermark_bytes(size_t bytes);
+CCV_WARN_UNUSED(size_t) ccv_nnc_mps_weights_streaming_watermark_bytes(void);
 void ccv_nnc_mps_set_whole_file_mapping_size_limit(size_t size_limit);
 void ccv_nnc_mps_clear_graph_executable_cache(void);
 void ccv_nnc_mps_abort(void);

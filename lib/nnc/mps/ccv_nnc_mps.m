@@ -1370,6 +1370,19 @@ void ccv_nnc_mps_set_queue_watermark(int watermark)
 	command_buffers_watermark = ccv_max(watermark, 0);
 }
 
+// The streaming commands count what they stage against it; 0 is none.
+static size_t weights_streaming_watermark_bytes = 0;
+
+size_t ccv_nnc_mps_weights_streaming_watermark_bytes(void)
+{
+	return weights_streaming_watermark_bytes;
+}
+
+void ccv_nnc_mps_set_weights_streaming_watermark_bytes(const size_t bytes)
+{
+	weights_streaming_watermark_bytes = bytes;
+}
+
 void ccv_nnc_mps_set_whole_file_mapping_size_limit(const size_t size_limit)
 {
 	_ccv_nnc_mps_whole_file_mapping_size_limit = size_limit;

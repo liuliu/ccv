@@ -1098,6 +1098,20 @@ void ccv_nnc_set_queue_watermark(int state);
  */
 CCV_WARN_UNUSED(int) ccv_nnc_queue_watermark(void);
 /**
+ * Set the watermark, in bytes, of streamed weights staged for GPU commands that have not completed.
+ * A streaming call that would pass it commits and waits for the commands ahead of it; a call with
+ * none ahead of it always proceeds, so the most a single call stages is the floor. This is a
+ * Metal-only option and only counts what is staged after the call.
+ * @param bytes The watermark, or 0 for none.
+ */
+void ccv_nnc_set_weights_streaming_watermark_bytes(size_t bytes);
+/**
+ * Get the watermark of streamed weights staged for GPU commands that have not completed. This is a
+ * Metal-only option.
+ * @return The watermark in bytes, or 0 for none.
+ */
+CCV_WARN_UNUSED(size_t) ccv_nnc_weights_streaming_watermark_bytes(void);
+/**
  * Set the device mapping to use custom order for device rather than driver imposed order. This is helpful
  * to manage code where which GPU to use have no control over. The previous permutation is cleared up on
  * each call and you can set 0 size device map to clear up all custom mapping.
