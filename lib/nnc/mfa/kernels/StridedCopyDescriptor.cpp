@@ -6,9 +6,12 @@
 
 bool StridedCopyDescriptor::operator==(const StridedCopyDescriptor& rhs) const
 {
+	if (memoryPrecision != rhs.memoryPrecision || vectorized != rhs.vectorized || loadC != rhs.loadC)
+		return false;
+	// With every size bound at encode time, no size tells two pipelines apart.
+	if (loadC)
+		return true;
 	return
-	memoryPrecision == rhs.memoryPrecision &&
-	vectorized == rhs.vectorized &&
 	loadM == rhs.loadM &&
 	(loadM || rows == rhs.rows) &&
 	cols == rhs.cols &&
@@ -22,6 +25,9 @@ std::size_t std::hash<StridedCopyDescriptor>::operator()(const StridedCopyDescri
 	using namespace ccv::nnc::mfa::hash;
 	std::size_t seed = 0;
 	seed = combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.memoryPrecision.value, (unsigned int)hash.vectorized }));
+	seed = combine_32(seed, hash.loadC ? 1 : 0);
+	if (hash.loadC)
+		return seed;
 	seed = combine_64(seed, pack_64(simd::uint2 { hash.loadM ? 0 : hash.rows, hash.cols }));
 	seed = combine_32(seed, hash.sourceRowStride);
 	seed = combine_32(seed, hash.destinationStrided);
@@ -49,14 +55,17 @@ std::pair<StridedCopyKernelDescriptor, PipelineValue<StridedCopyKernel>*> Stride
 	kernelDesc.vectorized = vectorized;
 	kernelDesc.destinationStrided = destinationStrided;
 	kernelDesc.loadM = loadM;
+	kernelDesc.loadC = loadC;
 	kernelDesc.memoryPrecision = memoryPrecision;
 
 	auto createPipeline =
 	[=](MTL::Library* library) -> MTL::ComputePipelineState* {
 		auto constants = NS::TransferPtr(MTL::FunctionConstantValues::alloc()->init());
 		uint32_t elementCount;
-		if (vectorized)
+		if (loadC)
 		{
+			// Nothing to specialize: the kernel reads its sizes from the bytes bound at encode time.
+		} else if (vectorized) {
 			const uint32_t colUnits = cols / 4;
 			const uint32_t sourceRowStrideUnits = sourceRowStride / 4;
 			elementCount = rows * colUnits;

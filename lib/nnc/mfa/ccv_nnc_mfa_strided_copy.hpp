@@ -8,6 +8,7 @@ typedef struct {
 	uint32_t source_row_stride;
 	uint32_t destination_row_stride;
 	uint8_t loadM;
+	uint8_t loadC; // Rows, cols and both row strides are bound at encode time, so one pipeline copies every shape.
 } ccv_nnc_mfa_strided_copy_params_t;
 
 #ifdef __cplusplus

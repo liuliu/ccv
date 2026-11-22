@@ -420,6 +420,8 @@ static int _ccv_nnc_format_transform(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint
 							.source_row_stride = source_row_stride,
 							.destination_row_stride = destination_row_stride,
 							.loadM = !!(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M),
+							// A caller whose attention key length is not specialized writes masks and rows that wide.
+							.loadC = !!(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_ATTENTION_SPECIALIZING_C),
 						};
 						mtl_buffer_t* tensors[3] = {
 							buffer_a,
