@@ -928,7 +928,10 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 				ccv_nnc_mfa_qx_decode_params_t w_decode_params;
 				if (CCV_GET_DATA_TYPE(w->info.datatype) == CCV_QX)
 				{
-					w_decode_params = _ccv_nnc_mfa_qx_decode_params(w->info, mtl_data_type);
+					// The operands may differ in type here. The weight decodes in its own, which sized its
+					// scratch and which it is read in after.
+					const uint32_t w_mtl_data_type = w_datatype == CCV_16F ? 16 : (w_datatype == CCV_16BF ? 121 : 3);
+					w_decode_params = _ccv_nnc_mfa_qx_decode_params(w->info, w_mtl_data_type);
 					_ccv_nnc_mfa_prepare_qx_decode(context, w_decode_params);
 					w_data = scratch;
 					w_dataof = a_data_size;
