@@ -2659,6 +2659,107 @@ static ccv_cnnp_model_t* _ccv_cnnp_rotate_half_copy(const ccv_cnnp_model_t* cons
 	return ccv_cnnp_rotate_half(super->name);
 }
 
+// MARK - Message Gate Layer
+
+typedef struct {
+	ccv_cnnp_model_t super;
+	int rank;
+	float epsilon;
+	ccv_nnc_tensor_symbol_t down;
+	ccv_nnc_tensor_symbol_t forget;
+	ccv_nnc_tensor_symbol_t gain;
+	ccv_nnc_tensor_symbol_t output;
+} ccv_cnnp_model_message_gate_t;
+
+static void _ccv_cnnp_message_gate_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
+{
+	PRINT(CCV_CLI_VERBOSE, "[cnnp_message_gate_build] -\n");
+	ccv_cnnp_model_message_gate_t* const self = (ccv_cnnp_model_message_gate_t*)super;
+	assert(input_size == 2);
+	assert(output_size == 1);
+	const ccv_nnc_tensor_param_t params = ccv_nnc_tensor_symbol_params(graph, inputs[0]);
+	// The projections take the state's type: down [R, 2C], forget and gain [C, R], with C the
+	// state's last axis.
+	const int channels = params.dim[ccv_nnc_tensor_nd(params.dim) - 1];
+	ccv_nnc_tensor_param_t weights_params = params;
+	memset(weights_params.dim, 0, sizeof(weights_params.dim));
+	weights_params.dim[0] = self->rank;
+	weights_params.dim[1] = channels * 2;
+	if (!self->down.graph)
+		self->down = ccv_nnc_tensor_symbol_new(graph, weights_params, "down");
+	weights_params.dim[0] = channels;
+	weights_params.dim[1] = self->rank;
+	if (!self->forget.graph)
+		self->forget = ccv_nnc_tensor_symbol_new(graph, weights_params, "forget");
+	if (!self->gain.graph)
+		self->gain = ccv_nnc_tensor_symbol_new(graph, weights_params, "gain");
+	const ccv_nnc_tensor_symbol_t down = ccv_cnnp_model_get_symbol(super, self->down);
+	const ccv_nnc_tensor_symbol_t forget = ccv_cnnp_model_get_symbol(super, self->forget);
+	const ccv_nnc_tensor_symbol_t gain = ccv_cnnp_model_get_symbol(super, self->gain);
+	// The output has the state's shape; the command's scratch, the normalized rows and the mix, are
+	// FP32 with the last axis 2C and R.
+	outputs[0] = ccv_nnc_tensor_symbol_new(graph, params, 0);
+	ccv_nnc_tensor_param_t scratch_params = params;
+	scratch_params.datatype = CCV_32F;
+	scratch_params.dim[ccv_nnc_tensor_nd(params.dim) - 1] = channels * 2;
+	const ccv_nnc_tensor_symbol_t normalized = ccv_nnc_tensor_symbol_new(graph, scratch_params, "normalized");
+	scratch_params.dim[ccv_nnc_tensor_nd(params.dim) - 1] = self->rank;
+	const ccv_nnc_tensor_symbol_t mix = ccv_nnc_tensor_symbol_new(graph, scratch_params, "mix");
+	ccv_nnc_graph_exec_symbol_new(graph, CMD_MESSAGE_GATE_FORWARD(self->epsilon), TENSOR_SYMBOL_LIST(inputs[0], inputs[1], down, forget, gain), TENSOR_SYMBOL_LIST(outputs[0], normalized, mix), "message_gate");
+}
+
+static void _ccv_cnnp_message_gate_init_states(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_cnnp_state_initializer_f initializer, void* const context)
+{
+	ccv_cnnp_model_message_gate_t* const self = (ccv_cnnp_model_message_gate_t*)super;
+	// Zero projections keep the state as it is.
+	initializer(context, CMD_SET_FORWARD(0), ccv_nnc_no_hint, 0, 0, self->down);
+	initializer(context, CMD_SET_FORWARD(0), ccv_nnc_no_hint, 0, 0, self->forget);
+	initializer(context, CMD_SET_FORWARD(0), ccv_nnc_no_hint, 0, 0, self->gain);
+}
+
+static void _ccv_cnnp_message_gate_add_to_parameter(ccv_cnnp_model_t* const super, const ccv_cnnp_add_to_array_f add_to_array, void* const parameters, const int is_trainable)
+{
+	ccv_cnnp_model_message_gate_t* const self = (ccv_cnnp_model_message_gate_t*)super;
+	add_to_array(parameters, self->down, is_trainable);
+	add_to_array(parameters, self->forget, is_trainable);
+	add_to_array(parameters, self->gain, is_trainable);
+}
+
+static ccv_cnnp_model_t* _ccv_cnnp_message_gate_copy(const ccv_cnnp_model_t* const self, void* const context);
+
+static const ccv_cnnp_model_vtab_t ccv_cnnp_message_gate_isa = {
+	.build = _ccv_cnnp_message_gate_build,
+	.init_states = _ccv_cnnp_message_gate_init_states,
+	.add_to_parameter = _ccv_cnnp_message_gate_add_to_parameter,
+	.copy = _ccv_cnnp_message_gate_copy,
+};
+
+ccv_cnnp_model_t* ccv_cnnp_message_gate(const int rank, const float epsilon, const int is_trainable, const char* const name)
+{
+	ccv_cnnp_model_message_gate_t* const model_message_gate = (ccv_cnnp_model_message_gate_t*)cccalloc(1, sizeof(ccv_cnnp_model_message_gate_t));
+	model_message_gate->super.isa = &ccv_cnnp_message_gate_isa;
+	model_message_gate->super.input_size = 2;
+	model_message_gate->super.outputs = &model_message_gate->output;
+	model_message_gate->super.output_size = 1;
+	model_message_gate->super.is_trainable = is_trainable;
+	model_message_gate->rank = rank;
+	model_message_gate->epsilon = epsilon;
+	model_message_gate->down.d = CCV_NNC_NO_TENSOR_SYMBOL;
+	model_message_gate->down.graph = 0;
+	model_message_gate->forget.d = CCV_NNC_NO_TENSOR_SYMBOL;
+	model_message_gate->forget.graph = 0;
+	model_message_gate->gain.d = CCV_NNC_NO_TENSOR_SYMBOL;
+	model_message_gate->gain.graph = 0;
+	ccv_cnnp_model_copy_name(&model_message_gate->super, name);
+	return (ccv_cnnp_model_t*)model_message_gate;
+}
+
+static ccv_cnnp_model_t* _ccv_cnnp_message_gate_copy(const ccv_cnnp_model_t* const super, void* const context)
+{
+	const ccv_cnnp_model_message_gate_t* const self = (const ccv_cnnp_model_message_gate_t*)super;
+	return ccv_cnnp_message_gate(self->rank, self->epsilon, super->is_trainable, super->name);
+}
+
 // MARK - Walsh-Hadamard Transform Layer
 
 typedef struct {

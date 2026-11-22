@@ -215,6 +215,8 @@
 #define CMD_SMOOTH_L1_FORWARD(_b) ccv_nnc_cmd(CCV_NNC_SMOOTH_L1_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.smooth_l1={.beta=_b}}), 0)
 // CCV_NNC_SMOOTH_L1_BACKWARD
 #define CMD_SMOOTH_L1_BACKWARD(_b) ccv_nnc_cmd(CCV_NNC_SMOOTH_L1_BACKWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.smooth_l1={.beta=_b}}), 0)
+// CCV_NNC_MESSAGE_GATE_FORWARD
+#define CMD_MESSAGE_GATE_FORWARD(_epsilon) ccv_nnc_cmd(CCV_NNC_MESSAGE_GATE_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.message_gate={.epsilon=(_epsilon)}}), 0)
 // CCV_NNC_MOE_ROUTING_FORWARD
 #define CMD_MOE_ROUTING_FORWARD(_kth, _weight_scale, _preselected) ccv_nnc_cmd(CCV_NNC_MOE_ROUTING_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.moe_routing={.kth=(_kth),.weight_scale=(_weight_scale),.preselected=(_preselected)}}), 0)
 // CCV_NNC_MOE_ROUTING_FORWARD

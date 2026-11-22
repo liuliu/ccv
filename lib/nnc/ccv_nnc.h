@@ -316,6 +316,9 @@ typedef struct {
 			float scale; /**< [attention_residual.scale] The scale applied to the dot products of the queries and the normalized states. */
 		} attention_residual;
 		struct {
+			float epsilon; /**< [message_gate.epsilon] The epsilon of the RMS normalizations of the state and of the message. */
+		} message_gate;
+		struct {
 			float min; /**< [clamp.min] The minimum, NaN is no min. */
 			float max; /**< [clamp.max] The maximum, NaN is no max. */
 		} clamp;
@@ -5033,6 +5036,20 @@ CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_hyper_connection(const int count, co
  * @return A model that can be applied with one input, and generate output that is the input with the last dimension rotated by half.
  */
 CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_rotate_half(const char* const name);
+/**
+ * A message gated into a state: the mix is down [RMSNorm(state), RMSNorm(message)]^T (norms without
+ * scales), forget = tanh(mix forget^T), gain = tanh(mix gain^T), and the output is
+ * state - forget * state + gain * message. Inputs are the state [..., C] and the message [..., C];
+ * the output has the state's shape. The model owns the down projection [R, 2C] and the forget and
+ * gain projections [C, R], in that order, which may be read 8-bit rowwise. On Metal, C is a
+ * multiple of 4 and R a multiple of 4 up to 256.
+ * @param rank The mix width R.
+ * @param epsilon The epsilon of the RMS normalizations.
+ * @param is_trainable Whether the projections are trainable.
+ * @param name The unique name of the model.
+ * @return A model that is applied with two inputs and generates the gated state.
+ */
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_message_gate(const int rank, const float epsilon, const int is_trainable, const char* const name);
 /**
  * A depthwise causal convolution along the token axis that carries its previous rows, as the short
  * convolution before linear attention. Inputs are x [B, T, C] and the previous kernel_size - 1 rows
