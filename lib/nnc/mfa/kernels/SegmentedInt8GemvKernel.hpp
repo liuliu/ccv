@@ -14,6 +14,8 @@ struct SegmentedInt8GemvKernel {
 
   uint8_t mrows;
 
+  uint8_t sharedFused;
+
   uint32_t format;
 
   GEMMOperandPrecision memoryPrecision;

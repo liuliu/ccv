@@ -609,9 +609,62 @@ selection was not strong enough to justify a C-band gate. The production rule is
 therefore to enable R1 for every supported `R=1,C>0` dense shape. The descriptor
 still uses direct mode for `C < 2048` and split/reduce for `C >= 2048`.
 
-Odd `C` is handled by the R1 split loop (`c < C_LEN`) and the reduce loop over
-`NWG`; the integration test now includes a long odd-`C` causal decode case
+Odd `C` is handled by the R1 split loop (`c < C`) and the reduce loop over
+`Workgroups`; the integration test now includes a long odd-`C` causal decode case
 (`C=8193,Hq=40,Hk=4,D=256`) that routes through the production selector.
+
+## Multi-Row AttentionR1 (Verify Rows)
+
+Speculative decoding verifies a few rows at the end of the cache: Inkling 2 Small verifies up to
+eight with per-query sinks and a relative-position bias in every layer, and its drafter attends
+eight non-causal rows over an additive mask. The general kernels traverse every key serially for
+each row tile, so a 3-row verify of a 32K full-attention layer took 4.05 ms against 0.21 ms for one
+row, and the time did not depend on R. AttentionR1 now takes these shapes:
+
+- `R <= 8`, per-query sinks `[batch, R, Hq]`, and causal sliding windows
+  over a cache bound with more than the window: the bound keys are the last row's window and the
+  `R - 1` keys before it, and each row starts its window at its own key (`SlidingWindow`).
+- An additive mask `[1, 1, R, C]` of one batch without a sliding window. As in the general kernel, a
+  value at or below `MaskedThreshold` (half the most negative FP16 value with FP16 inputs, else of
+  FP32) closes a key. Model graphs keep `softmax_lse` for a backward pass, and AttentionR1 leaves
+  it unwritten: decode never feeds one.
+- The split/direct kernels go through keys in blocks of 16. Four `simd_shuffle_xor` steps plus one
+  across the halves leave lane `l` with the score of key `l % 16`; the online softmax then runs once
+  a block, and the PV update broadcasts each key's weight with one shuffle. The whole SIMD group
+  reads one key at a time, and a lane swaps a step's two halves where its bit of the step is set
+  (`ContiguousKeys`). The one exception is a SIMD group of four D=128 queries (paired heads with
+  two rows, or four rows): lane `l` writes its products for key `s ^ (l % 16)` into slot `s`, which
+  needs no swaps, but each load spreads over 16 keys, which cost a single D=256 row 5-10%. With
+  four queries the swaps cost more than that: on M5 Max contiguous keys took 6-18% longer (median of
+  12 interleaved runs, 0-2 of 12 faster). Two queries a SIMD group in twice the groups, to keep
+  them contiguous, lost 15-33% on biased and masked rows; neither swapping only the low two bits
+  (loads over four keys) nor value selects in place of the XORs closed the gap. Three queries
+  measured even (medians within 8% either way), so they stay contiguous. The swaps are integer XORs:
+  a select between two slots compiled to a load through a selected pointer, which kept the slots
+  in memory and made four D=128 rows 3.5x as slow.
+- A SIMD group carries up to four D=128 queries (two D=256), rows as well as heads, so each key and
+  value it loads serves all of them (`RowsPerSIMD`). Rows split evenly over the fewest groups.
+- For `R > 1` the split takes at least 64 partitions of at most 640 keys: the partial outputs to
+  merge grow with `R * Hq`, and 1,024 partitions took 1.6-2.4x as long at 8K-32K keys.
+
+M5 Ultra, 48 query heads over 8 of 128, FP16, per-query sinks and a 1,024-key bias, mean of 100
+calls on one stream after a second of warm-up (ms per call; "before" is unstable `cd09222b`, where
+rows past one took the general kernel):
+
+| Cached keys | R=1 before | R=1 now | R=4 before | R=4 now | R=8 before | R=8 now |
+|---:|---:|---:|---:|---:|---:|---:|
+| 8,192 | 0.079 | 0.041 | 0.947 | 0.077 | 0.983 | 0.123 |
+| 32,768 | 0.204 | 0.168 | 4.048 | 0.240 | 4.093 | 0.402 |
+| 131,072 | 0.748 | 0.638 | 16.194 | 0.811 | 16.398 | 1.493 |
+
+A sliding-window layer of eight rows (1,024-key window) went from 0.16-0.22 to 0.05 ms. The
+drafter's eight masked rows went from 0.13 to 0.04 ms over 1,032 keys and from 13.8 to 1.56 ms over
+131,072.
+
+On M5 Max (40 cores), 16 query heads over 4 of 256, contiguous keys took one row over 131,072 keys
+from 1.12 to 1.04 ms (1.06 ms at `cd09222b`), and eight verify rows over 32,768 from 1.21 to
+0.95 ms. With 48 heads over 8 of 128, two rows went from 0.33 to 0.28 ms over 32,768 keys and from
+1.21 to 1.07 ms over 131,072; one row of 32 heads over 8 held at 0.27 ms over 32,768.
 
 ## Tests
 

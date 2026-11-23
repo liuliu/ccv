@@ -17,6 +17,7 @@ struct NormalizationKernelDescriptor {
   uint8_t scaleTranslationBatched;
   uint8_t normalizationType;
   uint8_t reuseSavedStatistics;
+  uint8_t clip;
   bool loadM;
   uint32_t srcBatchStride;
   uint32_t dstBatchStride;
@@ -43,6 +44,7 @@ struct NormalizationDescriptor {
   uint8_t scaleTranslationBatched;
   uint8_t normalizationType;
   uint8_t reuseSavedStatistics;
+  uint8_t clip;
   bool loadM;
   uint32_t srcBatchStride;
   uint32_t dstBatchStride;

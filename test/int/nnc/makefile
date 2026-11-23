@@ -13,6 +13,8 @@ TARGETS += rmsnorm_gated.tests signed_sqrt.tests scaled_dot_product_arg_partitio
 
 TARGETS += sol_attention.tests
 
+TARGETS += relative_bias_attention.tests attention_residual.tests message_gate.tests
+
 TARGET_SRCS := $(patsubst %,%.c,$(TARGETS))
 
 .PRECIOUS: $(patsubst %,%.o,$(TARGETS))

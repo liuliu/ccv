@@ -22,6 +22,8 @@ static int _ccv_nnc_rmsnorm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t h
 {
 	assert(input_size == 2 || input_size == 1);
 	assert(output_size == 2);
+	if (cmd.info.rmsnorm.clip) // Not implemented here.
+		return CCV_NNC_EXEC_INVALID;
 	if (outputs[0]->info.dim[0] == 0)
 		return CCV_NNC_EXEC_SUCCESS;
 	const float output_scale = cmd.info.rmsnorm.scale;

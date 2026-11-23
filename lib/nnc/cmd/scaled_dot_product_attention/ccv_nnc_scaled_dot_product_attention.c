@@ -7,19 +7,32 @@ static int _ccv_nnc_scaled_dot_product_attention_forw_bitmask(const ccv_nnc_cmd_
 	// 6 inputs (query, key, value, [attn_mask], [unify head weight], [unify head bias])
 	// 8 inputs with varlen (query, key, value, 0, 0, 0, q_seq_offsets, kv_seq_offsets)
 	// 9 inputs with attention sinks (query, key, value, [attn_mask], [unify head weight], [unify head bias], [q_seq_offsets], [kv_seq_offsets], sinks)
-	// 3 outputs (y, softmax_lse, [qkv])
+	// 10 inputs with a relative-position bias (query, key, value, [attn_mask], [unify head weight], [unify head bias], 0, 0, [sinks], relative_bias)
+	// 3 outputs (y, softmax_lse, [qkv]); softmax_lse is optional with a relative-position bias
 	const uint64_t sink_bit = (1u << 8);
+	const uint64_t relative_bias_bit = (1u << 9);
 	const int attention_sinks = cmd.scaled_dot_product_attention.attention_sinks;
+	const int relative_bias = cmd.scaled_dot_product_attention.relative_bias;
 	if (((input_bitmasks[0] & sink_bit) != 0) != (attention_sinks != 0))
 		return 0;
-	const uint64_t input_bitmask = input_bitmasks[0] & ~sink_bit;
+	if (((input_bitmasks[0] & relative_bias_bit) != 0) != (relative_bias != 0))
+		return 0;
+	if (relative_bias && cmd.scaled_dot_product_attention.is_varlen)
+		return 0;
+	const uint64_t input_bitmask = input_bitmasks[0] & ~(sink_bit | relative_bias_bit);
+	// The inputs end with the relative-position bias, or else the sinks, when there are any.
+	const int extended_input_size = relative_bias ? 10 : (attention_sinks ? 9 : 0);
 	if (cmd.scaled_dot_product_attention.is_varlen && input_size == (attention_sinks ? 9 : 8) && (input_bitmask & 255u) == ((1u << 0) | (1u << 1) | (1u << 2) | (1u << 6) | (1u << 7)) && (output_bitmasks[0] & 1u) == 1u)
 		return 1;
-	if ((input_size == 6 || (attention_sinks && input_size == 9)) && (input_bitmask & 55u) == 55u && (output_bitmasks[0] & 7u) == 7u)
+	if ((input_size == 6 || input_size == extended_input_size) && (input_bitmask & 55u) == 55u && (output_bitmasks[0] & 7u) == 7u)
 		return 1;
-	if ((input_size == 5 || (attention_sinks && input_size == 9)) && (input_bitmask & 23u) == 23u && (output_bitmasks[0] & 7u) == 7u)
+	if ((input_size == 5 || input_size == extended_input_size) && (input_bitmask & 23u) == 23u && (output_bitmasks[0] & 7u) == 7u)
 		return 1;
 	if ((input_bitmask & 55u) == 7u && (output_bitmasks[0] & 3u) == 3u)
+		return 1;
+	// A relative-position bias has no backward pass to read softmax_lse, and without it a single
+	// decode row can take the kernel made for it.
+	if (relative_bias && (input_bitmask & 55u) == 7u && (output_bitmasks[0] & 1u) == 1u)
 		return 1;
 	return 0;
 }

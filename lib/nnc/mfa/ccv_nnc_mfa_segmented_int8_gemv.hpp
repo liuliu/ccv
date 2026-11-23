@@ -11,6 +11,8 @@ typedef struct {
   uint8_t broadcast_input;
   uint32_t expert_count;
   uint32_t bincount;
+  // A shared expert's Q8_0 rows (K wide, one activation row) that interleave with the routed ones.
+  uint32_t shared_rows;
 } ccv_nnc_mfa_segmented_int8_gemv_params_t;
 
 #ifdef __cplusplus

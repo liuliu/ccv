@@ -972,6 +972,22 @@ void ccv_nnc_set_queue_watermark(int watermark)
 #endif
 }
 
+size_t ccv_nnc_weights_streaming_watermark_bytes(void)
+{
+#ifdef HAVE_MPS
+	return ccv_nnc_mps_weights_streaming_watermark_bytes();
+#else
+	return 0;
+#endif
+}
+
+void ccv_nnc_set_weights_streaming_watermark_bytes(const size_t bytes)
+{
+#ifdef HAVE_MPS
+	ccv_nnc_mps_set_weights_streaming_watermark_bytes(bytes);
+#endif
+}
+
 void ccv_nnc_set_whole_file_mapping_size_limit(const size_t size_limit)
 {
 #ifdef HAVE_MPS

@@ -285,6 +285,121 @@ TEST_CASE("mps format transform skips empty tensors across formats")
 	ccv_nnc_tensor_free(b);
 }
 
+TEST_CASE("mps MFA strided copy matches the CPU with its sizes specialized or bound at encode time")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_FORMAT_TRANSFORM_FORWARD, CCV_NNC_BACKEND_MPS));
+	// Rows, columns, the source's row stride and column offset, then the destination's. A side
+	// whose row stride is its columns is a tensor of its own; the other is a view into a wider one.
+	static const int shapes[][6] = {
+		{8, 1003, 1003, 0, 1027, 0}, // Rows into a wider tensor, as a concatenation along the columns writes them.
+		{8, 16, 1040, 1011, 1027, 1011},
+		{8, 60216, 60216, 0, 60232, 0},
+		{8, 1000, 1000, 0, 1024, 0}, // Every size a multiple of 4, which copies four elements a thread.
+		{8, 16, 1048, 1032, 1024, 1000},
+		{8, 16, 1048, 1030, 1024, 1000}, // An offset that is not.
+		{517, 3, 5, 1, 3, 0}, // Tall and narrow, out of a view.
+		{517, 4, 8, 4, 4, 0},
+		{37, 300, 301, 1, 300, 0},
+		{300, 260, 264, 4, 272, 8},
+		{3, 5, 7, 2, 9, 3},
+		{1, 1, 3, 1, 2, 1},
+	};
+	const int datatypes[] = { CCV_16F, CCV_16BF, CCV_32F };
+	const uint64_t old_flags = ccv_nnc_flags();
+	ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA);
+	int i, j, k, x;
+	for (i = 0; i < sizeof(shapes) / sizeof(shapes[0]); i++)
+	{
+		const int rows = shapes[i][0];
+		const int cols = shapes[i][1];
+		const int source_row_stride = shapes[i][2];
+		const int source_offset = shapes[i][3];
+		const int destination_row_stride = shapes[i][4];
+		const int destination_offset = shapes[i][5];
+		ccv_nnc_tensor_t* const ha = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, source_row_stride), 0);
+		for (x = 0; x < rows * source_row_stride; x++)
+			ha->data.f32[x] = (float)((x * 37) % 4093 - 2046) / 127;
+		// What a copy must leave alone between a view's rows.
+		ccv_nnc_tensor_t* const hb = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, destination_row_stride), 0);
+		ccv_nnc_tensor_t* const expected = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, destination_row_stride), 0);
+		for (x = 0; x < rows * destination_row_stride; x++)
+			expected->data.f32[x] = hb->data.f32[x] = -1000 - x % 7;
+		ccv_nnc_tensor_view_t ha_view = ccv_nnc_tensor_view(ha, CPU_TENSOR_NHWC(32F, rows, cols), DIM_ALLOC(0, source_offset), DIM_ALLOC(source_row_stride, 1));
+		ccv_nnc_tensor_view_t expected_view = ccv_nnc_tensor_view(expected, CPU_TENSOR_NHWC(32F, rows, cols), DIM_ALLOC(0, destination_offset), DIM_ALLOC(destination_row_stride, 1));
+		ccv_nnc_cmd_t transform = CMD_FORMAT_TRANSFORM_FORWARD();
+		transform.backend = CCV_NNC_BACKEND_CPU_REF;
+		ccv_nnc_cmd_exec(transform, ccv_nnc_no_hint, 0, TENSOR_LIST((ccv_nnc_tensor_t*)&ha_view), TENSOR_LIST((ccv_nnc_tensor_t*)&expected_view), 0);
+		transform.backend = CCV_NNC_BACKEND_MPS;
+		for (j = 0; j < 3; j++)
+		{
+			ccv_nnc_tensor_param_t host_source_params = CPU_TENSOR_NHWC(32F, rows, source_row_stride);
+			host_source_params.datatype = datatypes[j];
+			ccv_nnc_tensor_param_t host_destination_params = CPU_TENSOR_NHWC(32F, rows, destination_row_stride);
+			host_destination_params.datatype = datatypes[j];
+			ccv_nnc_tensor_param_t source_params = GPU_TENSOR_NHWC(000, 32F, rows, source_row_stride);
+			source_params.datatype = datatypes[j];
+			ccv_nnc_tensor_param_t destination_params = GPU_TENSOR_NHWC(000, 32F, rows, destination_row_stride);
+			destination_params.datatype = datatypes[j];
+			ccv_nnc_tensor_param_t view_params = GPU_TENSOR_NHWC(000, 32F, rows, cols);
+			view_params.datatype = datatypes[j];
+			ccv_nnc_tensor_t* const host_source = ccv_nnc_tensor_new(0, host_source_params, 0);
+			ccv_nnc_tensor_t* const host_destination = ccv_nnc_tensor_new(0, host_destination_params, 0);
+			ccv_nnc_tensor_t* const host_expected = ccv_nnc_tensor_new(0, host_destination_params, 0);
+			ccv_nnc_tensor_t* const host_actual = ccv_nnc_tensor_new(0, host_destination_params, 0);
+			ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha, hb, expected), TENSOR_LIST(host_source, host_destination, host_expected), 0);
+			ccv_nnc_tensor_t* const source = ccv_nnc_tensor_new(0, source_params, 0);
+			ccv_nnc_tensor_t* const destination = ccv_nnc_tensor_new(0, destination_params, 0);
+			ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(host_source), TENSOR_LIST(source), 0);
+			ccv_nnc_tensor_view_t source_view = ccv_nnc_tensor_view(source, view_params, DIM_ALLOC(0, source_offset), DIM_ALLOC(source_row_stride, 1));
+			ccv_nnc_tensor_view_t destination_view = ccv_nnc_tensor_view(destination, view_params, DIM_ALLOC(0, destination_offset), DIM_ALLOC(destination_row_stride, 1));
+			ccv_nnc_tensor_t* const input = source_row_stride == cols ? source : (ccv_nnc_tensor_t*)&source_view;
+			ccv_nnc_tensor_t* const output = destination_row_stride == cols ? destination : (ccv_nnc_tensor_t*)&destination_view;
+			// Sizes as function constants, the element count bound at encode time, and every size
+			// bound at encode time, with and without the element count's flag.
+			for (k = 0; k < 4; k++)
+			{
+				if (k & 1)
+					ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M);
+				else
+					ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M);
+				if (k & 2)
+					ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA_ATTENTION_SPECIALIZING_C);
+				else
+					ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA_ATTENTION_SPECIALIZING_C);
+				ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(host_destination), TENSOR_LIST(destination), 0);
+				REQUIRE_EQ(CCV_NNC_EXEC_SUCCESS, ccv_nnc_cmd_exec(transform, ccv_nnc_no_hint, 0, TENSOR_LIST(input), TENSOR_LIST(output), 0), "MFA strided copy should execute");
+				ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(destination), TENSOR_LIST(host_actual), 0);
+				if (datatypes[j] == CCV_32F) {
+					REQUIRE_ARRAY_EQ(uint32_t, (uint32_t*)host_expected->data.f32, (uint32_t*)host_actual->data.f32, rows * destination_row_stride, "single-precision MFA strided copy should be bit exact and leave the rest of its destination alone");
+				} else {
+					REQUIRE_ARRAY_EQ(uint16_t, (uint16_t*)host_expected->data.f16, (uint16_t*)host_actual->data.f16, rows * destination_row_stride, "half-width MFA strided copy should be bit exact and leave the rest of its destination alone");
+				}
+			}
+			ccv_nnc_tensor_free(host_source);
+			ccv_nnc_tensor_free(host_destination);
+			ccv_nnc_tensor_free(host_expected);
+			ccv_nnc_tensor_free(host_actual);
+			ccv_nnc_tensor_free(source);
+			ccv_nnc_tensor_free(destination);
+		}
+		ccv_nnc_tensor_free(ha);
+		ccv_nnc_tensor_free(hb);
+		ccv_nnc_tensor_free(expected);
+	}
+	if (old_flags & CCV_NNC_DISABLE_MFA)
+		ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA);
+	else
+		ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA);
+	if (old_flags & CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M)
+		ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M);
+	else
+		ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M);
+	if (old_flags & CCV_NNC_DISABLE_MFA_ATTENTION_SPECIALIZING_C)
+		ccv_nnc_enable_flag(CCV_NNC_DISABLE_MFA_ATTENTION_SPECIALIZING_C);
+	else
+		ccv_nnc_disable_flag(CCV_NNC_DISABLE_MFA_ATTENTION_SPECIALIZING_C);
+}
+
 TEST_CASE("data conversion from double to half precision")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_DATATYPE_CONVERSION_FORWARD, CCV_NNC_BACKEND_GPU_REF));

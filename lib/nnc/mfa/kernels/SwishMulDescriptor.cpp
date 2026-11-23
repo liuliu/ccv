@@ -12,6 +12,8 @@ bool SwishMulDescriptor::operator==(const SwishMulDescriptor& rhs) const {
   beta == rhs.beta &&
   scale == rhs.scale &&
   clamp == rhs.clamp &&
+  gateSoftCap == rhs.gateSoftCap &&
+  upSoftCap == rhs.upSoftCap &&
   gPrecision == rhs.gPrecision &&
   aPrecision == rhs.aPrecision &&
   bPrecision == rhs.bPrecision &&
@@ -36,6 +38,7 @@ std::size_t std::hash<SwishMulDescriptor>::operator()(const SwishMulDescriptor& 
   seed = combine_32(seed, hash.loadM ? 1 : 0);
   seed = combine_64(seed, pack_64(simd::uint2 { uint32_t(std::hash<float>{}(hash.beta)), uint32_t(std::hash<float>{}(hash.scale)) }));
   seed = combine_32(seed, uint32_t(std::hash<float>{}(hash.clamp)));
+  seed = combine_64(seed, pack_64(simd::uint2 { uint32_t(std::hash<float>{}(hash.gateSoftCap)), uint32_t(std::hash<float>{}(hash.upSoftCap)) }));
   return seed;
 }
 
@@ -61,6 +64,8 @@ std::pair<SwishMulKernelDescriptor, PipelineValue<SwishMulKernel>*> SwishMulDesc
   kernelDesc.beta = beta;
   kernelDesc.scale = scale;
   kernelDesc.clamp = clamp > 0;
+  kernelDesc.gateSoftCap = gateSoftCap > 0;
+  kernelDesc.upSoftCap = upSoftCap > 0;
   kernelDesc.gPrecision = gPrecision;
   kernelDesc.aPrecision = aPrecision;
   kernelDesc.bPrecision = bPrecision;
@@ -89,6 +94,10 @@ std::pair<SwishMulKernelDescriptor, PipelineValue<SwishMulKernel>*> SwishMulDesc
       constants->setConstantValue(&scale, MTL::DataTypeFloat, NS::UInteger(2));
     if (clamp > 0)
       constants->setConstantValue(&clamp, MTL::DataTypeFloat, NS::UInteger(3));
+    if (gateSoftCap > 0)
+      constants->setConstantValue(&gateSoftCap, MTL::DataTypeFloat, NS::UInteger(5));
+    if (upSoftCap > 0)
+      constants->setConstantValue(&upSoftCap, MTL::DataTypeFloat, NS::UInteger(6));
     if (weighted) {
       const uint32_t rowWidth = length / weightCount;
       constants->setConstantValue(&rowWidth, MTL::DataTypeUInt, NS::UInteger(4));

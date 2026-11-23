@@ -7,13 +7,13 @@
 
 static int _ccv_nnc_causal_convolution_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
 {
-	if (input_size != 3 || output_size != 2)
+	if ((input_size != 3 && input_size != 4) || output_size != 2)
 		return CCV_NNC_EXEC_INVALID;
 	int i;
 	const int datatype = inputs[0]->info.datatype;
 	if (datatype != CCV_32F && datatype != CCV_16F && datatype != CCV_16BF)
 		return CCV_NNC_EXEC_INVALID;
-	for (i = 0; i < 3; i++)
+	for (i = 0; i < input_size; i++)
 		if (!inputs[i] || inputs[i]->info.datatype != datatype || !CCV_IS_TENSOR_CONTIGUOUS(inputs[i]))
 			return CCV_NNC_EXEC_INVALID;
 	for (i = 0; i < 2; i++)
@@ -34,13 +34,25 @@ static int _ccv_nnc_causal_convolution_forw(const ccv_nnc_cmd_t cmd, const ccv_n
 	const int rows = (int)(ccv_nnc_tensor_count(outputs[1]->info) / ((size_t)B * channels));
 	if (ccv_nnc_tensor_count(outputs[0]->info) != (size_t)B * T * channels || rows > kernel_size - 1 + T)
 		return CCV_NNC_EXEC_INVALID;
+	// Per-token dynamic weights [B, T, groups, kernel_size], which each token adds to the weights of the
+	// channels in each of its groups.
+	int groups = 0;
+	if (input_size == 4)
+	{
+		const size_t dynamic_weight_count = ccv_nnc_tensor_count(inputs[3]->info);
+		groups = (int)(dynamic_weight_count / ((size_t)B * T * kernel_size));
+		if (groups < 1 || channels % groups != 0 || dynamic_weight_count != (size_t)B * T * groups * kernel_size)
+			return CCV_NNC_EXEC_INVALID;
+	}
 	// The kernel reads x and the previous rows while it writes, so neither output may overlap them.
 	// A graph places tensors at offsets of shared buffers, so compare the byte ranges.
 	const size_t element_size = CCV_GET_DATA_TYPE_SIZE(datatype);
 	int j;
 	for (i = 0; i < 2; i++)
-		for (j = 0; j < 2; j++)
+		for (j = 0; j < input_size; j++)
 		{
+			if (j == 2) // The weights are parameters.
+				continue;
 			// On MPS, data.u8 is the buffer and dataof the offset into it.
 			if (outputs[i]->data.u8 != inputs[j]->data.u8)
 				continue;
@@ -63,10 +75,11 @@ static int _ccv_nnc_causal_convolution_forw(const ccv_nnc_cmd_t cmd, const ccv_n
 			.kernel_size = kernel_size,
 			.next_rows = rows,
 			.silu = cmd.info.causal_convolution.silu != 0,
+			.dynamic_weight_groups = groups,
 		};
-		ccv_nnc_mfa_prepare_causal_convolution(context, params);
-		mtl_buffer_t* tensors[6] = {};
-		size_t offsets[5];
+		// x, the previous rows, the weights, y, the next rows and the dynamic weights, if any.
+		mtl_buffer_t* tensors[7] = {};
+		size_t offsets[6] = {};
 		for (i = 0; i < 3; i++)
 		{
 			tensors[i] = mpgetbuffer(inputs[i]);
@@ -76,6 +89,11 @@ static int _ccv_nnc_causal_convolution_forw(const ccv_nnc_cmd_t cmd, const ccv_n
 		{
 			tensors[3 + i] = mpgetbuffer(outputs[i]);
 			offsets[3 + i] = outputs[i]->dataof;
+		}
+		if (input_size == 4)
+		{
+			tensors[5] = mpgetbuffer(inputs[3]);
+			offsets[5] = inputs[3]->dataof;
 		}
 		mtl_command_batch_t* const command_batch = ccv_nnc_stream_context_start_command_batch(stream_context);
 		ccv_nnc_mfa_encode_causal_convolution(context, params, command_batch, tensors, offsets);

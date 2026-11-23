@@ -30,8 +30,11 @@ void ccv_nnc_mfa_encode_strided_copy(ccv_nnc_mfa_context_t* context, ccv_nnc_mfa
 	descriptor.cols = params.cols;
 	descriptor.sourceRowStride = params.source_row_stride;
 	descriptor.destinationRowStride = params.destination_row_stride;
-	descriptor.destinationStrided = params.destination_row_stride != params.cols;
-	descriptor.loadM = params.loadM;
+	// With loadC one kernel serves every shape: it indexes the destination by its row stride
+	// whether or not that is the width, and reads its rows rather than an element count.
+	descriptor.loadC = params.loadC;
+	descriptor.destinationStrided = params.loadC || params.destination_row_stride != params.cols;
+	descriptor.loadM = params.loadC ? false : params.loadM;
 	const size_t dataTypeSize = params.data_type == MTL::DataTypeFloat ? 4 : 2;
 	descriptor.vectorized = (params.cols % 4 == 0 &&
 		params.source_row_stride % 4 == 0 &&
@@ -51,14 +54,29 @@ void ccv_nnc_mfa_encode_strided_copy(ccv_nnc_mfa_context_t* context, ccv_nnc_mfa
 
 	encoder->useResource(tensors[0], MTL::ResourceUsageRead);
 	encoder->useResource(tensors[1], MTL::ResourceUsageWrite);
-	if (params.loadM) {
-		const uint32_t elementCount = descriptor.vectorized ? params.rows * params.cols / 4 : params.rows * params.cols;
-		encoder->setBytes(&elementCount, sizeof(elementCount), 2);
-	}
+	if (params.loadC) {
+		const uint32_t unit = descriptor.vectorized ? 4 : 1;
+		const uint32_t colUnits = params.cols / unit;
+		const uint32_t sizes[4] = { colUnits, params.rows, params.source_row_stride / unit, params.destination_row_stride / unit };
+		encoder->setBytes(sizes, sizeof(sizes), 2);
+		// A threadgroup keeps the kernel's thread count, as wide as a row up to that and as tall as
+		// the rest allows, so neither a wide copy nor a tall, narrow one leaves most of a group idle.
+		const uint32_t threads = (uint32_t)kernel->threadgroupSize.width;
+		uint32_t width = 1;
+		while (width < colUnits && width < threads)
+			width <<= 1;
+		const uint32_t height = threads / width;
+		encoder->dispatchThreadgroups(MTL::Size((colUnits + width - 1) / width, (params.rows + height - 1) / height, 1), MTL::Size(width, height, 1));
+	} else {
+		if (params.loadM) {
+			const uint32_t elementCount = descriptor.vectorized ? params.rows * params.cols / 4 : params.rows * params.cols;
+			encoder->setBytes(&elementCount, sizeof(elementCount), 2);
+		}
 
-	const MTL::Size gridSize = kernel->gridSize(params.rows, params.cols);
-	CCV_NNC_MFA_PRECONDITION(gridSize.width > 0 && gridSize.height > 0 && gridSize.depth > 0);
-	encoder->dispatchThreadgroups(gridSize, kernel->threadgroupSize);
+		const MTL::Size gridSize = kernel->gridSize(params.rows, params.cols);
+		CCV_NNC_MFA_PRECONDITION(gridSize.width > 0 && gridSize.height > 0 && gridSize.depth > 0);
+		encoder->dispatchThreadgroups(gridSize, kernel->threadgroupSize);
+	}
 
 	command_batch->finishCommand(encoder);
 }

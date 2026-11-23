@@ -49,6 +49,8 @@ static int _ccv_nnc_swiglu_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hi
 		return CCV_NNC_EXEC_INVALID;
 	const float limit = cmd.info.swiglu.clamp;
 	const int clamp_enabled = limit > 0;
+	const float gate_soft_cap = cmd.info.swiglu.gate_soft_cap;
+	const float up_soft_cap = cmd.info.swiglu.up_soft_cap;
 	parallel_for(row, rows) {
 		const float* const activation = a->data.f32 + row * k;
 		float* const output_row = output->data.f32 + row * n;
@@ -70,7 +72,11 @@ static int _ccv_nnc_swiglu_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hi
 				gate = ccv_min(gate, limit);
 				up = ccv_min(ccv_max(up, -limit), limit);
 			}
-			output_row[column] = up * gate / (1 + expf(-gate));
+			// The sigmoid reads the gate itself; the soft caps bound its linear factor and up.
+			const float gate_linear = gate_soft_cap > 0 ? gate_soft_cap * tanhf(gate / gate_soft_cap) : gate;
+			if (up_soft_cap > 0)
+				up = up_soft_cap * tanhf(up / up_soft_cap);
+			output_row[column] = up * gate_linear / (1 + expf(-gate));
 		}
 	} parallel_endfor
 	return CCV_NNC_EXEC_SUCCESS;

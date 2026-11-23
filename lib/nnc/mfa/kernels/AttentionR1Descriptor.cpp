@@ -14,7 +14,12 @@ bool AttentionR1Descriptor::operator==(const AttentionR1Descriptor& rhs) const {
       D == rhs.D && R == rhs.R && isCausal == rhs.isCausal &&
       scale == rhs.scale &&
       attentionSinks == rhs.attentionSinks &&
+      sinksPerQuery == rhs.sinksPerQuery &&
+      relativeBiasExtent == rhs.relativeBiasExtent &&
+      slidingWindow == rhs.slidingWindow &&
+      masked == rhs.masked &&
       simdgroups == rhs.simdgroups && headsPerSIMD == rhs.headsPerSIMD &&
+      rowsPerSIMD == rhs.rowsPerSIMD &&
       reductionSIMDGroups == rhs.reductionSIMDGroups &&
       workgroups == rhs.workgroups &&
       mode == rhs.mode;
@@ -48,7 +53,7 @@ AttentionR1Descriptor AttentionR1Descriptor::select(
 
   // Put related GQA heads together so their KV reads share the same cache
   // lines, without a cross-SIMD merge.
-  // Keep the group at most 128 threads for R1 and 256 for R2 so a large GQA ratio
+  // Keep the group at most 128 threads for each group of rows so a large GQA ratio
   // does not force all of its queries into one large scheduling unit.
   const uint32_t gqa = Hq / Hk;
   uint32_t headsPerGroup = 1;
@@ -59,7 +64,13 @@ AttentionR1Descriptor AttentionR1Descriptor::select(
   // of query and accumulator elements as one D=256 head. This bounds the
   // register footprint while halving K/V loads for each pair.
   descriptor.headsPerSIMD = D == 128 && headsPerGroup % 2 == 0 ? 2 : 1;
-  descriptor.simdgroups = headsPerGroup * R / descriptor.headsPerSIMD;
+  descriptor.headsPerGroup = headsPerGroup;
+  // A SIMD group holds up to four D=128 queries or two D=256 ones, rows as well as heads, and
+  // reads each key and value once for all of them. Rows split evenly over the fewest groups.
+  const uint32_t maxRowsPerSIMD = std::max(1u, (D == 128 ? 4u : 2u) / descriptor.headsPerSIMD);
+  const uint32_t rowGroups = (R + maxRowsPerSIMD - 1) / maxRowsPerSIMD;
+  descriptor.rowsPerSIMD = (R + rowGroups - 1) / rowGroups;
+  descriptor.simdgroups = headsPerGroup / descriptor.headsPerSIMD * rowGroups;
   descriptor.workgroups = 1;
   const uint64_t groupsPerPartition = uint64_t(batchDimension) * (Hq / headsPerGroup);
   const uint32_t cores = coreCount ? coreCount : 32;
@@ -80,11 +91,20 @@ AttentionR1Descriptor AttentionR1Descriptor::select(
   const uint64_t independentQueries = uint64_t(batchDimension) * R * Hq;
   const uint32_t rowsPerPartition = descriptor.headsPerSIMD == 2 || independentQueries < cores ? 128 : 256;
   const uint64_t traversalWork = uint64_t(C) * cores * R * descriptor.headsPerSIMD;
-  while (descriptor.workgroups < 1024 && descriptor.workgroups <= C / 16 &&
-      (groupsPerPartition * descriptor.workgroups < targetGroups ||
-       uint64_t(C) > uint64_t(rowsPerPartition) * descriptor.workgroups ||
-       4ull * descriptor.workgroups * descriptor.workgroups * batchDimension * Hq < traversalWork))
-    descriptor.workgroups *= 2;
+  if (R > 1) {
+    // A SIMD group's rows share each key it reads, so a traversal costs little next to merging
+    // R * Hq partial outputs for each partition: at least 64 partitions, of at most 640 keys.
+    // On M5 Ultra, 8 rows of 48 heads over 8: 1,024 partitions took 1.6-2.4x as long at 8K-32K.
+    while (descriptor.workgroups < 1024 && descriptor.workgroups * 16 < C &&
+        (descriptor.workgroups < 64 || uint64_t(descriptor.workgroups) * 640 < C))
+      descriptor.workgroups *= 2;
+  } else {
+    while (descriptor.workgroups < 1024 && descriptor.workgroups <= C / 16 &&
+        (groupsPerPartition * descriptor.workgroups < targetGroups ||
+         uint64_t(C) > uint64_t(rowsPerPartition) * descriptor.workgroups ||
+         4ull * descriptor.workgroups * descriptor.workgroups * batchDimension * Hq < traversalWork))
+      descriptor.workgroups *= 2;
+  }
   // Spread the vector merge across SIMD groups, retaining at least four
   // partials per SIMD when possible. Large splits amortize a wider reduction;
   // otherwise bound its shared memory at 16 KiB for D=256.
@@ -98,9 +118,10 @@ AttentionR1Descriptor AttentionR1Descriptor::select(
   if (C >= 8 && C <= 16 * 16 &&
       (C <= 16 * 4 || uint64_t(batchDimension) * R * Hq <= uint64_t(cores) * 2)) {
     descriptor.mode = Mode::cooperative;
-    // The cooperative merge reads one SIMD group's statistics per lane, so NSG <= 32.
+    // The cooperative merge reads one SIMD group's statistics per lane, so SIMDGroups <= 32.
     descriptor.simdgroups = 16;
     descriptor.headsPerSIMD = 1;
+    descriptor.rowsPerSIMD = 1;
     descriptor.workgroups = 1;
     descriptor.reductionSIMDGroups = 1;
   }
@@ -116,9 +137,13 @@ std::size_t std::hash<AttentionR1Descriptor>::operator()(const AttentionR1Descri
   seed = combine_64(seed, pack_64(simd::uint2 { hash.simdgroups, hash.workgroups }));
   seed = combine_64(seed, pack_64(simd::uint2 { hash.R, hash.reductionSIMDGroups }));
   seed = combine_32(seed, hash.headsPerSIMD);
+  seed = combine_32(seed, hash.rowsPerSIMD);
   seed = combine_32(seed, hash.isCausal ? 1 : 0);
   seed = combine_32(seed, hash.loadC ? 1 : 0);
-  seed = combine_32(seed, hash.attentionSinks ? 1 : 0);
+  seed = combine_32(seed, (hash.attentionSinks ? 1 : 0) | (hash.sinksPerQuery ? 2 : 0));
+  seed = combine_32(seed, hash.relativeBiasExtent);
+  seed = combine_32(seed, hash.slidingWindow);
+  seed = combine_32(seed, hash.masked ? 1 : 0);
   seed = combine_32(seed, uint32_t(std::hash<float>{}(hash.scale)));
   return seed;
 }
@@ -151,6 +176,9 @@ std::pair<AttentionR1KernelDescriptor, PipelineValue<AttentionR1Kernel>*> Attent
   kernelDesc.memoryPrecision = memoryPrecision;
   kernelDesc.loadC = loadC;
   kernelDesc.attentionSinks = attentionSinks;
+  kernelDesc.sinksPerQuery = sinksPerQuery;
+  kernelDesc.relativeBias = relativeBiasExtent > 0;
+  kernelDesc.masked = masked;
 
   auto createPipeline =
   [=](MTL::Library* library, const char* functionNameString) -> MTL::ComputePipelineState* {
@@ -167,6 +195,10 @@ std::pair<AttentionR1KernelDescriptor, PipelineValue<AttentionR1Kernel>*> Attent
     constants->setConstantValue(&isCausal, MTL::DataTypeBool, NS::UInteger(8));
     constants->setConstantValue(&reductionSIMDGroups, MTL::DataTypeUInt, NS::UInteger(9));
     constants->setConstantValue(&headsPerSIMD, MTL::DataTypeUInt, NS::UInteger(10));
+    if (relativeBiasExtent > 0)
+      constants->setConstantValue(&relativeBiasExtent, MTL::DataTypeUInt, NS::UInteger(11));
+    constants->setConstantValue(&slidingWindow, MTL::DataTypeUInt, NS::UInteger(12));
+    constants->setConstantValue(&rowsPerSIMD, MTL::DataTypeUInt, NS::UInteger(13));
     float scale = this->scale;
     constants->setConstantValue(&scale, MTL::DataTypeFloat, NS::UInteger(6));
 

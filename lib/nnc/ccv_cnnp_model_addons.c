@@ -2659,6 +2659,107 @@ static ccv_cnnp_model_t* _ccv_cnnp_rotate_half_copy(const ccv_cnnp_model_t* cons
 	return ccv_cnnp_rotate_half(super->name);
 }
 
+// MARK - Message Gate Layer
+
+typedef struct {
+	ccv_cnnp_model_t super;
+	int rank;
+	float epsilon;
+	ccv_nnc_tensor_symbol_t down;
+	ccv_nnc_tensor_symbol_t forget;
+	ccv_nnc_tensor_symbol_t gain;
+	ccv_nnc_tensor_symbol_t output;
+} ccv_cnnp_model_message_gate_t;
+
+static void _ccv_cnnp_message_gate_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
+{
+	PRINT(CCV_CLI_VERBOSE, "[cnnp_message_gate_build] -\n");
+	ccv_cnnp_model_message_gate_t* const self = (ccv_cnnp_model_message_gate_t*)super;
+	assert(input_size == 2);
+	assert(output_size == 1);
+	const ccv_nnc_tensor_param_t params = ccv_nnc_tensor_symbol_params(graph, inputs[0]);
+	// The projections take the state's type: down [R, 2C], forget and gain [C, R], with C the
+	// state's last axis.
+	const int channels = params.dim[ccv_nnc_tensor_nd(params.dim) - 1];
+	ccv_nnc_tensor_param_t weights_params = params;
+	memset(weights_params.dim, 0, sizeof(weights_params.dim));
+	weights_params.dim[0] = self->rank;
+	weights_params.dim[1] = channels * 2;
+	if (!self->down.graph)
+		self->down = ccv_nnc_tensor_symbol_new(graph, weights_params, "down");
+	weights_params.dim[0] = channels;
+	weights_params.dim[1] = self->rank;
+	if (!self->forget.graph)
+		self->forget = ccv_nnc_tensor_symbol_new(graph, weights_params, "forget");
+	if (!self->gain.graph)
+		self->gain = ccv_nnc_tensor_symbol_new(graph, weights_params, "gain");
+	const ccv_nnc_tensor_symbol_t down = ccv_cnnp_model_get_symbol(super, self->down);
+	const ccv_nnc_tensor_symbol_t forget = ccv_cnnp_model_get_symbol(super, self->forget);
+	const ccv_nnc_tensor_symbol_t gain = ccv_cnnp_model_get_symbol(super, self->gain);
+	// The output has the state's shape; the command's scratch, the normalized rows and the mix, are
+	// FP32 with the last axis 2C and R.
+	outputs[0] = ccv_nnc_tensor_symbol_new(graph, params, 0);
+	ccv_nnc_tensor_param_t scratch_params = params;
+	scratch_params.datatype = CCV_32F;
+	scratch_params.dim[ccv_nnc_tensor_nd(params.dim) - 1] = channels * 2;
+	const ccv_nnc_tensor_symbol_t normalized = ccv_nnc_tensor_symbol_new(graph, scratch_params, "normalized");
+	scratch_params.dim[ccv_nnc_tensor_nd(params.dim) - 1] = self->rank;
+	const ccv_nnc_tensor_symbol_t mix = ccv_nnc_tensor_symbol_new(graph, scratch_params, "mix");
+	ccv_nnc_graph_exec_symbol_new(graph, CMD_MESSAGE_GATE_FORWARD(self->epsilon), TENSOR_SYMBOL_LIST(inputs[0], inputs[1], down, forget, gain), TENSOR_SYMBOL_LIST(outputs[0], normalized, mix), "message_gate");
+}
+
+static void _ccv_cnnp_message_gate_init_states(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_cnnp_state_initializer_f initializer, void* const context)
+{
+	ccv_cnnp_model_message_gate_t* const self = (ccv_cnnp_model_message_gate_t*)super;
+	// Zero projections keep the state as it is.
+	initializer(context, CMD_SET_FORWARD(0), ccv_nnc_no_hint, 0, 0, self->down);
+	initializer(context, CMD_SET_FORWARD(0), ccv_nnc_no_hint, 0, 0, self->forget);
+	initializer(context, CMD_SET_FORWARD(0), ccv_nnc_no_hint, 0, 0, self->gain);
+}
+
+static void _ccv_cnnp_message_gate_add_to_parameter(ccv_cnnp_model_t* const super, const ccv_cnnp_add_to_array_f add_to_array, void* const parameters, const int is_trainable)
+{
+	ccv_cnnp_model_message_gate_t* const self = (ccv_cnnp_model_message_gate_t*)super;
+	add_to_array(parameters, self->down, is_trainable);
+	add_to_array(parameters, self->forget, is_trainable);
+	add_to_array(parameters, self->gain, is_trainable);
+}
+
+static ccv_cnnp_model_t* _ccv_cnnp_message_gate_copy(const ccv_cnnp_model_t* const self, void* const context);
+
+static const ccv_cnnp_model_vtab_t ccv_cnnp_message_gate_isa = {
+	.build = _ccv_cnnp_message_gate_build,
+	.init_states = _ccv_cnnp_message_gate_init_states,
+	.add_to_parameter = _ccv_cnnp_message_gate_add_to_parameter,
+	.copy = _ccv_cnnp_message_gate_copy,
+};
+
+ccv_cnnp_model_t* ccv_cnnp_message_gate(const int rank, const float epsilon, const int is_trainable, const char* const name)
+{
+	ccv_cnnp_model_message_gate_t* const model_message_gate = (ccv_cnnp_model_message_gate_t*)cccalloc(1, sizeof(ccv_cnnp_model_message_gate_t));
+	model_message_gate->super.isa = &ccv_cnnp_message_gate_isa;
+	model_message_gate->super.input_size = 2;
+	model_message_gate->super.outputs = &model_message_gate->output;
+	model_message_gate->super.output_size = 1;
+	model_message_gate->super.is_trainable = is_trainable;
+	model_message_gate->rank = rank;
+	model_message_gate->epsilon = epsilon;
+	model_message_gate->down.d = CCV_NNC_NO_TENSOR_SYMBOL;
+	model_message_gate->down.graph = 0;
+	model_message_gate->forget.d = CCV_NNC_NO_TENSOR_SYMBOL;
+	model_message_gate->forget.graph = 0;
+	model_message_gate->gain.d = CCV_NNC_NO_TENSOR_SYMBOL;
+	model_message_gate->gain.graph = 0;
+	ccv_cnnp_model_copy_name(&model_message_gate->super, name);
+	return (ccv_cnnp_model_t*)model_message_gate;
+}
+
+static ccv_cnnp_model_t* _ccv_cnnp_message_gate_copy(const ccv_cnnp_model_t* const super, void* const context)
+{
+	const ccv_cnnp_model_message_gate_t* const self = (const ccv_cnnp_model_message_gate_t*)super;
+	return ccv_cnnp_message_gate(self->rank, self->epsilon, super->is_trainable, super->name);
+}
+
 // MARK - Walsh-Hadamard Transform Layer
 
 typedef struct {
@@ -2781,14 +2882,15 @@ typedef struct {
 	int kernel_size;
 	int silu;
 	int state_checkpoint_count;
+	int has_dynamic_weights;
 } ccv_cnnp_model_causal_convolution_t;
 
 static void _ccv_cnnp_causal_convolution_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
 {
 	PRINT(CCV_CLI_VERBOSE, "[cnnp_causal_convolution_build] -\n");
-	assert(input_size == 2);
-	assert(output_size == 2);
 	ccv_cnnp_model_causal_convolution_t* const self = (ccv_cnnp_model_causal_convolution_t*)super;
+	assert(input_size == (self->has_dynamic_weights ? 3 : 2));
+	assert(output_size == 2);
 	const ccv_nnc_tensor_param_t params = ccv_nnc_tensor_symbol_params(graph, inputs[0]);
 	const int channels = params.dim[ccv_nnc_tensor_nd(params.dim) - 1];
 	// The depthwise convolution's weight layout, so its checkpoints load as they are.
@@ -2811,7 +2913,10 @@ static void _ccv_cnnp_causal_convolution_build(ccv_cnnp_model_t* const super, cc
 		}, 3, ccv_nnc_no_hint, output_params, 2);
 	outputs[0] = ccv_nnc_tensor_symbol_new(graph, output_params[0], 0);
 	outputs[1] = ccv_nnc_tensor_symbol_new(graph, output_params[1], 0);
-	ccv_nnc_graph_exec_symbol_new(graph, cmd, TENSOR_SYMBOL_LIST(inputs[0], inputs[1], weights), outputs, output_size, "causal_convolution");
+	if (self->has_dynamic_weights)
+		ccv_nnc_graph_exec_symbol_new(graph, cmd, TENSOR_SYMBOL_LIST(inputs[0], inputs[1], weights, inputs[2]), outputs, output_size, "causal_convolution");
+	else
+		ccv_nnc_graph_exec_symbol_new(graph, cmd, TENSOR_SYMBOL_LIST(inputs[0], inputs[1], weights), outputs, output_size, "causal_convolution");
 }
 
 static void _ccv_cnnp_causal_convolution_init_states(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_cnnp_state_initializer_f initializer, void* const context)
@@ -2837,13 +2942,13 @@ static const ccv_cnnp_model_vtab_t ccv_cnnp_causal_convolution_isa = {
 	.copy = _ccv_cnnp_causal_convolution_copy,
 };
 
-ccv_cnnp_model_t* ccv_cnnp_causal_convolution(const int kernel_size, const int silu, const int state_checkpoint_count, const int is_trainable, const char* const name)
+ccv_cnnp_model_t* ccv_cnnp_causal_convolution(const int kernel_size, const int silu, const int state_checkpoint_count, const int has_dynamic_weights, const int is_trainable, const char* const name)
 {
 	// One tap has no previous rows to carry.
 	assert(kernel_size >= 2);
 	ccv_cnnp_model_causal_convolution_t* const model_causal_convolution = (ccv_cnnp_model_causal_convolution_t*)cccalloc(1, sizeof(ccv_cnnp_model_causal_convolution_t));
 	model_causal_convolution->super.isa = &ccv_cnnp_causal_convolution_isa;
-	model_causal_convolution->super.input_size = 2;
+	model_causal_convolution->super.input_size = has_dynamic_weights ? 3 : 2;
 	model_causal_convolution->super.outputs = model_causal_convolution->outputs;
 	model_causal_convolution->super.output_size = 2;
 	model_causal_convolution->super.is_trainable = is_trainable;
@@ -2852,6 +2957,7 @@ ccv_cnnp_model_t* ccv_cnnp_causal_convolution(const int kernel_size, const int s
 	model_causal_convolution->kernel_size = kernel_size;
 	model_causal_convolution->silu = silu;
 	model_causal_convolution->state_checkpoint_count = state_checkpoint_count;
+	model_causal_convolution->has_dynamic_weights = has_dynamic_weights;
 	ccv_cnnp_model_copy_name(&model_causal_convolution->super, name);
 	return (ccv_cnnp_model_t*)model_causal_convolution;
 }
@@ -2859,7 +2965,87 @@ ccv_cnnp_model_t* ccv_cnnp_causal_convolution(const int kernel_size, const int s
 static ccv_cnnp_model_t* _ccv_cnnp_causal_convolution_copy(const ccv_cnnp_model_t* const super, void* const context)
 {
 	const ccv_cnnp_model_causal_convolution_t* const self = (const ccv_cnnp_model_causal_convolution_t*)super;
-	return ccv_cnnp_causal_convolution(self->kernel_size, self->silu, self->state_checkpoint_count, self->super.is_trainable, super->name);
+	return ccv_cnnp_causal_convolution(self->kernel_size, self->silu, self->state_checkpoint_count, self->has_dynamic_weights, self->super.is_trainable, super->name);
+}
+
+// MARK - Attention Residual Layer
+
+typedef struct {
+	ccv_cnnp_model_t super;
+	ccv_nnc_tensor_symbol_t weights;
+	int queries;
+	float epsilon;
+	float scale;
+	ccv_nnc_tensor_symbol_t outputs[1];
+} ccv_cnnp_model_attention_residual_t;
+
+static void _ccv_cnnp_attention_residual_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
+{
+	PRINT(CCV_CLI_VERBOSE, "[cnnp_attention_residual_build] -\n");
+	ccv_cnnp_model_attention_residual_t* const self = (ccv_cnnp_model_attention_residual_t*)super;
+	assert(input_size == 2);
+	assert(output_size == self->queries);
+	const ccv_nnc_tensor_param_t params = ccv_nnc_tensor_symbol_params(graph, inputs[1]);
+	const int channels = params.dim[ccv_nnc_tensor_nd(params.dim) - 1];
+	ccv_nnc_tensor_param_t weights_params = params;
+	memset(weights_params.dim, 0, sizeof(weights_params.dim));
+	weights_params.dim[0] = self->queries;
+	weights_params.dim[1] = channels;
+	if (!self->weights.graph)
+		self->weights = ccv_nnc_tensor_symbol_new(graph, weights_params, "weights");
+	const ccv_nnc_tensor_symbol_t weights = ccv_cnnp_model_get_symbol(super, self->weights);
+	const ccv_nnc_cmd_t cmd = CMD_ATTENTION_RESIDUAL_FORWARD(self->epsilon, self->scale);
+	int i;
+	// Every output has the partial state's shape.
+	for (i = 0; i < output_size; i++)
+		outputs[i] = ccv_nnc_tensor_symbol_new(graph, params, 0);
+	ccv_nnc_graph_exec_symbol_new(graph, cmd, TENSOR_SYMBOL_LIST(inputs[0], inputs[1], weights), outputs, output_size, "attention_residual");
+}
+
+static void _ccv_cnnp_attention_residual_init_states(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_cnnp_state_initializer_f initializer, void* const context)
+{
+	ccv_cnnp_model_attention_residual_t* const self = (ccv_cnnp_model_attention_residual_t*)super;
+	// Zero queries weigh every state the same.
+	initializer(context, CMD_SET_FORWARD(0), ccv_nnc_no_hint, 0, 0, self->weights);
+}
+
+static void _ccv_cnnp_attention_residual_add_to_parameter(ccv_cnnp_model_t* const super, const ccv_cnnp_add_to_array_f add_to_array, void* const parameters, const int is_trainable)
+{
+	ccv_cnnp_model_attention_residual_t* const self = (ccv_cnnp_model_attention_residual_t*)super;
+	add_to_array(parameters, self->weights, is_trainable);
+}
+
+static ccv_cnnp_model_t* _ccv_cnnp_attention_residual_copy(const ccv_cnnp_model_t* const self, void* const context);
+
+static const ccv_cnnp_model_vtab_t ccv_cnnp_attention_residual_isa = {
+	.build = _ccv_cnnp_attention_residual_build,
+	.init_states = _ccv_cnnp_attention_residual_init_states,
+	.add_to_parameter = _ccv_cnnp_attention_residual_add_to_parameter,
+	.copy = _ccv_cnnp_attention_residual_copy,
+};
+
+ccv_cnnp_model_t* ccv_cnnp_attention_residual(const int queries, const float epsilon, const float scale, const int is_trainable, const char* const name)
+{
+	assert(queries >= 1);
+	ccv_cnnp_model_attention_residual_t* const model_attention_residual = (ccv_cnnp_model_attention_residual_t*)cccalloc(1, sizeof(ccv_cnnp_model_attention_residual_t) + sizeof(ccv_nnc_tensor_symbol_t) * (queries - 1));
+	model_attention_residual->super.isa = &ccv_cnnp_attention_residual_isa;
+	model_attention_residual->super.input_size = 2;
+	model_attention_residual->super.outputs = model_attention_residual->outputs;
+	model_attention_residual->super.output_size = queries;
+	model_attention_residual->super.is_trainable = is_trainable;
+	model_attention_residual->weights.d = CCV_NNC_NO_TENSOR_SYMBOL;
+	model_attention_residual->weights.graph = 0;
+	model_attention_residual->queries = queries;
+	model_attention_residual->epsilon = epsilon;
+	model_attention_residual->scale = scale;
+	ccv_cnnp_model_copy_name(&model_attention_residual->super, name);
+	return (ccv_cnnp_model_t*)model_attention_residual;
+}
+
+static ccv_cnnp_model_t* _ccv_cnnp_attention_residual_copy(const ccv_cnnp_model_t* const super, void* const context)
+{
+	const ccv_cnnp_model_attention_residual_t* const self = (const ccv_cnnp_model_attention_residual_t*)super;
+	return ccv_cnnp_attention_residual(self->queries, self->epsilon, self->scale, self->super.is_trainable, super->name);
 }
 
 // MARK - Gated Delta Layer
@@ -3330,7 +3516,7 @@ static const ccv_cnnp_model_vtab_t ccv_cnnp_rmsnorm_isa = {
 	.copy = _ccv_cnnp_rmsnorm_copy,
 };
 
-ccv_cnnp_model_t* ccv_cnnp_rmsnorm(const float epsilon, const int axis[CCV_NNC_MAX_DIM_ALLOC], const int axis_count, const int elementwise_affine, const float scale, const int is_trainable, const char* const name)
+ccv_cnnp_model_t* ccv_cnnp_rmsnorm(const float epsilon, const int axis[CCV_NNC_MAX_DIM_ALLOC], const int axis_count, const int elementwise_affine, const float scale, const int clip, const int is_trainable, const char* const name)
 {
 	ccv_cnnp_model_rmsnorm_t* const model_rmsnorm = (ccv_cnnp_model_rmsnorm_t*)cccalloc(1, sizeof(ccv_cnnp_model_rmsnorm_t));
 	model_rmsnorm->super.isa = &ccv_cnnp_rmsnorm_isa;
@@ -3343,6 +3529,7 @@ ccv_cnnp_model_t* ccv_cnnp_rmsnorm(const float epsilon, const int axis[CCV_NNC_M
 	model_rmsnorm->scale.graph = 0;
 	model_rmsnorm->params.rmsnorm.epsilon = epsilon;
 	model_rmsnorm->params.rmsnorm.scale = scale;
+	model_rmsnorm->params.rmsnorm.clip = clip;
 	model_rmsnorm->params.rmsnorm.count = axis_count;
 	model_rmsnorm->params.rmsnorm.elementwise_affine = elementwise_affine;
 	memcpy(model_rmsnorm->params.lnorm.axis, axis, sizeof(int) * axis_count);
@@ -3352,7 +3539,7 @@ ccv_cnnp_model_t* ccv_cnnp_rmsnorm(const float epsilon, const int axis[CCV_NNC_M
 static ccv_cnnp_model_t* _ccv_cnnp_rmsnorm_copy(const ccv_cnnp_model_t* const super, void* const context)
 {
 	const ccv_cnnp_model_rmsnorm_t* const self = (const ccv_cnnp_model_rmsnorm_t*)super;
-	return ccv_cnnp_rmsnorm(self->params.rmsnorm.epsilon, self->params.rmsnorm.axis, self->params.rmsnorm.count, self->params.rmsnorm.elementwise_affine, self->params.rmsnorm.scale, self->super.is_trainable, self->super.name);
+	return ccv_cnnp_rmsnorm(self->params.rmsnorm.epsilon, self->params.rmsnorm.axis, self->params.rmsnorm.count, self->params.rmsnorm.elementwise_affine, self->params.rmsnorm.scale, self->params.rmsnorm.clip, self->super.is_trainable, self->super.name);
 }
 
 // MARK - RMSNorm CMul Layer
@@ -5136,6 +5323,7 @@ typedef struct {
 	int use_hadamard;
 	int attention_sinks;
 	int sliding_window;
+	int relative_bias;
 	int fused_unify_head_weights;
 	int no_bias;
 } ccv_cnnp_model_scaled_dot_product_attention_t;
@@ -5145,7 +5333,8 @@ static void _ccv_cnnp_scaled_dot_product_attention_build(ccv_cnnp_model_t* const
 	PRINT(CCV_CLI_VERBOSE, "[cnnp_scaled_dot_product_attention_build] -\n");
 	assert(output_size == 1);
 	ccv_cnnp_model_scaled_dot_product_attention_t* const self = (ccv_cnnp_model_scaled_dot_product_attention_t*)super;
-	assert(input_size == (self->is_varlen ? 5 : (self->has_attn_mask ? 4 : 3)) + self->attention_sinks);
+	assert(input_size == (self->is_varlen ? 5 : (self->has_attn_mask ? 4 : 3)) + self->attention_sinks + self->relative_bias);
+	assert(!self->is_varlen || !self->relative_bias);
 	assert(!self->is_varlen || !self->has_attn_mask);
 	assert(!self->is_varlen || !self->fused_unify_head_weights);
 	const ccv_nnc_tensor_param_t q_params = ccv_nnc_tensor_symbol_params(graph, inputs[0]);
@@ -5153,6 +5342,9 @@ static void _ccv_cnnp_scaled_dot_product_attention_build(ccv_cnnp_model_t* const
 	const ccv_nnc_tensor_param_t v_params = ccv_nnc_tensor_symbol_params(graph, inputs[2]);
 	const int sink_idx = self->is_varlen ? 5 : (3 + self->has_attn_mask);
 	const ccv_nnc_tensor_param_t sinks_params = self->attention_sinks ? ccv_nnc_tensor_symbol_params(graph, inputs[sink_idx]) : (ccv_nnc_tensor_param_t){};
+	// The relative-position bias follows the sinks.
+	const int relative_bias_idx = sink_idx + self->attention_sinks;
+	const ccv_nnc_tensor_param_t relative_bias_params = self->relative_bias ? ccv_nnc_tensor_symbol_params(graph, inputs[relative_bias_idx]) : (ccv_nnc_tensor_param_t){};
 	const ccv_nnc_tensor_param_t attn_mask_params = self->has_attn_mask ? ccv_nnc_tensor_symbol_params(graph, inputs[3]) : (ccv_nnc_tensor_param_t){};
 	const ccv_nnc_tensor_param_t q_seq_offsets_params = self->is_varlen ? ccv_nnc_tensor_symbol_params(graph, inputs[3]) : (ccv_nnc_tensor_param_t){};
 	const ccv_nnc_tensor_param_t kv_seq_offsets_params = self->is_varlen ? ccv_nnc_tensor_symbol_params(graph, inputs[4]) : (ccv_nnc_tensor_param_t){};
@@ -5178,6 +5370,7 @@ static void _ccv_cnnp_scaled_dot_product_attention_build(ccv_cnnp_model_t* const
 	cmd.info.scaled_dot_product_attention.use_hadamard = self->use_hadamard;
 	cmd.info.scaled_dot_product_attention.attention_sinks = self->attention_sinks;
 	cmd.info.scaled_dot_product_attention.sliding_window = self->sliding_window;
+	cmd.info.scaled_dot_product_attention.relative_bias = self->relative_bias;
 	ccv_nnc_tensor_param_t output_params[3];
 	ccv_nnc_tensor_symbol_t output;
 	ccv_nnc_tensor_symbol_t saved_softmax_lse;
@@ -5186,6 +5379,7 @@ static void _ccv_cnnp_scaled_dot_product_attention_build(ccv_cnnp_model_t* const
 	ccv_nnc_tensor_symbol_t weights = NO_TENSOR_SYMBOL;
 	ccv_nnc_tensor_symbol_t bias = NO_TENSOR_SYMBOL;
 	ccv_nnc_tensor_symbol_t sinks = self->attention_sinks ? inputs[sink_idx] : NO_TENSOR_SYMBOL;
+	const ccv_nnc_tensor_symbol_t relative_bias = self->relative_bias ? inputs[relative_bias_idx] : NO_TENSOR_SYMBOL;
 	if (self->has_attn_mask)
 		attn_mask = inputs[3];
 	if (self->is_varlen)
@@ -5221,7 +5415,7 @@ static void _ccv_cnnp_scaled_dot_product_attention_build(ccv_cnnp_model_t* const
 			assert(self->bias.graph == graph);
 			bias = ccv_cnnp_model_get_symbol(super, self->bias);
 		}
-		ccv_nnc_tensor_param_t input_params[9] = {
+		ccv_nnc_tensor_param_t input_params[10] = {
 				q_params,
 				k_params,
 				v_params,
@@ -5231,17 +5425,20 @@ static void _ccv_cnnp_scaled_dot_product_attention_build(ccv_cnnp_model_t* const
 				(ccv_nnc_tensor_param_t){},
 				(ccv_nnc_tensor_param_t){},
 				sinks_params,
+				relative_bias_params,
 			};
-		ccv_nnc_hint_tensor_auto(cmd, input_params, self->attention_sinks ? 9 : 6, ccv_nnc_no_hint, output_params, 3);
+		ccv_nnc_hint_tensor_auto(cmd, input_params, self->relative_bias ? 10 : (self->attention_sinks ? 9 : 6), ccv_nnc_no_hint, output_params, 3);
 		output = ccv_nnc_tensor_symbol_new(graph, output_params[0], 0);
 		saved_softmax_lse = ccv_nnc_tensor_symbol_new(graph, output_params[1], 0);
 		saved_v_proj = ccv_nnc_tensor_symbol_new(graph, output_params[2], 0);
-		if (self->attention_sinks)
+		if (self->relative_bias)
+			ccv_nnc_graph_exec_symbol_new(graph, cmd, TENSOR_SYMBOL_LIST(inputs[0], inputs[1], inputs[2], attn_mask, weights, bias, NO_TENSOR_SYMBOL, NO_TENSOR_SYMBOL, sinks, relative_bias), TENSOR_SYMBOL_LIST(output, saved_softmax_lse, saved_v_proj), "scaled_dot_product_attention");
+		else if (self->attention_sinks)
 			ccv_nnc_graph_exec_symbol_new(graph, cmd, TENSOR_SYMBOL_LIST(inputs[0], inputs[1], inputs[2], attn_mask, weights, bias, NO_TENSOR_SYMBOL, NO_TENSOR_SYMBOL, sinks), TENSOR_SYMBOL_LIST(output, saved_softmax_lse, saved_v_proj), "scaled_dot_product_attention");
 		else
 			ccv_nnc_graph_exec_symbol_new(graph, cmd, TENSOR_SYMBOL_LIST(inputs[0], inputs[1], inputs[2], attn_mask, weights, bias), TENSOR_SYMBOL_LIST(output, saved_softmax_lse, saved_v_proj), "scaled_dot_product_attention");
 	} else {
-		ccv_nnc_tensor_param_t input_params[9] = {
+		ccv_nnc_tensor_param_t input_params[10] = {
 				q_params,
 				k_params,
 				v_params,
@@ -5251,11 +5448,14 @@ static void _ccv_cnnp_scaled_dot_product_attention_build(ccv_cnnp_model_t* const
 				(ccv_nnc_tensor_param_t){},
 				(ccv_nnc_tensor_param_t){},
 				sinks_params,
+				relative_bias_params,
 			};
-		ccv_nnc_hint_tensor_auto(cmd, input_params, self->attention_sinks ? 9 : 3, ccv_nnc_no_hint, output_params, 2);
+		ccv_nnc_hint_tensor_auto(cmd, input_params, self->relative_bias ? 10 : (self->attention_sinks ? 9 : 3), ccv_nnc_no_hint, output_params, 2);
 		output = ccv_nnc_tensor_symbol_new(graph, output_params[0], 0);
 		saved_softmax_lse = ccv_nnc_tensor_symbol_new(graph, output_params[1], 0);
-		if (self->attention_sinks)
+		if (self->relative_bias)
+			ccv_nnc_graph_exec_symbol_new(graph, cmd, TENSOR_SYMBOL_LIST(inputs[0], inputs[1], inputs[2], attn_mask, weights, bias, NO_TENSOR_SYMBOL, NO_TENSOR_SYMBOL, sinks, relative_bias), TENSOR_SYMBOL_LIST(output, saved_softmax_lse, saved_v_proj), "scaled_dot_product_attention");
+		else if (self->attention_sinks)
 			ccv_nnc_graph_exec_symbol_new(graph, cmd, TENSOR_SYMBOL_LIST(inputs[0], inputs[1], inputs[2], attn_mask, weights, bias, NO_TENSOR_SYMBOL, NO_TENSOR_SYMBOL, sinks), TENSOR_SYMBOL_LIST(output, saved_softmax_lse, saved_v_proj), "scaled_dot_product_attention");
 		else
 			ccv_nnc_graph_exec_symbol_new(graph, cmd, TENSOR_SYMBOL_LIST(inputs[0], inputs[1], inputs[2], attn_mask, weights, bias), TENSOR_SYMBOL_LIST(output, saved_softmax_lse, saved_v_proj), "scaled_dot_product_attention");
@@ -5305,16 +5505,18 @@ static const ccv_cnnp_model_vtab_t ccv_cnnp_scaled_dot_product_attention_fused_i
 	.copy = _ccv_cnnp_scaled_dot_product_attention_copy,
 };
 
-ccv_cnnp_model_t* ccv_cnnp_scaled_dot_product_attention(const float scale, const int is_causal, const int has_attn_mask, const int is_varlen, const int max_seqlen_q, const int max_seqlen_kv, const int flags, const int use_hadamard, const int attention_sinks, const int sliding_window, const int fused_unify_head_weights, const int no_bias, const int is_trainable, const char* const name)
+ccv_cnnp_model_t* ccv_cnnp_scaled_dot_product_attention(const float scale, const int is_causal, const int has_attn_mask, const int is_varlen, const int max_seqlen_q, const int max_seqlen_kv, const int flags, const int use_hadamard, const int attention_sinks, const int sliding_window, const int relative_bias, const int fused_unify_head_weights, const int no_bias, const int is_trainable, const char* const name)
 {
 	assert(!is_varlen || !has_attn_mask);
 	assert(!is_varlen || !fused_unify_head_weights);
 	assert(sliding_window == 0 || is_causal);
 	assert(sliding_window == 0 || !is_varlen);
+	assert(!relative_bias || !is_varlen);
 	ccv_cnnp_model_scaled_dot_product_attention_t* const model_scaled_dot_product_attention = (ccv_cnnp_model_scaled_dot_product_attention_t*)cccalloc(1, sizeof(ccv_cnnp_model_scaled_dot_product_attention_t));
 	model_scaled_dot_product_attention->super.isa = fused_unify_head_weights ? &ccv_cnnp_scaled_dot_product_attention_fused_isa : &ccv_cnnp_scaled_dot_product_attention_isa;
 	const int has_attention_sinks = attention_sinks ? 1 : 0;
-	model_scaled_dot_product_attention->super.input_size = (is_varlen ? 5 : (has_attn_mask ? 4 : 3)) + has_attention_sinks;
+	const int has_relative_bias = relative_bias ? 1 : 0;
+	model_scaled_dot_product_attention->super.input_size = (is_varlen ? 5 : (has_attn_mask ? 4 : 3)) + has_attention_sinks + has_relative_bias;
 	model_scaled_dot_product_attention->super.outputs = &model_scaled_dot_product_attention->output;
 	model_scaled_dot_product_attention->super.output_size = 1;
 	model_scaled_dot_product_attention->super.is_trainable = is_trainable;
@@ -5333,6 +5535,7 @@ ccv_cnnp_model_t* ccv_cnnp_scaled_dot_product_attention(const float scale, const
 	model_scaled_dot_product_attention->use_hadamard = use_hadamard;
 	model_scaled_dot_product_attention->attention_sinks = has_attention_sinks;
 	model_scaled_dot_product_attention->sliding_window = sliding_window;
+	model_scaled_dot_product_attention->relative_bias = has_relative_bias;
 	model_scaled_dot_product_attention->fused_unify_head_weights = fused_unify_head_weights;
 	model_scaled_dot_product_attention->no_bias = no_bias;
 	return (ccv_cnnp_model_t*)model_scaled_dot_product_attention;
@@ -5341,7 +5544,7 @@ ccv_cnnp_model_t* ccv_cnnp_scaled_dot_product_attention(const float scale, const
 static ccv_cnnp_model_t* _ccv_cnnp_scaled_dot_product_attention_copy(const ccv_cnnp_model_t* const super, void* const context)
 {
 	const ccv_cnnp_model_scaled_dot_product_attention_t* const self = (const ccv_cnnp_model_scaled_dot_product_attention_t*)super;
-	return ccv_cnnp_scaled_dot_product_attention(self->scale, self->is_causal, self->has_attn_mask, self->is_varlen, self->max_seqlen_q, self->max_seqlen_kv, self->flags, self->use_hadamard, self->attention_sinks, self->sliding_window, self->fused_unify_head_weights, self->no_bias, self->super.is_trainable, self->super.name);
+	return ccv_cnnp_scaled_dot_product_attention(self->scale, self->is_causal, self->has_attn_mask, self->is_varlen, self->max_seqlen_q, self->max_seqlen_kv, self->flags, self->use_hadamard, self->attention_sinks, self->sliding_window, self->relative_bias, self->fused_unify_head_weights, self->no_bias, self->super.is_trainable, self->super.name);
 }
 
 // MARK - Debug Layer
@@ -5634,22 +5837,25 @@ static ccv_cnnp_model_t* _ccv_cnnp_scatter_add_copy(const ccv_cnnp_model_t* cons
 
 typedef struct {
 	ccv_cnnp_model_t super;
-	ccv_nnc_tensor_symbol_t output;
+	ccv_nnc_tensor_symbol_t outputs[2];
 	ccv_nnc_tensor_symbol_t weights;
 	ccv_nnc_tensor_symbol_t bias;
+	ccv_nnc_tensor_symbol_t shared_weights;
 	int segments;
 	int count;
 	int no_bias;
 	int flags;
 	int functional;
+	int shared_expert;
 } ccv_cnnp_model_segmented_dense_t;
 
 static void _ccv_cnnp_segmented_dense_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
 {
 	ccv_cnnp_model_segmented_dense_t* const self = (ccv_cnnp_model_segmented_dense_t*)super;
 	PRINT(CCV_CLI_VERBOSE, "[cnnp_segmented_dense_build] -\n");
-	assert(input_size == (self->functional ? 4 + !self->no_bias : 3));
-	assert(output_size == 1);
+	assert(input_size == (self->functional ? 4 + !self->no_bias : 3 + !!self->shared_expert));
+	assert(output_size == 1 + !!self->shared_expert);
+	assert(!self->shared_expert || !self->functional);
 	const ccv_nnc_tensor_param_t params = ccv_nnc_tensor_symbol_params(graph, inputs[0]);
 	const ccv_nnc_tensor_param_t indices_params = ccv_nnc_tensor_symbol_params(graph, inputs[1]);
 	const ccv_nnc_tensor_param_t counts_params = ccv_nnc_tensor_symbol_params(graph, inputs[2]);
@@ -5705,6 +5911,36 @@ static void _ccv_cnnp_segmented_dense_build(ccv_cnnp_model_t* const super, ccv_n
 			bias_params,
 		}, 4 + !self->no_bias, ccv_nnc_no_hint, &output_params, 1);
 	const ccv_nnc_tensor_symbol_t output = ccv_nnc_tensor_symbol_new(graph, output_params, 0);
+	if (self->shared_expert)
+	{
+		// The shared expert is count rows over its own activation's width.
+		const ccv_nnc_tensor_param_t shared_params = ccv_nnc_tensor_symbol_params(graph, inputs[3]);
+		const int shared_params_nd = ccv_nnc_tensor_nd(shared_params.dim);
+		ccv_nnc_tensor_param_t shared_weights_params = shared_params;
+		memset(shared_weights_params.dim, 0, sizeof(shared_weights_params.dim));
+		if (shared_params_nd > 0)
+		{
+			shared_weights_params.dim[0] = self->count;
+			shared_weights_params.dim[1] = shared_params.dim[shared_params_nd - 1];
+		}
+		if (!self->shared_weights.graph)
+			self->shared_weights = ccv_nnc_tensor_symbol_new(graph, shared_weights_params, "shared.weight");
+		assert(self->shared_weights.graph == graph);
+		const ccv_nnc_tensor_symbol_t shared_weights = ccv_cnnp_model_get_symbol(super, self->shared_weights);
+		ccv_nnc_tensor_param_t shared_output_params[2];
+		ccv_nnc_hint_tensor_auto(cmd, (ccv_nnc_tensor_param_t []){
+				params, indices_params, counts_params,
+				weights_params,
+				bias_params,
+				shared_params,
+				shared_weights_params,
+			}, 7, ccv_nnc_no_hint, shared_output_params, 2);
+		const ccv_nnc_tensor_symbol_t shared_output = ccv_nnc_tensor_symbol_new(graph, shared_output_params[1], 0);
+		ccv_nnc_graph_exec_symbol_new(graph, cmd, TENSOR_SYMBOL_LIST(inputs[0], inputs[1], inputs[2], weights, self->no_bias ? NO_TENSOR_SYMBOL : bias, inputs[3], shared_weights), TENSOR_SYMBOL_LIST(output, shared_output), "segmented_dense");
+		outputs[0] = output;
+		outputs[1] = shared_output;
+		return;
+	}
 	if (self->no_bias)
 		ccv_nnc_graph_exec_symbol_new(graph, cmd, TENSOR_SYMBOL_LIST(inputs[0], inputs[1], inputs[2], weights), TENSOR_SYMBOL_LIST(output), "segmented_dense");
 	else
@@ -5724,6 +5960,12 @@ static void _ccv_cnnp_segmented_dense_init_states(ccv_cnnp_model_t* const super,
 	initializer(context, CMD_RANDOM_UNIFORM_FORWARD(-bound, bound), ccv_nnc_no_hint, 0, 0, self->weights);
 	if (self->bias.graph)
 		initializer(context, CMD_SET_FORWARD(0), ccv_nnc_no_hint, 0, 0, self->bias);
+	if (self->shared_weights.graph)
+	{
+		const ccv_nnc_tensor_param_t shared_params = ccv_nnc_tensor_symbol_params(graph, self->shared_weights);
+		const float shared_bound = sqrtf(3) * sqrtf(2) / sqrtf(shared_params.dim[1]);
+		initializer(context, CMD_RANDOM_UNIFORM_FORWARD(-shared_bound, shared_bound), ccv_nnc_no_hint, 0, 0, self->shared_weights);
+	}
 }
 
 static void _ccv_cnnp_segmented_dense_add_to_parameter(ccv_cnnp_model_t* const super, const ccv_cnnp_add_to_array_f add_to_array, void* const parameters, const int is_trainable)
@@ -5734,6 +5976,8 @@ static void _ccv_cnnp_segmented_dense_add_to_parameter(ccv_cnnp_model_t* const s
 	add_to_array(parameters, self->weights, is_trainable);
 	if (self->bias.graph)
 		add_to_array(parameters, self->bias, is_trainable);
+	if (self->shared_weights.graph)
+		add_to_array(parameters, self->shared_weights, is_trainable);
 }
 
 static ccv_cnnp_model_t* _ccv_cnnp_segmented_dense_copy(const ccv_cnnp_model_t* const super, void* const context);
@@ -5745,19 +5989,23 @@ static const ccv_cnnp_model_vtab_t ccv_cnnp_segmented_dense_isa = {
 	.copy = _ccv_cnnp_segmented_dense_copy,
 };
 
-ccv_cnnp_model_t* ccv_cnnp_segmented_dense(const int segments, const int count, const int no_bias, const int flags, const int functional, const int is_trainable, const char* const name)
+ccv_cnnp_model_t* ccv_cnnp_segmented_dense(const int segments, const int count, const int no_bias, const int flags, const int functional, const int shared_expert, const int is_trainable, const char* const name)
 {
+	assert(!shared_expert || !functional);
 	ccv_cnnp_model_segmented_dense_t* const model_segmented_dense = (ccv_cnnp_model_segmented_dense_t*)cccalloc(1, sizeof(ccv_cnnp_model_segmented_dense_t));
 	model_segmented_dense->super.isa = &ccv_cnnp_segmented_dense_isa;
-	model_segmented_dense->super.input_size = functional ? 4 + !no_bias : 3;
-	model_segmented_dense->super.outputs = &model_segmented_dense->output;
-	model_segmented_dense->super.output_size = 1;
+	model_segmented_dense->super.input_size = functional ? 4 + !no_bias : 3 + !!shared_expert;
+	model_segmented_dense->super.outputs = model_segmented_dense->outputs;
+	model_segmented_dense->super.output_size = 1 + !!shared_expert;
 	model_segmented_dense->super.is_trainable = is_trainable;
 	ccv_cnnp_model_copy_name(&model_segmented_dense->super, name);
 	model_segmented_dense->weights.d = CCV_NNC_NO_TENSOR_SYMBOL;
 	model_segmented_dense->weights.graph = 0;
 	model_segmented_dense->bias.d = CCV_NNC_NO_TENSOR_SYMBOL;
 	model_segmented_dense->bias.graph = 0;
+	model_segmented_dense->shared_weights.d = CCV_NNC_NO_TENSOR_SYMBOL;
+	model_segmented_dense->shared_weights.graph = 0;
+	model_segmented_dense->shared_expert = shared_expert;
 	model_segmented_dense->segments = segments;
 	model_segmented_dense->count = count;
 	model_segmented_dense->no_bias = no_bias;
@@ -5769,7 +6017,7 @@ ccv_cnnp_model_t* ccv_cnnp_segmented_dense(const int segments, const int count, 
 static ccv_cnnp_model_t* _ccv_cnnp_segmented_dense_copy(const ccv_cnnp_model_t* const super, void* const context)
 {
 	const ccv_cnnp_model_segmented_dense_t* const self = (const ccv_cnnp_model_segmented_dense_t*)super;
-	return ccv_cnnp_segmented_dense(self->segments, self->count, self->no_bias, self->flags, self->functional, self->super.is_trainable, self->super.name);
+	return ccv_cnnp_segmented_dense(self->segments, self->count, self->no_bias, self->flags, self->functional, self->shared_expert, self->super.is_trainable, self->super.name);
 }
 
 // MARK - SwiGLU Layer
@@ -5781,6 +6029,8 @@ typedef struct {
 	ccv_nnc_tensor_symbol_t up_weights;
 	int count;
 	float clamp;
+	float gate_soft_cap;
+	float up_soft_cap;
 } ccv_cnnp_model_swiglu_t;
 
 static void _ccv_cnnp_swiglu_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
@@ -5806,7 +6056,9 @@ static void _ccv_cnnp_swiglu_build(ccv_cnnp_model_t* const super, ccv_nnc_symbol
 	assert(self->up_weights.graph == graph);
 	const ccv_nnc_tensor_symbol_t gate_weights = ccv_cnnp_model_get_symbol(super, self->gate_weights);
 	const ccv_nnc_tensor_symbol_t up_weights = ccv_cnnp_model_get_symbol(super, self->up_weights);
-	const ccv_nnc_cmd_t cmd = CMD_SWIGLU_FORWARD(self->clamp);
+	ccv_nnc_cmd_t cmd = CMD_SWIGLU_FORWARD(self->clamp);
+	cmd.info.swiglu.gate_soft_cap = self->gate_soft_cap;
+	cmd.info.swiglu.up_soft_cap = self->up_soft_cap;
 	const ccv_nnc_tensor_symbol_t command_inputs[] = {
 		inputs[0], gate_weights, up_weights,
 	};
@@ -5845,7 +6097,7 @@ static const ccv_cnnp_model_vtab_t ccv_cnnp_swiglu_isa = {
 	.copy = _ccv_cnnp_swiglu_copy,
 };
 
-ccv_cnnp_model_t* ccv_cnnp_swiglu(const int count, const float clamp, const int is_trainable, const char* const name)
+ccv_cnnp_model_t* ccv_cnnp_swiglu(const int count, const float clamp, const float gate_soft_cap, const float up_soft_cap, const int is_trainable, const char* const name)
 {
 	ccv_cnnp_model_swiglu_t* const model = (ccv_cnnp_model_swiglu_t*)cccalloc(1, sizeof(ccv_cnnp_model_swiglu_t));
 	model->super.isa = &ccv_cnnp_swiglu_isa;
@@ -5858,13 +6110,15 @@ ccv_cnnp_model_t* ccv_cnnp_swiglu(const int count, const float clamp, const int 
 	model->up_weights.d = CCV_NNC_NO_TENSOR_SYMBOL;
 	model->count = count;
 	model->clamp = clamp;
+	model->gate_soft_cap = gate_soft_cap;
+	model->up_soft_cap = up_soft_cap;
 	return (ccv_cnnp_model_t*)model;
 }
 
 static ccv_cnnp_model_t* _ccv_cnnp_swiglu_copy(const ccv_cnnp_model_t* const super, void* const context)
 {
 	const ccv_cnnp_model_swiglu_t* const self = (const ccv_cnnp_model_swiglu_t*)super;
-	return ccv_cnnp_swiglu(self->count, self->clamp, self->super.is_trainable, self->super.name);
+	return ccv_cnnp_swiglu(self->count, self->clamp, self->gate_soft_cap, self->up_soft_cap, self->super.is_trainable, self->super.name);
 }
 
 // MARK - Segmented SwiGLU Layer
@@ -5879,6 +6133,8 @@ typedef struct {
 	int segments;
 	int count;
 	float clamp;
+	float gate_soft_cap;
+	float up_soft_cap;
 	int functional;
 	int shared_expert;
 } ccv_cnnp_model_segmented_swiglu_t;
@@ -5943,7 +6199,9 @@ static void _ccv_cnnp_segmented_swiglu_build(ccv_cnnp_model_t* const super, ccv_
 			shared_up_weights = ccv_cnnp_model_get_symbol(super, self->shared_up_weights);
 		}
 	}
-	const ccv_nnc_cmd_t cmd = CMD_SEGMENTED_SWIGLU_FORWARD(self->clamp);
+	ccv_nnc_cmd_t cmd = CMD_SEGMENTED_SWIGLU_FORWARD(self->clamp);
+	cmd.info.segmented_swiglu.gate_soft_cap = self->gate_soft_cap;
+	cmd.info.segmented_swiglu.up_soft_cap = self->up_soft_cap;
 	const ccv_nnc_tensor_symbol_t command_inputs[] = {
 		inputs[0], inputs[1], inputs[2], gate_weights, up_weights, inputs[self->functional ? 5 : 3],
 		self->shared_expert ? inputs[self->functional ? 6 : 4] : NO_TENSOR_SYMBOL, shared_gate_weights, shared_up_weights,
@@ -6000,7 +6258,7 @@ static const ccv_cnnp_model_vtab_t ccv_cnnp_segmented_swiglu_isa = {
 	.copy = _ccv_cnnp_segmented_swiglu_copy,
 };
 
-ccv_cnnp_model_t* ccv_cnnp_segmented_swiglu(const int segments, const int count, const float clamp, const int functional, const int shared_expert, const int is_trainable, const char* const name)
+ccv_cnnp_model_t* ccv_cnnp_segmented_swiglu(const int segments, const int count, const float clamp, const float gate_soft_cap, const float up_soft_cap, const int functional, const int shared_expert, const int is_trainable, const char* const name)
 {
 	ccv_cnnp_model_segmented_swiglu_t* const model = (ccv_cnnp_model_segmented_swiglu_t*)cccalloc(1, sizeof(ccv_cnnp_model_segmented_swiglu_t));
 	model->super.isa = &ccv_cnnp_segmented_swiglu_isa;
@@ -6016,6 +6274,8 @@ ccv_cnnp_model_t* ccv_cnnp_segmented_swiglu(const int segments, const int count,
 	model->segments = segments;
 	model->count = count;
 	model->clamp = clamp;
+	model->gate_soft_cap = gate_soft_cap;
+	model->up_soft_cap = up_soft_cap;
 	model->functional = functional;
 	model->shared_expert = shared_expert;
 	return (ccv_cnnp_model_t*)model;
@@ -6024,7 +6284,7 @@ ccv_cnnp_model_t* ccv_cnnp_segmented_swiglu(const int segments, const int count,
 static ccv_cnnp_model_t* _ccv_cnnp_segmented_swiglu_copy(const ccv_cnnp_model_t* const super, void* const context)
 {
 	const ccv_cnnp_model_segmented_swiglu_t* const self = (const ccv_cnnp_model_segmented_swiglu_t*)super;
-	return ccv_cnnp_segmented_swiglu(self->segments, self->count, self->clamp, self->functional, self->shared_expert, self->super.is_trainable, self->super.name);
+	return ccv_cnnp_segmented_swiglu(self->segments, self->count, self->clamp, self->gate_soft_cap, self->up_soft_cap, self->functional, self->shared_expert, self->super.is_trainable, self->super.name);
 }
 
 // MARK - MoE Weights Streaming

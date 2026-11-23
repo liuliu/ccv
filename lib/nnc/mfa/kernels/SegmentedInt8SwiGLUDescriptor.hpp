@@ -15,6 +15,9 @@ struct SegmentedInt8SwiGLUDescriptor {
   uint32_t format;
   uint32_t broadcastInput;
   float clamp;
+  // Soft caps of the gate's linear factor and of up, when positive.
+  float gateSoftCap = 0;
+  float upSoftCap = 0;
   GEMMOperandPrecision memoryPrecision;
   // Shared expert rows evaluated in the same dispatch, and the routed threadgroups they
   // interleave with. Zero without a shared expert.

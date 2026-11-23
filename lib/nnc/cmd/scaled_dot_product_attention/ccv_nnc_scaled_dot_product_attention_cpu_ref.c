@@ -29,6 +29,11 @@ static int _ccv_nnc_scaled_dot_product_attention_forw_cpu_ref(const ccv_nnc_cmd_
 	const int attention_sinks = cmd.info.scaled_dot_product_attention.attention_sinks;
 	const int sliding_window = cmd.info.scaled_dot_product_attention.sliding_window;
 	ccv_nnc_tensor_view_t* const sinks = attention_sinks && input_size > 8 ? (ccv_nnc_tensor_view_t*)inputs[8] : 0;
+	// [batch, R, Hq, extent]: a query's own key is at column row + C - R, and the key d positions
+	// before it, for 0 <= d < extent, adds the query's bias at d to its score.
+	ccv_nnc_tensor_view_t* const relative_bias = cmd.info.scaled_dot_product_attention.relative_bias && input_size > 9 ? (ccv_nnc_tensor_view_t*)inputs[9] : 0;
+	if (cmd.info.scaled_dot_product_attention.relative_bias && (!relative_bias || is_varlen))
+		return CCV_NNC_EXEC_INVALID;
 	if (bias) // bias always requires a weight matrix.
 		{ assert(w); }
 	if (sliding_window < 0 || (sliding_window > 0 && (!cmd.info.scaled_dot_product_attention.is_causal || is_varlen)))
@@ -84,12 +89,26 @@ static int _ccv_nnc_scaled_dot_product_attention_forw_cpu_ref(const ccv_nnc_cmd_
 	assert(cdim[3] == vdim[3]);
 	const float* const sinkp = sinks ? sinks->data.f32 : 0;
 	int sink_head_stride = 0;
+	int sink_query_stride = 0;
 	if (attention_sinks)
 	{
 		assert(CCV_IS_TENSOR_CONTIGUOUS(sinks));
 		const int sink_count = ccv_nnc_tensor_count(sinks->info);
-		assert(sink_count == 1 || sink_count == qdim[2]);
+		assert(sink_count == 1 || sink_count == qdim[2] || (q_nd == 4 && sink_count == qdim[0] * qdim[1] * qdim[2]));
 		sink_head_stride = (sink_count == 1) ? 0 : 1;
+		// One sink for each query and head, [batch, R, Hq].
+		sink_query_stride = (sink_count == 1 || sink_count == qdim[2]) ? 0 : qdim[2];
+		if (is_varlen && sink_query_stride)
+			return CCV_NNC_EXEC_INVALID;
+	}
+	const float* const relative_biasp = relative_bias ? relative_bias->data.f32 : 0;
+	int relative_extent = 0;
+	if (relative_bias)
+	{
+		assert(q_nd == 4);
+		assert(CCV_IS_TENSOR_CONTIGUOUS(relative_bias));
+		relative_extent = ccv_nnc_tensor_count(relative_bias->info) / (qdim[0] * qdim[1] * qdim[2]);
+		assert(relative_extent > 0 && ccv_nnc_tensor_count(relative_bias->info) == (size_t)qdim[0] * qdim[1] * qdim[2] * relative_extent);
 	}
 	assert(CCV_NNC_MAX_DIM == 2); // Need to change this logic for CCV_NNC_MAX_DIM == other number.
 	int qstride[CCV_NNC_MAX_DIM_ALLOC];
@@ -245,10 +264,10 @@ static int _ccv_nnc_scaled_dot_product_attention_forw_cpu_ref(const ccv_nnc_cmd_
 			const float* const vp1 = vp0 + (i[1] / h_h_k_ratio) * vstride[2];
 			const float* const amp1 = amp && amdim[1] > 1 ? amp0 + i[1] * amstride[1] : amp0;
 			float* const cp1 = cp0 + i[1] * cstride[2];
-			const double sink = attention_sinks ? (double)sinkp[i[1] * sink_head_stride] : 0;
 			// Compute Q @ K^T
 			parallel_for(x, qdim[1]) {
 				int y, k;
+				const double sink = attention_sinks ? (double)sinkp[(i[0] * qdim[1] + x) * sink_query_stride + i[1] * sink_head_stride] : 0;
 				const float* const qp2 = qp1 + x * qstride[1];
 				float* const cp2 = cp1 + x * cstride[1];
 				float* const qk0 = qk + x * kdim[1];
@@ -272,6 +291,15 @@ static int _ccv_nnc_scaled_dot_product_attention_forw_cpu_ref(const ccv_nnc_cmd_
 							v += qp2[k * qstride[3]] * kp2[k * kstride[3]];
 						qk0[y] = scale * v;
 					}
+				}
+				if (relative_bias)
+				{
+					const float* const rbp = relative_biasp + ((size_t)(i[0] * qdim[1] + x) * qdim[2] + i[1]) * relative_extent;
+					// The query's own key, which may be before the keys or after them.
+					const int own = x - qdim[1] + kdim[1];
+					const int y_end = ccv_min(own + 1, kdim[1]);
+					for (y = ccv_max(own - relative_extent + 1, 0); y < y_end; y++)
+						qk0[y] += rbp[own - y];
 				}
 				// Compute softmax on qk.
 				if (is_causal)
@@ -401,6 +429,8 @@ static int _ccv_nnc_scaled_dot_product_attention_back(const ccv_nnc_cmd_t cmd, c
 	if (cmd.info.scaled_dot_product_attention.attention_sinks)
 		return CCV_NNC_EXEC_INVALID;
 	if (cmd.info.scaled_dot_product_attention.sliding_window != 0)
+		return CCV_NNC_EXEC_INVALID;
+	if (cmd.info.scaled_dot_product_attention.relative_bias)
 		return CCV_NNC_EXEC_INVALID;
 	ccv_nnc_tensor_view_t* const g = (ccv_nnc_tensor_view_t*)inputs[0];
 	ccv_nnc_tensor_view_t* const q = (ccv_nnc_tensor_view_t*)inputs[3];

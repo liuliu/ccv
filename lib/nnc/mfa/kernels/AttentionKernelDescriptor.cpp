@@ -20,6 +20,8 @@ bool AttentionKernelDescriptor::operator==(const AttentionKernelDescriptor& rhs)
   masked == rhs.masked &&
   isVarlen == rhs.isVarlen &&
   slidingWindow == rhs.slidingWindow &&
+  sinksPerQuery == rhs.sinksPerQuery &&
+  relativeBias == rhs.relativeBias &&
   type == rhs.type;
 }
 
@@ -34,6 +36,7 @@ std::size_t std::hash<AttentionKernelDescriptor>::operator()(const AttentionKern
     seed = combine_32(seed, pack_32(simd::ushort2 { 1, 0 }));
   }
   seed = combine_32(seed, hash.slidingWindow);
+  seed = combine_32(seed, (hash.sinksPerQuery ? 1 : 0) | (hash.relativeBias ? 2 : 0));
   return seed;
 }
 

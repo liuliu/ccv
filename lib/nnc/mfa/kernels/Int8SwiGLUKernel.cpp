@@ -17,6 +17,10 @@ constant uint nrows [[function_constant(1)]];
 )";
   if (descriptor.clamp)
     source += "constant float clamp_limit [[function_constant(2)]];\n";
+  if (descriptor.gateSoftCap)
+    source += "constant float gate_soft_cap [[function_constant(3)]];\n";
+  if (descriptor.upSoftCap)
+    source += "constant float up_soft_cap [[function_constant(4)]];\n";
   source += R"(
 #include <metal_stdlib>
 using namespace metal;
@@ -28,6 +32,15 @@ inline float stable_sigmoid(const float value)
 }
 
 )";
+  if (descriptor.gateSoftCap || descriptor.upSoftCap) {
+    // The sigmoid reads the gate itself, while the soft caps bound its linear factor and up. The
+    // fast tanh loses accuracy for large inputs, as in the tanh kernel.
+    source += "inline float soft_cap_swiglu(const float gate, const float up)\n{\n  return (";
+    source += descriptor.upSoftCap ? "up_soft_cap * precise::tanh(precise::divide(up, up_soft_cap))" : "up";
+    source += ") * (";
+    source += descriptor.gateSoftCap ? "gate_soft_cap * precise::tanh(precise::divide(gate, gate_soft_cap))" : "gate";
+    source += ") * stable_sigmoid(gate);\n}\n\n";
+  }
   if (descriptor.format != 0) {
     // Q5_K and Q6_K weights: half a SIMD group owns each weight row, and its lanes decode 16
     // gate and 16 up weights at a time, then take them against every activation row. As in the
@@ -149,8 +162,10 @@ kernel void int8_swiglu(
       gate = min(gate, clamp_limit);
       up = clamp(up, -clamp_limit, clamp_limit);
 )";
+    source += (descriptor.gateSoftCap || descriptor.upSoftCap) ? R"(
+      destination[r * nrows + row] = (real)(soft_cap_swiglu(gate, up));)" : R"(
+      destination[r * nrows + row] = (real)(up * gate * stable_sigmoid(gate));)";
     source += R"(
-      destination[r * nrows + row] = (real)(up * gate * stable_sigmoid(gate));
     }
   }
 }
@@ -281,8 +296,10 @@ kernel void int8_swiglu(
         gate = min(gate, clamp_limit);
         up = clamp(up, -clamp_limit, clamp_limit);
 )";
+    source += (descriptor.gateSoftCap || descriptor.upSoftCap) ? R"(
+        destination[r * nrows + row_base + (second ? 1 : 0)] = (real)(soft_cap_swiglu(gate, up));)" : R"(
+        destination[r * nrows + row_base + (second ? 1 : 0)] = (real)(up * gate * stable_sigmoid(gate));)";
     source += R"(
-        destination[r * nrows + row_base + (second ? 1 : 0)] = (real)(up * gate * stable_sigmoid(gate));
       }
     }
   }

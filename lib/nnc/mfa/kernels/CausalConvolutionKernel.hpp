@@ -11,12 +11,14 @@ struct CausalConvolutionKernel {
   MTL::Size threadgroupSize;
 
   bool silu;
+  bool dynamicWeights;
   GEMMOperandPrecision memoryPrecision;
 
   CausalConvolutionKernel(CausalConvolutionKernelDescriptor descriptor, MTL::Device* const device);
 
 private:
   std::string createSource() const noexcept;
+  std::string createConstants() const noexcept;
 };
 
 #endif

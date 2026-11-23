@@ -17,20 +17,23 @@ struct SwishMulKernelDescriptor {
   float beta;
   float scale;
   bool clamp;
+  // Soft caps of the gate's linear factor and of the value, as a soft-capped SwiGLU has.
+  bool gateSoftCap;
+  bool upSoftCap;
   GEMMOperandPrecision gPrecision;
   GEMMOperandPrecision aPrecision;
   GEMMOperandPrecision bPrecision;
   GEMMOperandPrecision weightPrecision;
   GEMMOperandPrecision daPrecision;
   GEMMOperandPrecision dbPrecision;
-  constexpr bool operator==(const SwishMulKernelDescriptor& rhs) const { return gradient == rhs.gradient && outputMask == rhs.outputMask && value == rhs.value && weighted == rhs.weighted && loadM == rhs.loadM && beta == rhs.beta && scale == rhs.scale && clamp == rhs.clamp && gPrecision == rhs.gPrecision && aPrecision == rhs.aPrecision && bPrecision == rhs.bPrecision && weightPrecision == rhs.weightPrecision && daPrecision == rhs.daPrecision && dbPrecision == rhs.dbPrecision; }
+  constexpr bool operator==(const SwishMulKernelDescriptor& rhs) const { return gradient == rhs.gradient && outputMask == rhs.outputMask && value == rhs.value && weighted == rhs.weighted && loadM == rhs.loadM && beta == rhs.beta && scale == rhs.scale && clamp == rhs.clamp && gateSoftCap == rhs.gateSoftCap && upSoftCap == rhs.upSoftCap && gPrecision == rhs.gPrecision && aPrecision == rhs.aPrecision && bPrecision == rhs.bPrecision && weightPrecision == rhs.weightPrecision && daPrecision == rhs.daPrecision && dbPrecision == rhs.dbPrecision; }
 };
 
 template<>
 struct std::hash<SwishMulKernelDescriptor>
 {
   std::size_t operator()(const SwishMulKernelDescriptor& hash) const noexcept {
-    return std::hash<int>()((int)hash.value | ((int)hash.gradient << 8) | ((int)hash.outputMask << 16) | ((int)hash.gPrecision.value << 24)) ^ std::hash<int>()((int)hash.aPrecision.value | ((int)hash.bPrecision.value << 8) | ((int)hash.daPrecision.value << 16) | ((int)hash.dbPrecision.value << 24)) ^ std::hash<int>()((int)hash.weightPrecision.value | ((int)hash.weighted << 8) | ((int)hash.clamp << 16)) ^ std::hash<float>()(hash.beta) ^ (std::hash<float>()(hash.scale) << 1) ^ std::hash<bool>()(hash.loadM);
+    return std::hash<int>()((int)hash.value | ((int)hash.gradient << 8) | ((int)hash.outputMask << 16) | ((int)hash.gPrecision.value << 24)) ^ std::hash<int>()((int)hash.aPrecision.value | ((int)hash.bPrecision.value << 8) | ((int)hash.daPrecision.value << 16) | ((int)hash.dbPrecision.value << 24)) ^ std::hash<int>()((int)hash.weightPrecision.value | ((int)hash.weighted << 8) | ((int)hash.clamp << 16) | ((int)hash.gateSoftCap << 17) | ((int)hash.upSoftCap << 18)) ^ std::hash<float>()(hash.beta) ^ (std::hash<float>()(hash.scale) << 1) ^ std::hash<bool>()(hash.loadM);
   }
 };
 
@@ -49,6 +52,11 @@ struct SwishMulDescriptor {
   float scale;
 
   float clamp;
+
+  // Soft caps of the gate's linear factor and of the value, when positive.
+  float gateSoftCap;
+
+  float upSoftCap;
 
   GEMMOperandPrecision gPrecision;
 

@@ -26,7 +26,7 @@ static size_t _ccv_nnc_segmented_swiglu_align_up(const size_t value, const size_
 
 // The shared expert when it does not join the routed dispatch. These are the MFA kernels that
 // SWIGLU_FORWARD encodes on this backend; keep the two in step.
-static int _ccv_nnc_segmented_swiglu_shared_forw(const float clamp, const ccv_nnc_tensor_view_t* const a, const ccv_nnc_tensor_view_t* const gate_w, const ccv_nnc_tensor_view_t* const up_w, ccv_nnc_tensor_view_t* const output, ccv_nnc_stream_context_t* const stream_context)
+static int _ccv_nnc_segmented_swiglu_shared_forw(const float clamp, const float gate_soft_cap, const float up_soft_cap, const ccv_nnc_tensor_view_t* const a, const ccv_nnc_tensor_view_t* const gate_w, const ccv_nnc_tensor_view_t* const up_w, ccv_nnc_tensor_view_t* const output, ccv_nnc_stream_context_t* const stream_context)
 {
 	if (output->info.dim[0] == 0)
 		return CCV_NNC_EXEC_SUCCESS;
@@ -95,6 +95,8 @@ static int _ccv_nnc_segmented_swiglu_shared_forw(const float clamp, const ccv_nn
 			.N = N,
 			.K = K,
 			.clamp = clamp,
+			.gate_soft_cap = gate_soft_cap,
+			.up_soft_cap = up_soft_cap,
 		};
 		ccv_nnc_mfa_prepare_int8_swiglu(context, params);
 		mtl_command_batch_t* const command_batch = ccv_nnc_stream_context_start_command_batch(stream_context);
@@ -135,6 +137,8 @@ static int _ccv_nnc_segmented_swiglu_shared_forw(const float clamp, const ccv_nn
 			.loadM = !!(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M),
 			.use_neural_accelerators = use_neural_accelerators,
 			.clamp = clamp,
+			.gate_soft_cap = gate_soft_cap,
+			.up_soft_cap = up_soft_cap,
 		};
 		ccv_nnc_mfa_prepare_scaled_swiglu(context, params);
 		mtl_command_batch_t* const command_batch = ccv_nnc_stream_context_start_command_batch(stream_context);
@@ -158,6 +162,8 @@ static int _ccv_nnc_segmented_swiglu_shared_forw(const float clamp, const ccv_nn
 		.beta = 1,
 		.scale = 1,
 		.clamp = clamp,
+		.gate_soft_cap = gate_soft_cap,
+		.up_soft_cap = up_soft_cap,
 		.a_data_type = mtl_datatype,
 		.b_data_type = mtl_datatype,
 		.weight_data_type = mtl_datatype,
@@ -265,7 +271,7 @@ static int _ccv_nnc_segmented_swiglu_shared_forw(const float clamp, const ccv_nn
 static int _ccv_nnc_segmented_swiglu_routed_forw(const ccv_nnc_cmd_t cmd, ccv_nnc_tensor_t* const* const inputs, ccv_nnc_tensor_t* const* const outputs, ccv_nnc_tensor_t* const* const shared, ccv_nnc_stream_context_t* const stream_context)
 {
 	if (outputs[0]->info.dim[0] == 0)
-		return shared ? _ccv_nnc_segmented_swiglu_shared_forw(cmd.info.segmented_swiglu.clamp, (const ccv_nnc_tensor_view_t*)shared[0], (const ccv_nnc_tensor_view_t*)shared[1], (const ccv_nnc_tensor_view_t*)shared[2], (ccv_nnc_tensor_view_t*)shared[3], stream_context) : CCV_NNC_EXEC_SUCCESS;
+		return shared ? _ccv_nnc_segmented_swiglu_shared_forw(cmd.info.segmented_swiglu.clamp, cmd.info.segmented_swiglu.gate_soft_cap, cmd.info.segmented_swiglu.up_soft_cap, (const ccv_nnc_tensor_view_t*)shared[0], (const ccv_nnc_tensor_view_t*)shared[1], (const ccv_nnc_tensor_view_t*)shared[2], (ccv_nnc_tensor_view_t*)shared[3], stream_context) : CCV_NNC_EXEC_SUCCESS;
 	const ccv_nnc_tensor_view_t* const a = (const ccv_nnc_tensor_view_t*)inputs[0];
 	const ccv_nnc_tensor_view_t* const indices = (const ccv_nnc_tensor_view_t*)inputs[1];
 	const ccv_nnc_tensor_view_t* const counts = (const ccv_nnc_tensor_view_t*)inputs[2];
@@ -395,7 +401,7 @@ static int _ccv_nnc_segmented_swiglu_routed_forw(const ccv_nnc_cmd_t cmd, ccv_nn
 		(shared_a->dataof % (4 * CCV_GET_DATA_TYPE_SIZE(CCV_32F))) == 0;
 	if (shared && !fuse_shared)
 	{
-		const int status = _ccv_nnc_segmented_swiglu_shared_forw(cmd.info.segmented_swiglu.clamp, shared_a, shared_gate_w, shared_up_w, shared_output, stream_context);
+		const int status = _ccv_nnc_segmented_swiglu_shared_forw(cmd.info.segmented_swiglu.clamp, cmd.info.segmented_swiglu.gate_soft_cap, cmd.info.segmented_swiglu.up_soft_cap, shared_a, shared_gate_w, shared_up_w, shared_output, stream_context);
 		if (status != CCV_NNC_EXEC_SUCCESS)
 			return status;
 	}
@@ -413,6 +419,8 @@ static int _ccv_nnc_segmented_swiglu_routed_forw(const ccv_nnc_cmd_t cmd, ccv_nn
 				.bincount = bincount,
 				.broadcast_input = broadcast_input,
 				.clamp = cmd.info.segmented_swiglu.clamp,
+				.gate_soft_cap = cmd.info.segmented_swiglu.gate_soft_cap,
+				.up_soft_cap = cmd.info.segmented_swiglu.up_soft_cap,
 				.shared_rows = fuse_shared ? shared_rows : 0,
 				.shared_format = fuse_shared ? shared_format : 0,
 			};
@@ -462,6 +470,8 @@ static int _ccv_nnc_segmented_swiglu_routed_forw(const ccv_nnc_cmd_t cmd, ccv_nn
 			.beta = 1,
 			.scale = 1,
 			.clamp = cmd.info.segmented_swiglu.clamp,
+			.gate_soft_cap = cmd.info.segmented_swiglu.gate_soft_cap,
+			.up_soft_cap = cmd.info.segmented_swiglu.up_soft_cap,
 			.a_data_type = mtl_datatype,
 			.b_data_type = mtl_datatype,
 			.weight_data_type = mtl_datatype,
@@ -546,6 +556,8 @@ static int _ccv_nnc_segmented_swiglu_routed_forw(const ccv_nnc_cmd_t cmd, ccv_nn
 			.bincount = bincount,
 			.use_neural_accelerators = use_neural_accelerators,
 			.clamp = cmd.info.segmented_swiglu.clamp,
+			.gate_soft_cap = cmd.info.segmented_swiglu.gate_soft_cap,
+			.up_soft_cap = cmd.info.segmented_swiglu.up_soft_cap,
 			// Streamed gate and up weights are expected to share a loader state.
 			// Their shared readiness covers gate and up; down has a separate fence.
 			.readiness_buffer = (__bridge mtl_buffer_t*)gate_weight_view.readiness_buffer,
@@ -578,6 +590,8 @@ static int _ccv_nnc_segmented_swiglu_routed_forw(const ccv_nnc_cmd_t cmd, ccv_nn
 		.beta = 1,
 		.scale = 1,
 		.clamp = cmd.info.segmented_swiglu.clamp,
+		.gate_soft_cap = cmd.info.segmented_swiglu.gate_soft_cap,
+		.up_soft_cap = cmd.info.segmented_swiglu.up_soft_cap,
 		.a_data_type = mtl_datatype,
 		.b_data_type = mtl_datatype,
 		.weight_data_type = mtl_datatype,

@@ -49,6 +49,8 @@ void ccv_nnc_deinit_stream_signal(ccv_nnc_stream_signal_t* const signal);
 CCV_WARN_UNUSED(int) ccv_nnc_gpu_device_count(void);
 void ccv_nnc_mps_set_queue_watermark(int watermark);
 CCV_WARN_UNUSED(int) ccv_nnc_mps_queue_watermark(void);
+void ccv_nnc_mps_set_weights_streaming_watermark_bytes(size_t bytes);
+CCV_WARN_UNUSED(size_t) ccv_nnc_mps_weights_streaming_watermark_bytes(void);
 void ccv_nnc_mps_set_whole_file_mapping_size_limit(size_t size_limit);
 void ccv_nnc_mps_clear_graph_executable_cache(void);
 void ccv_nnc_mps_abort(void);
@@ -100,6 +102,11 @@ id<MTLBuffer> mpgetbuffer(const ccv_nnc_tensor_t* const tensor);
 /** Returns 1 for an on-demand file-backed tensor and 0 for any other tensor. */
 int ccv_nnc_mps_file_backed_region(const ccv_nnc_tensor_t* tensor, ccv_nnc_mps_file_backed_region_t* region);
 id<MTLDevice> ccv_nnc_default_device(void);
+/** Keeps buffers resident on the GPU across command buffers, in one residency set the default queue
+ * holds (a queue takes at most 32 sets). Returns 1 when added, 0 where residency sets are unavailable. */
+int ccv_nnc_mps_add_resident_buffers(id<MTLBuffer> const* buffers, int count);
+/** Removes buffers ccv_nnc_mps_add_resident_buffers added. */
+void ccv_nnc_mps_remove_resident_buffers(id<MTLBuffer> const* buffers, int count);
 MPSGraphDevice* ccv_nnc_default_mps_device(void);
 CCV_WARN_UNUSED(MPSCommandBuffer*) ccv_nnc_stream_context_start_mps_command_buffer(ccv_nnc_stream_context_t* const stream_context);
 CCV_WARN_UNUSED(MPSCommandBuffer*) ccv_nnc_stream_context_finish_command_batch_encoding_and_return_mps_command_buffer(ccv_nnc_stream_context_t* const stream_context, MTLCommandBatch* command_batch);

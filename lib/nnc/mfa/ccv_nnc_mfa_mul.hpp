@@ -12,6 +12,10 @@ typedef struct {
   // Full tensor op a vector along its last axis; bit 0 / 1 identifies the vector input.
   uint8_t row_broadcast;
   uint32_t row_length;
+  // Full tensor op a value for each of its rows of column_length values (its trailing axes); bit 0 / 1
+  // identifies the column input.
+  uint8_t column_broadcast;
+  uint32_t column_length;
 } ccv_nnc_mfa_mul_params_t;
 
 #ifdef __cplusplus

@@ -7,6 +7,9 @@
 struct SegmentedInt8SwiGLUKernelDescriptor {
   uint32_t format;
   bool clamp;
+  // Soft caps of the gate's linear factor and of up.
+  bool gateSoftCap = false;
+  bool upSoftCap = false;
   GEMMOperandPrecision memoryPrecision;
   // Also evaluate a shared expert's int8 SwiGLU in the same dispatch, with Q8_0 (0), Q5_K or
   // Q6_K weights.
@@ -16,6 +19,7 @@ struct SegmentedInt8SwiGLUKernelDescriptor {
   constexpr bool operator==(const SegmentedInt8SwiGLUKernelDescriptor& rhs) const
   {
     return format == rhs.format && clamp == rhs.clamp &&
+      gateSoftCap == rhs.gateSoftCap && upSoftCap == rhs.upSoftCap &&
       memoryPrecision == rhs.memoryPrecision && sharedFused == rhs.sharedFused &&
       sharedFormat == rhs.sharedFormat;
   }
@@ -29,6 +33,7 @@ struct std::hash<SegmentedInt8SwiGLUKernelDescriptor>
     return std::hash<uint64_t>()(
       (uint64_t)value.format | ((uint64_t)value.memoryPrecision.value << 32) |
       ((uint64_t)value.clamp << 40) | ((uint64_t)value.sharedFused << 41) |
+      ((uint64_t)value.gateSoftCap << 42) | ((uint64_t)value.upSoftCap << 43) |
       ((uint64_t)value.sharedFormat << 48));
   }
 };

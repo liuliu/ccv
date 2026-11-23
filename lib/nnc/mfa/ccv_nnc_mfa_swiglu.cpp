@@ -120,6 +120,8 @@ static ccv_nnc_mfa_swish_mul_params_t swish_params(
     .beta = 1,
     .scale = 1,
     .clamp = params.clamp,
+    .gate_soft_cap = params.gate_soft_cap,
+    .up_soft_cap = params.up_soft_cap,
     .a_data_type = params.data_type,
     .b_data_type = params.data_type,
     .weight_data_type = params.data_type,
@@ -161,6 +163,8 @@ void ccv_nnc_mfa_encode_int8_swiglu(
   descriptor.N = params.N;
   descriptor.K = params.K;
   descriptor.clamp = params.clamp;
+  descriptor.gateSoftCap = params.gate_soft_cap;
+  descriptor.upSoftCap = params.up_soft_cap;
   descriptor.memoryPrecision = io_precision(params.data_type);
   auto pipelineValue = context->kernel_cache.findKernel<
     Int8SwiGLUKernel, Int8SwiGLUDescriptor, Int8SwiGLUKernelDescriptor>(

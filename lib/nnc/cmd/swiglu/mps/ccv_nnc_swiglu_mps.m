@@ -99,6 +99,8 @@ static int _ccv_nnc_swiglu_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hi
 			.N = N,
 			.K = K,
 			.clamp = cmd.info.swiglu.clamp,
+			.gate_soft_cap = cmd.info.swiglu.gate_soft_cap,
+			.up_soft_cap = cmd.info.swiglu.up_soft_cap,
 		};
 		ccv_nnc_mfa_prepare_int8_swiglu(context, params);
 		mtl_command_batch_t* const command_batch = ccv_nnc_stream_context_start_command_batch(stream_context);
@@ -139,6 +141,8 @@ static int _ccv_nnc_swiglu_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hi
 			.loadM = !!(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M),
 			.use_neural_accelerators = use_neural_accelerators,
 			.clamp = cmd.info.swiglu.clamp,
+			.gate_soft_cap = cmd.info.swiglu.gate_soft_cap,
+			.up_soft_cap = cmd.info.swiglu.up_soft_cap,
 		};
 		ccv_nnc_mfa_prepare_scaled_swiglu(context, params);
 		mtl_command_batch_t* const command_batch = ccv_nnc_stream_context_start_command_batch(stream_context);
@@ -162,6 +166,8 @@ static int _ccv_nnc_swiglu_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hi
 		.beta = 1,
 		.scale = 1,
 		.clamp = cmd.info.swiglu.clamp,
+		.gate_soft_cap = cmd.info.swiglu.gate_soft_cap,
+		.up_soft_cap = cmd.info.swiglu.up_soft_cap,
 		.a_data_type = mtl_datatype,
 		.b_data_type = mtl_datatype,
 		.weight_data_type = mtl_datatype,

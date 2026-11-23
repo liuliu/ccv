@@ -145,6 +145,7 @@ static int _ccv_nnc_rmsnorm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t h
 				.scale_translation_batched = scale_translation_batched,
 				.normalization_type = 2,
 				.reuse_saved_statistics = false,
+				.clip = cmd.info.rmsnorm.clip != 0,
 				.loadM = !!(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M),
 
 				.batch_dims_data = { 0 },
@@ -214,6 +215,9 @@ static int _ccv_nnc_rmsnorm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t h
 				[axes release];
 				MPSGraphTensor* mps_epsilon_f32 = [graph constantWithScalar:epsilon dataType:MPSDataTypeFloat32];
 				MPSGraphTensor* mps_inv_std_f32 = [graph reciprocalWithTensor:[graph squareRootWithTensor:[graph additionWithPrimaryTensor:mps_variance_f32 secondaryTensor:mps_epsilon_f32 name:nil] name:nil] name:nil];
+				// With clip, the factor stops where the output scale brings it to 1.
+				if (cmd.info.rmsnorm.clip)
+					mps_inv_std_f32 = [graph minimumWithPrimaryTensor:mps_inv_std_f32 secondaryTensor:[graph constantWithScalar:1.0 / output_scale dataType:MPSDataTypeFloat32] name:nil];
 				mps_saved_inv_std = saved_inv_stdt.info.datatype == CCV_32F ? mps_inv_std_f32 : [graph castTensor:mps_inv_std_f32 toType:ccv_nnc_mps_datatype(saved_inv_stdt.info.datatype) name:@"inv_std"];
 				MPSGraphTensor* mps_b = [graph multiplicationWithPrimaryTensor:mps_a_f32 secondaryTensor:mps_inv_std_f32 name:nil];
 				if (elementwise_affine)
@@ -250,6 +254,8 @@ static int _ccv_nnc_rmsnorm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t h
 {
 	assert(input_size == 6 || input_size == 5);
 	assert(output_size >= 1);
+	if (cmd.info.rmsnorm.clip) // The clip is forward only.
+		return CCV_NNC_EXEC_INVALID;
 
 	const ccv_nnc_tensor_view_t* g = (ccv_nnc_tensor_view_t*)inputs[0];
 	ccv_nnc_tensor_view_t* const a = (ccv_nnc_tensor_view_t*)inputs[2];

@@ -31,6 +31,8 @@ void ccv_nnc_mfa_prepare_swish_mul(mfa::context* context, ccv_nnc_mfa_swish_mul_
 void ccv_nnc_mfa_encode_swish_mul(ccv_nnc_mfa_context_t* context, ccv_nnc_mfa_swish_mul_params_t params, mtl_command_batch_t* command_batch, mtl_buffer_t** tensors, size_t* tensor_offsets)
 {
   CCV_NNC_MFA_PRECONDITION(!params.weighted || (params.weight_count > 0 && params.length % params.weight_count == 0));
+  // The soft caps are forward only.
+  CCV_NNC_MFA_PRECONDITION(!params.gradient || (params.gate_soft_cap <= 0 && params.up_soft_cap <= 0));
   auto encoder = command_batch->startCommand();
 
   int num_tensors = 0;
@@ -52,6 +54,8 @@ void ccv_nnc_mfa_encode_swish_mul(ccv_nnc_mfa_context_t* context, ccv_nnc_mfa_sw
   descriptor.beta = params.beta;
   descriptor.scale = params.scale;
   descriptor.clamp = params.clamp;
+  descriptor.gateSoftCap = params.gate_soft_cap;
+  descriptor.upSoftCap = params.up_soft_cap;
   descriptor.weighted = params.weighted;
   descriptor.gPrecision = precision_from_mtl_data_type(params.g_data_type);
   descriptor.aPrecision = precision_from_mtl_data_type(params.a_data_type);

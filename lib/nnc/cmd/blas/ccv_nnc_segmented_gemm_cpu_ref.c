@@ -124,7 +124,14 @@ static inline void _ccv_nnc_segmented_gbmm(const float* const a, const int a_nd,
 static int _ccv_nnc_segmented_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
 {
 	assert(input_size >= 4);
-	assert(output_size == 1);
+	assert(output_size == 1 || (output_size == 2 && input_size == 7));
+	if (output_size == 2)
+	{
+		// The shared expert is a plain GEMM on its own activation.
+		if (outputs[1]->info.dim[0] > 0)
+			ccv_nnc_cmd_exec(CMD_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(0, 1)), ccv_nnc_no_hint, 0, TENSOR_LIST(inputs[5], inputs[6]), TENSOR_LIST(outputs[1]), stream_context);
+		return _ccv_nnc_segmented_gemm_forw(cmd, hint, flags, inputs, inputs[4] ? 5 : 4, outputs, 1, stream_context);
+	}
 	if (outputs[0]->info.dim[0] == 0)
 		return CCV_NNC_EXEC_SUCCESS;
 	const ccv_nnc_tensor_view_t* a = (const ccv_nnc_tensor_view_t*)inputs[0];

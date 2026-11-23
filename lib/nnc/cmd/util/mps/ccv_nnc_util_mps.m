@@ -234,6 +234,17 @@ static int _ccv_nnc_set_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 			ccv_nnc_tensor_view_t* const a = (ccv_nnc_tensor_view_t*)outputs[i];
 			if (a->info.dim[0] == 0)
 				continue;
+			// MPSGraph builds its constant on the CPU at the tensor's size. Zeros in a contiguous tensor
+			// are a blit fill instead (whose range macOS wants in whole words).
+			const size_t size = ccv_nnc_tensor_data_size_without_padding(a->info);
+			if (cmd.info.blas.a[0] == 0 && !signbit(cmd.info.blas.a[0]) && CCV_IS_TENSOR_CONTIGUOUS(a) &&
+				mpgetoffset((ccv_nnc_tensor_t*)a) % 4 == 0 && size % 4 == 0)
+			{
+				id<MTLBlitCommandEncoder> const encoder = [command_buffer.commandBuffer blitCommandEncoder];
+				[encoder fillBuffer:mpgetbuffer((ccv_nnc_tensor_t*)a) range:NSMakeRange(mpgetoffset((ccv_nnc_tensor_t*)a), size) value:0];
+				[encoder endEncoding];
+				continue;
+			}
 			ccv_nnc_mps_graph_key_t key = ccv_nnc_mps_graph_key_new(cmd, 0, hint, flags, 0, 0, outputs + i, 1);
 			NSMutableArray<NSNumber*>* shape = [NSMutableArray new];
 			const int nd = ccv_nnc_tensor_nd(a->info.dim);
@@ -409,6 +420,8 @@ static int _ccv_nnc_format_transform(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint
 							.source_row_stride = source_row_stride,
 							.destination_row_stride = destination_row_stride,
 							.loadM = !!(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M),
+							// A caller whose attention key length is not specialized writes masks and rows that wide.
+							.loadC = !!(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_ATTENTION_SPECIALIZING_C),
 						};
 						mtl_buffer_t* tensors[3] = {
 							buffer_a,

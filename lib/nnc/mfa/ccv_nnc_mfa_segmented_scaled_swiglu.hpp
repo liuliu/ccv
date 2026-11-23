@@ -12,6 +12,8 @@ typedef struct {
   uint32_t bincount;
   uint8_t use_neural_accelerators;
   float clamp;
+  float gate_soft_cap;
+  float up_soft_cap;
   // Optional streamed-weight readiness. Activations can be quantized before waiting.
   mtl_buffer_t* readiness_buffer;
   uint32_t readiness_value;

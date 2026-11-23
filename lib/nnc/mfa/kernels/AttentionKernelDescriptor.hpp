@@ -59,6 +59,12 @@ struct AttentionKernelDescriptor {
 
   uint32_t slidingWindow;
 
+  // One sink for each query and head, rather than for each head.
+  bool sinksPerQuery = false;
+
+  // Each query adds its own bias to the scores of the keys within an extent before it.
+  bool relativeBias = false;
+
   AttentionKernelType type;
 
   // MARK: - Functionality from AttentionDescriptor

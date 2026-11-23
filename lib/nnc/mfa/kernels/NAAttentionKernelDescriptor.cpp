@@ -22,6 +22,8 @@ bool NAAttentionKernelDescriptor::operator==(const NAAttentionKernelDescriptor& 
   hasRemainderC == rhs.hasRemainderC &&
   loadStrides == rhs.loadStrides &&
   attentionSinks == rhs.attentionSinks &&
+  sinksPerQuery == rhs.sinksPerQuery &&
+  relativeBias == rhs.relativeBias &&
   slidingWindow == rhs.slidingWindow &&
   splitKV == rhs.splitKV &&
   type == rhs.type &&
@@ -41,7 +43,7 @@ std::size_t std::hash<NAAttentionKernelDescriptor>::operator()(const NAAttention
   seed = combine_32(seed, hash.splitKV);
   seed = combine_32(seed, (hash.hasRemainderR ? 1 : 0) | (hash.hasRemainderC ? 2 : 0));
   seed = combine_32(seed, (hash.loadC ? 1 : 0) | (hash.loadR ? 2 : 0) | (hash.loadStrides ? 4 : 0));
-  seed = combine_32(seed, hash.attentionSinks ? 1 : 0);
+  seed = combine_32(seed, (hash.attentionSinks ? 1 : 0) | (hash.sinksPerQuery ? 2 : 0) | (hash.relativeBias ? 4 : 0));
   seed = combine_32(seed, hash.slidingWindow);
   return seed;
 }

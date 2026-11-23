@@ -6,6 +6,8 @@
 #define CMD_ADAM_FORWARD(_step, _rate, _beta1, _beta2, _decay, _epsilon, _amsgrad) ccv_nnc_cmd(CCV_NNC_ADAM_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.adam={.step=_step,.rate=_rate,.scale=1,.beta1=_beta1,.beta2=_beta2,.decay=_decay,.epsilon=_epsilon,.amsgrad=_amsgrad}}), 0)
 // CCV_NNC_ADAMW_FORWARD
 #define CMD_ADAMW_FORWARD(_step, _rate, _beta1, _beta2, _decay, _epsilon, _amsgrad) ccv_nnc_cmd(CCV_NNC_ADAMW_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.adam={.step=_step,.rate=_rate,.scale=1,.beta1=_beta1,.beta2=_beta2,.decay=_decay,.epsilon=_epsilon,.amsgrad=_amsgrad}}), 0)
+// CCV_NNC_ATTENTION_RESIDUAL_FORWARD
+#define CMD_ATTENTION_RESIDUAL_FORWARD(_epsilon, _scale) ccv_nnc_cmd(CCV_NNC_ATTENTION_RESIDUAL_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.attention_residual={.epsilon=(_epsilon),.scale=(_scale)}}), 0)
 // CCV_NNC_GEMM_FORWARD
 #define CMD_GEMM_FORWARD(...) ccv_nnc_cmd(CCV_NNC_GEMM_FORWARD, 0, CMD_GEMM(__VA_ARGS__), 0)
 // CCV_NNC_GEMM_BACKWARD
@@ -213,6 +215,8 @@
 #define CMD_SMOOTH_L1_FORWARD(_b) ccv_nnc_cmd(CCV_NNC_SMOOTH_L1_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.smooth_l1={.beta=_b}}), 0)
 // CCV_NNC_SMOOTH_L1_BACKWARD
 #define CMD_SMOOTH_L1_BACKWARD(_b) ccv_nnc_cmd(CCV_NNC_SMOOTH_L1_BACKWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.smooth_l1={.beta=_b}}), 0)
+// CCV_NNC_MESSAGE_GATE_FORWARD
+#define CMD_MESSAGE_GATE_FORWARD(_epsilon) ccv_nnc_cmd(CCV_NNC_MESSAGE_GATE_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.message_gate={.epsilon=(_epsilon)}}), 0)
 // CCV_NNC_MOE_ROUTING_FORWARD
 #define CMD_MOE_ROUTING_FORWARD(_kth, _weight_scale, _preselected) ccv_nnc_cmd(CCV_NNC_MOE_ROUTING_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.moe_routing={.kth=(_kth),.weight_scale=(_weight_scale),.preselected=(_preselected)}}), 0)
 // CCV_NNC_MOE_ROUTING_FORWARD
@@ -338,6 +342,8 @@
 #define CMD_SCATTER_ADD_BACKWARD(_bincount) ccv_nnc_cmd(CCV_NNC_SCATTER_ADD_BACKWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.scatter_add={.bincount=_bincount}}), 0)
 // CCV_NNC_SEGMENTED_SWIGLU_FORWARD
 #define CMD_SEGMENTED_SWIGLU_FORWARD(_clamp) ccv_nnc_cmd(CCV_NNC_SEGMENTED_SWIGLU_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.segmented_swiglu={.clamp=_clamp}}), 0)
+// CCV_NNC_SEGMENTED_SWIGLU_FORWARD
+#define CMD_SEGMENTED_SWIGLU_SOFT_CAP_FORWARD(_gate_soft_cap, _up_soft_cap) ccv_nnc_cmd(CCV_NNC_SEGMENTED_SWIGLU_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.segmented_swiglu={.gate_soft_cap=_gate_soft_cap,.up_soft_cap=_up_soft_cap}}), 0)
 // CCV_NNC_SEGMENTED_SWIGLU_BACKWARD
 #define CMD_SEGMENTED_SWIGLU_BACKWARD(_clamp) ccv_nnc_cmd(CCV_NNC_SEGMENTED_SWIGLU_BACKWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.segmented_swiglu={.clamp=_clamp}}), 0)
 // CCV_NNC_SGD_FORWARD
@@ -390,6 +396,8 @@
 #define CMD_SPARSE_INDEXED_ATTENTION_BACKWARD(_scale, _is_causal, _attention_sinks) ccv_nnc_cmd(CCV_NNC_SPARSE_INDEXED_ATTENTION_BACKWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.sparse_indexed_attention={.scale=_scale,.is_causal=_is_causal,.attention_sinks=_attention_sinks,.sliding_window=0}}), 0)
 // CCV_NNC_SWIGLU_FORWARD
 #define CMD_SWIGLU_FORWARD(_clamp) ccv_nnc_cmd(CCV_NNC_SWIGLU_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.swiglu={.clamp=_clamp}}), 0)
+// CCV_NNC_SWIGLU_FORWARD
+#define CMD_SWIGLU_SOFT_CAP_FORWARD(_gate_soft_cap, _up_soft_cap) ccv_nnc_cmd(CCV_NNC_SWIGLU_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.swiglu={.gate_soft_cap=_gate_soft_cap,.up_soft_cap=_up_soft_cap}}), 0)
 // CCV_NNC_SWIGLU_BACKWARD
 #define CMD_SWIGLU_BACKWARD(_clamp) ccv_nnc_cmd(CCV_NNC_SWIGLU_BACKWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.swiglu={.clamp=_clamp}}), 0)
 // CCV_NNC_SWISH_FORWARD

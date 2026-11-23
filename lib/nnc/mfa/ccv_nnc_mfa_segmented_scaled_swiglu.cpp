@@ -108,6 +108,8 @@ static ccv_nnc_mfa_swish_mul_params_t swish_params(
     .beta = 1,
     .scale = 1,
     .clamp = params.clamp,
+    .gate_soft_cap = params.gate_soft_cap,
+    .up_soft_cap = params.up_soft_cap,
     .a_data_type = params.data_type,
     .b_data_type = params.data_type,
     .weight_data_type = params.data_type,

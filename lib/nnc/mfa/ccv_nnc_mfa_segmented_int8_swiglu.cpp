@@ -65,6 +65,8 @@ void ccv_nnc_mfa_encode_segmented_int8_swiglu(
   descriptor.format = params.format;
   descriptor.broadcastInput = params.broadcast_input;
   descriptor.clamp = params.clamp;
+  descriptor.gateSoftCap = params.gate_soft_cap;
+  descriptor.upSoftCap = params.up_soft_cap;
   descriptor.memoryPrecision = ioPrecision(params.data_type);
   const NS::UInteger threadgroupsPerRoute = (params.N + 3) / 4;
   const NS::UInteger routedThreadgroups = threadgroupsPerRoute * params.M;

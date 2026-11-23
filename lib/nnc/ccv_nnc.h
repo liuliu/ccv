@@ -202,6 +202,7 @@ typedef struct {
 			float epsilon; /**< [rmsnorm.epsilon] The epsilon for standard derivation. */
 			float scale; /**< [rmsnorm.scale] The scale applied to the final output. */
 			int elementwise_affine; /**< [rmsnorm.elementwise_affine] Whether it supports scale. */
+			int clip; /**< [rmsnorm.clip] If 1, the factor scale / rms never exceeds 1, so the output is the input whenever its RMS is within the scale: an L2 clip at scale * sqrt(n). Forward only. */
 		} rmsnorm;
 		struct {
 			int axis[CCV_NNC_MAX_DIM_ALLOC]; /**< [rmsnorm_gated.axis[]] The axis selected to compute mean / variance. */
@@ -311,6 +312,13 @@ typedef struct {
 			int state_checkpoint_count; /**< [causal_convolution.state_checkpoint_count] Number of rows past kernel_size - 1 the next rows keep, so the rows before each of the last tokens are kept too. */
 		} causal_convolution;
 		struct {
+			float epsilon; /**< [attention_residual.epsilon] The epsilon of the RMS normalization of each state. */
+			float scale; /**< [attention_residual.scale] The scale applied to the dot products of the queries and the normalized states. */
+		} attention_residual;
+		struct {
+			float epsilon; /**< [message_gate.epsilon] The epsilon of the RMS normalizations of the state and of the message. */
+		} message_gate;
+		struct {
 			float min; /**< [clamp.min] The minimum, NaN is no min. */
 			float max; /**< [clamp.max] The maximum, NaN is no max. */
 		} clamp;
@@ -347,9 +355,13 @@ typedef struct {
 		} swish_mul;
 		struct {
 			float clamp; /**< [segmented_swiglu.clamp] If positive, clamp the up projection symmetrically and the gate projection from above. */
+			float gate_soft_cap; /**< [segmented_swiglu.gate_soft_cap] If positive, the gate's linear factor is gate_soft_cap * tanh(gate / gate_soft_cap), while the sigmoid reads the gate itself. */
+			float up_soft_cap; /**< [segmented_swiglu.up_soft_cap] If positive, the up projection is up_soft_cap * tanh(up / up_soft_cap). */
 		} segmented_swiglu;
 		struct {
 			float clamp; /**< [swiglu.clamp] If positive, clamp the up projection symmetrically and the gate projection from above. */
+			float gate_soft_cap; /**< [swiglu.gate_soft_cap] If positive, the gate's linear factor is gate_soft_cap * tanh(gate / gate_soft_cap), while the sigmoid reads the gate itself. */
+			float up_soft_cap; /**< [swiglu.up_soft_cap] If positive, the up projection is up_soft_cap * tanh(up / up_soft_cap). */
 		} swiglu;
 		struct {
 			float exponent; /**< [pow.exponent] The exponent in y = x ^ exponent. */
@@ -365,9 +377,10 @@ typedef struct {
 			               For FP16 input, CCV_NNC_GEMM_8I alone uses FP16 intermediates and saved logsumexp. CCV_NNC_GEMM_32F requests FP32; an explicit CCV_NNC_GEMM_16F takes precedence if both are present.
 			               Quantized backward retains quantized P/V regardless of the floating flags. */
 			int deterministic; /**< [scaled_dot_product_attention.deterministic] Whether we want the attention computation to be deterministic (CUDA only). */
-			int attention_sinks; /**< [scaled_dot_product_attention.attention_sinks] Whether a scalar or per-query-head attention sink tensor is supplied as an input. */
+			int attention_sinks; /**< [scaled_dot_product_attention.attention_sinks] Whether an attention sink tensor is supplied as an input: a scalar, one for each query head, or one for each query and head as [batch, R, Hq]. */
 			int sliding_window; /**< [scaled_dot_product_attention.sliding_window] Causal sliding-window size, including the current token. 0 disables sliding-window attention. */
 			int use_hadamard; /**< [scaled_dot_product_attention.use_hadamard] Request a fused Q/K Hadamard transform during NA INT8 forward attention for supported head dimensions. Ignored by other implementations and backward. */
+			int relative_bias; /**< [scaled_dot_product_attention.relative_bias] Whether a relative-position bias tensor [batch, R, Hq, extent] is supplied as an input. A query's own key is at column row + C - R; the key d positions before it, for 0 <= d < extent, adds the query's bias at d to its score. Forward only. */
 		} scaled_dot_product_attention;
 		struct {
 			float scale; /**< Multiplier for Q.K logits. */
@@ -1084,6 +1097,20 @@ void ccv_nnc_set_queue_watermark(int state);
  * @return How many in-flight GPU commands can have.
  */
 CCV_WARN_UNUSED(int) ccv_nnc_queue_watermark(void);
+/**
+ * Set the watermark, in bytes, of streamed weights staged for GPU commands that have not completed.
+ * A streaming call that would pass it commits and waits for the commands ahead of it; a call with
+ * none ahead of it always proceeds, so the most a single call stages is the floor. This is a
+ * Metal-only option and only counts what is staged after the call.
+ * @param bytes The watermark, or 0 for none.
+ */
+void ccv_nnc_set_weights_streaming_watermark_bytes(size_t bytes);
+/**
+ * Get the watermark of streamed weights staged for GPU commands that have not completed. This is a
+ * Metal-only option.
+ * @return The watermark in bytes, or 0 for none.
+ */
+CCV_WARN_UNUSED(size_t) ccv_nnc_weights_streaming_watermark_bytes(void);
 /**
  * Set the device mapping to use custom order for device rather than driver imposed order. This is helpful
  * to manage code where which GPU to use have no control over. The previous permutation is cleared up on
@@ -4891,11 +4918,12 @@ CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_group_norm(const int group_axis, con
  * @param axis_count How many axis we count as feature.
  * @param elementwise_affine Whether it contains scale.
  * @param scale The scale applied to the final output.
+ * @param clip If 1, the factor scale / rms never exceeds 1, so the output is the input whenever its RMS is within the scale: an L2 clip at scale * sqrt(n).
  * @param is_trainable Whether the parameters of this model can be trained.
  * @param name The unique name of the model.
  * @return A rmsnorm model.
  */
-CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_rmsnorm(const float epsilon, const int axis[CCV_NNC_MAX_DIM_ALLOC], const int axis_count, const int elementwise_affine, const float scale, const int is_trainable, const char* const name);
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_rmsnorm(const float epsilon, const int axis[CCV_NNC_MAX_DIM_ALLOC], const int axis_count, const int elementwise_affine, const float scale, const int clip, const int is_trainable, const char* const name);
 /**
  * A rmsnorm complex multiplication model.
  * Computes RMSNorm(x) complex-multiplied by rotation, optionally with an elementwise scale.
@@ -5023,19 +5051,49 @@ CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_hyper_connection(const int count, co
  */
 CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_rotate_half(const char* const name);
 /**
+ * A message gated into a state: the mix is down [RMSNorm(state), RMSNorm(message)]^T (norms without
+ * scales), forget = tanh(mix forget^T), gain = tanh(mix gain^T), and the output is
+ * state - forget * state + gain * message. Inputs are the state [..., C] and the message [..., C];
+ * the output has the state's shape. The model owns the down projection [R, 2C] and the forget and
+ * gain projections [C, R], in that order, which may be read 8-bit rowwise. On Metal, C is a
+ * multiple of 4 and R a multiple of 4 up to 256.
+ * @param rank The mix width R.
+ * @param epsilon The epsilon of the RMS normalizations.
+ * @param is_trainable Whether the projections are trainable.
+ * @param name The unique name of the model.
+ * @return A model that is applied with two inputs and generates the gated state.
+ */
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_message_gate(const int rank, const float epsilon, const int is_trainable, const char* const name);
+/**
  * A depthwise causal convolution along the token axis that carries its previous rows, as the short
  * convolution before linear attention. Inputs are x [B, T, C] and the previous kernel_size - 1 rows
  * of x [B, kernel_size - 1, C]; outputs are y [B, T, C], optionally SiLU, and the next rows
  * [B, kernel_size - 1 + state_checkpoint_count, C], the last rows of the previous rows followed by x.
- * The model owns its weights [C, 1, kernel_size, 1].
+ * The model owns its weights [C, 1, kernel_size, 1]. With dynamic weights, a third input [B, T, groups, kernel_size]
+ * holds per-token dynamic weights, which each token adds to the weights of the channels in each of its groups.
  * @param kernel_size The number of taps, at least 2.
  * @param silu If 1, apply SiLU to the output.
  * @param state_checkpoint_count Number of extra next rows, so the rows before each of the last tokens are kept too.
+ * @param has_dynamic_weights If 1, the per-token dynamic weights are the third input.
  * @param is_trainable Whether the weights are trainable.
  * @param name The unique name of the model.
- * @return A model that is applied with two inputs and generates two outputs.
+ * @return A model that is applied with two or three inputs and generates two outputs.
  */
-CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_causal_convolution(const int kernel_size, const int silu, const int state_checkpoint_count, const int is_trainable, const char* const name);
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_causal_convolution(const int kernel_size, const int silu, const int state_checkpoint_count, const int has_dynamic_weights, const int is_trainable, const char* const name);
+/**
+ * An attention residual: each output is, for one learned query, a softmax mixture of the
+ * RMS-normalized states, scored by the query's dot product with them. Inputs are the block states
+ * [n, ..., C] and the partial state [..., C], which is the last state; there is an output [..., C]
+ * for each query. The model owns its queries [queries, C]. On Metal, there may be up to 16 states,
+ * the partial state included, and up to 4 queries.
+ * @param queries The number of queries, and of outputs.
+ * @param epsilon The epsilon of the RMS normalization of each state.
+ * @param scale The scale applied to the dot products of the queries and the normalized states.
+ * @param is_trainable Whether the queries are trainable.
+ * @param name The unique name of the model.
+ * @return A model that is applied with two inputs and generates an output for each query.
+ */
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_attention_residual(const int queries, const float epsilon, const float scale, const int is_trainable, const char* const name);
 /**
  * Apply the gated delta recurrent update.
  * Inputs are (q, k, v, decay / log_decay, beta, state_in), and outputs are (y, state_out).
@@ -5318,7 +5376,7 @@ CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_replicated(ccv_cnnp_model_t* const m
 CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_all_to_all(const int count, const int axis, const char* const name);
 /**
  * Apply the scaled dot product attention to input. Accepting input in the form of (q, k, v)
- * or (q, k, v, attn_mask) if has_attn_mask is 1. If attention_sinks is 1, append the sink tensor to the input list.
+ * or (q, k, v, attn_mask) if has_attn_mask is 1. If attention_sinks is 1, append the sink tensor to the input list: a scalar, one for each query head, or one for each query and head as [batch, R, Hq]. If relative_bias is 1, append the bias tensor after it.
  * @param scale The scale to be applied to the qk dot product.
  * @param is_causal Whether to apply is_causal mask to it. If both attn_mask and is_causal supplied, we will cut attn_mask to upper right triangle.
  * @param has_attn_mask Whether the input would accept a 4th parameter the attention mask.
@@ -5329,13 +5387,14 @@ CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_all_to_all(const int count, const in
  * @param use_hadamard Request a fused Q/K Hadamard transform during supported NA INT8 forward attention. Other implementations and backward ignore this option.
  * @param attention_sinks Whether the input would accept an attention sink tensor.
  * @param sliding_window Causal sliding-window size, including the current token. 0 disables sliding-window attention.
+ * @param relative_bias Whether the input would accept a relative-position bias tensor [batch, R, Hq, extent] after the sinks: the key d positions before a query's own, for 0 <= d < extent, adds the query's bias at d to its score.
  * @param fused_unify_head_weights Whether we also have unifying head weight fused into it. The output would be in shape of (N, S, H * Ev).
  * @param no_bias Whether we have bias or not for the unifying head output.
  * @param is_trainable Whether or not it is trainable (if weight / bias provided).
  * @param name The unique name of the model.
  * @return A model that can apply scaled dot product attention compute.
  */
-CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_scaled_dot_product_attention(const float scale, const int is_causal, const int has_attn_mask, const int is_varlen, const int max_seqlen_q, const int max_seqlen_kv, const int flags, const int use_hadamard, const int attention_sinks, const int sliding_window, const int fused_unify_head_weights, const int no_bias, const int is_trainable, const char* const name);
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_scaled_dot_product_attention(const float scale, const int is_causal, const int has_attn_mask, const int is_varlen, const int max_seqlen_q, const int max_seqlen_kv, const int flags, const int use_hadamard, const int attention_sinks, const int sliding_window, const int relative_bias, const int fused_unify_head_weights, const int no_bias, const int is_trainable, const char* const name);
 /**
  * The function prototype to call during the model execution at this position.
  */
@@ -5404,38 +5463,46 @@ CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_scatter_add(const int bincount, cons
  * @param no_bias Whether has a bias term or not.
  * @param flags The flags to disable / enable certain features.
  * @param functional If non-zero, the model owns no parameters and takes weight and optional bias tensors as inputs.
+ * @param shared_expert Also take a shared expert's activation after the counts and return its
+ *        projection, count outputs over its own activation's width, as a second output. The model
+ *        owns the shared expert's weights after its own (stateful form only). Decode can evaluate
+ *        both in one dispatch.
  * @param is_trainable Whether the parameters of this model can be trained.
  * @param name The unique name of the model.
  * @return A segmented dense layer model.
  */
-CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_segmented_dense(const int segments, const int count, const int no_bias, const int flags, const int functional, const int is_trainable, const char* const name);
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_segmented_dense(const int segments, const int count, const int no_bias, const int flags, const int functional, const int shared_expert, const int is_trainable, const char* const name);
 /**
- * A gate/up projection followed by optionally clamped SwiGLU.
+ * A gate/up projection followed by optionally clamped or soft-capped SwiGLU.
  * @param count The intermediate output width.
  * @param clamp If positive, clamp the up projection symmetrically and gate projection from above.
+ * @param gate_soft_cap If positive, the gate's linear factor is gate_soft_cap * tanh(gate / gate_soft_cap), while the sigmoid reads the gate itself.
+ * @param up_soft_cap If positive, the up projection is up_soft_cap * tanh(up / up_soft_cap).
  * @param is_trainable Whether the parameters of this model can be trained.
  * @param name The unique name of the model.
  * @return A SwiGLU layer model owning gate and up weights.
  */
-CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_swiglu(const int count, const float clamp, const int is_trainable, const char* const name);
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_swiglu(const int count, const float clamp, const float gate_soft_cap, const float up_soft_cap, const int is_trainable, const char* const name);
 /**
- * A segmented expert gate/up projection followed by row-weighted, optionally clamped SwiGLU.
+ * A segmented expert gate/up projection followed by row-weighted, optionally clamped or soft-capped SwiGLU.
  * The stateful form takes grouped activation rows, active expert IDs, row counts, and route weights.
  * The functional form takes gate and up weights before the route weights.
  * A single activation row is broadcast across all routed rows.
  * @param segments How many expert segments are in each weight table.
  * @param count The intermediate output width of each expert.
  * @param clamp If positive, clamp the up projection symmetrically and gate projection from above.
+ * @param gate_soft_cap If positive, the gate's linear factor is gate_soft_cap * tanh(gate / gate_soft_cap), while the sigmoid reads the gate itself.
+ * @param up_soft_cap If positive, the up projection is up_soft_cap * tanh(up / up_soft_cap).
  * @param functional If non-zero, the model owns no parameters and takes gate and up weight tensors as inputs.
  * @param shared_expert Also take a shared expert's activation after the route weights (followed by
- *        its gate and up weights with functional), and return its clamped SwiGLU as a second
- *        output. Without functional, the model owns the shared expert's gate and up weights, count
- *        rows each. Decode can evaluate both in one dispatch.
+ *        its gate and up weights with functional), and return its SwiGLU, clamped and soft-capped
+ *        the same way, as a second output. Without functional, the model owns the shared expert's
+ *        gate and up weights, count rows each. Decode can evaluate both in one dispatch.
  * @param is_trainable Whether the parameters of this model can be trained.
  * @param name The unique name of the model.
  * @return A segmented SwiGLU layer model.
  */
-CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_segmented_swiglu(const int segments, const int count, const float clamp, const int functional, const int shared_expert, const int is_trainable, const char* const name);
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_segmented_swiglu(const int segments, const int count, const float clamp, const float gate_soft_cap, const float up_soft_cap, const int functional, const int shared_expert, const int is_trainable, const char* const name);
 /**
  * A unified gate / up / down MoE weights-streaming operation. Inputs are expert IDs,
  * counts, route weights, gate weights, up weights, and down weights. Outputs preserve

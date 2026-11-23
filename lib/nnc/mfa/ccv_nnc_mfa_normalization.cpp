@@ -109,6 +109,7 @@ void ccv_nnc_mfa_encode_normalization(ccv_nnc_mfa_context_t* context, ccv_nnc_mf
     .scaleTranslationBatched = params.scale_translation_batched,
     .normalizationType = params.normalization_type,
     .reuseSavedStatistics = params.reuse_saved_statistics,
+    .clip = params.clip,
     .loadM = static_cast<bool>(params.loadM),
     .srcBatchStride = params.src_batch_stride,
     .dstBatchStride = params.dst_batch_stride,
