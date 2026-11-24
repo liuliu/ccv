@@ -85,185 +85,187 @@ static int _ccv_nnc_swiglu_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hi
 	if (rowwise_weights && !rowwise_shape_supported)
 		return CCV_NNC_EXEC_INVALID;
 
-	// A few rows, as a speculative verify runs, read the weights once in the GEMV-style kernel.
-	// Past 6 rows its per-row sums make it slower than the matrix paths on wide FFNs (M5 Max).
-	// Q5_K and Q6_K weights take it too: their matrix paths decode both whole weights first.
-	// It loads activations four elements at a time, so a view must start on that boundary.
-	if (rowwise_weights && (gate_format == 0 || gate_format == CCV_NNC_QX_8I_ROWWISE_Q5_K || gate_format == CCV_NNC_QX_8I_ROWWISE_Q6_K) && M <= 6 &&
-		(a->dataof % (4 * CCV_GET_DATA_TYPE_SIZE(a->info.datatype))) == 0)
-	{
-		const ccv_nnc_mfa_int8_swiglu_params_t params = {
-			.data_type = mtl_datatype,
-			.format = gate_format,
-			.M = M,
-			.N = N,
-			.K = K,
-			.clamp = cmd.info.swiglu.clamp,
-			.gate_soft_cap = cmd.info.swiglu.gate_soft_cap,
-			.up_soft_cap = cmd.info.swiglu.up_soft_cap,
-		};
-		ccv_nnc_mfa_prepare_int8_swiglu(context, params);
-		mtl_command_batch_t* const command_batch = ccv_nnc_stream_context_start_command_batch(stream_context);
-		mtl_buffer_t* tensors[5] = {
-			mpgetbuffer((ccv_nnc_tensor_t*)gate_w),
-			mpgetbuffer((ccv_nnc_tensor_t*)up_w),
-			mpgetbuffer((ccv_nnc_tensor_t*)a),
-			mpgetbuffer((ccv_nnc_tensor_t*)output),
-			NULL,
-		};
-		size_t tensor_offsets[4] = {
-			gate_w->dataof, up_w->dataof, a->dataof, output->dataof,
-		};
-		ccv_nnc_mfa_encode_int8_swiglu(
-			context, params, command_batch, tensors, tensor_offsets);
-		ccv_nnc_stream_context_finish_command_batch(stream_context, command_batch);
-		return CCV_NNC_EXEC_SUCCESS;
-	}
-
-	const int use_neural_accelerators =
-		!(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS) &&
-		ccv_nnc_mfa_has_neural_accelerators(context) &&
-		(mtl_datatype != 121 || ccv_nnc_mfa_neural_accelerators_support_bfloat(context));
-	const int use_scaled_swiglu_without_neural_accelerators =
-		!use_neural_accelerators && gate_format == 0 && a->info.datatype == CCV_32F &&
-		(N % 8) == 0 && (K % 8) == 0 &&
-		ccv_nnc_tensor_count(a->info) <= UINT32_MAX &&
-		ccv_nnc_tensor_count(gate_w->info) <= UINT32_MAX &&
-		ccv_nnc_tensor_count(output->info) <= UINT32_MAX;
-	if (rowwise_weights && (use_neural_accelerators || use_scaled_swiglu_without_neural_accelerators))
-	{
-		const ccv_nnc_mfa_scaled_swiglu_params_t params = {
-			.data_type = mtl_datatype,
-			.format = gate_format,
-			.M = M,
-			.N = N,
-			.K = K,
-			.loadM = !!(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M),
-			.use_neural_accelerators = use_neural_accelerators,
-			.clamp = cmd.info.swiglu.clamp,
-			.gate_soft_cap = cmd.info.swiglu.gate_soft_cap,
-			.up_soft_cap = cmd.info.swiglu.up_soft_cap,
-		};
-		ccv_nnc_mfa_prepare_scaled_swiglu(context, params);
-		mtl_command_batch_t* const command_batch = ccv_nnc_stream_context_start_command_batch(stream_context);
-		mtl_buffer_t* tensors[5] = {
-			mpgetbuffer((ccv_nnc_tensor_t*)gate_w),
-			mpgetbuffer((ccv_nnc_tensor_t*)up_w),
-			mpgetbuffer((ccv_nnc_tensor_t*)a),
-			mpgetbuffer((ccv_nnc_tensor_t*)output),
-			NULL,
-		};
-		size_t tensor_offsets[4] = {
-			gate_w->dataof, up_w->dataof, a->dataof, output->dataof,
-		};
-		ccv_nnc_mfa_encode_scaled_swiglu(
-			context, params, command_batch, tensors, tensor_offsets);
-		ccv_nnc_stream_context_finish_command_batch(stream_context, command_batch);
-		return CCV_NNC_EXEC_SUCCESS;
-	}
-
-	const ccv_nnc_mfa_swish_mul_params_t swish_params = {
-		.beta = 1,
-		.scale = 1,
-		.clamp = cmd.info.swiglu.clamp,
-		.gate_soft_cap = cmd.info.swiglu.gate_soft_cap,
-		.up_soft_cap = cmd.info.swiglu.up_soft_cap,
-		.a_data_type = mtl_datatype,
-		.b_data_type = mtl_datatype,
-		.weight_data_type = mtl_datatype,
-		.length = M * N,
-		.weighted = 0,
-		.loadM = !!(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M),
-	};
-	const ccv_nnc_mfa_gemm_params_t gemm_params = {
-		.data_type = mtl_datatype,
-		.M = M,
-		.N = N,
-		.K = K,
-		.A_trans = 0,
-		.B_trans = 1,
-		.D_trans = 0,
-		.fused_bias = 0,
-		.register_float = 1,
-		.use_neural_accelerators = use_neural_accelerators,
-		.batch_dimension = 1,
-		.loadM = !!(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M),
-	};
-	ccv_nnc_mfa_prepare_swish_mul(context, swish_params);
-	ccv_nnc_mfa_prepare_gemm(context, gemm_params);
-	const size_t gemm_scratch_size = ccv_nnc_mfa_gemm_reserved_scratch_size(gemm_params);
-	const size_t decoded_weight_offset = _ccv_nnc_swiglu_align_up(gemm_scratch_size, 256);
-	const size_t decoded_weight_size = rowwise_weights ?
-		(size_t)N * K * CCV_GET_DATA_TYPE_SIZE(a->info.datatype) : 0;
-	const size_t intermediate_offset = _ccv_nnc_swiglu_align_up(
-		decoded_weight_offset + decoded_weight_size, 256);
-	const size_t intermediate_size =
-		(size_t)M * N * CCV_GET_DATA_TYPE_SIZE(a->info.datatype);
-	mtl_buffer_t* const scratch = ccv_nnc_mfa_request_scratch(
-		context, intermediate_offset + intermediate_size);
-	ccv_nnc_mfa_dequantize_8i_rowwise_params_t rowwise_decode_params = {};
-	ccv_nnc_mfa_dequantize_8i_rowwise_x_fp_params_t rowwise_x_decode_params = {};
-	if (rowwise_weights)
-	{
-		if (gate_format)
+	@autoreleasepool {
+		// A few rows, as a speculative verify runs, read the weights once in the GEMV-style kernel.
+		// Past 6 rows its per-row sums make it slower than the matrix paths on wide FFNs (M5 Max).
+		// Q5_K and Q6_K weights take it too: their matrix paths decode both whole weights first.
+		// It loads activations four elements at a time, so a view must start on that boundary.
+		if (rowwise_weights && (gate_format == 0 || gate_format == CCV_NNC_QX_8I_ROWWISE_Q5_K || gate_format == CCV_NNC_QX_8I_ROWWISE_Q6_K) && M <= 6 &&
+			(a->dataof % (4 * CCV_GET_DATA_TYPE_SIZE(a->info.datatype))) == 0)
 		{
-			rowwise_x_decode_params = (ccv_nnc_mfa_dequantize_8i_rowwise_x_fp_params_t){
+			const ccv_nnc_mfa_int8_swiglu_params_t params = {
 				.data_type = mtl_datatype,
 				.format = gate_format,
-				.row_length = K,
-				.length = (uint64_t)N * K,
+				.M = M,
+				.N = N,
+				.K = K,
+				.clamp = cmd.info.swiglu.clamp,
+				.gate_soft_cap = cmd.info.swiglu.gate_soft_cap,
+				.up_soft_cap = cmd.info.swiglu.up_soft_cap,
 			};
-			ccv_nnc_mfa_prepare_dequantize_8i_rowwise_x_fp(context, rowwise_x_decode_params);
-		} else {
-			rowwise_decode_params = (ccv_nnc_mfa_dequantize_8i_rowwise_params_t){
-				.data_type = mtl_datatype,
-				.row_length = K,
-				.length = (uint64_t)N * K,
+			ccv_nnc_mfa_prepare_int8_swiglu(context, params);
+			mtl_command_batch_t* const command_batch = ccv_nnc_stream_context_start_command_batch(stream_context);
+			mtl_buffer_t* tensors[5] = {
+				mpgetbuffer((ccv_nnc_tensor_t*)gate_w),
+				mpgetbuffer((ccv_nnc_tensor_t*)up_w),
+				mpgetbuffer((ccv_nnc_tensor_t*)a),
+				mpgetbuffer((ccv_nnc_tensor_t*)output),
+				NULL,
 			};
-			ccv_nnc_mfa_prepare_dequantize_8i_rowwise(context, rowwise_decode_params);
+			size_t tensor_offsets[4] = {
+				gate_w->dataof, up_w->dataof, a->dataof, output->dataof,
+			};
+			ccv_nnc_mfa_encode_int8_swiglu(
+				context, params, command_batch, tensors, tensor_offsets);
+			ccv_nnc_stream_context_finish_command_batch(stream_context, command_batch);
+			return CCV_NNC_EXEC_SUCCESS;
 		}
-	}
-	const ccv_nnc_tensor_view_t* const weights[2] = { gate_w, up_w };
-	mtl_command_batch_t* const command_batch = ccv_nnc_stream_context_start_command_batch(stream_context);
-	int projection;
-	for (projection = 0; projection < 2; projection++)
-	{
-		mtl_buffer_t* weight_data = mpgetbuffer((ccv_nnc_tensor_t*)weights[projection]);
-		size_t weight_offset = weights[projection]->dataof;
+
+		const int use_neural_accelerators =
+			!(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_NEURAL_ACCELERATORS) &&
+			ccv_nnc_mfa_has_neural_accelerators(context) &&
+			(mtl_datatype != 121 || ccv_nnc_mfa_neural_accelerators_support_bfloat(context));
+		const int use_scaled_swiglu_without_neural_accelerators =
+			!use_neural_accelerators && gate_format == 0 && a->info.datatype == CCV_32F &&
+			(N % 8) == 0 && (K % 8) == 0 &&
+			ccv_nnc_tensor_count(a->info) <= UINT32_MAX &&
+			ccv_nnc_tensor_count(gate_w->info) <= UINT32_MAX &&
+			ccv_nnc_tensor_count(output->info) <= UINT32_MAX;
+		if (rowwise_weights && (use_neural_accelerators || use_scaled_swiglu_without_neural_accelerators))
+		{
+			const ccv_nnc_mfa_scaled_swiglu_params_t params = {
+				.data_type = mtl_datatype,
+				.format = gate_format,
+				.M = M,
+				.N = N,
+				.K = K,
+				.loadM = !!(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M),
+				.use_neural_accelerators = use_neural_accelerators,
+				.clamp = cmd.info.swiglu.clamp,
+				.gate_soft_cap = cmd.info.swiglu.gate_soft_cap,
+				.up_soft_cap = cmd.info.swiglu.up_soft_cap,
+			};
+			ccv_nnc_mfa_prepare_scaled_swiglu(context, params);
+			mtl_command_batch_t* const command_batch = ccv_nnc_stream_context_start_command_batch(stream_context);
+			mtl_buffer_t* tensors[5] = {
+				mpgetbuffer((ccv_nnc_tensor_t*)gate_w),
+				mpgetbuffer((ccv_nnc_tensor_t*)up_w),
+				mpgetbuffer((ccv_nnc_tensor_t*)a),
+				mpgetbuffer((ccv_nnc_tensor_t*)output),
+				NULL,
+			};
+			size_t tensor_offsets[4] = {
+				gate_w->dataof, up_w->dataof, a->dataof, output->dataof,
+			};
+			ccv_nnc_mfa_encode_scaled_swiglu(
+				context, params, command_batch, tensors, tensor_offsets);
+			ccv_nnc_stream_context_finish_command_batch(stream_context, command_batch);
+			return CCV_NNC_EXEC_SUCCESS;
+		}
+
+		const ccv_nnc_mfa_swish_mul_params_t swish_params = {
+			.beta = 1,
+			.scale = 1,
+			.clamp = cmd.info.swiglu.clamp,
+			.gate_soft_cap = cmd.info.swiglu.gate_soft_cap,
+			.up_soft_cap = cmd.info.swiglu.up_soft_cap,
+			.a_data_type = mtl_datatype,
+			.b_data_type = mtl_datatype,
+			.weight_data_type = mtl_datatype,
+			.length = M * N,
+			.weighted = 0,
+			.loadM = !!(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M),
+		};
+		const ccv_nnc_mfa_gemm_params_t gemm_params = {
+			.data_type = mtl_datatype,
+			.M = M,
+			.N = N,
+			.K = K,
+			.A_trans = 0,
+			.B_trans = 1,
+			.D_trans = 0,
+			.fused_bias = 0,
+			.register_float = 1,
+			.use_neural_accelerators = use_neural_accelerators,
+			.batch_dimension = 1,
+			.loadM = !!(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M),
+		};
+		ccv_nnc_mfa_prepare_swish_mul(context, swish_params);
+		ccv_nnc_mfa_prepare_gemm(context, gemm_params);
+		const size_t gemm_scratch_size = ccv_nnc_mfa_gemm_reserved_scratch_size(gemm_params);
+		const size_t decoded_weight_offset = _ccv_nnc_swiglu_align_up(gemm_scratch_size, 256);
+		const size_t decoded_weight_size = rowwise_weights ?
+			(size_t)N * K * CCV_GET_DATA_TYPE_SIZE(a->info.datatype) : 0;
+		const size_t intermediate_offset = _ccv_nnc_swiglu_align_up(
+			decoded_weight_offset + decoded_weight_size, 256);
+		const size_t intermediate_size =
+			(size_t)M * N * CCV_GET_DATA_TYPE_SIZE(a->info.datatype);
+		mtl_buffer_t* const scratch = ccv_nnc_mfa_request_scratch(
+			context, intermediate_offset + intermediate_size);
+		ccv_nnc_mfa_dequantize_8i_rowwise_params_t rowwise_decode_params = {};
+		ccv_nnc_mfa_dequantize_8i_rowwise_x_fp_params_t rowwise_x_decode_params = {};
 		if (rowwise_weights)
 		{
-			mtl_buffer_t* decode_tensors[3] = { weight_data, scratch, NULL };
-			size_t decode_offsets[2] = { weight_offset, decoded_weight_offset };
 			if (gate_format)
-				ccv_nnc_mfa_encode_dequantize_8i_rowwise_x_fp(
-					context, rowwise_x_decode_params, command_batch, decode_tensors, decode_offsets);
-			else
-				ccv_nnc_mfa_encode_dequantize_8i_rowwise(
-					context, rowwise_decode_params, command_batch, decode_tensors, decode_offsets);
-			weight_data = scratch;
-			weight_offset = decoded_weight_offset;
+			{
+				rowwise_x_decode_params = (ccv_nnc_mfa_dequantize_8i_rowwise_x_fp_params_t){
+					.data_type = mtl_datatype,
+					.format = gate_format,
+					.row_length = K,
+					.length = (uint64_t)N * K,
+				};
+				ccv_nnc_mfa_prepare_dequantize_8i_rowwise_x_fp(context, rowwise_x_decode_params);
+			} else {
+				rowwise_decode_params = (ccv_nnc_mfa_dequantize_8i_rowwise_params_t){
+					.data_type = mtl_datatype,
+					.row_length = K,
+					.length = (uint64_t)N * K,
+				};
+				ccv_nnc_mfa_prepare_dequantize_8i_rowwise(context, rowwise_decode_params);
+			}
 		}
-		mtl_buffer_t* const destination = projection == 0 ?
-			scratch : mpgetbuffer((ccv_nnc_tensor_t*)output);
-		const size_t destination_offset = projection == 0 ?
-			intermediate_offset : output->dataof;
-		mtl_buffer_t* gemm_tensors[4] = {
-			mpgetbuffer((ccv_nnc_tensor_t*)a), weight_data, destination, NULL,
+		const ccv_nnc_tensor_view_t* const weights[2] = { gate_w, up_w };
+		mtl_command_batch_t* const command_batch = ccv_nnc_stream_context_start_command_batch(stream_context);
+		int projection;
+		for (projection = 0; projection < 2; projection++)
+		{
+			mtl_buffer_t* weight_data = mpgetbuffer((ccv_nnc_tensor_t*)weights[projection]);
+			size_t weight_offset = weights[projection]->dataof;
+			if (rowwise_weights)
+			{
+				mtl_buffer_t* decode_tensors[3] = { weight_data, scratch, NULL };
+				size_t decode_offsets[2] = { weight_offset, decoded_weight_offset };
+				if (gate_format)
+					ccv_nnc_mfa_encode_dequantize_8i_rowwise_x_fp(
+						context, rowwise_x_decode_params, command_batch, decode_tensors, decode_offsets);
+				else
+					ccv_nnc_mfa_encode_dequantize_8i_rowwise(
+						context, rowwise_decode_params, command_batch, decode_tensors, decode_offsets);
+				weight_data = scratch;
+				weight_offset = decoded_weight_offset;
+			}
+			mtl_buffer_t* const destination = projection == 0 ?
+				scratch : mpgetbuffer((ccv_nnc_tensor_t*)output);
+			const size_t destination_offset = projection == 0 ?
+				intermediate_offset : output->dataof;
+			mtl_buffer_t* gemm_tensors[4] = {
+				mpgetbuffer((ccv_nnc_tensor_t*)a), weight_data, destination, NULL,
+			};
+			size_t gemm_offsets[3] = { a->dataof, weight_offset, destination_offset };
+			ccv_nnc_mfa_encode_gemm(
+				context, gemm_params, command_batch, gemm_tensors, gemm_offsets);
+		}
+		mtl_buffer_t* swish_tensors[4] = {
+			mpgetbuffer((ccv_nnc_tensor_t*)output), scratch,
+			mpgetbuffer((ccv_nnc_tensor_t*)output), NULL,
 		};
-		size_t gemm_offsets[3] = { a->dataof, weight_offset, destination_offset };
-		ccv_nnc_mfa_encode_gemm(
-			context, gemm_params, command_batch, gemm_tensors, gemm_offsets);
+		size_t swish_offsets[3] = {
+			output->dataof, intermediate_offset, output->dataof,
+		};
+		ccv_nnc_mfa_encode_swish_mul(
+			context, swish_params, command_batch, swish_tensors, swish_offsets);
+		ccv_nnc_stream_context_finish_command_batch(stream_context, command_batch);
 	}
-	mtl_buffer_t* swish_tensors[4] = {
-		mpgetbuffer((ccv_nnc_tensor_t*)output), scratch,
-		mpgetbuffer((ccv_nnc_tensor_t*)output), NULL,
-	};
-	size_t swish_offsets[3] = {
-		output->dataof, intermediate_offset, output->dataof,
-	};
-	ccv_nnc_mfa_encode_swish_mul(
-		context, swish_params, command_batch, swish_tensors, swish_offsets);
-	ccv_nnc_stream_context_finish_command_batch(stream_context, command_batch);
 	return CCV_NNC_EXEC_SUCCESS;
 }
 

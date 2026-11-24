@@ -703,7 +703,9 @@ static int _ccv_nnc_segmented_swiglu_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc
 	ccv_nnc_tensor_t* const shared[4] = {
 		input_size == 9 ? inputs[6] : 0, input_size == 9 ? inputs[7] : 0, input_size == 9 ? inputs[8] : 0, output_size == 2 ? outputs[1] : 0,
 	};
-	return _ccv_nnc_segmented_swiglu_routed_forw(cmd, inputs, outputs, input_size == 9 ? shared : 0, stream_context);
+	@autoreleasepool {
+		return _ccv_nnc_segmented_swiglu_routed_forw(cmd, inputs, outputs, input_size == 9 ? shared : 0, stream_context);
+	}
 }
 
 REGISTER_COMMAND_BACKEND(CCV_NNC_SEGMENTED_SWIGLU_FORWARD, CCV_NNC_BACKEND_MPS)(ccv_nnc_cmd_backend_registry_t* const registry)
