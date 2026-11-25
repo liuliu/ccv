@@ -887,81 +887,83 @@ static int _ccv_nnc_moe_weights_streaming_forw(const ccv_nnc_cmd_t cmd, const cc
 		return CCV_NNC_EXEC_INVALID;
 	if (outputs[0]->info.dim[0] == 0)
 		return CCV_NNC_EXEC_SUCCESS;
-	// Expert weights with an inline codebook (TMCQ) stream as the data after the table, naming the table's slot:
-	// the file region, the layouts and the resident bank are those of a tensor without one.
-	ccv_nnc_tensor_t weight_views[3];
-	ccv_nnc_tensor_t* inputs[6];
-	int k;
-	for (k = 0; k < 6; k++)
-	{
-		inputs[k] = source_inputs[k];
-		if (k >= 3)
+	@autoreleasepool {
+		// Expert weights with an inline codebook (TMCQ) stream as the data after the table, naming the table's slot:
+		// the file region, the layouts and the resident bank are those of a tensor without one.
+		ccv_nnc_tensor_t weight_views[3];
+		ccv_nnc_tensor_t* inputs[6];
+		int k;
+		for (k = 0; k < 6; k++)
 		{
-			inputs[k] = (ccv_nnc_tensor_t*)ccv_nnc_mps_8i_rowwise_x_inline_view(source_inputs[k], &weight_views[k - 3]);
-			if (!inputs[k])
-				return CCV_NNC_EXEC_INVALID;
-		}
-	}
-	if (!_ccv_nnc_moe_validate(cmd, inputs, input_size, outputs, output_size))
-		return CCV_NNC_EXEC_INVALID;
-	MFAMoEWeightsStreamingState* const state = _ccv_nnc_moe_state_for_inputs(
-		inputs, outputs, cmd.info.moe_weights_streaming.resident_slots,
-		cmd.info.moe_weights_streaming.routing_width);
-	if (!state)
-		return CCV_NNC_EXEC_INVALID;
-	const size_t route_weight_count = ccv_nnc_tensor_count(inputs[2]->info);
-	const size_t tokens = route_weight_count / cmd.info.moe_weights_streaming.routing_width;
-	// Up to the widest DSpark verify, a call uses the resident pool as decode does when every
-	// routed pair could take a slot of its own: hits read in place and misses join the pool.
-	// Longer calls, such as prompt chunks, stage the experts they use. The plan kernel applies
-	// the same rule.
-	const int prefill = tokens > CCV_NNC_MFA_MOE_WEIGHTS_STREAMING_RESIDENT_TOKENS ||
-		route_weight_count > (size_t)state->resident_slot_count;
-	// Use token count, not routed rows. Above 25% resident coverage, retain
-	// selective loading until the larger prefill boundary (tuned on DS4).
-	const int full_prefill = tokens >= 4096 || (tokens >= 3072 &&
-		(size_t)state->resident_slot_count * 4 <= (size_t)state->expert_count);
-	if (prefill && !_ccv_nnc_moe_prepare_prefill_buffers(state, stream_context))
-		return CCV_NNC_EXEC_INVALID;
-	if (state->generation >= UINT32_MAX)
-		return CCV_NNC_EXEC_INVALID;
-	const uint64_t generation = ++state->generation;
-	state->prefill = prefill;
-	if (full_prefill)
-	{
-		@autoreleasepool {
-			MPSCommandBuffer* const command_buffer = ccv_nnc_stream_context_start_mps_command_buffer(stream_context);
-			id<MTLBlitCommandEncoder> const encoder = [command_buffer.commandBuffer blitCommandEncoder];
-			int i;
-			for (i = 0; i < 3; i++)
+			inputs[k] = source_inputs[k];
+			if (k >= 3)
 			{
-				if (inputs[i] == outputs[i])
-					continue;
-				[encoder copyFromBuffer:mpgetbuffer(inputs[i]) sourceOffset:mpgetoffset(inputs[i])
-					toBuffer:mpgetbuffer(outputs[i]) destinationOffset:mpgetoffset(outputs[i])
-					size:ccv_nnc_tensor_data_size_without_padding(inputs[i]->info)];
+				inputs[k] = (ccv_nnc_tensor_t*)ccv_nnc_mps_8i_rowwise_x_inline_view(source_inputs[k], &weight_views[k - 3]);
+				if (!inputs[k])
+					return CCV_NNC_EXEC_INVALID;
 			}
-			[encoder endEncoding];
-			ccv_nnc_stream_context_finish_mps_command_buffer(stream_context, command_buffer);
 		}
-		// Let preceding GPU work overlap the asynchronous weight load.
-		ccv_nnc_stream_context_commit(stream_context);
-	} else if (!_ccv_nnc_moe_encode_gpu_plan(state, inputs, outputs, generation, stream_context))
-		return CCV_NNC_EXEC_INVALID;
-	id<MTLBuffer> const prefill_gate_buffer = state->prefill_buffers[0];
-	id<MTLBuffer> const prefill_up_buffer = state->prefill_buffers[1];
-	id<MTLBuffer> const prefill_down_buffer = state->prefill_buffers[2];
-	dispatch_async(_ccv_nnc_moe_weight_queue(), ^{
-		@autoreleasepool {
-			if (full_prefill)
-				_ccv_nnc_moe_load_full_prefill(state, generation,
-					prefill_gate_buffer, prefill_up_buffer, prefill_down_buffer);
-			else
-				_ccv_nnc_moe_load_gpu_plan(state, generation, state->expert_count, prefill,
-					prefill_gate_buffer, prefill_up_buffer, prefill_down_buffer);
-		}
-	});
-	return CCV_NNC_EXEC_SUCCESS;
+		if (!_ccv_nnc_moe_validate(cmd, inputs, input_size, outputs, output_size))
+			return CCV_NNC_EXEC_INVALID;
+		MFAMoEWeightsStreamingState* const state = _ccv_nnc_moe_state_for_inputs(
+			inputs, outputs, cmd.info.moe_weights_streaming.resident_slots,
+			cmd.info.moe_weights_streaming.routing_width);
+		if (!state)
+			return CCV_NNC_EXEC_INVALID;
+		const size_t route_weight_count = ccv_nnc_tensor_count(inputs[2]->info);
+		const size_t tokens = route_weight_count / cmd.info.moe_weights_streaming.routing_width;
+		// Up to the widest DSpark verify, a call uses the resident pool as decode does when every
+		// routed pair could take a slot of its own: hits read in place and misses join the pool.
+		// Longer calls, such as prompt chunks, stage the experts they use. The plan kernel applies
+		// the same rule.
+		const int prefill = tokens > CCV_NNC_MFA_MOE_WEIGHTS_STREAMING_RESIDENT_TOKENS ||
+			route_weight_count > (size_t)state->resident_slot_count;
+		// Use token count, not routed rows. Above 25% resident coverage, retain
+		// selective loading until the larger prefill boundary (tuned on DS4).
+		const int full_prefill = tokens >= 4096 || (tokens >= 3072 &&
+			(size_t)state->resident_slot_count * 4 <= (size_t)state->expert_count);
+		if (prefill && !_ccv_nnc_moe_prepare_prefill_buffers(state, stream_context))
+			return CCV_NNC_EXEC_INVALID;
+		if (state->generation >= UINT32_MAX)
+			return CCV_NNC_EXEC_INVALID;
+		const uint64_t generation = ++state->generation;
+		state->prefill = prefill;
+		if (full_prefill)
+		{
+			@autoreleasepool {
+				MPSCommandBuffer* const command_buffer = ccv_nnc_stream_context_start_mps_command_buffer(stream_context);
+				id<MTLBlitCommandEncoder> const encoder = [command_buffer.commandBuffer blitCommandEncoder];
+				int i;
+				for (i = 0; i < 3; i++)
+				{
+					if (inputs[i] == outputs[i])
+						continue;
+					[encoder copyFromBuffer:mpgetbuffer(inputs[i]) sourceOffset:mpgetoffset(inputs[i])
+						toBuffer:mpgetbuffer(outputs[i]) destinationOffset:mpgetoffset(outputs[i])
+						size:ccv_nnc_tensor_data_size_without_padding(inputs[i]->info)];
+				}
+				[encoder endEncoding];
+				ccv_nnc_stream_context_finish_mps_command_buffer(stream_context, command_buffer);
+			}
+			// Let preceding GPU work overlap the asynchronous weight load.
+			ccv_nnc_stream_context_commit(stream_context);
+		} else if (!_ccv_nnc_moe_encode_gpu_plan(state, inputs, outputs, generation, stream_context))
+			return CCV_NNC_EXEC_INVALID;
+		id<MTLBuffer> const prefill_gate_buffer = state->prefill_buffers[0];
+		id<MTLBuffer> const prefill_up_buffer = state->prefill_buffers[1];
+		id<MTLBuffer> const prefill_down_buffer = state->prefill_buffers[2];
+		dispatch_async(_ccv_nnc_moe_weight_queue(), ^{
+			@autoreleasepool {
+				if (full_prefill)
+					_ccv_nnc_moe_load_full_prefill(state, generation,
+						prefill_gate_buffer, prefill_up_buffer, prefill_down_buffer);
+				else
+					_ccv_nnc_moe_load_gpu_plan(state, generation, state->expert_count, prefill,
+						prefill_gate_buffer, prefill_up_buffer, prefill_down_buffer);
+			}
+		});
+		return CCV_NNC_EXEC_SUCCESS;
+	}
 }
 
 void ccv_nnc_mps_moe_weights_encode_wait(const ccv_nnc_tensor_t* const tensor, MTLCommandBatch* const command_batch)

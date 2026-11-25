@@ -30,18 +30,20 @@ void ccv_nnc_mps_depalettize(const void* input, const int datatype, const size_t
 
 	ccv_nnc_mfa_prepare_depalettize(context, params);
 
-	mtl_command_batch_t* command_batch = ccv_nnc_stream_context_start_command_batch(0);
-	mtl_buffer_t* tensors[3] = {
-		(mtl_buffer_t*)input, // A
-		(mtl_buffer_t*)output, // B
-		NULL,
-	};
-	size_t tensor_offsets[2] = {
-		0, // A offset
-		0, // B offset
-	};
-	ccv_nnc_mfa_encode_depalettize(context, params, command_batch, tensors, tensor_offsets);
-	ccv_nnc_stream_context_finish_command_batch(0, command_batch);
+	@autoreleasepool {
+		mtl_command_batch_t* command_batch = ccv_nnc_stream_context_start_command_batch(0);
+		mtl_buffer_t* tensors[3] = {
+			(mtl_buffer_t*)input, // A
+			(mtl_buffer_t*)output, // B
+			NULL,
+		};
+		size_t tensor_offsets[2] = {
+			0, // A offset
+			0, // B offset
+		};
+		ccv_nnc_mfa_encode_depalettize(context, params, command_batch, tensors, tensor_offsets);
+		ccv_nnc_stream_context_finish_command_batch(0, command_batch);
+	}
 }
 
 void ccv_nnc_mps_dequantize_8i_rowwise(const void* input, const int datatype, const size_t input_length, const size_t row_length, void* output, const size_t output_length, void* const command_buffer)
@@ -74,18 +76,20 @@ void ccv_nnc_mps_dequantize_8i_rowwise(const void* input, const int datatype, co
 
 	ccv_nnc_mfa_prepare_dequantize_8i_rowwise(context, params);
 
-	mtl_command_batch_t* command_batch = ccv_nnc_stream_context_start_command_batch(0);
-	mtl_buffer_t* tensors[3] = {
-		(mtl_buffer_t*)input,
-		(mtl_buffer_t*)output,
-		NULL,
-	};
-	size_t tensor_offsets[2] = {
-		0,
-		0,
-	};
-	ccv_nnc_mfa_encode_dequantize_8i_rowwise(context, params, command_batch, tensors, tensor_offsets);
-	ccv_nnc_stream_context_finish_command_batch(0, command_batch);
+	@autoreleasepool {
+		mtl_command_batch_t* command_batch = ccv_nnc_stream_context_start_command_batch(0);
+		mtl_buffer_t* tensors[3] = {
+			(mtl_buffer_t*)input,
+			(mtl_buffer_t*)output,
+			NULL,
+		};
+		size_t tensor_offsets[2] = {
+			0,
+			0,
+		};
+		ccv_nnc_mfa_encode_dequantize_8i_rowwise(context, params, command_batch, tensors, tensor_offsets);
+		ccv_nnc_stream_context_finish_command_batch(0, command_batch);
+	}
 }
 
 // The MFA format of a TMCQ tensor format whose bits 16 - 23 name a codebook slot (ccv_nnc_codebook.h): the
@@ -144,18 +148,20 @@ void ccv_nnc_mps_dequantize_8i_rowwise_x(const void* input, const int datatype, 
 
 	ccv_nnc_mfa_prepare_dequantize_8i_rowwise_x_fp(context, params);
 
-	mtl_command_batch_t* command_batch = ccv_nnc_stream_context_start_command_batch(0);
-	mtl_buffer_t* tensors[3] = {
-		(mtl_buffer_t*)input,
-		(mtl_buffer_t*)output,
-		NULL,
-	};
-	size_t tensor_offsets[2] = {
-		inline_size,
-		0,
-	};
-	ccv_nnc_mfa_encode_dequantize_8i_rowwise_x_fp(context, params, command_batch, tensors, tensor_offsets);
-	ccv_nnc_stream_context_finish_command_batch(0, command_batch);
+	@autoreleasepool {
+		mtl_command_batch_t* command_batch = ccv_nnc_stream_context_start_command_batch(0);
+		mtl_buffer_t* tensors[3] = {
+			(mtl_buffer_t*)input,
+			(mtl_buffer_t*)output,
+			NULL,
+		};
+		size_t tensor_offsets[2] = {
+			inline_size,
+			0,
+		};
+		ccv_nnc_mfa_encode_dequantize_8i_rowwise_x_fp(context, params, command_batch, tensors, tensor_offsets);
+		ccv_nnc_stream_context_finish_command_batch(0, command_batch);
+	}
 }
 
 void ccv_nnc_mps_dequantize_8i_rowwise_x_to_8i_rowwise(const void* input, const int datatype, const size_t input_length, const size_t row_length, const int format, void* output, const size_t output_length, void* const command_buffer)
@@ -198,16 +204,18 @@ void ccv_nnc_mps_dequantize_8i_rowwise_x_to_8i_rowwise(const void* input, const 
 
 	ccv_nnc_mfa_prepare_dequantize_8i_rowwise_x(context, params);
 
-	mtl_command_batch_t* command_batch = ccv_nnc_stream_context_start_command_batch(0);
-	mtl_buffer_t* tensors[3] = {
-		(mtl_buffer_t*)input,
-		(mtl_buffer_t*)output,
-		NULL,
-	};
-	size_t tensor_offsets[2] = {
-		inline_size,
-		0,
-	};
-	ccv_nnc_mfa_encode_dequantize_8i_rowwise_x(context, params, command_batch, tensors, tensor_offsets);
-	ccv_nnc_stream_context_finish_command_batch(0, command_batch);
+	@autoreleasepool {
+		mtl_command_batch_t* command_batch = ccv_nnc_stream_context_start_command_batch(0);
+		mtl_buffer_t* tensors[3] = {
+			(mtl_buffer_t*)input,
+			(mtl_buffer_t*)output,
+			NULL,
+		};
+		size_t tensor_offsets[2] = {
+			inline_size,
+			0,
+		};
+		ccv_nnc_mfa_encode_dequantize_8i_rowwise_x(context, params, command_batch, tensors, tensor_offsets);
+		ccv_nnc_stream_context_finish_command_batch(0, command_batch);
+	}
 }
