@@ -893,6 +893,18 @@ TEST_CASE("codebook container matches the built-in table asset byte for byte")
 	REQUIRE_EQ(ccv_nnc_codebook_register_serialized(bad, sizeof(bad)), -1, "-128 fails even with a matching crc");
 }
 
+static int _test_set_stored_data(sqlite3* const db, const char* const name, const void* const data, const size_t size)
+{
+	sqlite3_stmt* stmt = 0;
+	if (sqlite3_prepare_v2(db, "UPDATE tensors SET data=$data WHERE name=$name", -1, &stmt, 0) != SQLITE_OK)
+		return -1;
+	sqlite3_bind_blob(stmt, 1, data, (int)size, SQLITE_TRANSIENT);
+	sqlite3_bind_text(stmt, 2, name, -1, 0);
+	const int result = sqlite3_step(stmt) == SQLITE_DONE ? 0 : -1;
+	sqlite3_finalize(stmt);
+	return result;
+}
+
 static int _test_set_stored_reserved(sqlite3* const db, const char* const name, const int reserved, const int datatype)
 {
 	sqlite3_stmt* stmt = 0;
@@ -1067,6 +1079,24 @@ TEST_CASE("TMCQ weights with an inline codebook survive the checkpoint without a
 		restored = existing;
 		REQUIRE_EQ(ccv_nnc_tensor_read(db, name, 0, 0, 0, &restored), CCV_IO_ERROR, "an existing tensor without the inline codebook fails");
 		ccv_nnc_tensor_free(existing);
+		// A stored table with a bad value, crc32 or padding fails the read itself, before any backend sees it.
+		static const size_t corrupt_at[3] = { 16 + 5, 12, 16 + 1024 + 3 };
+		int k;
+		for (k = 0; k < 3; k++)
+		{
+			uint8_t* const bad = (uint8_t*)ccmalloc(prefix + size);
+			memcpy(bad, weight->data.u8, prefix + size);
+			bad[corrupt_at[k] < prefix ? corrupt_at[k] : 16] ^= 1;
+			REQUIRE_EQ(_test_set_stored_data(db, name, bad, prefix + size), 0, "data updates");
+			restored = 0;
+			REQUIRE_EQ(ccv_nnc_tensor_read(db, name, 0, 0, 0, &restored), CCV_IO_ERROR, "a corrupt inline codebook fails the read (byte %d)", (int)corrupt_at[k]);
+			REQUIRE(restored == 0, "no tensor on failure");
+			ccfree(bad);
+		}
+		REQUIRE_EQ(_test_set_stored_data(db, name, weight->data.u8, prefix + size), 0, "data restores");
+		restored = 0;
+		REQUIRE_EQ(ccv_nnc_tensor_read(db, name, 0, 0, 0, &restored), CCV_IO_FINAL, "the restored row reads");
+		ccv_nnc_tensor_free(restored);
 		// The same row with half the marker fails, whichever half.
 		REQUIRE_EQ(_test_set_stored_reserved(db, name, format & ~(0xff << 16), weight->info.datatype), 0, "reserved updates");
 		restored = 0;
