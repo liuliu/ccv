@@ -1,7 +1,7 @@
 /* The built-in trellis pair codebook of TMCQ: 512 pairs (q0 for weight 2j, q1 for weight
  * 2j + 1), interleaved int8. Pair k = ((uint32_t)state * 0x83DCD12Du) >> 23. crc32 0x4b7574dc, sha256 of the 1024
- * bytes = 830ff43f1222371bb131cfd15d12f26a3881e4ba96584f1484345cb0f1605a3a. Files that carry their own codebook
- * (__ccv_codebook__/<id>) do not use it. Do not edit by hand. */
+ * bytes = 830ff43f1222371bb131cfd15d12f26a3881e4ba96584f1484345cb0f1605a3a. Weights that carry their own codebook
+ * inline do not use it. Do not edit by hand. */
 #ifndef CCV_NNC_TRELLIS_BUILTIN_TABLE_INC
 #define CCV_NNC_TRELLIS_BUILTIN_TABLE_INC
 static const int8_t ccv_nnc_trellis_builtin_table[1024] = {

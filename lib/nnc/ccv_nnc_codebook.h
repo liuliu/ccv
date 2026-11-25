@@ -5,12 +5,12 @@
  *
  * Codebooks live in a process-wide registry of slots. Slot 0 is the built-in table (512 pairs) and is always
  * present; registering a table returns a slot >= 1, and registering the same content again returns the same slot.
- * A tensor refers to its codebook through bits 16 - 23 of its reserved field (CCV_NNC_CODEBOOK_SLOT_SHIFT); in a
- * checkpoint those bits hold the file-local id of a __ccv_codebook__/<id> tensor, and reading the weight maps it to the
- * slot of that table. Old files have zero there, which is the built-in table.
+ * A tensor refers to its codebook through bits 16 - 23 of its reserved field (CCV_NNC_CODEBOOK_SLOT_SHIFT). A checkpoint
+ * holds only slot 0 (the built-in table, also of files without a codebook) or an inline codebook (below); a slot
+ * registered in this process is never stored.
  *
- * Serialized codebook (the data of a __ccv_codebook__/<id> tensor): 16 bytes "CCVCBOOK", uint32 entries, uint32 crc32
- * (zlib crc32 of the 2 P bytes that follow), then the 2 P int8 values, little-endian.
+ * Serialized codebook: a 16-byte header, "CCVCBOOK", uint32 entries, uint32 crc32 (zlib crc32 of the 2 P bytes that
+ * follow), then the 2 P int8 values, little-endian.
  *
  * Inline codebook (bits 24 - 25 of reserved, CCV_NNC_CODEBOOK_INLINE_SHIFT, with slot CCV_NNC_CODEBOOK_INLINE_SLOT):
  * the tensor data starts with the serialized table and zeros up to 128 + 2 P bytes, and the rest is the tensor
@@ -27,7 +27,6 @@
 #define CCV_NNC_CODEBOOK_MAX_SLOTS (256)
 #define CCV_NNC_CODEBOOK_HEADER_SIZE (16)
 #define CCV_NNC_CODEBOOK_MAGIC "CCVCBOOK" // 8 bytes, the start of a serialized codebook.
-#define CCV_NNC_CODEBOOK_TENSOR_PREFIX "__ccv_codebook__/"
 #define CCV_NNC_CODEBOOK_INLINE_SHIFT (24)
 #define CCV_NNC_CODEBOOK_INLINE_MASK (0x3 << CCV_NNC_CODEBOOK_INLINE_SHIFT)
 #define CCV_NNC_CODEBOOK_INLINE_SLOT (255) // Registered slots are 1 ... 254.

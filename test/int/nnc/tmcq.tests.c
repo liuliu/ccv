@@ -834,18 +834,6 @@ static void _test_tmcq_decode_table(const uint8_t* const payload, const int rows
 	}
 }
 
-// Writes the bytes of a serialized codebook (valid or not) as __ccv_codebook__/<id>, the way the exporter stores it.
-static int _test_write_codebook_bytes(sqlite3* const db, const int id, const uint8_t* const bytes, const int size)
-{
-	ccv_nnc_tensor_t* const tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(8U, size), 0);
-	memcpy(tensor->data.u8, bytes, size);
-	char name[64];
-	snprintf(name, sizeof(name), CCV_NNC_CODEBOOK_TENSOR_PREFIX "%d", id);
-	const int result = ccv_nnc_tensor_write(tensor, db, name, 0);
-	ccv_nnc_tensor_free(tensor);
-	return result;
-}
-
 static void _test_store_u32(uint8_t* const p, const uint32_t v)
 {
 	p[0] = (uint8_t)v, p[1] = (uint8_t)(v >> 8), p[2] = (uint8_t)(v >> 16), p[3] = (uint8_t)(v >> 24);
@@ -905,10 +893,22 @@ TEST_CASE("codebook container matches the built-in table asset byte for byte")
 	REQUIRE_EQ(ccv_nnc_codebook_register_serialized(bad, sizeof(bad)), -1, "-128 fails even with a matching crc");
 }
 
-TEST_CASE("TMCQ weights with a codebook id read their codebook from the checkpoint, TMCQ files without one read as before")
+static int _test_set_stored_reserved(sqlite3* const db, const char* const name, const int reserved, const int datatype)
+{
+	sqlite3_stmt* stmt = 0;
+	if (sqlite3_prepare_v2(db, "UPDATE tensors SET datatype=$datatype WHERE name=$name", -1, &stmt, 0) != SQLITE_OK)
+		return -1;
+	sqlite3_bind_int64(stmt, 1, ((sqlite_int64)reserved << 32) | (unsigned int)datatype);
+	sqlite3_bind_text(stmt, 2, name, -1, 0);
+	const int result = sqlite3_step(stmt) == SQLITE_DONE ? 0 : -1;
+	sqlite3_finalize(stmt);
+	return result;
+}
+
+TEST_CASE("TMCQ weights with a codebook slot decode with it, and only the built-in table or an inline codebook goes into a checkpoint")
 {
 	enum { rows = 32, cols = 256, n = 24 };
-	// A nonzero codebook id (reserved bits 16 - 23) is the file's codebook; 0 is the built-in table.
+	// A nonzero slot (reserved bits 16 - 23) is a table registered in this process; 0 is the built-in table.
 	const int tmcq = CCV_NNC_QX_8I_ROWWISE_TMCQ_N24;
 	REQUIRE(ccv_nnc_8i_rowwise_x_is_tmcq(tmcq | (5 << 16)), "TMCQ with a slot is TMCQ");
 	REQUIRE_EQ(ccv_nnc_8i_rowwise_x_tmcq_rate(tmcq | (5 << 16)), n, "the slot keeps the rate");
@@ -924,50 +924,28 @@ TEST_CASE("TMCQ weights with a codebook id read their codebook from the checkpoi
 	uint8_t* const scratch = ccmalloc(size);
 	REQUIRE_EQ(ccv_nnc_quantize_8i_rowwise_x(source->data.f32, CCV_32F, CCV_TENSOR_CPU_MEMORY, rows * cols, cols, tmcq | (1 << 16), 0, 0, 0, 0, scratch, size), 0, "ccv does not fit TMCQ with a slot");
 	ccfree(scratch);
-	// Codebooks: the alternate 512-pair table and a synthetic 2048-pair table.
+	// Codebooks: the alternate 512-pair table and a synthetic 2048-pair table, decoded by slot like the definition.
 	const int slot_alt = ccv_nnc_codebook_register_serialized(test_trellis_table_alt, sizeof(test_trellis_table_alt));
 	int8_t big[4096];
 	for (i = 0; i < 4096; i++)
 		big[i] = (int8_t)((i * 37 + 11) % 255 - 127);
 	const int slot_big = ccv_nnc_codebook_register(big, 2048);
 	REQUIRE(slot_alt >= 1 && slot_big >= 1 && slot_big != slot_alt, "both register");
-	sqlite3* db = 0;
-	REQUIRE_EQ(sqlite3_open(":memory:", &db), SQLITE_OK, "in-memory database opens");
-	// The old file layout: TMCQ, reserved == codec, reads back unchanged.
-	REQUIRE_EQ(ccv_nnc_tensor_write(packed, db, "old", 0), CCV_IO_FINAL, "TMCQ writes");
-	ccv_nnc_tensor_t* restored = 0;
-	REQUIRE_EQ(ccv_nnc_tensor_read(db, "old", 0, 0, 0, &restored), CCV_IO_FINAL, "TMCQ reads");
-	REQUIRE_EQ(restored->info.reserved, tmcq, "the TMCQ reserved field is unchanged");
-	REQUIRE_EQ(memcmp(restored->data.u8, packed->data.u8, size), 0, "TMCQ payload is unchanged");
-	ccv_nnc_tensor_free(restored);
-	REQUIRE_EQ(ccv_nnc_tensor_write_codebook(db, slot_alt, 3), CCV_IO_FINAL, "the alternate table writes as id 3");
-	REQUIRE_EQ(ccv_nnc_tensor_write_codebook(db, slot_big, 7), CCV_IO_FINAL, "the big table writes as id 7");
-	REQUIRE_EQ(ccv_nnc_tensor_write_codebook(db, 0, 1), CCV_IO_ERROR, "the built-in table is never written");
-	REQUIRE_EQ(ccv_nnc_tensor_read_codebook(db, 3), slot_alt, "id 3 reads back as the alternate slot");
-	REQUIRE_EQ(ccv_nnc_tensor_read_codebook(db, 4), -1, "a missing id fails");
-	REQUIRE_EQ(ccv_nnc_tensor_read_codebook(db, 0), -1, "id 0 is not a file codebook");
-	const int ids[2] = { 3, 7 };
 	const int slots[2] = { slot_alt, slot_big };
-	int c;
 	float* const a = ccmalloc(sizeof(float) * rows * cols);
 	float* const builtin = ccmalloc(sizeof(float) * rows * cols);
 	int* const q8 = ccmalloc(sizeof(int) * rows * cols);
-	ccv_nnc_dequantize_8i_rowwise_x(packed->data.u8, CCV_32F, CCV_TENSOR_CPU_MEMORY, size, cols, tmcq, builtin, rows * cols);
+	REQUIRE_EQ(ccv_nnc_dequantize_8i_rowwise_x(packed->data.u8, CCV_32F, CCV_TENSOR_CPU_MEMORY, size, cols, tmcq, builtin, rows * cols), 0, "decodes with the built-in table");
+	sqlite3* db = 0;
+	REQUIRE_EQ(sqlite3_open(":memory:", &db), SQLITE_OK, "in-memory database opens");
+	int c;
 	for (c = 0; c < 2; c++)
 	{
-		ccv_nnc_tensor_t* const external = ccv_nnc_tensor_new(0, ccv_nnc_tensor_8i_rowwise_x(source->info, tmcq | (ids[c] << 16)), 0);
-		memcpy(external->data.u8, packed->data.u8, size);
-		char name[32];
-		snprintf(name, sizeof(name), "w%d", c);
-		REQUIRE_EQ(ccv_nnc_tensor_write(external, db, name, 0), CCV_IO_FINAL, "TMCQ writes with its file id");
-		restored = 0;
-		REQUIRE_EQ(ccv_nnc_tensor_read(db, name, 0, 0, 0, &restored), CCV_IO_FINAL, "TMCQ with a file id reads");
-		REQUIRE_EQ(restored->info.reserved, tmcq | (slots[c] << 16), "the file id becomes the process slot");
-		REQUIRE_EQ(memcmp(restored->data.u8, packed->data.u8, size), 0, "TMCQ payload with a file id is unchanged");
+		const int format = ccv_nnc_codebook_with_slot(tmcq, slots[c]);
 		int entries = 0;
-		const int8_t* const table = ccv_nnc_codebook_get(ccv_nnc_8i_rowwise_x_codebook_slot(restored->info.reserved), &entries, 0);
+		const int8_t* const table = ccv_nnc_codebook_get(slots[c], &entries, 0);
 		_test_tmcq_decode_table(packed->data.u8, rows, cols, n, table, ccv_nnc_codebook_log2_entries(entries), q8);
-		ccv_nnc_dequantize_8i_rowwise_x(restored->data.u8, CCV_32F, CCV_TENSOR_CPU_MEMORY, size, cols, restored->info.reserved, a, rows * cols);
+		REQUIRE_EQ(ccv_nnc_dequantize_8i_rowwise_x(packed->data.u8, CCV_32F, CCV_TENSOR_CPU_MEMORY, size, cols, format, a, rows * cols), 0, "decodes with codebook %d", c);
 		const uint8_t* const scales = packed->data.u8 + _test_tmcq_scale_offset(rows, cols, n);
 		int same_as_builtin = 1;
 		for (i = 0; i < rows * cols; i++)
@@ -976,77 +954,37 @@ TEST_CASE("TMCQ weights with a codebook id read their codebook from the checkpoi
 			same_as_builtin = same_as_builtin && a[i] == builtin[i];
 		}
 		REQUIRE(!same_as_builtin, "codebook %d does not decode like the built-in table", c);
-		ccv_nnc_tensor_free(restored);
-		// A metadata read maps the id too, and so does a read into caller params that still hold the file id.
-		restored = 0;
-		REQUIRE_EQ(ccv_nnc_tensor_read(db, name, 0, CCV_NNC_TENSOR_READ_METADATA_ONLY, 0, &restored), CCV_IO_FINAL, "metadata reads");
-		REQUIRE_EQ(restored->info.reserved, tmcq | (slots[c] << 16), "metadata carries the process slot");
-		ccv_nnc_tensor_free(restored);
-		restored = 0;
-		REQUIRE_EQ(ccv_nnc_tensor_read(db, name, 0, 0, &external->info, &restored), CCV_IO_FINAL, "read into caller params");
-		REQUIRE_EQ(restored->info.reserved, tmcq | (slots[c] << 16), "caller params get the process slot");
-		ccv_nnc_tensor_free(restored);
+		// A process slot means nothing in a file: the write fails.
+		ccv_nnc_tensor_t* const external = ccv_nnc_tensor_new(0, ccv_nnc_tensor_8i_rowwise_x(source->info, format), 0);
+		memcpy(external->data.u8, packed->data.u8, size);
+		REQUIRE_EQ(ccv_nnc_tensor_write(external, db, "slot", 0), CCV_IO_ERROR, "a weight naming a process slot is not written");
 		ccv_nnc_tensor_free(external);
 	}
-	// A second file with the same table under another id resolves to the same slot.
-	sqlite3* db2 = 0;
-	REQUIRE_EQ(sqlite3_open(":memory:", &db2), SQLITE_OK, "second database opens");
-	REQUIRE_EQ(_test_write_codebook_bytes(db2, 9, test_trellis_table_alt, sizeof(test_trellis_table_alt)), CCV_IO_FINAL, "codebook bytes write");
-	REQUIRE_EQ(ccv_nnc_tensor_read_codebook(db2, 9), slot_alt, "another file, another id, the same slot");
-	// Inconsistent or broken files fail instead of decoding with the built-in table.
-	struct {
-		const char* name;
-		int reserved;
-	} invalid[] = {
-		{ "missing", tmcq | (5 << 16) },
-		{ "bad_magic", tmcq | (11 << 16) },
-		{ "bad_crc", tmcq | (12 << 16) },
-		{ "bad_entries", tmcq | (13 << 16) },
-		{ "truncated", tmcq | (14 << 16) },
-	};
-	uint8_t bad[sizeof(test_trellis_table_alt)];
-	memcpy(bad, test_trellis_table_alt, sizeof(bad));
-	bad[3] = 'X';
-	REQUIRE_EQ(_test_write_codebook_bytes(db2, 11, bad, sizeof(bad)), CCV_IO_FINAL, "codebook bytes write");
-	memcpy(bad, test_trellis_table_alt, sizeof(bad));
-	bad[200] ^= 4;
-	REQUIRE_EQ(_test_write_codebook_bytes(db2, 12, bad, sizeof(bad)), CCV_IO_FINAL, "codebook bytes write");
-	memcpy(bad, test_trellis_table_alt, sizeof(bad));
-	_test_store_u32(bad + 8, 1000);
-	REQUIRE_EQ(_test_write_codebook_bytes(db2, 13, bad, sizeof(bad)), CCV_IO_FINAL, "codebook bytes write");
-	REQUIRE_EQ(_test_write_codebook_bytes(db2, 14, test_trellis_table_alt, sizeof(test_trellis_table_alt) - 2), CCV_IO_FINAL, "codebook bytes write");
-	for (i = 0; i < (int)(sizeof(invalid) / sizeof(invalid[0])); i++)
+	REQUIRE_EQ(ccv_nnc_dequantize_8i_rowwise_x(packed->data.u8, CCV_32F, CCV_TENSOR_CPU_MEMORY, size, cols, ccv_nnc_codebook_with_slot(tmcq, 250), a, rows * cols), -1, "an unregistered slot fails to decode");
+	// Files without a codebook: TMCQ, reserved == codec, reads back unchanged.
+	REQUIRE_EQ(ccv_nnc_tensor_write(packed, db, "old", 0), CCV_IO_FINAL, "TMCQ writes");
+	ccv_nnc_tensor_t* restored = 0;
+	REQUIRE_EQ(ccv_nnc_tensor_read(db, "old", 0, 0, 0, &restored), CCV_IO_FINAL, "TMCQ reads");
+	REQUIRE_EQ(restored->info.reserved, tmcq, "the TMCQ reserved field is unchanged");
+	REQUIRE_EQ(memcmp(restored->data.u8, packed->data.u8, size), 0, "TMCQ payload is unchanged");
+	ccv_nnc_tensor_free(restored);
+	// A stored weight that names a file-level codebook id (1 - 254) fails, data read and metadata read alike, rather
+	// than decoding with the built-in table.
+	static const int ids[] = { 1, 3, 254 };
+	for (i = 0; i < (int)(sizeof(ids) / sizeof(ids[0])); i++)
 	{
-		ccv_nnc_tensor_param_t params = ccv_nnc_tensor_8i_rowwise_x(source->info, tmcq);
-		params.reserved = invalid[i].reserved;
-		ccv_nnc_tensor_t* const weight = ccv_nnc_tensor_new(0, params, 0);
-		memcpy(weight->data.u8, packed->data.u8, size);
-		REQUIRE_EQ(ccv_nnc_tensor_write(weight, db2, invalid[i].name, 0), CCV_IO_FINAL, "writes");
-		ccv_nnc_tensor_free(weight);
+		REQUIRE_EQ(_test_set_stored_reserved(db, "old", ccv_nnc_codebook_with_slot(tmcq, ids[i]), packed->info.datatype), 0, "reserved updates");
 		restored = 0;
-		REQUIRE_EQ(ccv_nnc_tensor_read(db2, invalid[i].name, 0, 0, 0, &restored), CCV_IO_ERROR, "%s fails", invalid[i].name);
-		REQUIRE(restored == 0, "%s leaves no tensor", invalid[i].name);
-		REQUIRE_EQ(ccv_nnc_tensor_read(db2, invalid[i].name, 0, CCV_NNC_TENSOR_READ_METADATA_ONLY, 0, &restored), CCV_IO_ERROR, "%s metadata fails", invalid[i].name);
+		REQUIRE_EQ(ccv_nnc_tensor_read(db, "old", 0, 0, 0, &restored), CCV_IO_ERROR, "file codebook id %d fails", ids[i]);
+		REQUIRE(restored == 0, "id %d leaves no tensor", ids[i]);
+		REQUIRE_EQ(ccv_nnc_tensor_read(db, "old", 0, CCV_NNC_TENSOR_READ_METADATA_ONLY, 0, &restored), CCV_IO_ERROR, "file codebook id %d metadata fails", ids[i]);
 	}
-	sqlite3_close(db2);
 	sqlite3_close(db);
 	ccfree(q8);
 	ccfree(builtin);
 	ccfree(a);
 	ccv_nnc_tensor_free(packed);
 	ccv_nnc_tensor_free(source);
-}
-
-static int _test_set_stored_reserved(sqlite3* const db, const char* const name, const int reserved, const int datatype)
-{
-	sqlite3_stmt* stmt = 0;
-	if (sqlite3_prepare_v2(db, "UPDATE tensors SET datatype=$datatype WHERE name=$name", -1, &stmt, 0) != SQLITE_OK)
-		return -1;
-	sqlite3_bind_int64(stmt, 1, ((sqlite_int64)reserved << 32) | (unsigned int)datatype);
-	sqlite3_bind_text(stmt, 2, name, -1, 0);
-	const int result = sqlite3_step(stmt) == SQLITE_DONE ? 0 : -1;
-	sqlite3_finalize(stmt);
-	return result;
 }
 
 TEST_CASE("TMCQ weights with an inline codebook survive the checkpoint without a codebook tensor and decode like the table by slot")
@@ -1138,7 +1076,6 @@ TEST_CASE("TMCQ weights with an inline codebook survive the checkpoint without a
 		REQUIRE(restored == 0, "no tensor on failure");
 		ccv_nnc_tensor_free(weight);
 	}
-	REQUIRE_EQ(ccv_nnc_tensor_read_codebook(db, 255), -1, "no codebook tensor was written");
 	sqlite3_close(db);
 	ccfree(by_inline);
 	ccfree(by_slot);

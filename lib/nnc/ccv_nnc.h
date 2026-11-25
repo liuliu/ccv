@@ -924,23 +924,6 @@ enum {
  * @return CCV_IO_FINAL for success, otherwise error.
  */
 int ccv_nnc_tensor_read(void* const handle, const char* const name, const ccv_nnc_tensor_io_option_t* const options, const int flags, const ccv_nnc_tensor_param_t* const tensor_params, ccv_nnc_tensor_t** const tensor_out);
-/**
- * Read the pair codebook __ccv_codebook__/<id> of a SQLite database (see ccv_nnc_codebook.h) and register it.
- * ccv_nnc_tensor_read calls this for a row-wise-x weight whose stored reserved field names codebook id, and stores the
- * returned slot in the tensor's reserved field instead of the id.
- * @param handle The SQLite handle.
- * @param id The id of the codebook in this file, 1 to 255.
- * @return The process-wide codebook slot (>= 1), or -1 if the tensor is missing or not a valid codebook.
- */
-CCV_WARN_UNUSED(int) ccv_nnc_tensor_read_codebook(void* const handle, const int id);
-/**
- * Write the codebook of a slot as __ccv_codebook__/<id> to a SQLite database.
- * @param handle The SQLite handle.
- * @param slot The process-wide codebook slot (0 is the built-in table, which is never stored in a file).
- * @param id The id of the codebook in this file, 1 to 255.
- * @return CCV_IO_FINAL for success, otherwise error.
- */
-int ccv_nnc_tensor_write_codebook(void* const handle, const int slot, const int id);
 /** @} */
 
 /**
@@ -1196,7 +1179,7 @@ enum {
 	 * ccv_nnc_8i_rowwise_x_payload_bits; a kernel that needs more checks it itself). A nonzero codebook slot (reserved bits 16 - 23, see ccv_nnc_codebook.h) replaces T
 	 * with that codebook of P = 512, 1024 or 2048 pairs, and k = (cw * 0x83DCD12D) >> (32 - log2 P). ccv builds
 	 * in only that table, the table of files without a codebook; other tables come with the tensor itself
-	 * (CCV_NNC_QX_8I_ROWWISE_CODEBOOK_INLINE_MASK) or, in older files, with the file (__ccv_codebook__/<id>). */
+	 * (CCV_NNC_QX_8I_ROWWISE_CODEBOOK_INLINE_MASK). */
 	CCV_NNC_QX_8I_ROWWISE_TMCQ_N16,
 	CCV_NNC_QX_8I_ROWWISE_TMCQ_N18,
 	CCV_NNC_QX_8I_ROWWISE_TMCQ_N20,
@@ -1215,8 +1198,8 @@ enum {
 	 * its anti-diagonal. Requires K % 256 == 0; no output rotation. */
 	CCV_NNC_QX_8I_ROWWISE_HADAMARD_256 = 0x100,
 	/* Codebook slot of the trellis codecs, bits 16 - 23 (CCV_NNC_CODEBOOK_SLOT_MASK in ccv_nnc_codebook.h). 0 is
-	 * the built-in table. In a checkpoint it is the id of the file's __ccv_codebook__/<id> tensor; reading the
-	 * tensor maps it to the process-wide slot. */
+	 * the built-in table, 255 an inline codebook (below), any other a table registered in this process, which a
+	 * checkpoint cannot hold (ccv_nnc_tensor_write rejects it). */
 	CCV_NNC_QX_8I_ROWWISE_CODEBOOK_SLOT_SHIFT = 16,
 	CCV_NNC_QX_8I_ROWWISE_CODEBOOK_SLOT_MASK = 0xff0000,
 	/* Inline codebook of a TMCQ tensor, bits 24 - 25: c = 1, 2, 3 for a table of P = 256 << c pairs (512, 1024,
