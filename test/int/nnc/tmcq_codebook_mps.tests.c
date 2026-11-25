@@ -405,6 +405,131 @@ TEST_CASE("mps tmcq decode with a random codebook matches the reference bit for 
 	}
 }
 
+// CPU and GPU weights of a case with the table of `slot` inline: the serialized table, zeros up to 128 + 2 P bytes,
+// then the bytes of *hq_slot (the same case naming the slot).
+static void make_inline_weights(const weight_case_t w, const int slot, const ccv_nnc_tensor_t* const hq_slot, ccv_nnc_tensor_t** const hq, ccv_nnc_tensor_t** const gq)
+{
+	int entries = 0;
+	ccv_nnc_codebook_get(slot, &entries, 0);
+	const int format = ccv_nnc_8i_rowwise_x_with_inline_codebook(w.format, entries);
+	*hq = ccv_nnc_tensor_new(0, ccv_nnc_tensor_8i_rowwise_x(params_of(CCV_TENSOR_CPU_MEMORY, w.datatype, w.rows, w.cols), format), 0);
+	*gq = ccv_nnc_tensor_new(0, ccv_nnc_tensor_8i_rowwise_x(params_of(CCV_TENSOR_GPU_MEMORY, w.datatype, w.rows, w.cols), format), 0);
+	const size_t prefix = ccv_nnc_8i_rowwise_x_inline_codebook_size(format);
+	const size_t rest = ccv_nnc_tensor_data_size_without_padding(hq_slot->info);
+	assert(prefix == 128 + (size_t)entries * 2 && ccv_nnc_tensor_data_size_without_padding((*hq)->info) == prefix + rest);
+	memset((*hq)->data.u8, 0, prefix);
+	const size_t written = ccv_nnc_codebook_serialize(slot, (*hq)->data.u8, prefix);
+	assert(written == CCV_NNC_CODEBOOK_HEADER_SIZE + (size_t)entries * 2);
+	memcpy((*hq)->data.u8 + prefix, hq_slot->data.u8, rest);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(*hq), TENSOR_LIST(*gq), 0);
+}
+
+TEST_CASE("mps tmcq with an inline codebook equals the same table in its slot bit for bit")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_MPS));
+	static const int entries[] = { 512, 1024, 2048 };
+	static const int ms[] = { 1, 2, 3, 4, 9, 64, 512 };
+	int e, c, mi, with_bias;
+	for (e = 0; e < 3; e++)
+	{
+		const int slot = register_random(entries[e], 0xc0deu + e);
+		REQUIRE(slot > 0, "registers a random table of %d pairs", entries[e]);
+		for (c = 0; c < (int)(sizeof(weight_cases) / sizeof(weight_cases[0])); c++)
+		{
+			const weight_case_t w = weight_cases[c];
+			ccv_nnc_tensor_t *hs, *gs, *hi, *gi;
+			make_weights(w, slot, 0x7150u + c, &hs, &gs);
+			make_inline_weights(w, slot, hs, &hi, &gi);
+			for (mi = 0; mi < (int)(sizeof(ms) / sizeof(ms[0])); mi++)
+				for (with_bias = 0; with_bias < 2; with_bias++)
+				{
+					uint8_t *bs, *bi;
+					REQUIRE_EQ(run_gemm(w, gs, ms[mi], with_bias, &bs), CCV_NNC_EXEC_SUCCESS, "slot GEMM runs (format %d, P %d, M %d)", w.format, entries[e], ms[mi]);
+					REQUIRE_EQ(run_gemm(w, gi, ms[mi], with_bias, &bi), CCV_NNC_EXEC_SUCCESS, "inline GEMM runs (format %d, P %d, M %d)", w.format, entries[e], ms[mi]);
+					REQUIRE_EQ(memcmp(bs, bi, (size_t)ms[mi] * w.rows * CCV_GET_DATA_TYPE_SIZE(w.datatype)), 0, "format %d %dx%d P %d M %d bias %d: inline output equals the slot output", w.format, w.rows, w.cols, entries[e], ms[mi], with_bias);
+					ccfree(bs);
+					ccfree(bi);
+				}
+			// The fp decode, CPU and GPU, of the whole tensor data (table first).
+			const size_t count = (size_t)w.rows * w.cols;
+			const size_t esize = CCV_GET_DATA_TYPE_SIZE(w.datatype);
+			ccv_nnc_tensor_t* const hs_fp = ccv_nnc_tensor_new(0, params_of(CCV_TENSOR_CPU_MEMORY, w.datatype, w.rows, w.cols), 0);
+			ccv_nnc_tensor_t* const hi_fp = ccv_nnc_tensor_new(0, params_of(CCV_TENSOR_CPU_MEMORY, w.datatype, w.rows, w.cols), 0);
+			REQUIRE_EQ(ccv_nnc_dequantize_8i_rowwise_x(hs->data.u8, w.datatype, CCV_TENSOR_CPU_MEMORY, ccv_nnc_tensor_data_size_without_padding(hs->info), w.cols, hs->info.reserved, hs_fp->data.u8, count), 0, "CPU decode by slot");
+			REQUIRE_EQ(ccv_nnc_dequantize_8i_rowwise_x(hi->data.u8, w.datatype, CCV_TENSOR_CPU_MEMORY, ccv_nnc_tensor_data_size_without_padding(hi->info), w.cols, hi->info.reserved, hi_fp->data.u8, count), 0, "CPU decode inline");
+			REQUIRE_EQ(memcmp(hs_fp->data.u8, hi_fp->data.u8, count * esize), 0, "format %d P %d: the CPU decode inline equals it by slot", w.format, entries[e]);
+			ccv_nnc_tensor_t* const g_fp = ccv_nnc_tensor_new(0, params_of(CCV_TENSOR_GPU_MEMORY, w.datatype, w.rows, w.cols), 0);
+			REQUIRE_EQ(ccv_nnc_dequantize_8i_rowwise_x(gi->data.u8, w.datatype, CCV_TENSOR_GPU_MEMORY, ccv_nnc_tensor_data_size_without_padding(gi->info), w.cols, gi->info.reserved, g_fp->data.u8, count), 0, "GPU decode inline");
+			ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(g_fp), TENSOR_LIST(hi_fp), 0);
+			ccv_nnc_tensor_t* const g_fp_slot = ccv_nnc_tensor_new(0, params_of(CCV_TENSOR_GPU_MEMORY, w.datatype, w.rows, w.cols), 0);
+			REQUIRE_EQ(ccv_nnc_dequantize_8i_rowwise_x(gs->data.u8, w.datatype, CCV_TENSOR_GPU_MEMORY, ccv_nnc_tensor_data_size_without_padding(gs->info), w.cols, gs->info.reserved, g_fp_slot->data.u8, count), 0, "GPU decode by slot");
+			ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(g_fp_slot), TENSOR_LIST(hs_fp), 0);
+			REQUIRE_EQ(memcmp(hs_fp->data.u8, hi_fp->data.u8, count * esize), 0, "format %d P %d: the GPU decode inline equals it by slot", w.format, entries[e]);
+			ccv_nnc_tensor_free(g_fp_slot);
+			ccv_nnc_tensor_free(g_fp);
+			ccv_nnc_tensor_free(hi_fp);
+			ccv_nnc_tensor_free(hs_fp);
+			ccv_nnc_tensor_free(gi);
+			ccv_nnc_tensor_free(hi);
+			ccv_nnc_tensor_free(gs);
+			ccv_nnc_tensor_free(hs);
+		}
+	}
+}
+
+TEST_CASE("mps gemm and the CPU decode reject an inline codebook with a bad header, table or padding")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_MPS));
+	const weight_case_t w = weight_cases[0];
+	ccv_nnc_tensor_t *hs, *gs, *hi, *gi;
+	make_weights(w, 0, 0x2u, &hs, &gs);
+	make_inline_weights(w, 0, hs, &hi, &gi);
+	const size_t count = (size_t)w.rows * w.cols;
+	ccv_nnc_tensor_t* const fp = ccv_nnc_tensor_new(0, params_of(CCV_TENSOR_CPU_MEMORY, w.datatype, w.rows, w.cols), 0);
+	// Each corruption alone: the magic, the entry count, the crc32, a table value (crc32 no longer matches), a value of
+	// -128 with its crc32 fixed (never a code), a padding byte.
+	static const char* const names[] = { "magic", "entry count", "crc32", "table value", "-128 with its crc32", "padding" };
+	int c;
+	for (c = 0; c < 6; c++)
+	{
+		uint8_t saved[1152];
+		memcpy(saved, hi->data.u8, sizeof(saved));
+		uint8_t* const p = hi->data.u8;
+		if (c == 0)
+			p[3] ^= 1;
+		else if (c == 1)
+			p[9] ^= 4; // 512 -> 1536.
+		else if (c == 2)
+			p[12] ^= 1;
+		else if (c == 3)
+			p[16 + 17] ^= 2;
+		else if (c == 4) {
+			p[16 + 17] = 0x80;
+			const uint32_t crc = ccv_nnc_codebook_crc32(p + 16, 1024);
+			int b;
+			for (b = 0; b < 4; b++)
+				p[12 + b] = (uint8_t)(crc >> (8 * b));
+		} else
+			p[16 + 1024 + 50] = 1;
+		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(hi), TENSOR_LIST(gi), 0);
+		int m;
+		for (m = 1; m <= 9; m += 8)
+		{
+			uint8_t* out;
+			REQUIRE_EQ(run_gemm(w, gi, m, 0, &out), CCV_NNC_EXEC_INVALID, "an inline codebook with a bad %s is invalid (M %d)", names[c], m);
+			ccfree(out);
+		}
+		REQUIRE_EQ(ccv_nnc_dequantize_8i_rowwise_x(hi->data.u8, w.datatype, CCV_TENSOR_CPU_MEMORY, ccv_nnc_tensor_data_size_without_padding(hi->info), w.cols, hi->info.reserved, fp->data.u8, count), -1, "the CPU decode rejects a bad %s", names[c]);
+		memcpy(hi->data.u8, saved, sizeof(saved));
+	}
+	REQUIRE_EQ(ccv_nnc_dequantize_8i_rowwise_x(hi->data.u8, w.datatype, CCV_TENSOR_CPU_MEMORY, 1000, w.cols, hi->info.reserved, fp->data.u8, count), -1, "the CPU decode rejects data shorter than the prefix");
+	ccv_nnc_tensor_free(fp);
+	ccv_nnc_tensor_free(gi);
+	ccv_nnc_tensor_free(hi);
+	ccv_nnc_tensor_free(gs);
+	ccv_nnc_tensor_free(hs);
+}
+
 TEST_CASE("mps gemm rejects an unregistered codebook slot")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_MPS));

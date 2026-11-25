@@ -53,8 +53,12 @@ static int _ccv_nnc_swiglu_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hi
 	if (outputs[0]->info.dim[0] == 0)
 		return CCV_NNC_EXEC_SUCCESS;
 	const ccv_nnc_tensor_view_t* const a = (const ccv_nnc_tensor_view_t*)inputs[0];
-	const ccv_nnc_tensor_view_t* const gate_w = (const ccv_nnc_tensor_view_t*)inputs[1];
-	const ccv_nnc_tensor_view_t* const up_w = (const ccv_nnc_tensor_view_t*)inputs[2];
+	// TMCQ weights with an inline codebook: the data after the table, naming the table's slot.
+	ccv_nnc_tensor_t gate_inline, up_inline;
+	const ccv_nnc_tensor_view_t* const gate_w = (const ccv_nnc_tensor_view_t*)ccv_nnc_mps_8i_rowwise_x_inline_view(inputs[1], &gate_inline);
+	const ccv_nnc_tensor_view_t* const up_w = (const ccv_nnc_tensor_view_t*)ccv_nnc_mps_8i_rowwise_x_inline_view(inputs[2], &up_inline);
+	if (!gate_w || !up_w)
+		return CCV_NNC_EXEC_INVALID;
 	ccv_nnc_tensor_view_t* const output = (ccv_nnc_tensor_view_t*)outputs[0];
 	const int a_nd = ccv_nnc_tensor_nd(a->info.dim);
 	const int gate_w_nd = ccv_nnc_tensor_nd(gate_w->info.dim);

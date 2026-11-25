@@ -1195,8 +1195,8 @@ enum {
 	 * row_length % 16 == 0 (the payload is (row_count / 16) (row_length / 16) tiles of 2 n bytes, see
 	 * ccv_nnc_8i_rowwise_x_payload_bits; a kernel that needs more checks it itself). A nonzero codebook slot (reserved bits 16 - 23, see ccv_nnc_codebook.h) replaces T
 	 * with that codebook of P = 512, 1024 or 2048 pairs, and k = (cw * 0x83DCD12D) >> (32 - log2 P). ccv builds
-	 * in only that table, the table of files without a codebook; other tables come with the file
-	 * (__ccv_codebook__/<id>). */
+	 * in only that table, the table of files without a codebook; other tables come with the tensor itself
+	 * (CCV_NNC_QX_8I_ROWWISE_CODEBOOK_INLINE_MASK) or, in older files, with the file (__ccv_codebook__/<id>). */
 	CCV_NNC_QX_8I_ROWWISE_TMCQ_N16,
 	CCV_NNC_QX_8I_ROWWISE_TMCQ_N18,
 	CCV_NNC_QX_8I_ROWWISE_TMCQ_N20,
@@ -1219,6 +1219,15 @@ enum {
 	 * tensor maps it to the process-wide slot. */
 	CCV_NNC_QX_8I_ROWWISE_CODEBOOK_SLOT_SHIFT = 16,
 	CCV_NNC_QX_8I_ROWWISE_CODEBOOK_SLOT_MASK = 0xff0000,
+	/* Inline codebook of a TMCQ tensor, bits 24 - 25: c = 1, 2, 3 for a table of P = 256 << c pairs (512, 1024,
+	 * 2048) at the start of the tensor data, with codebook slot 255 (CCV_NNC_CODEBOOK_INLINE_SLOT; no table is ever
+	 * registered there, so a reader that does not know inline codebooks fails instead of decoding the table as
+	 * codes). 0 with any other slot. The data is then the serialized codebook (ccv_nnc_codebook.h: "CCVCBOOK", uint32
+	 * P, uint32 crc32, 2 P int8), zeros up to 128 + 2 P bytes, and the layout of the same tensor without an inline
+	 * codebook, byte for byte (payload and scales keep their alignment). A 3-D stack of experts has one table for the
+	 * whole tensor. The bits are the same in a checkpoint and in memory. */
+	CCV_NNC_QX_8I_ROWWISE_CODEBOOK_INLINE_SHIFT = 24,
+	CCV_NNC_QX_8I_ROWWISE_CODEBOOK_INLINE_MASK = 0x3000000,
 };
 
 /**

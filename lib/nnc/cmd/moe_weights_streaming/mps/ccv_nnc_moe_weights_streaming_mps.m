@@ -881,12 +881,27 @@ static void _ccv_nnc_moe_load_gpu_plan(MFAMoEWeightsStreamingState* const state,
 			(unsigned long long)generation);
 }
 
-static int _ccv_nnc_moe_weights_streaming_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
+static int _ccv_nnc_moe_weights_streaming_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const source_inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
 {
 	if (input_size != 6 || output_size != 6 || !outputs[0])
 		return CCV_NNC_EXEC_INVALID;
 	if (outputs[0]->info.dim[0] == 0)
 		return CCV_NNC_EXEC_SUCCESS;
+	// Expert weights with an inline codebook (TMCQ) stream as the data after the table, naming the table's slot:
+	// the file region, the layouts and the resident bank are those of a tensor without one.
+	ccv_nnc_tensor_t weight_views[3];
+	ccv_nnc_tensor_t* inputs[6];
+	int k;
+	for (k = 0; k < 6; k++)
+	{
+		inputs[k] = source_inputs[k];
+		if (k >= 3)
+		{
+			inputs[k] = (ccv_nnc_tensor_t*)ccv_nnc_mps_8i_rowwise_x_inline_view(source_inputs[k], &weight_views[k - 3]);
+			if (!inputs[k])
+				return CCV_NNC_EXEC_INVALID;
+		}
+	}
 	if (!_ccv_nnc_moe_validate(cmd, inputs, input_size, outputs, output_size))
 		return CCV_NNC_EXEC_INVALID;
 	MFAMoEWeightsStreamingState* const state = _ccv_nnc_moe_state_for_inputs(

@@ -246,6 +246,30 @@ static inline int ccv_nnc_8i_rowwise_x_codebook_slot(const int format)
 	return (format & CCV_NNC_QX_8I_ROWWISE_CODEBOOK_SLOT_MASK) >> CCV_NNC_QX_8I_ROWWISE_CODEBOOK_SLOT_SHIFT;
 }
 
+/* The pair count of the inline codebook of a format / reserved field (512, 1024 or 2048), 0 if it has none. */
+static inline int ccv_nnc_8i_rowwise_x_inline_codebook_entries(const int format)
+{
+	const int code = (format & CCV_NNC_QX_8I_ROWWISE_CODEBOOK_INLINE_MASK) >> CCV_NNC_QX_8I_ROWWISE_CODEBOOK_INLINE_SHIFT;
+	return code ? 256 << code : 0;
+}
+
+/* Bytes before the payload of a tensor with an inline codebook (the serialized table and zeros, 128 + 2 P, a
+ * multiple of 128), 0 if it has none. */
+static inline size_t ccv_nnc_8i_rowwise_x_inline_codebook_size(const int format)
+{
+	const int entries = ccv_nnc_8i_rowwise_x_inline_codebook_entries(format);
+	return entries ? 128 + (size_t)entries * 2 : 0;
+}
+
+/* format with an inline codebook of entries pairs (512, 1024 or 2048) and the inline slot 255; 0 removes both. */
+static inline int ccv_nnc_8i_rowwise_x_with_inline_codebook(const int format, const int entries)
+{
+	const int code = entries == 512 ? 1 : entries == 1024 ? 2 : entries == 2048 ? 3 : 0;
+	assert(code || entries == 0);
+	const int rest = format & ~(CCV_NNC_QX_8I_ROWWISE_CODEBOOK_INLINE_MASK | CCV_NNC_QX_8I_ROWWISE_CODEBOOK_SLOT_MASK);
+	return code ? rest | (code << CCV_NNC_QX_8I_ROWWISE_CODEBOOK_INLINE_SHIFT) | (0xff << CCV_NNC_QX_8I_ROWWISE_CODEBOOK_SLOT_SHIFT) : rest;
+}
+
 /* The codec (bits 0 - 7). */
 static inline int ccv_nnc_8i_rowwise_x_codec(const int format)
 {
@@ -256,16 +280,17 @@ static inline int ccv_nnc_8i_rowwise_x_codec(const int format)
  * For a slot 0 tensor this is its reserved field unchanged. */
 static inline int ccv_nnc_8i_rowwise_x_kernel_format(const int format)
 {
-	return format & ~CCV_NNC_QX_8I_ROWWISE_CODEBOOK_SLOT_MASK;
+	return format & ~(CCV_NNC_QX_8I_ROWWISE_CODEBOOK_SLOT_MASK | CCV_NNC_QX_8I_ROWWISE_CODEBOOK_INLINE_MASK);
 }
 
-/* Whether the codec may name the codebook slot of format: TMCQ any (0 is the built-in table), every other codec
- * only slot 0. */
+/* Whether the codec may name the codebook of format: TMCQ a slot (0 is the built-in table) or an inline codebook,
+ * which always comes with slot 255 and slot 255 only with it; every other codec neither. */
 static inline int ccv_nnc_8i_rowwise_x_codebook_is_valid(const int format)
 {
+	const int is_inline = !!ccv_nnc_8i_rowwise_x_inline_codebook_entries(format);
 	if (ccv_nnc_8i_rowwise_x_is_tmcq(format))
-		return 1;
-	return ccv_nnc_8i_rowwise_x_codebook_slot(format) == 0;
+		return is_inline == (ccv_nnc_8i_rowwise_x_codebook_slot(format) == 0xff);
+	return ccv_nnc_8i_rowwise_x_codebook_slot(format) == 0 && !is_inline;
 }
 
 static inline int ccv_nnc_8i_rowwise_x_group_size(const int format)
@@ -413,7 +438,9 @@ static inline size_t ccv_nnc_tensor_data_size_without_padding(const ccv_nnc_tens
 			}
 			const ssize_t payload_size = (ssize_t)((ccv_nnc_8i_rowwise_x_payload_bits(params.reserved, row_count, row_length) + 7) / 8);
 			const ssize_t scale_offset = (payload_size + 127) & -128;
-			data_size = scale_offset + row_count * CCV_GET_DATA_TYPE_SIZE(qx_datatype);
+			// An inline codebook (TMCQ only) comes first; the rest is the layout without it.
+			assert(ccv_nnc_8i_rowwise_x_codebook_is_valid(params.reserved));
+			data_size = (ssize_t)ccv_nnc_8i_rowwise_x_inline_codebook_size(params.reserved) + scale_offset + row_count * CCV_GET_DATA_TYPE_SIZE(qx_datatype);
 		} else {
 			assert(0);
 			data_size = 0;

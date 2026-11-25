@@ -9,8 +9,13 @@
  * checkpoint those bits hold the file-local id of a __ccv_codebook__/<id> tensor, and reading the weight maps it to the
  * slot of that table. Old files have zero there, which is the built-in table.
  *
- * Serialized codebook (the data of a __ccv_codebook__/<id> tensor): 16 bytes "CCVCB001", uint32 entries, uint32 crc32
- * (zlib crc32 of the 2 P bytes that follow), then the 2 P int8 values, little-endian. */
+ * Serialized codebook (the data of a __ccv_codebook__/<id> tensor): 16 bytes "CCVCBOOK", uint32 entries, uint32 crc32
+ * (zlib crc32 of the 2 P bytes that follow), then the 2 P int8 values, little-endian.
+ *
+ * Inline codebook (bits 24 - 25 of reserved, CCV_NNC_CODEBOOK_INLINE_SHIFT, with slot CCV_NNC_CODEBOOK_INLINE_SLOT):
+ * the tensor data starts with the serialized table and zeros up to 128 + 2 P bytes, and the rest is the tensor
+ * without it. No table is registered in the inline slot. Kernels still take a slot: a backend registers the inline
+ * table (ccv_nnc_codebook_resolve_inline) and hands the kernel the data after it with the returned reserved field. */
 #ifndef GUARD_ccv_nnc_codebook_h
 #define GUARD_ccv_nnc_codebook_h
 
@@ -21,7 +26,11 @@
 #define CCV_NNC_CODEBOOK_SLOT_MASK (0xff << CCV_NNC_CODEBOOK_SLOT_SHIFT)
 #define CCV_NNC_CODEBOOK_MAX_SLOTS (256)
 #define CCV_NNC_CODEBOOK_HEADER_SIZE (16)
+#define CCV_NNC_CODEBOOK_MAGIC "CCVCBOOK" // 8 bytes, the start of a serialized codebook.
 #define CCV_NNC_CODEBOOK_TENSOR_PREFIX "__ccv_codebook__/"
+#define CCV_NNC_CODEBOOK_INLINE_SHIFT (24)
+#define CCV_NNC_CODEBOOK_INLINE_MASK (0x3 << CCV_NNC_CODEBOOK_INLINE_SHIFT)
+#define CCV_NNC_CODEBOOK_INLINE_SLOT (255) // Registered slots are 1 ... 254.
 
 /* The codebook slot recorded in a tensor's reserved field. */
 static inline int ccv_nnc_codebook_slot_of(const int reserved)
@@ -39,6 +48,13 @@ static inline int ccv_nnc_codebook_with_slot(const int reserved, const int slot)
 static inline int ccv_nnc_codebook_log2_entries(const int entries)
 {
 	return entries == 512 ? 9 : entries == 1024 ? 10 : entries == 2048 ? 11 : -1;
+}
+
+/* The pair count of the inline codebook named in reserved (512, 1024 or 2048), 0 if there is none. */
+static inline int ccv_nnc_codebook_inline_entries(const int reserved)
+{
+	const int code = (reserved & CCV_NNC_CODEBOOK_INLINE_MASK) >> CCV_NNC_CODEBOOK_INLINE_SHIFT;
+	return code ? 256 << code : 0;
 }
 
 /* zlib-compatible CRC-32 of size bytes. */
@@ -59,5 +75,12 @@ int ccv_nnc_codebook_register_serialized(const void* const data, const size_t si
 /* Writes the serialized form of slot into data (CCV_NNC_CODEBOOK_HEADER_SIZE + 2 * entries bytes, size checked).
  * Returns the number of bytes written, or 0 if the slot is unknown or size is too small. */
 size_t ccv_nnc_codebook_serialize(const int slot, void* const data, const size_t size);
+
+/* The reserved field of the data after the inline codebook of a TMCQ tensor whose data starts at data (CPU memory, at
+ * least 128 + 2 P bytes): the inline bits cleared and the slot of the registered table in bits 16 - 23. reserved
+ * unchanged if it has no inline codebook; -1 if the slot is not CCV_NNC_CODEBOOK_INLINE_SLOT, or the magic, entry
+ * count (must be the P of reserved), crc32, zero padding or values are invalid, or the registry is full. A table
+ * registered before is found by its content without computing its crc32, so this is cheap to call per command. */
+int ccv_nnc_codebook_resolve_inline(const void* const data, const int reserved);
 
 #endif

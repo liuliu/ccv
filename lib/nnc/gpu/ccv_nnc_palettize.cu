@@ -1854,8 +1854,8 @@ void ccv_nnc_compat_dequantize_8i_rowwise_x_fp(const void* input, const int data
 {
 	assert(datatype == CCV_16F || datatype == CCV_16BF || datatype == CCV_32F || datatype == CCV_64F);
 	assert(row_length > 0);
-	// Only the built-in codebook on CUDA.
-	assert(ccv_nnc_8i_rowwise_x_codebook_slot(format) == 0);
+	// Only the built-in codebook on CUDA (slot 0, no inline codebook).
+	assert(ccv_nnc_8i_rowwise_x_codebook_slot(format) == 0 && !ccv_nnc_8i_rowwise_x_inline_codebook_entries(format));
 	assert(output_length % row_length == 0);
 	if (format & CCV_NNC_QX_8I_ROWWISE_HADAMARD_256)
 	{
@@ -1952,8 +1952,8 @@ void ccv_nnc_compat_dequantize_8i_rowwise_x_fp_hadamard_256(const void* input, c
 void ccv_nnc_compat_dequantize_8i_rowwise_x(const void* input, const int datatype, const size_t input_length, const size_t row_length, const int format, void* output, const size_t output_length, ccv_nnc_stream_context_t* const stream_context)
 {
 	assert(datatype == CCV_16F || datatype == CCV_16BF || datatype == CCV_32F || datatype == CCV_64F);
-	// Only the built-in codebook on CUDA.
-	assert(ccv_nnc_8i_rowwise_x_codebook_slot(format) == 0);
+	// Only the built-in codebook on CUDA (slot 0, no inline codebook).
+	assert(ccv_nnc_8i_rowwise_x_codebook_slot(format) == 0 && !ccv_nnc_8i_rowwise_x_inline_codebook_entries(format));
 	// Every group holds a multiple of 8 values, thus 8 codes never straddle a row (TMCQ tiles, which span 16
 	// rows, are decoded by their own kernel below).
 	assert(row_length > 0 && row_length % 8 == 0);

@@ -60,7 +60,8 @@ int ccv_nnc_codebook_register(const int8_t* const pairs, const int entries)
 			pthread_mutex_unlock(&codebook_mutex);
 			return slot;
 		}
-	if (codebook_count + 1 >= CCV_NNC_CODEBOOK_MAX_SLOTS)
+	// The inline slot (255) is never registered.
+	if (codebook_count + 1 >= CCV_NNC_CODEBOOK_INLINE_SLOT)
 	{
 		pthread_mutex_unlock(&codebook_mutex);
 		return -1;
@@ -113,7 +114,7 @@ static uint32_t _ccv_nnc_codebook_u32(const uint8_t* const p)
 int ccv_nnc_codebook_register_serialized(const void* const data, const size_t size)
 {
 	const uint8_t* const p = (const uint8_t*)data;
-	if (!p || size < CCV_NNC_CODEBOOK_HEADER_SIZE || memcmp(p, "CCVCB001", 8) != 0)
+	if (!p || size < CCV_NNC_CODEBOOK_HEADER_SIZE || memcmp(p, CCV_NNC_CODEBOOK_MAGIC, 8) != 0)
 		return -1;
 	const uint32_t entries = _ccv_nnc_codebook_u32(p + 8);
 	if (ccv_nnc_codebook_log2_entries((int)entries) < 0 || size != CCV_NNC_CODEBOOK_HEADER_SIZE + (size_t)entries * 2)
@@ -132,7 +133,7 @@ size_t ccv_nnc_codebook_serialize(const int slot, void* const data, const size_t
 	if (!pairs || size < total)
 		return 0;
 	uint8_t* const p = (uint8_t*)data;
-	memcpy(p, "CCVCB001", 8);
+	memcpy(p, CCV_NNC_CODEBOOK_MAGIC, 8);
 	int i;
 	for (i = 0; i < 4; i++)
 	{
@@ -141,4 +142,35 @@ size_t ccv_nnc_codebook_serialize(const int slot, void* const data, const size_t
 	}
 	memcpy(p + CCV_NNC_CODEBOOK_HEADER_SIZE, pairs, (size_t)entries * 2);
 	return total;
+}
+
+int ccv_nnc_codebook_resolve_inline(const void* const data, const int reserved)
+{
+	const int entries = ccv_nnc_codebook_inline_entries(reserved);
+	if (!entries)
+		return reserved;
+	if (ccv_nnc_codebook_slot_of(reserved) != CCV_NNC_CODEBOOK_INLINE_SLOT || !data)
+		return -1;
+	const uint8_t* const p = (const uint8_t*)data;
+	const size_t size = (size_t)entries * 2;
+	if (memcmp(p, CCV_NNC_CODEBOOK_MAGIC, 8) != 0 || _ccv_nnc_codebook_u32(p + 8) != (uint32_t)entries)
+		return -1;
+	size_t i;
+	for (i = CCV_NNC_CODEBOOK_HEADER_SIZE + size; i < 128 + size; i++)
+		if (p[i])
+			return -1;
+	const int8_t* const pairs = (const int8_t*)(p + CCV_NNC_CODEBOOK_HEADER_SIZE);
+	const uint32_t crc = _ccv_nnc_codebook_u32(p + 12);
+	// Most calls name a table that is registered already: match it by content and its stored crc32, without computing
+	// one or taking the lock (slots 1 ... codebook_count are never written again once published).
+	const int count = __atomic_load_n(&codebook_count, __ATOMIC_ACQUIRE);
+	int slot;
+	for (slot = 1; slot <= count; slot++)
+		if (codebooks[slot].entries == entries && codebooks[slot].crc32 == crc && memcmp(codebooks[slot].pairs, pairs, size) == 0)
+			break;
+	if (slot > count)
+		slot = ccv_nnc_codebook_register_serialized(p, CCV_NNC_CODEBOOK_HEADER_SIZE + size);
+	if (slot < 0)
+		return -1;
+	return ccv_nnc_codebook_with_slot(reserved & ~CCV_NNC_CODEBOOK_INLINE_MASK, slot);
 }

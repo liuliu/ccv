@@ -758,7 +758,9 @@ TEST_CASE("MPS MoE weights streaming waits at the weights streaming watermark fo
 		}
 }
 
-static void _moe_weights_streaming_tmcq_case(const int slot, int* const __case_result__)
+// slot: the codebook of every projection (0: the built-in table). inline_codebook: the streamed (file-backed) weights
+// carry that table inline (ccv_nnc_codebook.h) instead of naming the slot; the reference weights still name it.
+static void _moe_weights_streaming_tmcq_case(const int slot, const int inline_codebook, int* const __case_result__)
 {
 	// TMCQ experts are whole 16-row tile rows, so a slot copy moves one expert's tiles exactly. The
 	// streamed outputs must match the same weights without streaming, through decode (in-place
@@ -806,13 +808,32 @@ static void _moe_weights_streaming_tmcq_case(const int slot, int* const __case_r
 			scales[j] = (float)(1 + (j * 37) % 61) / 32768;
 		ccv_float_to_half_precision(scales, (uint16_t*)(quantized_weights[i]->data.u8 + scale_offset), rows);
 		ccfree(scales);
-		REQUIRE(_moe_weights_streaming_write_file(quantized_weights[i], paths[i]),
-			"each TMCQ projection should be written to a page-sized temporary file");
+		ccv_nnc_tensor_param_t streamed_params = quantized_params;
+		if (inline_codebook)
+		{
+			// The serialized table, zeros up to 128 + 2 P bytes, then the same bytes.
+			int entries = 0;
+			ccv_nnc_codebook_get(slot, &entries, 0);
+			streamed_params = ccv_nnc_tensor_8i_rowwise_x(host_params, ccv_nnc_8i_rowwise_x_with_inline_codebook(formats[i], entries));
+			ccv_nnc_tensor_t* const inline_weights = ccv_nnc_tensor_new(0, streamed_params, 0);
+			const size_t prefix = ccv_nnc_8i_rowwise_x_inline_codebook_size(streamed_params.reserved);
+			const size_t size = ccv_nnc_tensor_data_size_without_padding(quantized_params);
+			REQUIRE_EQ(ccv_nnc_tensor_data_size_without_padding(streamed_params), prefix + size, "the inline codebook comes before the payload");
+			memset(inline_weights->data.u8, 0, prefix);
+			REQUIRE_EQ(ccv_nnc_codebook_serialize(slot, inline_weights->data.u8, prefix), 16 + 2 * entries, "the table serializes");
+			memcpy(inline_weights->data.u8 + prefix, quantized_weights[i]->data.u8, size);
+			REQUIRE(_moe_weights_streaming_write_file(inline_weights, paths[i]),
+				"each TMCQ projection should be written to a page-sized temporary file");
+			ccv_nnc_tensor_free(inline_weights);
+		} else
+			REQUIRE(_moe_weights_streaming_write_file(quantized_weights[i], paths[i]),
+				"each TMCQ projection should be written to a page-sized temporary file");
 		ccv_nnc_tensor_param_t gpu_params = quantized_params;
 		gpu_params.type = CCV_TENSOR_GPU_MEMORY | 000;
 		reference_weights[i] = ccv_nnc_tensor_new(0, gpu_params, 0);
+		streamed_params.type = CCV_TENSOR_GPU_MEMORY | 000;
 		streamed_weights[i] = ccv_nnc_tensor_new_from_file(
-			gpu_params, paths[i], 0, CCV_NNC_TENSOR_MEMORY_MAP_ON_DEMAND);
+			streamed_params, paths[i], 0, CCV_NNC_TENSOR_MEMORY_MAP_ON_DEMAND);
 	}
 	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0,
 		TENSOR_LIST(quantized_weights[0], quantized_weights[1], quantized_weights[2]),
@@ -866,7 +887,7 @@ static void _moe_weights_streaming_tmcq_case(const int slot, int* const __case_r
 TEST_CASE("MPS MoE weights streaming stages TMCQ experts by whole tile rows")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_MOE_WEIGHTS_STREAMING_FORWARD, CCV_NNC_BACKEND_MPS));
-	_moe_weights_streaming_tmcq_case(0, __case_result__);
+	_moe_weights_streaming_tmcq_case(0, 0, __case_result__);
 }
 
 TEST_CASE("MPS MoE weights streaming stages TMCQ experts with an external codebook")
@@ -883,7 +904,29 @@ TEST_CASE("MPS MoE weights streaming stages TMCQ experts with an external codebo
 	}
 	const int slot = ccv_nnc_codebook_register(pairs, 512);
 	REQUIRE(slot > 0, "the random table should register");
-	_moe_weights_streaming_tmcq_case(slot, __case_result__);
+	_moe_weights_streaming_tmcq_case(slot, 0, __case_result__);
+}
+
+TEST_CASE("MPS MoE weights streaming stages TMCQ experts with an inline codebook from the file")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_MOE_WEIGHTS_STREAMING_FORWARD, CCV_NNC_BACKEND_MPS));
+	// The table is read from the file in front of the experts; the reference names the same table by slot.
+	static const int entries[] = { 512, 2048 };
+	int e;
+	for (e = 0; e < 2; e++)
+	{
+		int8_t pairs[4096];
+		uint32_t state = 0x7f4a7c15u + e;
+		int i;
+		for (i = 0; i < entries[e] * 2; i++)
+		{
+			state = state * 1664525u + 1013904223u;
+			pairs[i] = (int8_t)((int)((state >> 8) % 255) - 127);
+		}
+		const int slot = ccv_nnc_codebook_register(pairs, entries[e]);
+		REQUIRE(slot > 0, "the random table of %d pairs should register", entries[e]);
+		_moe_weights_streaming_tmcq_case(slot, 1, __case_result__);
+	}
 }
 
 #include "case_main.h"

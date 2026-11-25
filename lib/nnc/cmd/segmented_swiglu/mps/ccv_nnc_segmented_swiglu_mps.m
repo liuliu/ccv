@@ -756,10 +756,22 @@ static int _ccv_nnc_segmented_swiglu_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc
 {
 	if (!(input_size == 6 && output_size == 1) && !(input_size == 9 && output_size == 2))
 		return CCV_NNC_EXEC_INVALID;
+	// Weights in place with an inline codebook (TMCQ), routed and shared: the data after the table, naming the table's
+	// slot. Streamed weights (moe_weights_streaming) resolve theirs when they stream.
+	ccv_nnc_tensor_t weight_views[4];
+	ccv_nnc_tensor_t* routed_inputs[9];
+	int i;
+	for (i = 0; i < input_size; i++)
+	{
+		const int weight = i == 3 ? 0 : i == 4 ? 1 : i == 7 ? 2 : i == 8 ? 3 : -1;
+		routed_inputs[i] = weight < 0 ? inputs[i] : (ccv_nnc_tensor_t*)ccv_nnc_mps_8i_rowwise_x_inline_view(inputs[i], &weight_views[weight]);
+		if (!routed_inputs[i])
+			return CCV_NNC_EXEC_INVALID;
+	}
 	ccv_nnc_tensor_t* const shared[4] = {
-		input_size == 9 ? inputs[6] : 0, input_size == 9 ? inputs[7] : 0, input_size == 9 ? inputs[8] : 0, output_size == 2 ? outputs[1] : 0,
+		input_size == 9 ? routed_inputs[6] : 0, input_size == 9 ? routed_inputs[7] : 0, input_size == 9 ? routed_inputs[8] : 0, output_size == 2 ? outputs[1] : 0,
 	};
-	return _ccv_nnc_segmented_swiglu_routed_forw(cmd, inputs, outputs, input_size == 9 ? shared : 0, stream_context);
+	return _ccv_nnc_segmented_swiglu_routed_forw(cmd, routed_inputs, outputs, input_size == 9 ? shared : 0, stream_context);
 }
 
 REGISTER_COMMAND_BACKEND(CCV_NNC_SEGMENTED_SWIGLU_FORWARD, CCV_NNC_BACKEND_MPS)(ccv_nnc_cmd_backend_registry_t* const registry)

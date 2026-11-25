@@ -157,7 +157,11 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 {
 	assert(input_size >= 2);
 	const ccv_nnc_tensor_view_t* a = (const ccv_nnc_tensor_view_t*)inputs[0];
-	const ccv_nnc_tensor_view_t* w = (const ccv_nnc_tensor_view_t*)inputs[1];
+	// A TMCQ weight with an inline codebook: the data after the table, naming the table's slot.
+	ccv_nnc_tensor_t w_inline;
+	const ccv_nnc_tensor_view_t* w = (const ccv_nnc_tensor_view_t*)ccv_nnc_mps_8i_rowwise_x_inline_view(inputs[1], &w_inline);
+	if (!w)
+		return CCV_NNC_EXEC_INVALID;
 	const ccv_nnc_tensor_view_t* bias = input_size > 2 ? (const ccv_nnc_tensor_view_t*)inputs[2] : 0;
 	assert(output_size == 1);
 	ccv_nnc_tensor_view_t* b = (ccv_nnc_tensor_view_t*)outputs[0];
@@ -1087,7 +1091,8 @@ static int _ccv_nnc_gemm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	const int a_datatype = a ? (CCV_GET_DATA_TYPE(a->info.datatype) == CCV_QX ? ((a->info.datatype & 0xff) << 12) : a->info.datatype) : 0;
 	const int w_datatype = w ? (CCV_GET_DATA_TYPE(w->info.datatype) == CCV_QX ? ((w->info.datatype & 0xff) << 12) : w->info.datatype) : 0;
 	// The backward decode reads the built-in TMCQ table only.
-	if (w && CCV_GET_DATA_TYPE(w->info.datatype) == CCV_QX && (w->info.datatype & 0xf00) == CCV_NNC_QX_8I_ROWWISE_X && ccv_nnc_codebook_slot_of(w->info.reserved))
+	if (w && CCV_GET_DATA_TYPE(w->info.datatype) == CCV_QX && (w->info.datatype & 0xf00) == CCV_NNC_QX_8I_ROWWISE_X &&
+		(ccv_nnc_codebook_slot_of(w->info.reserved) || ccv_nnc_codebook_inline_entries(w->info.reserved)))
 		return CCV_NNC_EXEC_INVALID;
 
 	@autoreleasepool {

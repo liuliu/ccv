@@ -152,6 +152,14 @@ static int _ccv_nnc_segmented_gemm_routed_forw(const ccv_nnc_cmd_t cmd, const cc
 		resolved_weight.dataof = weight_view.offset;
 		w = &resolved_weight;
 	}
+	// Streamed weights name the slot of their inline codebook already; a weight in place reads it here.
+	ccv_nnc_tensor_t w_inline;
+	if (!weight_resolved)
+	{
+		w = (const ccv_nnc_tensor_view_t*)ccv_nnc_mps_8i_rowwise_x_inline_view((const ccv_nnc_tensor_t*)w, &w_inline);
+		if (!w)
+			return CCV_NNC_EXEC_INVALID;
+	}
 	assert(!bias || (bias->info.dim[1] == 0 || bias->info.dim[2] == 0 || bias->info.dim[3] == 0)); // It is a 1-d array
 	int a_batch_size, a_rows, a_cols, a_batch_inc, a_rows_inc, a_cols_inc;
 	int w_batch_size, w_rows, w_cols, w_batch_inc, w_rows_inc, w_cols_inc;

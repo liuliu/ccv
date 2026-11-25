@@ -1037,6 +1037,103 @@ TEST_CASE("TMCQ weights with a codebook id read their codebook from the checkpoi
 	ccv_nnc_tensor_free(source);
 }
 
+static int _test_set_stored_reserved(sqlite3* const db, const char* const name, const int reserved, const int datatype)
+{
+	sqlite3_stmt* stmt = 0;
+	if (sqlite3_prepare_v2(db, "UPDATE tensors SET datatype=$datatype WHERE name=$name", -1, &stmt, 0) != SQLITE_OK)
+		return -1;
+	sqlite3_bind_int64(stmt, 1, ((sqlite_int64)reserved << 32) | (unsigned int)datatype);
+	sqlite3_bind_text(stmt, 2, name, -1, 0);
+	const int result = sqlite3_step(stmt) == SQLITE_DONE ? 0 : -1;
+	sqlite3_finalize(stmt);
+	return result;
+}
+
+TEST_CASE("TMCQ weights with an inline codebook survive the checkpoint without a codebook tensor and decode like the table by slot")
+{
+	enum { rows = 32, cols = 256, n = 24 };
+	const int tmcq = CCV_NNC_QX_8I_ROWWISE_TMCQ_N24;
+	// The layout: slot 255 and bits 24 - 25 = log2 P - 8; 128 + 2 P bytes before the payload.
+	static const int entries_of[3] = { 512, 1024, 2048 };
+	int e;
+	for (e = 0; e < 3; e++)
+	{
+		const int format = ccv_nnc_8i_rowwise_x_with_inline_codebook(tmcq, entries_of[e]);
+		REQUIRE_EQ(format, tmcq | (0xff << 16) | ((e + 1) << 24), "inline format bits for P %d", entries_of[e]);
+		REQUIRE_EQ(ccv_nnc_8i_rowwise_x_inline_codebook_size(format), 128 + 2 * entries_of[e], "prefix size for P %d", entries_of[e]);
+		REQUIRE_EQ(ccv_nnc_8i_rowwise_x_data_size(format, CCV_32F, rows * cols, cols), 128 + 2 * entries_of[e] + ccv_nnc_8i_rowwise_x_data_size(tmcq, CCV_32F, rows * cols, cols), "the public size counts the prefix");
+		REQUIRE_EQ(ccv_nnc_8i_rowwise_x_kernel_format(format), tmcq, "kernels see TMCQ alone");
+	}
+	REQUIRE(!ccv_nnc_8i_rowwise_x_codebook_is_valid(tmcq | (1 << 24)), "inline bits need slot 255");
+	REQUIRE(!ccv_nnc_8i_rowwise_x_codebook_is_valid(tmcq | (0xff << 16)), "slot 255 needs inline bits");
+	REQUIRE(!ccv_nnc_8i_rowwise_x_codebook_is_valid(CCV_NNC_QX_8I_ROWWISE_Q4_K | (0xff << 16) | (1 << 24)), "only TMCQ takes an inline codebook");
+	REQUIRE_EQ(ccv_nnc_8i_rowwise_x_data_size(tmcq | (1 << 24), CCV_32F, rows * cols, cols), 0, "an invalid codebook has no size");
+	ccv_nnc_tensor_t* const source = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, cols), 0);
+	int i;
+	for (i = 0; i < rows * cols; i++)
+		source->data.f32[i] = sinf(i * 0.29f) * (1 + i % 5);
+	ccv_nnc_tensor_t* const packed = ccv_nnc_tensor_new(0, ccv_nnc_tensor_8i_rowwise_x(source->info, tmcq), 0);
+	const size_t size = ccv_nnc_tensor_data_size_without_padding(packed->info);
+	REQUIRE_EQ(ccv_nnc_quantize_8i_rowwise_x(source->data.f32, CCV_32F, CCV_TENSOR_CPU_MEMORY, rows * cols, cols, tmcq, 0, 0, 0, 0, packed->data.u8, size), size, "TMCQ quantizes");
+	uint8_t* const scratch = ccmalloc(size + 4096 + 128);
+	REQUIRE_EQ(ccv_nnc_quantize_8i_rowwise_x(source->data.f32, CCV_32F, CCV_TENSOR_CPU_MEMORY, rows * cols, cols, ccv_nnc_8i_rowwise_x_with_inline_codebook(tmcq, 512), 0, 0, 0, 0, scratch, size + 4096 + 128), 0, "ccv does not fit TMCQ with an inline codebook");
+	ccfree(scratch);
+	const int slot_alt = ccv_nnc_codebook_register_serialized(test_trellis_table_alt, sizeof(test_trellis_table_alt));
+	int8_t big[4096];
+	for (i = 0; i < 4096; i++)
+		big[i] = (int8_t)((i * 53 + 7) % 255 - 127);
+	const int slot_big = ccv_nnc_codebook_register(big, 2048);
+	REQUIRE(slot_alt >= 1 && slot_big >= 1 && slot_big < CCV_NNC_CODEBOOK_INLINE_SLOT, "both register below the inline slot");
+	sqlite3* db = 0;
+	REQUIRE_EQ(sqlite3_open(":memory:", &db), SQLITE_OK, "in-memory database opens");
+	const int slots[2] = { slot_alt, slot_big };
+	float* const by_slot = ccmalloc(sizeof(float) * rows * cols);
+	float* const by_inline = ccmalloc(sizeof(float) * rows * cols);
+	int c;
+	for (c = 0; c < 2; c++)
+	{
+		int entries = 0;
+		ccv_nnc_codebook_get(slots[c], &entries, 0);
+		const int format = ccv_nnc_8i_rowwise_x_with_inline_codebook(tmcq, entries);
+		const size_t prefix = ccv_nnc_8i_rowwise_x_inline_codebook_size(format);
+		ccv_nnc_tensor_t* const weight = ccv_nnc_tensor_new(0, ccv_nnc_tensor_8i_rowwise_x(source->info, format), 0);
+		REQUIRE_EQ(ccv_nnc_tensor_data_size_without_padding(weight->info), prefix + size, "the tensor holds the prefix and the payload");
+		memset(weight->data.u8, 0, prefix);
+		REQUIRE_EQ(ccv_nnc_codebook_serialize(slots[c], weight->data.u8, prefix), 16 + 2 * entries, "the container serializes");
+		REQUIRE_EQ(memcmp(weight->data.u8, "CCVCBOOK", 8), 0, "the container starts with CCVCBOOK");
+		memcpy(weight->data.u8 + prefix, packed->data.u8, size);
+		char name[32];
+		snprintf(name, sizeof(name), "inline%d", c);
+		REQUIRE_EQ(ccv_nnc_tensor_write(weight, db, name, 0), CCV_IO_FINAL, "TMCQ with an inline codebook writes");
+		ccv_nnc_tensor_t* restored = 0;
+		REQUIRE_EQ(ccv_nnc_tensor_read(db, name, 0, 0, 0, &restored), CCV_IO_FINAL, "TMCQ with an inline codebook reads without a codebook tensor");
+		REQUIRE_EQ(restored->info.reserved, format, "the inline bits and slot 255 are unchanged");
+		REQUIRE_EQ(memcmp(restored->data.u8, weight->data.u8, prefix + size), 0, "the data is unchanged");
+		REQUIRE_EQ(ccv_nnc_dequantize_8i_rowwise_x(restored->data.u8, CCV_32F, CCV_TENSOR_CPU_MEMORY, prefix + size, cols, restored->info.reserved, by_inline, rows * cols), 0, "decodes inline");
+		REQUIRE_EQ(ccv_nnc_dequantize_8i_rowwise_x(packed->data.u8, CCV_32F, CCV_TENSOR_CPU_MEMORY, size, cols, ccv_nnc_codebook_with_slot(tmcq, slots[c]), by_slot, rows * cols), 0, "decodes by slot");
+		REQUIRE_EQ(memcmp(by_inline, by_slot, sizeof(float) * rows * cols), 0, "table %d inline decodes like it by slot", c);
+		ccv_nnc_tensor_free(restored);
+		restored = 0;
+		REQUIRE_EQ(ccv_nnc_tensor_read(db, name, 0, CCV_NNC_TENSOR_READ_METADATA_ONLY, 0, &restored), CCV_IO_FINAL, "metadata reads");
+		REQUIRE_EQ(restored->info.reserved, format, "metadata keeps the inline format");
+		ccv_nnc_tensor_free(restored);
+		// The same row with half the marker fails, whichever half.
+		REQUIRE_EQ(_test_set_stored_reserved(db, name, format & ~(0xff << 16), weight->info.datatype), 0, "reserved updates");
+		restored = 0;
+		REQUIRE_EQ(ccv_nnc_tensor_read(db, name, 0, 0, 0, &restored), CCV_IO_ERROR, "inline bits without slot 255 fail");
+		REQUIRE_EQ(_test_set_stored_reserved(db, name, format & ~(0x3 << 24), weight->info.datatype), 0, "reserved updates");
+		REQUIRE_EQ(ccv_nnc_tensor_read(db, name, 0, 0, 0, &restored), CCV_IO_ERROR, "slot 255 without inline bits fails");
+		REQUIRE(restored == 0, "no tensor on failure");
+		ccv_nnc_tensor_free(weight);
+	}
+	REQUIRE_EQ(ccv_nnc_tensor_read_codebook(db, 255), -1, "no codebook tensor was written");
+	sqlite3_close(db);
+	ccfree(by_inline);
+	ccfree(by_slot);
+	ccv_nnc_tensor_free(packed);
+	ccv_nnc_tensor_free(source);
+}
+
 // K % 16: TMCQ cuts the weight into (rows / 16) x (K / 16) tiles of 16 n
 // bits, so any K % 16 == 0 is a whole tile grid. The cases below cover K % 256 (sizes must not change), the MoE
 // down projection K = 1152 (72 tiles, 4.5 groups of 256), and K = 272 / 48 / 16 (an odd tile count per tile row).

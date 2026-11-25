@@ -194,6 +194,27 @@ static ccv_nnc_tensor_t* tmcq_gpu(const weights_t* const w, const int slot)
 	return gpu_tensor_from(tmcq_x_params(dense_params(CCV_TENSOR_CPU_MEMORY, w->datatype, w->experts, w->n, w->k), tmcq_with_slot(w->codec, slot)), w->bytes, w->size);
 }
 
+// The TMCQ weights on the GPU with the table of `slot` inline (ccv_nnc_codebook.h): the serialized table, zeros up
+// to 128 + 2 P bytes, then the same bytes as tmcq_gpu. pairs, if not NULL, replaces the table values (pair_count
+// pairs, written unchecked after the header of slot 0), e.g. to make it invalid.
+static ccv_nnc_tensor_t* tmcq_gpu_inline(const weights_t* const w, const int slot, const int8_t* const pairs, const int pair_count)
+{
+	int entries = pair_count;
+	if (!pairs)
+		ccv_nnc_codebook_get(slot, &entries, 0);
+	const int format = ccv_nnc_8i_rowwise_x_with_inline_codebook(w->codec, entries);
+	const size_t prefix = ccv_nnc_8i_rowwise_x_inline_codebook_size(format);
+	uint8_t* const bytes = (uint8_t*)cccalloc(prefix + w->size, 1);
+	const size_t written = ccv_nnc_codebook_serialize(pairs ? 0 : slot, bytes, prefix);
+	assert(written == CCV_NNC_CODEBOOK_HEADER_SIZE + (size_t)entries * 2);
+	if (pairs)
+		memcpy(bytes + CCV_NNC_CODEBOOK_HEADER_SIZE, pairs, (size_t)entries * 2);
+	memcpy(bytes + prefix, w->bytes, w->size);
+	ccv_nnc_tensor_t* const gpu = gpu_tensor_from(tmcq_x_params(dense_params(CCV_TENSOR_CPU_MEMORY, w->datatype, w->experts, w->n, w->k), format), bytes, prefix + w->size);
+	ccfree(bytes);
+	return gpu;
+}
+
 // TMCQ reference decode with the table of `slot`: tile g holds 16 n bits from bit 16 n g; weight t reads the 15-bit
 // window of weight t | 1 ending at ((t | 1) + 1) n / 16, wrapping in the tile, then half t & 1 of its pair
 // ((window * 0x83DCD12D) mod 2^32) >> (32 - log2 P).
@@ -443,15 +464,20 @@ typedef enum {
 
 static const char* const path_names[] = { "segmented gemm", "segmented swiglu", "segmented swiglu + shared", "swiglu" };
 
+// run_path reference: the TMCQ weights with the table of the slot inline instead of naming the slot.
+#define RUN_INLINE (-1)
+
 // One run of `path` with every TMCQ weight on slot `slot`; reference 1 / 2: the same codes decoded with that slot's
-// table to 8I_ROWWISE / to dense weights instead. Weights: [0] gate (or w), [1] up, [2] shared gate, [3] shared up.
+// table to 8I_ROWWISE / to dense weights instead; RUN_INLINE: the slot's table inline in every TMCQ weight. Weights:
+// [0] gate (or w), [1] up, [2] shared gate, [3] shared up.
 static int run_path(const path_t path, const routing_t* const r, const int datatype, const weights_t* const weights, const int slot, const int reference, uint8_t** const out, size_t* const out_size)
 {
 	ccv_nnc_tensor_t* tensors[4] = { 0, 0, 0, 0 };
 	const int count = path == PATH_SEGMENTED_GEMM ? 1 : path == PATH_SEGMENTED_SWIGLU_SHARED ? 4 : 2;
 	int i;
 	for (i = 0; i < count; i++)
-		tensors[i] = reference == 1 ? resident_gpu(&weights[i], slot) : reference == 2 ? dense_gpu(&weights[i], slot) : tmcq_gpu(&weights[i], slot);
+		tensors[i] = reference == 1 ? resident_gpu(&weights[i], slot) : reference == 2 ? dense_gpu(&weights[i], slot) :
+			reference == RUN_INLINE ? tmcq_gpu_inline(&weights[i], slot, 0, 0) : tmcq_gpu(&weights[i], slot);
 	const int n = weights[0].n, k = weights[0].k;
 	int status;
 	if (path == PATH_SEGMENTED_GEMM)
@@ -707,7 +733,7 @@ TEST_CASE("mps tmcq codebook paths: an unregistered slot or mismatched gate and 
 	weights_t weights[4];
 	make_path_weights(PATH_SEGMENTED_SWIGLU, CCV_16F, 0, weights);
 	const routing_t* const r = &routings[1];
-	ccv_nnc_tensor_t* const unregistered = tmcq_gpu(&weights[0], CCV_NNC_CODEBOOK_MAX_SLOTS - 1);
+	ccv_nnc_tensor_t* const unregistered = tmcq_gpu(&weights[0], CCV_NNC_CODEBOOK_INLINE_SLOT - 1);
 	ccv_nnc_tensor_t* const gate = tmcq_gpu(&weights[0], table_slots[TABLE_RANDOM]);
 	ccv_nnc_tensor_t* const up = tmcq_gpu(&weights[1], table_slots[TABLE_ALT]);
 	uint8_t* out;
@@ -721,6 +747,87 @@ TEST_CASE("mps tmcq codebook paths: an unregistered slot or mismatched gate and 
 	ccv_nnc_tensor_free(up);
 	ccv_nnc_tensor_free(gate);
 	ccv_nnc_tensor_free(unregistered);
+	int i;
+	for (i = 0; i < 4; i++)
+		weights_free(&weights[i]);
+}
+
+// An inline codebook is the same table as its slot: every path, datatype and routing, tables of 512 (random and
+// alternate), 1024 and 2048 pairs, plus a K % 16 shape (48 x 272, N % 64 != 0, which expands the selected experts).
+TEST_CASE("mps tmcq codebook paths: an inline codebook equals the same table in its slot bit for bit")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SEGMENTED_SWIGLU_FORWARD, CCV_NNC_BACKEND_MPS) && ccv_nnc_cmd_ok(CCV_NNC_SEGMENTED_GEMM_FORWARD, CCV_NNC_BACKEND_MPS));
+	register_tables();
+	static const int tables[] = { TABLE_RANDOM, TABLE_ALT, TABLE_BUILTIN_1024, TABLE_BUILTIN_2048 };
+	int sh, p, d, ri, t;
+	for (sh = 0; sh < 2; sh++)
+		for (p = PATH_SEGMENTED_GEMM; p <= PATH_SWIGLU; p++)
+			for (d = 0; d < sizeof(datatypes) / sizeof(datatypes[0]); d++)
+				for (ri = 0; ri < sizeof(routings) / sizeof(routings[0]); ri++)
+				{
+					if (!path_takes((path_t)p, datatypes[d], ri) || (sh && routings[ri].rows == 4097))
+						continue;
+					weights_t weights[4];
+					if (sh == 0)
+						make_path_weights((path_t)p, datatypes[d], ri, weights);
+					else {
+						const uint32_t seed = 0x27000u + 0x1000u * (p + 1) + 0x10u * ri + datatypes[d];
+						const int experts = p == PATH_SWIGLU ? 0 : 8;
+						weights[0] = weights_new(CCV_NNC_QX_8I_ROWWISE_TMCQ_N18, datatypes[d], experts, 48, 272, seed + 1);
+						weights[1] = weights_new(CCV_NNC_QX_8I_ROWWISE_TMCQ_N18, datatypes[d], experts, 48, 272, seed + 2);
+						weights[2] = weights_new(CCV_NNC_QX_8I_ROWWISE_TMCQ_N22, datatypes[d], 0, 48, 272, seed + 3);
+						weights[3] = weights_new(CCV_NNC_QX_8I_ROWWISE_TMCQ_N22, datatypes[d], 0, 48, 272, seed + 4);
+					}
+					for (t = 0; t < sizeof(tables) / sizeof(tables[0]); t++)
+					{
+						const int slot = table_slots[tables[t]];
+						uint8_t* by_slot;
+						size_t by_slot_size;
+						REQUIRE_EQ(run_path((path_t)p, &routings[ri], datatypes[d], weights, slot, 0, &by_slot, &by_slot_size), CCV_NNC_EXEC_SUCCESS,
+							"%s with the table in its slot should run: %s datatype=%d table=%d shape=%d", path_names[p], routings[ri].name, datatypes[d], tables[t], sh);
+						uint8_t* by_inline;
+						size_t by_inline_size;
+						REQUIRE_EQ(run_path((path_t)p, &routings[ri], datatypes[d], weights, slot, RUN_INLINE, &by_inline, &by_inline_size), CCV_NNC_EXEC_SUCCESS,
+							"%s with the table inline should run: %s datatype=%d table=%d shape=%d", path_names[p], routings[ri].name, datatypes[d], tables[t], sh);
+						REQUIRE(by_inline_size == by_slot_size && memcmp(by_inline, by_slot, by_slot_size) == 0,
+							"%s with the table inline should equal it in its slot bit for bit: %s datatype=%d table=%d shape=%d max rel %g",
+							path_names[p], routings[ri].name, datatypes[d], tables[t], sh, max_rel_difference(datatypes[d], by_inline, by_slot, by_slot_size));
+						ccfree(by_inline);
+						ccfree(by_slot);
+					}
+					int i;
+					for (i = 0; i < 4; i++)
+						weights_free(&weights[i]);
+				}
+}
+
+TEST_CASE("mps tmcq codebook paths: an invalid inline codebook or gate and up on different inline tables are rejected")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SEGMENTED_SWIGLU_FORWARD, CCV_NNC_BACKEND_MPS) && ccv_nnc_cmd_ok(CCV_NNC_SEGMENTED_GEMM_FORWARD, CCV_NNC_BACKEND_MPS));
+	register_tables();
+	weights_t weights[4];
+	make_path_weights(PATH_SEGMENTED_SWIGLU, CCV_16F, 0, weights);
+	const routing_t* const r = &routings[1];
+	// -128 is never a code: a table with one is invalid, whatever its slot would be.
+	int entries = 0;
+	const int8_t* const random = ccv_nnc_codebook_get(table_slots[TABLE_RANDOM], &entries, 0);
+	int8_t bad[1024];
+	memcpy(bad, random, sizeof(bad));
+	bad[333] = -128;
+	ccv_nnc_tensor_t* const invalid = tmcq_gpu_inline(&weights[0], 0, bad, 512);
+	ccv_nnc_tensor_t* const gate = tmcq_gpu_inline(&weights[0], table_slots[TABLE_RANDOM], 0, 0);
+	ccv_nnc_tensor_t* const up = tmcq_gpu_inline(&weights[1], table_slots[TABLE_ALT], 0, 0);
+	uint8_t* out;
+	size_t out_size;
+	REQUIRE_EQ(run_segmented_gemm(r, CCV_16F, 256, 512, invalid, &out, &out_size), CCV_NNC_EXEC_INVALID, "segmented gemm rejects an invalid inline codebook");
+	ccfree(out);
+	REQUIRE_EQ(run_segmented_swiglu(r, CCV_16F, 256, 512, invalid, invalid, 0, 0, &out, &out_size), CCV_NNC_EXEC_INVALID, "segmented swiglu rejects an invalid inline codebook");
+	ccfree(out);
+	REQUIRE_EQ(run_segmented_swiglu(r, CCV_16F, 256, 512, gate, up, 0, 0, &out, &out_size), CCV_NNC_EXEC_INVALID, "segmented swiglu rejects gate and up on different inline tables");
+	ccfree(out);
+	ccv_nnc_tensor_free(up);
+	ccv_nnc_tensor_free(gate);
+	ccv_nnc_tensor_free(invalid);
 	int i;
 	for (i = 0; i < 4; i++)
 		weights_free(&weights[i]);

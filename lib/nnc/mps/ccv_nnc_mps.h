@@ -102,6 +102,14 @@ typedef struct {
 
 off_t mpgetoffset(const ccv_nnc_tensor_t* const tensor);
 id<MTLBuffer> mpgetbuffer(const ccv_nnc_tensor_t* const tensor);
+/** The format of the data after the inline codebook of a TMCQ format (ccv_nnc_codebook.h) whose data starts at
+ * offset in buffer: the table read from the buffer (shared storage) and registered, its slot in bits 16 - 23.
+ * format unchanged if it has no inline codebook; -1 if the table is invalid or the buffer is not CPU-visible. */
+int ccv_nnc_mps_8i_rowwise_x_resolve_inline(id<MTLBuffer> buffer, const off_t offset, const int format);
+/** tensor itself unless it is a TMCQ tensor with an inline codebook. Then *view, a copy whose data starts after the
+ * table and whose reserved field names the table's slot (ccv_nnc_mps_8i_rowwise_x_resolve_inline), which every
+ * kernel takes like any slot. NULL if the table is invalid, or for a tensor view. */
+const ccv_nnc_tensor_t* ccv_nnc_mps_8i_rowwise_x_inline_view(const ccv_nnc_tensor_t* const tensor, ccv_nnc_tensor_t* const view);
 /** Returns 1 for an on-demand file-backed tensor and 0 for any other tensor. */
 int ccv_nnc_mps_file_backed_region(const ccv_nnc_tensor_t* tensor, ccv_nnc_mps_file_backed_region_t* region);
 id<MTLDevice> ccv_nnc_default_device(void);

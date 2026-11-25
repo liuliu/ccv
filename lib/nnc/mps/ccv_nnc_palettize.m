@@ -127,9 +127,13 @@ void ccv_nnc_mps_dequantize_8i_rowwise_x(const void* input, const int datatype, 
 	}
 	assert(mtl_data_type != UINT32_MAX);
 	ccv_nnc_mfa_context_t* context = ccv_nnc_default_mfa_context();
+	// An inline codebook is the start of the input: decode the data after it with the table's slot.
+	const size_t inline_size = ccv_nnc_8i_rowwise_x_inline_codebook_size(format);
+	const int payload_format = ccv_nnc_mps_8i_rowwise_x_resolve_inline((id<MTLBuffer>)input, 0, format);
+	assert(payload_format >= 0 && "the inline codebook is invalid or its buffer is not CPU-visible");
 	// An external codebook is supported for TMCQ.
 	mtl_buffer_t* codebook = NULL;
-	const uint32_t mfa_format = _ccv_nnc_mps_codebook_format(context, format, &codebook);
+	const uint32_t mfa_format = _ccv_nnc_mps_codebook_format(context, payload_format, &codebook);
 	ccv_nnc_mfa_dequantize_8i_rowwise_x_fp_params_t params = {
 		.data_type = mtl_data_type,
 		.format = mfa_format,
@@ -147,7 +151,7 @@ void ccv_nnc_mps_dequantize_8i_rowwise_x(const void* input, const int datatype, 
 		NULL,
 	};
 	size_t tensor_offsets[2] = {
-		0,
+		inline_size,
 		0,
 	};
 	ccv_nnc_mfa_encode_dequantize_8i_rowwise_x_fp(context, params, command_batch, tensors, tensor_offsets);
@@ -179,8 +183,11 @@ void ccv_nnc_mps_dequantize_8i_rowwise_x_to_8i_rowwise(const void* input, const 
 	assert(mtl_data_type != UINT32_MAX);
 	assert(!(format & CCV_NNC_QX_8I_ROWWISE_HADAMARD_256));
 	ccv_nnc_mfa_context_t* context = ccv_nnc_default_mfa_context();
+	const size_t inline_size = ccv_nnc_8i_rowwise_x_inline_codebook_size(format);
+	const int payload_format = ccv_nnc_mps_8i_rowwise_x_resolve_inline((id<MTLBuffer>)input, 0, format);
+	assert(payload_format >= 0 && "the inline codebook is invalid or its buffer is not CPU-visible");
 	mtl_buffer_t* codebook = NULL;
-	const uint32_t mfa_format = _ccv_nnc_mps_codebook_format(context, format & (CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK | CCV_NNC_CODEBOOK_SLOT_MASK), &codebook);
+	const uint32_t mfa_format = _ccv_nnc_mps_codebook_format(context, payload_format & (CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK | CCV_NNC_CODEBOOK_SLOT_MASK), &codebook);
 	ccv_nnc_mfa_dequantize_8i_rowwise_x_params_t params = {
 		.data_type = mtl_data_type,
 		.format = mfa_format,
@@ -198,7 +205,7 @@ void ccv_nnc_mps_dequantize_8i_rowwise_x_to_8i_rowwise(const void* input, const 
 		NULL,
 	};
 	size_t tensor_offsets[2] = {
-		0,
+		inline_size,
 		0,
 	};
 	ccv_nnc_mfa_encode_dequantize_8i_rowwise_x(context, params, command_batch, tensors, tensor_offsets);

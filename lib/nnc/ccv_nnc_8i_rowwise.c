@@ -52,8 +52,11 @@ CCV_WARN_UNUSED(size_t) ccv_nnc_8i_rowwise_x_data_size(const int format, const i
 	assert(row_length > 0);
 	assert(input_length % row_length == 0);
 	const size_t row_count = input_length / row_length;
+	if (!ccv_nnc_8i_rowwise_x_codebook_is_valid(format))
+		return 0;
 	const size_t scale_offset = _ccv_nnc_8i_rowwise_packed_scale_offset(format, input_length, row_length);
-	return scale_offset + row_count * CCV_GET_DATA_TYPE_SIZE(datatype);
+	// An inline codebook (TMCQ) comes first.
+	return ccv_nnc_8i_rowwise_x_inline_codebook_size(format) + scale_offset + row_count * CCV_GET_DATA_TYPE_SIZE(datatype);
 }
 
 static void _ccv_nnc_8i_rowwise_packed_write_bits(uint8_t* const data, const size_t bit_offset, const uint32_t value, const int bits)
@@ -2836,7 +2839,7 @@ CCV_WARN_UNUSED(size_t) ccv_nnc_quantize_8i_rowwise_x(const void* input, const i
 			return 0;
 	}
 	// The quantizer encodes with the built-in codebook only.
-	if (ccv_nnc_8i_rowwise_x_codebook_slot(format) != 0)
+	if (ccv_nnc_8i_rowwise_x_codebook_slot(format) != 0 || ccv_nnc_8i_rowwise_x_inline_codebook_entries(format))
 		return 0;
 	if (ccv_nnc_8i_rowwise_x_is_tmcq(format))
 	{
@@ -2848,19 +2851,22 @@ CCV_WARN_UNUSED(size_t) ccv_nnc_quantize_8i_rowwise_x(const void* input, const i
 	return _ccv_nnc_quantize_8i_rowwise_x(input, datatype, input_length, row_length, format, imatrix, imatrix_length, hessian, hessian_length, output, output_length);
 }
 
-int ccv_nnc_dequantize_8i_rowwise_x(const void* input, const int datatype, const int memory_type, const size_t input_length, const size_t row_length, const int format, void* output, const size_t output_length)
+int ccv_nnc_dequantize_8i_rowwise_x(const void* input, const int datatype, const int memory_type, const size_t input_length, const size_t row_length, const int format_in, void* output, const size_t output_length)
 {
 	assert(datatype == CCV_16F || datatype == CCV_16BF || datatype == CCV_32F || datatype == CCV_64F);
 	assert(memory_type == CCV_TENSOR_CPU_MEMORY || memory_type == CCV_TENSOR_GPU_MEMORY);
 	assert(row_length > 0);
 	assert(output_length % row_length == 0);
-	assert(!(format & CCV_NNC_QX_8I_ROWWISE_HADAMARD_256) || row_length % 256 == 0);
-	// A codebook slot only names a table for the trellis codecs, and only once it is registered.
-	const int codebook_slot = ccv_nnc_codebook_slot_of(format);
-	if (codebook_slot && (!ccv_nnc_8i_rowwise_x_is_tmcq(format) || !ccv_nnc_codebook_get(codebook_slot, 0, 0)))
+	assert(!(format_in & CCV_NNC_QX_8I_ROWWISE_HADAMARD_256) || row_length % 256 == 0);
+	if (!ccv_nnc_8i_rowwise_x_codebook_is_valid(format_in))
 		return -1;
 	if (memory_type != CCV_TENSOR_CPU_MEMORY)
 	{
+		// A GPU backend reads an inline codebook from the buffer itself; any other slot is checked here.
+		const int codebook_slot = ccv_nnc_codebook_slot_of(format_in);
+		if (codebook_slot && !ccv_nnc_8i_rowwise_x_inline_codebook_entries(format_in) && !ccv_nnc_codebook_get(codebook_slot, 0, 0))
+			return -1;
+		const int format = format_in;
 #ifdef HAVE_CUDA
 		ccv_nnc_compat_dequantize_8i_rowwise_x_fp(input, datatype, input_length, row_length, format, output, output_length, 0);
 #elif defined(HAVE_MPS)
@@ -2871,11 +2877,24 @@ int ccv_nnc_dequantize_8i_rowwise_x(const void* input, const int datatype, const
 #endif
 		return 0;
 	}
+	// An inline codebook (TMCQ) is the start of the data: register it and decode the rest with its slot.
+	const size_t inline_size = ccv_nnc_8i_rowwise_x_inline_codebook_size(format_in);
+	if (input_length < inline_size)
+		return -1;
+	const int format = ccv_nnc_codebook_resolve_inline(input, format_in);
+	if (format < 0)
+		return -1;
+	input = (const uint8_t*)input + inline_size;
+	const size_t payload_length = input_length - inline_size;
+	// A codebook slot only names a table for the trellis codecs, and only once it is registered.
+	const int codebook_slot = ccv_nnc_codebook_slot_of(format);
+	if (codebook_slot && (!ccv_nnc_8i_rowwise_x_is_tmcq(format) || !ccv_nnc_codebook_get(codebook_slot, 0, 0)))
+		return -1;
 	const size_t row_count = output_length / row_length;
 	const size_t group_size = ccv_nnc_8i_rowwise_x_group_size(format);
 	const size_t groups_per_row = (row_length + group_size - 1) / group_size;
 	const size_t scale_offset = _ccv_nnc_8i_rowwise_packed_scale_offset(format, output_length, row_length);
-	assert(input_length >= scale_offset + row_count * CCV_GET_DATA_TYPE_SIZE(datatype));
+	assert(payload_length >= scale_offset + row_count * CCV_GET_DATA_TYPE_SIZE(datatype));
 	const uint8_t* const u8 = (const uint8_t*)input;
 	const uint8_t* const scales = u8 + scale_offset;
 	if (ccv_nnc_8i_rowwise_x_is_tmcq(format))
