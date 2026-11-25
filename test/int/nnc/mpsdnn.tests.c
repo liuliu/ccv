@@ -8631,4 +8631,32 @@ TEST_CASE("compare large soft cap tanh with mps graph in half precision")
 	ccv_nnc_tensor_free(tdx_tensor);
 }
 
+TEST_CASE("mps data transfer copies tensors past 4 GiB")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_DATA_TRANSFER_FORWARD, CCV_NNC_BACKEND_MPS));
+	// One blit copies at most 4 GiB; 4.5 GiB here, CPU to GPU, GPU to GPU and back.
+	const int rows = 1179648, cols = 1024;
+	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, rows, cols), 0);
+	ccv_nnc_tensor_t* const ga = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32S, rows, cols), 0);
+	ccv_nnc_tensor_t* const gb = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32S, rows, cols), 0);
+	ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, rows, cols), 0);
+	const size_t count = (size_t)rows * cols;
+	size_t i;
+	for (i = 0; i < count; i++)
+		a->data.i32[i] = (int)(i ^ 0x5a5a5a5a);
+	memset(b->data.u8, 0, count * sizeof(int));
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(a), TENSOR_LIST(ga), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ga), TENSOR_LIST(gb), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(gb), TENSOR_LIST(b), 0);
+	size_t first_difference = count;
+	for (i = 0; i < count && first_difference == count; i++)
+		if (a->data.i32[i] != b->data.i32[i])
+			first_difference = i;
+	REQUIRE_EQ(first_difference, count, "every element should survive the round trip");
+	ccv_nnc_tensor_free(a);
+	ccv_nnc_tensor_free(ga);
+	ccv_nnc_tensor_free(gb);
+	ccv_nnc_tensor_free(b);
+}
+
 #include "case_main.h"

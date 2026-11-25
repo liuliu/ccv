@@ -329,7 +329,7 @@ static int _ccv_nnc_add_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 				id<MTLBuffer> buffer_a = mpgetbuffer((ccv_nnc_tensor_t*)a);
 				const off_t offset_a = mpgetoffset((ccv_nnc_tensor_t*)a);
 				id<MTLBlitCommandEncoder> encoder = [command_buffer blitCommandEncoder];
-				[encoder copyFromBuffer:buffer_g sourceOffset:offset_g toBuffer:buffer_a destinationOffset:offset_a size:size];
+				ccv_nnc_mps_blit_copy(encoder, buffer_g, offset_g, buffer_a, offset_a, size);
 				[encoder endEncoding];
 				a_transferred = 1;
 			}
@@ -338,7 +338,7 @@ static int _ccv_nnc_add_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 				id<MTLBuffer> buffer_b = mpgetbuffer((ccv_nnc_tensor_t*)b);
 				const off_t offset_b = mpgetoffset((ccv_nnc_tensor_t*)b);
 				id<MTLBlitCommandEncoder> encoder = [command_buffer blitCommandEncoder];
-				[encoder copyFromBuffer:buffer_g sourceOffset:offset_g toBuffer:buffer_b destinationOffset:offset_b size:size];
+				ccv_nnc_mps_blit_copy(encoder, buffer_g, offset_g, buffer_b, offset_b, size);
 				[encoder endEncoding];
 				b_transferred = 1;
 			}
