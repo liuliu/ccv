@@ -1204,8 +1204,8 @@ enum {
 	CCV_NNC_QX_8I_ROWWISE_CODEBOOK_SLOT_MASK = 0xff0000,
 	/* Inline codebook of a TMCQ tensor, bits 24 - 25: c = 1, 2, 3 for a table of P = 256 << c pairs (512, 1024,
 	 * 2048) at the start of the tensor data, with codebook slot 255 (CCV_NNC_CODEBOOK_INLINE_SLOT; no table is ever
-	 * registered there, so a reader that does not know inline codebooks fails instead of decoding the table as
-	 * codes). 0 with any other slot. The data is then the serialized codebook (ccv_nnc_codebook.h: "CCVCBOOK", uint32
+	 * registered there, so a ccv path that resolves slots but not inline codebooks rejects the tensor; readers older
+	 * than inline codebooks are not guaranteed to). 0 with any other slot. The data is then the serialized codebook (ccv_nnc_codebook.h: "CCVCBOOK", uint32
 	 * P, uint32 crc32, 2 P int8), zeros up to 128 + 2 P bytes, and the layout of the same tensor without an inline
 	 * codebook, byte for byte (payload and scales keep their alignment). A 3-D stack of experts has one table for the
 	 * whole tensor. The bits are the same in a checkpoint and in memory. */
