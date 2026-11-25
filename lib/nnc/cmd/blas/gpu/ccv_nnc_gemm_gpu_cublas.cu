@@ -295,17 +295,15 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	// and its own inverse, thus A W^T = (A R) (W R)^T: rotate the activations into the workspace as well.
 	const int w_qx_subtype = CCV_GET_DATA_TYPE(w->info.datatype) == CCV_QX ? (w->info.datatype & 0xf00) : 0;
 	const int w_8i_rowwise_x_format = w_qx_subtype == CCV_NNC_QX_8I_ROWWISE_X ? w->info.reserved : 0;
-	// The CUDA kernels only have the built-in codebook (slot 0, no inline codebook).
-	if (ccv_nnc_8i_rowwise_x_codebook_slot(w_8i_rowwise_x_format) != 0 || ccv_nnc_8i_rowwise_x_inline_codebook_entries(w_8i_rowwise_x_format))
+	// The CUDA kernels have the built-in codebook (slot 0) and inline codebooks (read from the weights, see
+	// ccv_nnc_compat_dequantize_8i_rowwise_x); a codebook in a process slot has no device copy.
+	if (!ccv_nnc_8i_rowwise_x_codebook_is_valid(w_8i_rowwise_x_format) ||
+		(ccv_nnc_8i_rowwise_x_codebook_slot(w_8i_rowwise_x_format) != 0 && !ccv_nnc_8i_rowwise_x_inline_codebook_entries(w_8i_rowwise_x_format)))
 		return CCV_NNC_EXEC_INVALID;
 	const int w_hadamard_256 = !!(w_8i_rowwise_x_format & CCV_NNC_QX_8I_ROWWISE_HADAMARD_256);
 	// TMCQ tiles span 16 rows and the codec defines no rotation (see CCV_NNC_QX_8I_ROWWISE_TMCQ_N16). Both paths
 	// below decode TMCQ whole tensors, which keeps the tiles intact.
 	if (ccv_nnc_8i_rowwise_x_is_tmcq(w_8i_rowwise_x_format) && w_hadamard_256)
-		return CCV_NNC_EXEC_INVALID;
-	// External pair codebooks (bits 16 - 23 of reserved, ccv_nnc_codebook.h) are Metal only for now; the CUDA TMCQ
-	// decode reads the built-in table.
-	if ((w_8i_rowwise_x_format >> 16) & 0xff)
 		return CCV_NNC_EXEC_INVALID;
 	if ((w_qx_subtype == CCV_NNC_QX_8I_ROWWISE || w_qx_subtype == CCV_NNC_QX_8I_ROWWISE_X) &&
 		transpose_w && !transpose_a &&
