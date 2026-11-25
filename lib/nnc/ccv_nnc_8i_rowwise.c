@@ -2868,6 +2868,9 @@ int ccv_nnc_dequantize_8i_rowwise_x(const void* input, const int datatype, const
 			return -1;
 		const int format = format_in;
 #ifdef HAVE_CUDA
+		// CUDA has no device copy of a codebook in a process slot, only the built-in and inline ones.
+		if (codebook_slot && !ccv_nnc_8i_rowwise_x_inline_codebook_entries(format_in))
+			return -1;
 		ccv_nnc_compat_dequantize_8i_rowwise_x_fp(input, datatype, input_length, row_length, format, output, output_length, 0);
 #elif defined(HAVE_MPS)
 		assert(datatype != CCV_64F);

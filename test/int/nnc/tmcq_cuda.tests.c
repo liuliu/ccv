@@ -7,6 +7,8 @@
 #include <3rdparty/dsfmt/dSFMT.h>
 #include <math.h>
 #include "nnc/ccv_nnc_trellis_builtin_table.inc"
+#include "nnc/ccv_nnc_codebook.h"
+#include "trellis_table_alt.inc"
 
 TEST_SETUP()
 {
@@ -729,6 +731,195 @@ TEST_CASE("CUDA index select rejects TMCQ embeddings")
 			ccv_nnc_tensor_free(gindices);
 			ccv_nnc_tensor_free(ga);
 		}
+}
+
+// A TMCQ weight with an inline codebook: the container of slot, zeros, then the payload and scales of q.
+static ccv_nnc_tensor_t* _tmcq_inline_weight(const ccv_nnc_tensor_param_t host_params, const int format, const int slot, const ccv_nnc_tensor_t* const q)
+{
+	int entries = 0;
+	ccv_nnc_codebook_get(slot, &entries, 0);
+	const int inline_format = ccv_nnc_8i_rowwise_x_with_inline_codebook(format, entries);
+	ccv_nnc_tensor_t* const weight = ccv_nnc_tensor_new(0, ccv_nnc_tensor_8i_rowwise_x(host_params, inline_format), 0);
+	const size_t prefix = ccv_nnc_8i_rowwise_x_inline_codebook_size(inline_format);
+	const size_t size = ccv_nnc_tensor_data_size_without_padding(q->info);
+	memset(weight->data.u8, 0, prefix);
+	ccv_nnc_codebook_serialize(slot, weight->data.u8, prefix);
+	memcpy(weight->data.u8 + prefix, q->data.u8, size);
+	return weight;
+}
+
+static int _tmcq_test_slots(int slots[3])
+{
+	slots[0] = ccv_nnc_codebook_register_serialized(test_trellis_table_alt, sizeof(test_trellis_table_alt));
+	int8_t big[4096];
+	int i;
+	for (i = 0; i < 4096; i++)
+		big[i] = (int8_t)((i * 53 + 7) % 255 - 127);
+	slots[1] = ccv_nnc_codebook_register(big, 1024);
+	for (i = 0; i < 4096; i++)
+		big[i] = (int8_t)((i * 97 + 11) % 255 - 127);
+	slots[2] = ccv_nnc_codebook_register(big, 2048);
+	return slots[0] >= 1 && slots[1] >= 1 && slots[2] >= 1;
+}
+
+TEST_CASE("TMCQ CUDA dequantization of weights with an inline codebook matches the CPU decode bit for bit")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_GPU_CUBLAS));
+	int slots[3];
+	REQUIRE(_tmcq_test_slots(slots), "the 512, 1024 and 2048 pair tables register");
+	const int datatypes[] = {CCV_32F, CCV_16F, CCV_16BF, CCV_64F};
+	const int formats[] = {CCV_NNC_QX_8I_ROWWISE_TMCQ_N16, CCV_NNC_QX_8I_ROWWISE_TMCQ_N22, CCV_NNC_QX_8I_ROWWISE_TMCQ_N32};
+	dsfmt_t dsfmt;
+	dsfmt_init_gen_rand(&dsfmt, 43);
+	int t, f, d, c;
+	for (t = 0; t < 3; t++)
+		for (f = 0; f < sizeof(formats) / sizeof(formats[0]); f++)
+			for (d = 0; d < sizeof(datatypes) / sizeof(datatypes[0]); d++)
+				for (c = 0; c < 2; c++)
+				{
+					// K = 512 (pairs of tiles) and 272 (single tiles).
+					const int rows = 48, k = c ? 272 : 512;
+					const size_t count = (size_t)rows * k;
+					ccv_nnc_tensor_param_t host_params = CPU_TENSOR_NHWC(32F, rows, k);
+					host_params.datatype = datatypes[d];
+					ccv_nnc_tensor_t* const q = ccv_nnc_tensor_new(0, ccv_nnc_tensor_8i_rowwise_x(host_params, formats[f]), 0);
+					const size_t scale_offset = _tmcq_fill(q, datatypes[d], rows, 0.01, &dsfmt);
+					ccv_nnc_tensor_t* const weight = _tmcq_inline_weight(host_params, formats[f], slots[t], q);
+					const int format = weight->info.reserved;
+					const size_t wsize = ccv_nnc_tensor_data_size_without_padding(weight->info);
+					ccv_nnc_tensor_t* const expected = ccv_nnc_tensor_new(0, host_params, 0);
+					REQUIRE_EQ(ccv_nnc_dequantize_8i_rowwise_x(weight->data.u8, datatypes[d], CCV_TENSOR_CPU_MEMORY, wsize, k, format, expected->data.u8, count), 0, "CPU decodes the inline codebook");
+					ccv_nnc_tensor_param_t gpu_params = host_params;
+					gpu_params.type = CCV_TENSOR_GPU_MEMORY | 000;
+					ccv_nnc_tensor_t* const gw = ccv_nnc_tensor_new(0, ccv_nnc_tensor_8i_rowwise_x(gpu_params, format), 0);
+					ccv_nnc_tensor_t* const gout = ccv_nnc_tensor_new(0, gpu_params, 0);
+					ccv_nnc_tensor_t* const actual = ccv_nnc_tensor_new(0, host_params, 0);
+					ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(weight), TENSOR_LIST(gw), 0);
+					REQUIRE_EQ(ccv_nnc_dequantize_8i_rowwise_x(gw->data.u8, datatypes[d], CCV_TENSOR_GPU_MEMORY, wsize, k, format, gout->data.u8, count), 0, "GPU decodes the inline codebook");
+					ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(gout), TENSOR_LIST(actual), 0);
+					const size_t bytes = count * CCV_GET_DATA_TYPE_SIZE(datatypes[d]);
+					REQUIRE(memcmp(expected->data.u8, actual->data.u8, bytes) == 0, "GPU inline decode should match CPU bit for bit: table=%d n=%d datatype=%x k=%d", t, ccv_nnc_8i_rowwise_x_tmcq_rate(formats[f]), datatypes[d], k);
+					// The int8 conversion holds the codes of the inline table: the CPU decode with FP32 scales of 1.
+					ccv_nnc_tensor_t* const g8 = ccv_nnc_tensor_new(0, ccv_nnc_tensor_8i_rowwise(gpu_params), 0);
+					ccv_nnc_tensor_t* const h8 = ccv_nnc_tensor_new(0, ccv_nnc_tensor_8i_rowwise(host_params), 0);
+					ccv_nnc_compat_dequantize_8i_rowwise_x(gw->data.u8, datatypes[d], wsize, k, format, g8->data.u8, count, 0);
+					ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(g8), TENSOR_LIST(h8), 0);
+					const size_t prefix = ccv_nnc_8i_rowwise_x_inline_codebook_size(format);
+					uint8_t* const unit = (uint8_t*)ccmalloc(prefix + scale_offset + sizeof(float) * rows);
+					memcpy(unit, weight->data.u8, prefix + scale_offset);
+					size_t i;
+					for (i = 0; i < rows; i++)
+						((float*)(unit + prefix + scale_offset))[i] = 1;
+					float* const cpu_codes = (float*)ccmalloc(sizeof(float) * count);
+					REQUIRE_EQ(ccv_nnc_dequantize_8i_rowwise_x(unit, CCV_32F, CCV_TENSOR_CPU_MEMORY, prefix + scale_offset + sizeof(float) * rows, k, format, cpu_codes, count), 0, "CPU decodes the unit scales");
+					int codes_equal = 1;
+					for (i = 0; i < count && codes_equal; i++)
+						codes_equal = cpu_codes[i] == (float)(int8_t)h8->data.u8[i];
+					REQUIRE(codes_equal, "GPU inline int8 codes should match the CPU: table=%d n=%d k=%d", t, ccv_nnc_8i_rowwise_x_tmcq_rate(formats[f]), k);
+					REQUIRE(memcmp(h8->data.u8 + ((count + 127) & ~(size_t)127), weight->data.u8 + prefix + scale_offset, (size_t)rows * CCV_GET_DATA_TYPE_SIZE(datatypes[d])) == 0, "GPU inline int8 conversion copies the scales");
+					// The table is used: the built-in table decodes the same payload differently.
+					if (d == 0 && c == 0)
+					{
+						ccv_nnc_tensor_t* const gq = ccv_nnc_tensor_new(0, ccv_nnc_tensor_8i_rowwise_x(gpu_params, formats[f]), 0);
+						ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(q), TENSOR_LIST(gq), 0);
+						ccv_nnc_dequantize_8i_rowwise_x(gq->data.u8, datatypes[d], CCV_TENSOR_GPU_MEMORY, ccv_nnc_tensor_data_size_without_padding(q->info), k, formats[f], gout->data.u8, count);
+						ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(gout), TENSOR_LIST(actual), 0);
+						REQUIRE(memcmp(expected->data.u8, actual->data.u8, bytes) != 0, "the built-in table decodes differently: table=%d", t);
+						ccv_nnc_tensor_free(gq);
+					}
+					ccfree(cpu_codes);
+					ccfree(unit);
+					ccv_nnc_tensor_free(h8);
+					ccv_nnc_tensor_free(g8);
+					ccv_nnc_tensor_free(actual);
+					ccv_nnc_tensor_free(gout);
+					ccv_nnc_tensor_free(gw);
+					ccv_nnc_tensor_free(expected);
+					ccv_nnc_tensor_free(weight);
+					ccv_nnc_tensor_free(q);
+				}
+}
+
+TEST_CASE("cublas forward gemm with TMCQ weights with an inline codebook matches the CPU dequantized GEMM")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_GPU_CUBLAS));
+	int slots[3];
+	REQUIRE(_tmcq_test_slots(slots), "the 512, 1024 and 2048 pair tables register");
+	// M = 1 (GEMV), 64 (int8 GEMM) on FP32 and FP16 activations, K = 512 and 272.
+	static const int shapes[][3] = { { 1, 64, 512 }, { 64, 64, 512 }, { 1, 64, 272 }, { 64, 128, 272 } };
+	const int datatypes[] = {CCV_32F, CCV_16F};
+	dsfmt_t dsfmt;
+	dsfmt_init_gen_rand(&dsfmt, 47);
+	int t, c, d;
+	for (t = 0; t < 3; t++)
+		for (c = 0; c < sizeof(shapes) / sizeof(shapes[0]); c++)
+			for (d = 0; d < 2; d++)
+			{
+				const int m = shapes[c][0], n = shapes[c][1], k = shapes[c][2];
+				const int format = CCV_NNC_QX_8I_ROWWISE_TMCQ_N24;
+				ccv_nnc_tensor_param_t w_params = CPU_TENSOR_NHWC(32F, n, k);
+				w_params.datatype = datatypes[d];
+				ccv_nnc_tensor_t* const q = ccv_nnc_tensor_new(0, ccv_nnc_tensor_8i_rowwise_x(w_params, format), 0);
+				_tmcq_fill(q, datatypes[d], n, 0.01, &dsfmt);
+				ccv_nnc_tensor_t* const weight = _tmcq_inline_weight(w_params, format, slots[t], q);
+				const int inline_format = weight->info.reserved;
+				ccv_nnc_tensor_t* const w = ccv_nnc_tensor_new(0, w_params, 0);
+				REQUIRE_EQ(ccv_nnc_dequantize_8i_rowwise_x(weight->data.u8, datatypes[d], CCV_TENSOR_CPU_MEMORY, ccv_nnc_tensor_data_size_without_padding(weight->info), k, inline_format, w->data.u8, (size_t)n * k), 0, "CPU decodes the inline weights");
+				ccv_nnc_tensor_param_t a_params = CPU_TENSOR_NHWC(32F, m, k);
+				a_params.datatype = datatypes[d];
+				ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, a_params, 0);
+				int i, j, r;
+				for (i = 0; i < m * k; i++)
+					_tmcq_store(datatypes[d], a->data.u8, i, dsfmt_genrand_open_close(&dsfmt) * 2 - 1);
+				ccv_nnc_tensor_param_t ga_params = a_params, gw_params = weight->info, gb_params = a_params;
+				ga_params.type = gw_params.type = gb_params.type = CCV_TENSOR_GPU_MEMORY | 000;
+				gb_params.dim[1] = n;
+				ccv_nnc_tensor_t* const ga = ccv_nnc_tensor_new(0, ga_params, 0);
+				ccv_nnc_tensor_t* const gw = ccv_nnc_tensor_new(0, gw_params, 0);
+				ccv_nnc_tensor_t* const gb = ccv_nnc_tensor_new(0, gb_params, 0);
+				ccv_nnc_tensor_param_t b_params = gb_params;
+				b_params.type = CCV_TENSOR_CPU_MEMORY;
+				ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, b_params, 0);
+				ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(a, weight), TENSOR_LIST(ga, gw), 0);
+				REQUIRE_EQ(ccv_nnc_cmd_exec(CMD_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(0, 1)), ccv_nnc_no_hint, 0, TENSOR_LIST(ga, gw), TENSOR_LIST(gb), 0), CCV_NNC_EXEC_SUCCESS, "TMCQ GEMM with an inline codebook runs");
+				ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(gb), TENSOR_LIST(b), 0);
+				double max_rel = 0;
+				for (r = 0; r < m; r++)
+					for (j = 0; j < n; j++)
+					{
+						double expected = 0;
+						for (i = 0; i < k; i++)
+							expected += _tmcq_load(datatypes[d], a->data.u8, (size_t)r * k + i) * _tmcq_load(datatypes[d], w->data.u8, (size_t)j * k + i);
+						max_rel = ccv_max(max_rel, fabs(_tmcq_load(datatypes[d], b->data.u8, (size_t)r * n + j) - expected) / ccv_max(1.0, fabs(expected)));
+					}
+				REQUIRE(max_rel <= (datatypes[d] == CCV_32F ? 1e-4 : 2e-2), "TMCQ GEMM with an inline codebook should match: table=%d m=%d n=%d k=%d datatype=%x %g", t, m, n, k, datatypes[d], max_rel);
+				ccv_nnc_tensor_free(b);
+				ccv_nnc_tensor_free(gb);
+				ccv_nnc_tensor_free(gw);
+				ccv_nnc_tensor_free(ga);
+				ccv_nnc_tensor_free(a);
+				ccv_nnc_tensor_free(w);
+				ccv_nnc_tensor_free(weight);
+				ccv_nnc_tensor_free(q);
+			}
+}
+
+TEST_CASE("CUDA rejects TMCQ weights with a codebook in a process slot")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_GPU_CUBLAS));
+	int slots[3];
+	REQUIRE(_tmcq_test_slots(slots), "the 512, 1024 and 2048 pair tables register");
+	const int format = ccv_nnc_codebook_with_slot(CCV_NNC_QX_8I_ROWWISE_TMCQ_N24, slots[0]);
+	ccv_nnc_tensor_t* const gw = ccv_nnc_tensor_new(0, ccv_nnc_tensor_8i_rowwise_x(GPU_TENSOR_NHWC(000, 32F, 64, 512), format), 0);
+	ccv_nnc_tensor_t* const ga = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 1, 512), 0);
+	ccv_nnc_tensor_t* const gb = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 1, 64), 0);
+	ccv_nnc_tensor_t* const gout = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 64, 512), 0);
+	REQUIRE_EQ(ccv_nnc_dequantize_8i_rowwise_x(gw->data.u8, CCV_32F, CCV_TENSOR_GPU_MEMORY, ccv_nnc_tensor_data_size_without_padding(gw->info), 512, format, gout->data.u8, 64 * 512), -1, "CUDA has no device copy of a process slot");
+	REQUIRE_EQ(ccv_nnc_cmd_exec(CMD_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(0, 1)), ccv_nnc_no_hint, 0, TENSOR_LIST(ga, gw), TENSOR_LIST(gb), 0), CCV_NNC_EXEC_INVALID, "a GEMM on a process slot is rejected");
+	ccv_nnc_tensor_free(gout);
+	ccv_nnc_tensor_free(gb);
+	ccv_nnc_tensor_free(ga);
+	ccv_nnc_tensor_free(gw);
 }
 
 #include "case_main.h"
