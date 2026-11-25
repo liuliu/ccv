@@ -946,4 +946,34 @@ TEST_CASE("CUDA rejects TMCQ weights with a codebook in a process slot")
 	ccv_nnc_tensor_free(gw);
 }
 
+TEST_CASE("CUDA rejects TMCQ weights whose row scales differ from the activation datatype")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_GPU_CUBLAS) &&
+		ccv_nnc_cmd_ok(CCV_NNC_SEGMENTED_GEMM_FORWARD, CCV_NNC_BACKEND_GPU_CUBLAS));
+	// FP32 row scales with FP16 activations: cuBLAS here multiplies one datatype, so both GEMMs must
+	// refuse (release builds compile the asserts behind them away) instead of computing garbage.
+	const int format = CCV_NNC_QX_8I_ROWWISE_TMCQ_N32;
+	ccv_nnc_tensor_t* const gw = ccv_nnc_tensor_new(0, ccv_nnc_tensor_8i_rowwise_x(GPU_TENSOR_NHWC(000, 32F, 64, 512), format), 0);
+	ccv_nnc_tensor_t* const gsw = ccv_nnc_tensor_new(0, ccv_nnc_tensor_8i_rowwise_x(GPU_TENSOR_NHWC(000, 32F, 1, 64, 512), format), 0);
+	ccv_nnc_tensor_t* const ga = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, 8, 512), 0);
+	ccv_nnc_tensor_t* const gb = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, 8, 64), 0);
+	ccv_nnc_tensor_t* const indices = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, 1), 0);
+	ccv_nnc_tensor_t* const counts = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, 1), 0);
+	indices->data.i32[0] = 0;
+	counts->data.i32[0] = 8;
+	ccv_nnc_tensor_t* const gindices = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32S, 1), 0);
+	ccv_nnc_tensor_t* const gcounts = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32S, 1), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(indices, counts), TENSOR_LIST(gindices, gcounts), 0);
+	REQUIRE_EQ(ccv_nnc_cmd_exec(CMD_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(0, 1)), ccv_nnc_no_hint, 0, TENSOR_LIST(ga, gw), TENSOR_LIST(gb), 0), CCV_NNC_EXEC_INVALID, "a GEMM of FP16 activations with FP32 row scales is rejected");
+	REQUIRE_EQ(ccv_nnc_cmd_exec(CMD_SEGMENTED_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(1, 2)), ccv_nnc_no_hint, 0, TENSOR_LIST(ga, gindices, gcounts, gsw), TENSOR_LIST(gb), 0), CCV_NNC_EXEC_INVALID, "a segmented GEMM of FP16 activations with FP32 row scales is rejected");
+	ccv_nnc_tensor_free(gcounts);
+	ccv_nnc_tensor_free(gindices);
+	ccv_nnc_tensor_free(counts);
+	ccv_nnc_tensor_free(indices);
+	ccv_nnc_tensor_free(gb);
+	ccv_nnc_tensor_free(ga);
+	ccv_nnc_tensor_free(gsw);
+	ccv_nnc_tensor_free(gw);
+}
+
 #include "case_main.h"
