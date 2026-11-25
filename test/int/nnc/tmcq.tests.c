@@ -1117,6 +1117,18 @@ TEST_CASE("TMCQ weights with an inline codebook survive the checkpoint without a
 		REQUIRE_EQ(ccv_nnc_tensor_read(db, name, 0, CCV_NNC_TENSOR_READ_METADATA_ONLY, 0, &restored), CCV_IO_FINAL, "metadata reads");
 		REQUIRE_EQ(restored->info.reserved, format, "metadata keeps the inline format");
 		ccv_nnc_tensor_free(restored);
+		// Caller params or an existing tensor must name the same inline codebook (the table sets the size).
+		restored = 0;
+		REQUIRE_EQ(ccv_nnc_tensor_read(db, name, 0, 0, &weight->info, &restored), CCV_IO_FINAL, "reads into matching caller params");
+		REQUIRE_EQ(memcmp(restored->data.u8, weight->data.u8, prefix + size), 0, "the data is unchanged");
+		ccv_nnc_tensor_free(restored);
+		restored = 0;
+		REQUIRE_EQ(ccv_nnc_tensor_read(db, name, 0, 0, &packed->info, &restored), CCV_IO_ERROR, "caller params without the inline codebook fail");
+		REQUIRE(restored == 0, "no tensor on failure");
+		ccv_nnc_tensor_t* const existing = ccv_nnc_tensor_new(0, packed->info, 0);
+		restored = existing;
+		REQUIRE_EQ(ccv_nnc_tensor_read(db, name, 0, 0, 0, &restored), CCV_IO_ERROR, "an existing tensor without the inline codebook fails");
+		ccv_nnc_tensor_free(existing);
 		// The same row with half the marker fails, whichever half.
 		REQUIRE_EQ(_test_set_stored_reserved(db, name, format & ~(0xff << 16), weight->info.datatype), 0, "reserved updates");
 		restored = 0;
