@@ -860,7 +860,9 @@ TEST_CASE("cublas forward gemm with TMCQ weights with an inline codebook matches
 				ccv_nnc_tensor_param_t w_params = CPU_TENSOR_NHWC(32F, n, k);
 				w_params.datatype = datatypes[d];
 				ccv_nnc_tensor_t* const q = ccv_nnc_tensor_new(0, ccv_nnc_tensor_8i_rowwise_x(w_params, format), 0);
-				_tmcq_fill(q, datatypes[d], n, 0.01, &dsfmt);
+				// Codes of the alternate table are about N(0, 37^2), thus scales of ~1 / 4096 keep the outputs around 1;
+				// the synthetic 1024 and 2048 pair tables are uniform over -127 .. 127 (about twice the spread).
+				_tmcq_fill(q, datatypes[d], n, t ? 1.0 / 8192 : 1.0 / 4096, &dsfmt);
 				ccv_nnc_tensor_t* const weight = _tmcq_inline_weight(w_params, format, slots[t], q);
 				const int inline_format = weight->info.reserved;
 				ccv_nnc_tensor_t* const w = ccv_nnc_tensor_new(0, w_params, 0);
@@ -870,7 +872,7 @@ TEST_CASE("cublas forward gemm with TMCQ weights with an inline codebook matches
 				ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, a_params, 0);
 				int i, j, r;
 				for (i = 0; i < m * k; i++)
-					_tmcq_store(datatypes[d], a->data.u8, i, dsfmt_genrand_open_close(&dsfmt) * 2 - 1);
+					_tmcq_store(datatypes[d], a->data.u8, i, (dsfmt_genrand_open_close(&dsfmt) * 2 - 1) * (0.25 + (i / k) % 7));
 				ccv_nnc_tensor_param_t ga_params = a_params, gw_params = weight->info, gb_params = a_params;
 				ga_params.type = gw_params.type = gb_params.type = CCV_TENSOR_GPU_MEMORY | 000;
 				gb_params.dim[1] = n;
@@ -883,16 +885,38 @@ TEST_CASE("cublas forward gemm with TMCQ weights with an inline codebook matches
 				ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(a, weight), TENSOR_LIST(ga, gw), 0);
 				REQUIRE_EQ(ccv_nnc_cmd_exec(CMD_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(0, 1)), ccv_nnc_no_hint, 0, TENSOR_LIST(ga, gw), TENSOR_LIST(gb), 0), CCV_NNC_EXEC_SUCCESS, "TMCQ GEMM with an inline codebook runs");
 				ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(gb), TENSOR_LIST(b), 0);
+				// The int8 GEMM (M > 4) quantizes each activation row to int8 as well, as in _tmcq_gemm_max_rel_diff.
+				size_t workspace_size = 0;
+				const int fast_path = ccv_nnc_compat_8i_rowwise_gemm_supported(datatypes[d], ga->data.u8, 0, 0, gb->data.u8, m, n, k, &workspace_size);
+				double* const a_ref = (double*)ccmalloc(sizeof(double) * m * k);
+				for (r = 0; r < m; r++)
+				{
+					double max_abs = 0;
+					for (i = 0; i < k; i++)
+						max_abs = ccv_max(max_abs, fabs(a_ref[(size_t)r * k + i] = _tmcq_load(datatypes[d], a->data.u8, (size_t)r * k + i)));
+					if (fast_path && m > 4)
+					{
+						const float scale = max_abs > 0 ? (float)max_abs / 127.f : 1.f / 127.f;
+						const float inv_scale = max_abs > 0 ? 127.f / (float)max_abs : 127.f;
+						for (i = 0; i < k; i++)
+							a_ref[(size_t)r * k + i] = ccv_clamp(rintf((float)a_ref[(size_t)r * k + i] * inv_scale), -127, 127) * scale;
+					}
+				}
 				double max_rel = 0;
 				for (r = 0; r < m; r++)
 					for (j = 0; j < n; j++)
 					{
 						double expected = 0;
 						for (i = 0; i < k; i++)
-							expected += _tmcq_load(datatypes[d], a->data.u8, (size_t)r * k + i) * _tmcq_load(datatypes[d], w->data.u8, (size_t)j * k + i);
-						max_rel = ccv_max(max_rel, fabs(_tmcq_load(datatypes[d], b->data.u8, (size_t)r * n + j) - expected) / ccv_max(1.0, fabs(expected)));
+							expected += a_ref[(size_t)r * k + i] * _tmcq_load(datatypes[d], w->data.u8, (size_t)j * k + i);
+						const double actual = _tmcq_load(datatypes[d], b->data.u8, (size_t)r * n + j);
+						const double rel = fabs(actual - expected) / ccv_max(1.0, ccv_max(fabs(actual), fabs(expected)));
+						max_rel = isnan(rel) ? HUGE_VAL : ccv_max(max_rel, rel);
 					}
-				REQUIRE(max_rel <= (datatypes[d] == CCV_32F ? 1e-4 : 2e-2), "TMCQ GEMM with an inline codebook should match: table=%d m=%d n=%d k=%d datatype=%x %g", t, m, n, k, datatypes[d], max_rel);
+				ccfree(a_ref);
+				// The tolerances of the built-in table GEMM tests.
+				const double tolerance = datatypes[d] == CCV_32F ? 1e-4 : fast_path ? 1e-3 : 2e-2;
+				REQUIRE(max_rel <= tolerance, "TMCQ GEMM with an inline codebook should match: table=%d m=%d n=%d k=%d datatype=%x fast=%d %g", t, m, n, k, datatypes[d], fast_path, max_rel);
 				ccv_nnc_tensor_free(b);
 				ccv_nnc_tensor_free(gb);
 				ccv_nnc_tensor_free(gw);
