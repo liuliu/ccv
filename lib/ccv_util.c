@@ -1824,7 +1824,7 @@ void ccv_bfloat_to_double(const uint16_t* h, double* f, size_t len)
 		union {
 			float v;
 			uint16_t h[2];
-		} u = { .h = { 0, h[1] } };
+		} u = { .h = { 0, h[i] } };
 		f[i] = u.v;
 	}
 }
