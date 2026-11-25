@@ -13,6 +13,9 @@
 #include "ccv.h"
 #include "ccv_internal.h"
 #include "nnc/ccv_nnc.h"
+// The codebook registry and the inline codebook helpers (ccv_nnc_codebook_resolve_inline), also for bindings that
+// only see this header.
+#include "nnc/ccv_nnc_codebook.h"
 #ifdef HAVE_MPS
 #ifdef __APPLE__
 #include "TargetConditionals.h"

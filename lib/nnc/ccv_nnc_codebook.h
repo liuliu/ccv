@@ -22,6 +22,10 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #define CCV_NNC_CODEBOOK_SLOT_SHIFT (16)
 #define CCV_NNC_CODEBOOK_SLOT_MASK (0xff << CCV_NNC_CODEBOOK_SLOT_SHIFT)
 #define CCV_NNC_CODEBOOK_MAX_SLOTS (256)
@@ -81,5 +85,9 @@ size_t ccv_nnc_codebook_serialize(const int slot, void* const data, const size_t
  * count (must be the P of reserved), crc32, zero padding or values are invalid, or the registry is full. A table
  * registered before is found by its content without computing its crc32, so this is cheap to call per command. */
 int ccv_nnc_codebook_resolve_inline(const void* const data, const int reserved);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif
