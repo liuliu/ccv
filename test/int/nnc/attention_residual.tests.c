@@ -173,6 +173,16 @@ TEST_CASE("attention residual mixes the states of a prefill chunk")
 	_attention_residual_case(__case_name__, __case_result__, 2, 16, 1, 1, CCV_16F);
 }
 
+TEST_CASE("attention residual mixes eight block states with three FP32 queries")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_ATTENTION_RESIDUAL_FORWARD, CCV_NNC_BACKEND_MPS));
+	_attention_residual_case(__case_name__, __case_result__, 1, 4608, 8, 3, CCV_32F);
+	_attention_residual_case(__case_name__, __case_result__, 261, 4608, 8, 3, CCV_32F);
+	_attention_residual_case(__case_name__, __case_result__, 7, 4609, 8, 3, CCV_32F);
+	_attention_residual_case(__case_name__, __case_result__, 1, 4608, 5, 3, CCV_32F);
+	_attention_residual_case(__case_name__, __case_result__, 1, 4608, 8, 3, CCV_32F);
+}
+
 TEST_CASE("attention residual rejects what the GPU kernel cannot take")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_ATTENTION_RESIDUAL_FORWARD, CCV_NNC_BACKEND_MPS));
