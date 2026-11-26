@@ -34,8 +34,6 @@ std::pair<AttentionResidualKernelDescriptor, PipelineValue<AttentionResidualKern
     }
   };
 
-  const AttentionResidualKernelDescriptor kernelDesc = { queryCount, memoryPrecision };
-
   auto createPipeline =
   [=](MTL::Library* library) -> MTL::ComputePipelineState* {
     auto constants = NS::TransferPtr(MTL::FunctionConstantValues::alloc()->init());
@@ -53,8 +51,15 @@ std::pair<AttentionResidualKernelDescriptor, PipelineValue<AttentionResidualKern
     CCV_NNC_MFA_CHECK_ERROR(error);
     return pipeline;
   };
+  // The specialized pipeline can support fewer threads than the device.
+  AttentionResidualKernelDescriptor kernelDesc = { queryCount, memoryPrecision, 1024 };
   AttentionResidualKernel* kernel = createKernel(kernelDesc);
   auto pipeline = NS::TransferPtr(createPipeline(kernel->library.get()));
+  while (kernelDesc.threads > 32 && pipeline->maxTotalThreadsPerThreadgroup() < kernelDesc.threads) {
+    kernelDesc.threads /= 2;
+    kernel = createKernel(kernelDesc);
+    pipeline = NS::TransferPtr(createPipeline(kernel->library.get()));
+  }
 
   PipelineValue<AttentionResidualKernel>* output = new PipelineValue<AttentionResidualKernel> { kernel, pipeline };
   return std::make_pair(kernelDesc, output);

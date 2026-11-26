@@ -6,9 +6,7 @@
 AttentionResidualKernel::AttentionResidualKernel(AttentionResidualKernelDescriptor descriptor, MTL::Device* const device) {
   queryCount = descriptor.queryCount;
   memoryPrecision = descriptor.memoryPrecision;
-  // One threadgroup mixes a row: a thread's loads are serial, so a row's channels are spread over
-  // as many threads as a threadgroup has.
-  threadgroupSize = MTL::Size(1024, 1, 1);
+  threadgroupSize = MTL::Size(descriptor.threads, 1, 1);
   source = createSource();
 
   NS::Error* error = nil;

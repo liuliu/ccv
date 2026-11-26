@@ -15,13 +15,14 @@ struct AttentionResidualKernelDescriptor {
   // Each query has its own output buffer.
   uint32_t queryCount;
   GEMMOperandPrecision memoryPrecision;
-  bool operator==(const AttentionResidualKernelDescriptor& rhs) const { return queryCount == rhs.queryCount && memoryPrecision == rhs.memoryPrecision; }
+  uint32_t threads;
+  bool operator==(const AttentionResidualKernelDescriptor& rhs) const { return queryCount == rhs.queryCount && memoryPrecision == rhs.memoryPrecision && threads == rhs.threads; }
 };
 
 template<>
 struct std::hash<AttentionResidualKernelDescriptor> {
   std::size_t operator()(const AttentionResidualKernelDescriptor& descriptor) const noexcept {
-    return std::hash<int>()((int)descriptor.queryCount | ((int)descriptor.memoryPrecision.value << 8));
+    return std::hash<int>()((int)descriptor.queryCount | ((int)descriptor.memoryPrecision.value << 8) | ((int)descriptor.threads << 16));
   }
 };
 
