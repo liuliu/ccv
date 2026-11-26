@@ -1465,6 +1465,191 @@ inline float stable_sigmoid(const float value)
   return shader;
 }
 
+// The static-rate FTQ rate n of a format (n = 8 .. 48, with an external codebook's log2 in bits 16 - 23 and, for a
+// quadrant-folded table, bit 24), or 0. The dispatch only sends the open rates n16 - n48 (segmentedFTQRate).
+static uint32_t ftqSwiGLURate(const uint32_t format)
+{
+  const uint32_t codec = format & 0xffu;
+  if (!tmcq_codebook_format_ok(format, true) || codec < CCV_NNC_QX_8I_ROWWISE_FTQ_BLOCK_FIRST || codec > CCV_NNC_QX_8I_ROWWISE_FTQ_N48)
+    return 0;
+  return 8 + 2 * (codec - CCV_NNC_QX_8I_ROWWISE_FTQ_BLOCK_FIRST);
+}
+
+// Static-rate FTQ routes, gate and up of one route in one pass, laid out as the segmented FTQ GEMV
+// (append_ftq_m1_kernel in SegmentedInt8GemvKernel.cpp) with twice its K split: one threadgroup of
+// kSegmentedInt8SwiGLUFTQSIMDGroups SIMD groups per 16-row tile row of the routed expert, its half SIMD groups streaming
+// over the tile columns and lane r = tiisg & 15 taking row r of each tile, with the same windows, half2 table copy and
+// lookups. Every lane decodes the gate and the up tile of its stream
+// and both dot products share its activation loads; each sum accumulates per stream, adds the xor-16 pair, then the
+// SIMD groups' partials in order, and takes its FP16 row scale. The wider split sums in another order than the GEMV,
+// so gate and up match the two GEMVs' float values to rounding, not bit for bit. The SwiGLU epilogue is the other formats'. The weights are
+// CCVFTQSR blobs of expert_count experts: tiles after the 32-byte header, expert e's from e weight_expert_stride bytes,
+// and FP16 row scales (buffers 4 and 5) whatever the activation type. An external table arrives half2 at buffer(15).
+static std::string buildFTQShader(
+  const SegmentedInt8SwiGLUKernelDescriptor& descriptor, const uint32_t rate)
+{
+  CCV_NNC_MFA_PRECONDITION(!descriptor.sharedFused);
+  const uint32_t log2 = tmcq_codebook_log2(descriptor.format);
+  const bool fold = tmcq_codebook_fold(descriptor.format);
+  CCV_NNC_MFA_PRECONDITION(!fold || log2 == 9);
+  std::string shader;
+  if (descriptor.memoryPrecision == GEMMOperandPrecision::FP32)
+    shader = "typedef float real; typedef float4 real4;\n";
+  else if (descriptor.memoryPrecision == GEMMOperandPrecision::BF16)
+    shader = "typedef bfloat real; typedef bfloat4 real4;\n";
+  else
+    shader = "typedef half real; typedef half4 real4;\n";
+  shader += R"(
+constant uint ncols [[function_constant(0)]];
+constant uint nrows [[function_constant(1)]];
+constant uint segment_count [[function_constant(2)]];
+constant uint group_size [[function_constant(3)]];
+constant uint groups_per_row [[function_constant(4)]];
+constant uint expert_count [[function_constant(5)]];
+constant uint broadcast_input [[function_constant(6)]];
+constant ulong weight_expert_stride [[function_constant(7)]];
+)";
+  if (descriptor.clamp)
+    shader += "constant float clamp_limit [[function_constant(8)]];\n";
+  shader += R"(
+#include <metal_stdlib>
+using namespace metal;
+)";
+  shader += ccv_nnc_mfa_tmcq_decode_source();
+  shader += ccv_nnc_mfa_tmcq_w1_helpers;
+  shader += ccv_nnc_mfa_ftq_w1_source(log2 ? log2 : 9, fold);
+  shader += "constant constexpr uint S = " + std::to_string(kSegmentedInt8SwiGLUFTQSIMDGroups) + ";\n";
+  shader += R"(
+inline float stable_sigmoid(const float value)
+{
+  const float tail = metal::precise::divide(1.0f, 1.0f + metal::precise::exp(abs(value)));
+  return tail + step(0.0f, value) * (1.0f - 2.0f * tail);
+}
+
+kernel void segmented_int8_swiglu(
+  device const uchar* gate_weights [[buffer(0)]],
+  device const uchar* up_weights [[buffer(1)]],
+  device const real* activation [[buffer(2)]],
+  device real* destination [[buffer(3)]],
+  device const half* gate_scales [[buffer(4)]],
+  device const half* up_scales [[buffer(5)]],
+  device const int* indices [[buffer(6)]],
+  device const int* counts [[buffer(7)]],
+  device const real* route_weights [[buffer(8)]],
+)";
+  if (log2)
+    shader += "  device const uint4* codebook [[buffer(15)]],\n";
+  shader += R"(  uint tgpig_position [[threadgroup_position_in_grid]],
+  uint sgitg [[simdgroup_index_in_threadgroup]],
+  uint tiisg [[thread_index_in_simdgroup]])
+{
+  // One threadgroup per 16-row tile row; its S SIMD groups split K and add up in partials (gate, then up).
+  constexpr uint STREAMS = 2 * S;
+  const uint threadgroups_per_route = nrows / 16u;
+  const uint route = tgpig_position / threadgroups_per_route;
+  threadgroup int route_expert;
+  threadgroup float partials[2 * S * 16];
+  // The route lookup's barrier below also publishes the table copy.
+  threadgroup half2 tmcq_tg[ftq_entries];
+)";
+  if (log2)
+    shader += R"(
+  for (uint i = sgitg * 32u + tiisg; i < ftq_entries / 4u; i += S * 32u)
+    reinterpret_cast<threadgroup uint4*>(tmcq_tg)[i] = codebook[i];
+)";
+  else
+    shader += R"(
+  tmcq_w1_load_table(tmcq_tg, sgitg * 32u + tiisg, S * 32u);
+)";
+  shader += R"(
+  if (sgitg == 0 && tiisg == 0) {
+    route_expert = -1;
+    uint row_offset = 0;
+    for (uint segment = 0; segment < segment_count; ++segment) {
+      const int count = counts[segment];
+      if (count <= 0)
+        continue;
+      const uint next_row_offset = row_offset + (uint)count;
+      if (route < next_row_offset) {
+        route_expert = indices[segment];
+        break;
+      }
+      row_offset = next_row_offset;
+    }
+  }
+  threadgroup_barrier(mem_flags::mem_threadgroup);
+  const int expert = route_expert;
+  if (expert < 0 || expert >= (int)expert_count)
+    return;
+
+  // Keep this load before the projections: loading after the SIMD reductions
+  // produced intermittent zero outputs with Metal shader validation in the
+  // IQ2_XXS 257-expert case. Preserve this workaround across packed formats;
+  // see "MPS segmented SwiGLU preserves route weights with 257 experts" in
+  // test/int/nnc/segmented_swiglu.tests.c.
+  const float route_weight = (float)route_weights[route];
+
+  const uint tile_row = tgpig_position - route * threadgroups_per_route;
+  const uint tiles_per_row = ncols / 16u;
+  const uint r = tiisg & 15u;
+  const uint stream = sgitg * 2u + (tiisg >> 4);
+  // An expert is nrows / 16 whole tile rows, so weight_expert_stride is a whole number of words.
+)";
+  const std::string tileRowWords = std::to_string(rate / 2) + "u";
+  shader += "  device const uint* gate_code = (device const uint*)(gate_weights + 32 + (ulong)expert * weight_expert_stride) + (ulong)tile_row * tiles_per_row * " + tileRowWords + ";\n";
+  shader += "  device const uint* up_code = (device const uint*)(up_weights + 32 + (ulong)expert * weight_expert_stride) + (ulong)tile_row * tiles_per_row * " + tileRowWords + ";\n";
+  shader += R"(
+  activation += broadcast_input ? 0 : (ulong)route * ncols;
+  device const real4* y4 = (device const real4*)activation;
+  float gate_acc = 0;
+  float up_acc = 0;
+)";
+  const std::string codes[2] = { "gate_code", "up_code" };
+  const std::string q[2] = { "qg", "qu" };
+  // The GEMV's per-tile statement for each weight, as in append_ftq_m1_kernel (SegmentedInt8GemvKernel.cpp).
+  shader += ccv_nnc_mfa_ftq_w1_rate_pair_source(rate, codes, q,
+    "    gate_acc += dot(qg[0], float4(y4[tc * 4u + 0u])) + dot(qg[1], float4(y4[tc * 4u + 1u])) + dot(qg[2], float4(y4[tc * 4u + 2u])) + dot(qg[3], float4(y4[tc * 4u + 3u]));\n"
+    "    up_acc += dot(qu[0], float4(y4[tc * 4u + 0u])) + dot(qu[1], float4(y4[tc * 4u + 1u])) + dot(qu[2], float4(y4[tc * 4u + 2u])) + dot(qu[3], float4(y4[tc * 4u + 3u]));\n");
+  shader += R"(
+  const float gate_total = gate_acc + simd_shuffle_xor(gate_acc, 16);
+  const float up_total = up_acc + simd_shuffle_xor(up_acc, 16);
+  if (tiisg < 16) {
+    partials[sgitg * 16u + r] = gate_total;
+    partials[(S + sgitg) * 16u + r] = up_total;
+  }
+  threadgroup_barrier(mem_flags::mem_threadgroup);
+  if (sgitg == 0 && tiisg < 16) {
+    float gate_sum = 0;
+    float up_sum = 0;
+    for (uint s = 0; s < S; s++) {
+      gate_sum += partials[s * 16u + r];
+      up_sum += partials[(S + s) * 16u + r];
+    }
+    const uint row = tile_row * 16u + r;
+    float gate0 = gate_sum * (float)gate_scales[(ulong)expert * nrows + row];
+    float up0 = up_sum * (float)up_scales[(ulong)expert * nrows + row];
+)";
+  if (descriptor.clamp)
+    shader += R"(
+    gate0 = min(gate0, clamp_limit);
+    up0 = clamp(up0, -clamp_limit, clamp_limit);
+)";
+  shader += R"(
+    {
+      const float sigmoid_gate0 = stable_sigmoid(gate0);
+      {
+#pragma METAL fp math_mode(safe)
+        // ((up * gate) * sigmoid) * weight, as in the other segmented SwiGLU formats: fast-math
+        // must not reassociate the weighted product.
+        destination[(ulong)route * nrows + row] = (real)(((up0 * gate0) * sigmoid_gate0) * route_weight);
+      }
+    }
+  }
+}
+)";
+  return shader;
+}
+
 static std::string buildQ2KShader(
   const SegmentedInt8SwiGLUKernelDescriptor& descriptor)
 {
@@ -1627,6 +1812,14 @@ SegmentedInt8SwiGLUKernel::SegmentedInt8SwiGLUKernel(
   if (descriptor.format == CCV_NNC_QX_8I_ROWWISE_IQ1_S ||
       descriptor.format == CCV_NNC_QX_8I_ROWWISE_IQ1_M) {
     source = buildIQ1Shader(descriptor);
+    auto string = NS::String::string(source.c_str(), NS::UTF8StringEncoding);
+    NS::Error* error = nil;
+    library = NS::TransferPtr(device->newLibrary(string, nil, &error));
+    CCV_NNC_MFA_CHECK_ERROR(error);
+    return;
+  }
+  if (const uint32_t rate = ftqSwiGLURate(descriptor.format)) {
+    source = buildFTQShader(descriptor, rate);
     auto string = NS::String::string(source.c_str(), NS::UTF8StringEncoding);
     NS::Error* error = nil;
     library = NS::TransferPtr(device->newLibrary(string, nil, &error));

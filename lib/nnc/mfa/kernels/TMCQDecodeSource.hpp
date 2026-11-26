@@ -5,9 +5,10 @@
 #include <string>
 #include "../ccv_nnc_mfa_error.hpp"
 
-// The built-in pair codebook of TMCQ, ccv_nnc_trellis_builtin_table[1024] (512 pairs, interleaved int8). The Metal
-// tables below are generated from it, so the .inc file stays the only copy.
+// The built-in pair codebook, ccv_nnc_trellis_builtin_table[1024] (512 pairs, interleaved int8), for TMCQ and
+// FTQ table id 0. The Metal tables below are generated from it, so the .inc file stays the only copy.
 #include "../../ccv_nnc_trellis_builtin_table.inc"
+#include "../../ccv_nnc_ftq_schedule.inc"
 
 // Metal helpers shared by every kernel that decodes CCV_NNC_QX_8I_ROWWISE_TMCQ_N* weights.
 // Codec definition: see CCV_NNC_QX_8I_ROWWISE_TMCQ_N16 in ccv_nnc.h. A tile is 16 * n bits = n / 2
@@ -186,7 +187,7 @@ static inline std::string ccv_nnc_mfa_tmcq_decode_source_of(const int8_t* const 
   return s;
 }
 
-// tmcq_table is the built-in table.
+// tmcq_table is the built-in table: TMCQ and FTQ with table id 0.
 static inline const char* ccv_nnc_mfa_tmcq_decode_source()
 {
   static const std::string source = ccv_nnc_mfa_tmcq_decode_source_of(ccv_nnc_trellis_builtin_table);
@@ -243,6 +244,75 @@ static inline const char* tmcq_w3_decode_source()
     return s;
   }();
   return source.c_str();
+}
+
+// FTQ register-fragment helpers for the segmented scaled GEMM prefill kernel only (ftq_w3_*, CCV_NNC_QX_8I_ROWWISE_FTQ_N16):
+// a tile row's 16 int8 codes packed like tmcq_w3_decode_row16_words, with the windows, pairs and fold of
+// ftq_store_segment (Dequantize8iRowwiseXKernel), so the codes are the selected-expert decode's bit for bit. The table
+// is a threadgroup ushort copy of the pairs (q8[2 j] in the low byte); log2Entries / fold as ccv_nnc_mfa_ftq_w1_source.
+// Append after ccv_nnc_mfa_tmcq_decode_source(), which defines tmcq_funnel.
+static inline std::string ccv_nnc_mfa_ftq_w3_source(const uint32_t log2Entries, const bool fold)
+{
+  std::string shader = "constant uint ftq_w3_index_shift = " + std::to_string(32 - log2Entries) + "u;\n";
+  shader += "#define FTQ_W3_ENTRIES " + std::to_string(1u << log2Entries) + "u\n";
+  shader += std::string("#define FTQ_W3_FOLD ") + (fold ? "1" : "0") + "\n";
+  shader += R"(
+// The 32 bits of the little-endian pair (lo, hi) from bit o (0 <= o < 32) as one 64-bit shift. Above rate 32 a row's
+// bit offset mod 32 varies with the row (32 does not divide n). There this form took less time than tmcq_funnel's two
+// 32-bit shifts on M5 Ultra (the fused GEMM, measured over n34 - n56: 2 - 16%), but more at n24 (4%), so
+// ftq_w3_decode_row16_words takes it above rate 32.
+inline uint ftq_w3_funnel(uint lo, uint hi, uint o)
+{
+  return uint(as_type<ulong>(uint2(lo, hi)) >> o);
+}
+
+// The packed pair of a 16-bit state. FTQ_W3_FOLD: base pair (h >> 16) & 511, each int8 negated by bit 15 / 31 of h,
+// the expression of the selected-expert decode's ftq_fold_lookup.
+inline uint ftq_w3_pair(threadgroup const ushort* table, uint state)
+{
+#if FTQ_W3_FOLD
+  const uint h = state * 0x83DCD12Du;
+  const char2 v = as_type<char2>(table[(h >> 16) & 511u]);
+  return as_type<ushort>(char2((h & 0x8000u) ? -v.x : v.x, (h & 0x80000000u) ? -v.y : v.y));
+#else
+  return table[(state * 0x83DCD12Du) >> ftq_w3_index_shift];
+#endif
+}
+
+// Row r of a rate N tile whose n / 2 words start at `tile`: its windows start at bit r N + floor(N / 8) - 16, row 0's
+// before the tile, wrapping to its end, and the words from there are taken mod N / 2, as ftq_store_segment reads them.
+// Window i is at offset floor((i + 1) N / 8) - floor(N / 8) of the funnelled bits, so the windows span
+// N - floor(N / 8) + 16 bits: from bit offset sh <= 31 that is within the three words, and within the first 64
+// funnelled bits, for every rate up to N = 48.
+template <uint N>
+inline uint4 ftq_w3_decode_row16_words(device const uint* tile, uint r, threadgroup const ushort* table)
+{
+  constexpr uint W = N / 2u;
+  const uint lane_bit = (r == 0u ? 16u * N : r * N) + (N >> 3) - 16u;
+  const uint o0 = lane_bit >> 5;
+  const uint o1 = o0 + 1u == W ? 0u : o0 + 1u;
+  const uint o2 = o1 + 1u == W ? 0u : o1 + 1u;
+  const uint sh = lane_bit & 31u;
+  const uint w0 = tile[o0], w1 = tile[o1], w2 = tile[o2];
+  constexpr bool wide_funnel = N > 32u;
+  uint f[3];
+  f[0] = wide_funnel ? ftq_w3_funnel(w0, w1, sh) : tmcq_funnel(w0, w1, sh);
+  f[1] = wide_funnel ? ftq_w3_funnel(w1, w2, sh) : tmcq_funnel(w1, w2, sh);
+  // No window reaches past the first 64 bits.
+  f[2] = 0;
+  uint t[8];
+  #pragma clang loop unroll(full)
+  for (uint i = 0; i < 8u; ++i)
+  {
+    const uint k = (((i + 1u) * N) >> 3) - (N >> 3);
+    const uint sub = k & 31u;
+    const uint state = (sub <= 16u ? (f[k >> 5] >> sub) : ((f[k >> 5] >> sub) | (f[(k >> 5) + 1u] << (32u - sub)))) & 0xffffu;
+    t[i] = ftq_w3_pair(table, state);
+  }
+  return uint4(t[0] | (t[1] << 16), t[2] | (t[3] << 16), t[4] | (t[5] << 16), t[6] | (t[7] << 16));
+}
+)";
+  return shader;
 }
 
 // Helpers for the segmented SwiGLU decode. They read a half2 copy of the pair table: every int8 code
@@ -324,7 +394,115 @@ static inline const char* ccv_nnc_mfa_tmcq_w2_source()
   return source.c_str();
 }
 
-// External codebooks (ccv_nnc_codebook.h). In the format of an MFA params struct, bits 16 - 23 of a TMCQ format
+// FTQ GEMV helpers (CCV_NNC_QX_8I_ROWWISE_FTQ_N16), shared by the dense Int8GemvKernel and SegmentedInt8GemvKernel: the
+// pair lookup from a half2 threadgroup copy of the table and the 8 windows of one lane. log2Entries / fold: the pair
+// table (9 for the built-in one); fold is a quadrant-folded external table (CCV_NNC_MFA_CODEBOOK_FOLD, log2Entries 9).
+// Append after ccv_nnc_mfa_tmcq_decode_source(), whose tmcq_funnel the rate loop uses.
+static inline std::string ccv_nnc_mfa_ftq_w1_source(const uint32_t log2Entries, const bool fold)
+{
+  // 32 - log2 of the pair count.
+  std::string shader = "constant uint ftq_index_shift = " + std::to_string(32 - log2Entries) + ";\n";
+  shader += "constant uint ftq_entries = " + std::to_string(1u << log2Entries) + ";\n";
+  shader += std::string("#define FTQ_FOLD ") + (fold ? "1" : "0") + "\n";
+  shader += R"(
+// The pair of a 16-bit state. FTQ_FOLD: quadrant fold, one and + one xor on the half2 bits (the fused GEMV is ALU
+// bound, so the folded lookup must stay this short).
+inline float2 ftq_lookup(threadgroup const half2* table, uint state)
+{
+#if FTQ_FOLD
+  const uint h = state * 0x83DCD12Du;
+  uint v = as_type<uint>(table[(h >> 16) & 511u]);
+  v ^= h & 0x80008000u;
+  return float2(as_type<half2>(v));
+#else
+  return float2(table[(state * 0x83DCD12Du) >> ftq_index_shift]);
+#endif
+}
+
+// The 8 windows of a lane from its funnelled bits at rate N: window i at offset floor((i + 1) N / 8) - floor(N / 8) of the
+// lane's first window start, from the low 64 bits.
+template <uint N>
+inline void ftq_decode_lane(ulong lo, thread float4* q, threadgroup const half2* table)
+{
+  float2 c[8];
+  #pragma clang loop unroll(full)
+  for (uint i = 0; i < 8u; i++) {
+    const uint k = (((i + 1u) * N) >> 3) - (N >> 3);
+    const uint state = uint(lo >> k) & 0xffffu;
+    c[i] = ftq_lookup(table, state);
+  }
+  q[0] = float4(c[0], c[1]);
+  q[1] = float4(c[2], c[3]);
+  q[2] = float4(c[4], c[5]);
+  q[3] = float4(c[6], c[7]);
+}
+)";
+  return shader;
+}
+
+// The tile loop of one threadgroup's 16 rows at the compile-time rate n, over row_code (the tile row's first word):
+// the lane's three words from its first window's start and its 8 windows at compile-time offsets.
+// Below n = 16 the first windows of rows 0 and 1 start before the tile and wrap to its end. In scope it needs r, stream,
+// STREAMS, tiles_per_row, row_code, tmcq_tg (the half2 table); `accumulate` is the per-tile statement, which reads
+// tile column tc and its weights qa[0 .. 3].
+static inline std::string ccv_nnc_mfa_ftq_w1_rate_source(const uint32_t n, const std::string& accumulate)
+{
+  std::string body = "  {\n  constexpr uint N = " + std::to_string(n) + "u;\n  constexpr uint W = N / 2u;\n";
+  if (n >= 16)
+    body += "  const uint lane_bit = (r == 0u ? 16u * N : r * N) + (N >> 3) - 16u;\n";
+  else
+    body += "  const uint lane_raw = r * N + (N >> 3) + 16u * N - 16u;\n"
+      "  const uint lane_bit = lane_raw >= 16u * N ? lane_raw - 16u * N : lane_raw;\n";
+  body += "  const uint o0 = lane_bit >> 5;\n"
+    "  const uint o1 = o0 + 1u == W ? 0u : o0 + 1u;\n"
+    "  const uint o2 = o1 + 1u == W ? 0u : o1 + 1u;\n";
+  body += "  const uint sh = lane_bit & 31u;\n"
+    "  // One tile per iteration.\n"
+    "  for (uint tc = stream; tc < tiles_per_row; tc += STREAMS) {\n"
+    "    device const uint* t = row_code + tc * W;\n";
+  body += "    const uint w0 = t[o0], w1 = t[o1], w2 = t[o2];\n"
+    "    const ulong lo = ((ulong)tmcq_funnel(w1, w2, sh) << 32) | tmcq_funnel(w0, w1, sh);\n";
+  body += "    float4 qa[4];\n"
+    "    ftq_decode_lane<N>(lo, qa, (threadgroup const half2*)tmcq_tg);\n";
+  body += accumulate;
+  body += "  }\n"
+    "  }\n";
+  return body;
+}
+
+// ccv_nnc_mfa_ftq_w1_rate_source over two weights of the same shape and rate at once (the segmented SwiGLU's gate and
+// up): the same lane setup, then for every tile the windows of `codes[0]` decoded into `q[0]`[0 .. 3] and those of
+// `codes[1]` into `q[1]`[0 .. 3], with the same words, funnels and lookups as the one-weight loop, so each decodes
+// exactly as there. `accumulate` reads tile column tc and both weights.
+static inline std::string ccv_nnc_mfa_ftq_w1_rate_pair_source(const uint32_t n, const std::string codes[2], const std::string q[2], const std::string& accumulate)
+{
+  std::string body = "  {\n  constexpr uint N = " + std::to_string(n) + "u;\n  constexpr uint W = N / 2u;\n";
+  if (n >= 16)
+    body += "  const uint lane_bit = (r == 0u ? 16u * N : r * N) + (N >> 3) - 16u;\n";
+  else
+    body += "  const uint lane_raw = r * N + (N >> 3) + 16u * N - 16u;\n"
+      "  const uint lane_bit = lane_raw >= 16u * N ? lane_raw - 16u * N : lane_raw;\n";
+  body += "  const uint o0 = lane_bit >> 5;\n"
+    "  const uint o1 = o0 + 1u == W ? 0u : o0 + 1u;\n"
+    "  const uint o2 = o1 + 1u == W ? 0u : o1 + 1u;\n";
+  body += "  const uint sh = lane_bit & 31u;\n"
+    "  // One tile per iteration.\n"
+    "  for (uint tc = stream; tc < tiles_per_row; tc += STREAMS) {\n";
+  for (int i = 0; i < 2; i++) {
+    body += "    float4 " + q[i] + "[4];\n    {\n"
+      "    device const uint* t = " + codes[i] + " + tc * W;\n";
+    body += "    const uint w0 = t[o0], w1 = t[o1], w2 = t[o2];\n"
+      "    const ulong lo = ((ulong)tmcq_funnel(w1, w2, sh) << 32) | tmcq_funnel(w0, w1, sh);\n";
+    body += "    ftq_decode_lane<N>(lo, " + q[i] + ", (threadgroup const half2*)tmcq_tg);\n    }\n";
+  }
+  body += accumulate;
+  body += "  }\n"
+    "  }\n";
+  return body;
+}
+
+
+// External codebooks (ccv_nnc_codebook.h). In the format of an MFA params struct, bits 16 - 23 of a TMCQ / FTQ format
 // hold log2 of the entry count of an external codebook (9, 10 or 11), 0 for the built-in table: the dispatch puts
 // it there in place of the tensor's slot, so the pipeline key carries the table size and the table itself is a
 // buffer. With 0 every kernel is generated exactly as before, with the compile-time constant table.
@@ -333,14 +511,32 @@ static inline uint32_t tmcq_codebook_log2(const uint32_t format)
   return (format >> 16) & 0xffu;
 }
 
-// The 16 x 16 tile grid of a rows x cols TMCQ weight (rows % 16 == 0, cols % 16 == 0): rows / 16 tile rows of
+// Bit 24 of an FTQ format: the external codebook is quadrant folded (CCV_NNC_CODEBOOK_FOLD, log2 9): 512 base pairs,
+// h = state * 0x83DCD12D takes base pair (h >> 16) & 511 with the first value negated by bit 15 of h and the second
+// by bit 31. Folded and plain tables are different pipelines.
+#define CCV_NNC_MFA_CODEBOOK_FOLD (1u << 24)
+
+static inline bool tmcq_codebook_fold(const uint32_t format)
+{
+  return (format & CCV_NNC_MFA_CODEBOOK_FOLD) != 0;
+}
+
+// Variable-rate FTQ int8 decode: blocks of 2 tiles x 16 rows (one per 32 threads) each thread takes in its tile row
+// out of `segments` row segments (16 weights of one row inside one tile). 2, except 1 for a folded table on fewer
+// than 2^20 segments, whose longer lookups need the threads. The kernel computes the same value.
+static inline uint32_t ftq_vr_blocks_per_thread(const uint64_t segments, const bool fold)
+{
+  return fold && segments < (UINT64_C(1) << 20) ? 1 : 2;
+}
+
+// The 16 x 16 tile grid of a rows x cols TMCQ / FTQ weight (rows % 16 == 0, cols % 16 == 0): rows / 16 tile rows of
 // cols / 16 tiles, tile-row-major. Every size and offset is a whole number of tiles; with cols % 256 != 0 the row-wise
 // "groups of 256 weights per row" count ceil(cols / 256) is not the tile count (cols = 1152 has 4.5 tiles' worth of
 // bits per row, cols = 272 has 17 tiles per tile row).
 static inline uint64_t tmcq_tile_count(const uint64_t rows, const uint64_t cols)
 {
-  // The CPU codec's count (ccv_nnc_8i_rowwise_x_tile_count), so sizes and offsets agree with ccv_nnc_tensor_data_size.
-  return (rows / 16) * (cols / 16);
+  // The CPU codec's count (ccv_nnc_ftq_schedule.inc), so sizes and offsets agree with ccv_nnc_tensor_data_size.
+  return ccv_nnc_8i_rowwise_x_tile_count(rows, cols);
 }
 
 // Bytes of the tiles of `rows` rows (rows % 16 == 0) at tile_bits = 16 n bits per tile (n even, a whole number of
@@ -350,18 +546,37 @@ static inline uint64_t tmcq_tile_rows_bytes(const uint64_t rows, const uint64_t 
   return tmcq_tile_count(rows, cols) * tile_bits / 8;
 }
 
-// The format bits an MFA TMCQ kernel accepts: the codec and the codebook's log2 (bits 16 - 23).
-static inline bool tmcq_codebook_format_ok(const uint32_t format)
+// Variable-rate FTQ int8 decode threads per tile row of tiles_per_row tiles at blocks_per_thread = T: 32 threads per
+// G = ceil(floor(tiles_per_row / 2) / T) strided blocks of 2 tiles x 16 rows, plus 16 (one per row) for the last tile
+// of an odd tiles_per_row. With tiles_per_row % (2 T) == 0 this is 16 tiles_per_row / T, the original mapping
+// (ftq_vr_generic_blocks false); the descriptor's dispatch count and the kernel use this same value.
+static inline uint32_t ftq_vr_threads_per_tile_row(const uint32_t tiles_per_row, const uint32_t blocks_per_thread)
+{
+  const uint32_t pairs = tiles_per_row / 2;
+  return 32 * ((pairs + blocks_per_thread - 1) / blocks_per_thread) + 16 * (tiles_per_row & 1);
+}
+
+static inline bool ftq_vr_generic_blocks(const uint32_t tiles_per_row, const uint32_t blocks_per_thread)
+{
+  return (tiles_per_row % (2 * blocks_per_thread)) != 0;
+}
+
+// The format bits an MFA trellis kernel accepts: the codec, the codebook's log2 (bits 16 - 23) and, for FTQ, the fold
+// bit with log2 9.
+static inline bool tmcq_codebook_format_ok(const uint32_t format, const bool ftq)
 {
   const uint32_t log2 = tmcq_codebook_log2(format);
   if (log2 != 0 && (log2 < 9 || log2 > 11))
     return false;
+  if (tmcq_codebook_fold(format))
+    return ftq && log2 == 9 && (format & ~(0xffu | 0xff0000u | CCV_NNC_MFA_CODEBOOK_FOLD)) == 0;
   return (format & ~(0xffu | 0xff0000u)) == 0;
 }
 
 // MSL helpers for an external codebook of 1 << log2 pairs: the index shift and entry count, a copy of the table into
 // threadgroup memory, and accessors that read that copy like the built-in tables. The buffer holds the pairs already
-// converted to half2 (ccv_nnc_mfa_codebook_buffer; int8 values are exact in half), so the copy is plain 16-byte moves
+// converted to half2 (ccv_nnc_mfa_codebook_buffer; int8 values are exact in half; the int8 pairs that follow are for
+// the FTQ int8 decode), so the copy is plain 16-byte moves
 // and the GEMV lookups are the same float2(table[k]) as with the built-in half2 copy. Storage and lookups go through
 // these helpers only, so a different threadgroup layout changes this function alone.
 static inline std::string tmcq_codebook_source(const uint32_t log2)

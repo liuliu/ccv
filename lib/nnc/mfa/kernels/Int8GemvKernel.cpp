@@ -1116,6 +1116,177 @@ kernel void int8_gemv(
 )";
 }
 
+
+// FTQ (CCVFTQSR blobs, see CCV_NNC_QX_8I_ROWWISE_FTQ_N16).
+bool is_ftq(const uint32_t format)
+{
+  const uint32_t codec = format & CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK;
+  return codec >= CCV_NNC_QX_8I_ROWWISE_FTQ_N16 && codec <= CCV_NNC_QX_8I_ROWWISE_FTQ_N48;
+}
+
+// FTQ GEMV for one to three activation rows (codec: CCV_NNC_QX_8I_ROWWISE_FTQ_N16). Same thread mapping, table copy
+// and reduction as the TMCQ GEMV above: one threadgroup per tile row, half SIMD groups stream over tile columns, lane
+// r takes row r of the tile. Every tile has 16 n bits and starts on word t n / 2 of the code, which begins 32 bytes
+// into the blob. A lane's 8 windows end at r n + floor((i + 1) n / 8): it reads the tile words from its first window's
+// start (bit r n + floor(n / 8) - 16, taken mod the tile because the tile is a tail-biting loop, so row 0 wraps to the
+// tile end and row 15's unused high bits to the tile start, as TMCQ indexes its words), funnels them once with a
+// per-lane shift and finds every window at a compile-time offset in three words and 64 bits (the 8 windows span
+// 7 n / 8 + 16 bits, n <= 48).
+// log2Entries / externalTable: the pair table. The default is the built-in 512-pair table as a compile-time
+// constant; an external table arrives as a pre-converted half2 buffer, `device const uint4* codebook [[buffer(5)]]`
+// (P / 4 uint4), copied to the same threadgroup half2[P] with uint4 loads and looked up with shift 32 - log2Entries
+// (ccv_nnc_mfa_codebook_buffer).
+// fold: a quadrant-folded external table (CCV_NNC_MFA_CODEBOOK_FOLD, log2Entries 9): base pair (h >> 16) & 511 of
+// h = state * 0x83DCD12D, signs from bits 15 / 31 of h xored straight into the half2's sign bits.
+// Variable-rate FTQ (CCVFTQVR blobs, see CCV_NNC_QX_8I_ROWWISE_FTQ_VR_N16).
+static bool is_ftq_vr(const uint32_t format)
+{
+  const uint32_t codec = format & CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK;
+  return codec >= CCV_NNC_QX_8I_ROWWISE_FTQ_VR_N16 && codec <= CCV_NNC_QX_8I_ROWWISE_FTQ_VR_N48;
+}
+
+// The FTQ GEMV's per-tile statement (ccv_nnc_mfa_ftq_w1_rate_source): tile column tc against every activation row.
+static const char* const ftq_gemv_accumulate =
+  "    for (uint m = 0; m < M; m++) {\n"
+  "      device const real4* y0 = (device const real4*)(src1 + (ulong)vector_row_stride * m) + tc * 4;\n"
+  "      acc0[m] += dot(qa[0], float4(y0[0])) + dot(qa[1], float4(y0[1])) + dot(qa[2], float4(y0[2])) + dot(qa[3], float4(y0[3]));\n"
+  "    }\n";
+
+// levelMask (variable-rate FTQ): tile row tr spans words prefix[tr] .. prefix[tr + 1] of the code after the header and
+// the R + 1 word prefix (bound again as a constant buffer at buffer(6)); n_r = 2 (prefix[tr + 1] - prefix[tr]) /
+// tiles_per_row is uniform in the threadgroup, which switches once to the static-rate loop at n_r for every level of
+// the mask (bit i is n = 8 + 2 i).
+static void append_ftq_kernel(std::string& shader, const uint32_t format, const uint32_t mrows, const bool fusedBias, const uint32_t log2Entries = 9, const bool externalTable = false, const bool fold = false, const uint32_t levelMask = 0)
+{
+  const bool vr = is_ftq_vr(format);
+  const uint32_t n = vr ? 0 : 8 + 2 * ((format & CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK) - CCV_NNC_QX_8I_ROWWISE_FTQ_BLOCK_FIRST);
+  const uint32_t S = int8GemvTMCQSIMDGroups(mrows);
+  shader += R"(
+#include <metal_stdlib>
+using namespace metal;
+)";
+  // Table id 0 is the built-in table.
+  shader += ccv_nnc_mfa_tmcq_decode_source();
+  shader += ccv_nnc_mfa_tmcq_w1_helpers;
+  shader += ccv_nnc_mfa_ftq_w1_source(log2Entries, fold);
+  shader += R"(
+kernel void int8_gemv(
+  device const uchar *src0 [[buffer(0)]],
+  device const real *src1 [[buffer(1)]],
+  device real *dst [[buffer(2)]],
+  device const real *scales [[buffer(3)]],
+)";
+  if (fusedBias) {
+    shader += R"(
+  device const real *bias [[buffer(4)]],
+)";
+  }
+  if (externalTable) {
+    shader += R"(
+  device const uint4 *codebook [[buffer(5)]],
+)";
+  }
+  if (vr) {
+    shader += R"(
+  constant uint *ftq_vr_prefix [[buffer(6)]],
+)";
+  }
+  shader += R"(
+  uint tgpig [[threadgroup_position_in_grid]],
+  uint sgitg [[simdgroup_index_in_threadgroup]],
+  uint tiisg [[thread_index_in_simdgroup]]
+) {
+  constexpr uint ROWS = )";
+  shader += std::to_string(kInt8GemvTMCQRowsPerThreadgroup);
+  shader += R"(;
+  constexpr uint S = )";
+  shader += std::to_string(S);
+  shader += R"(;
+  constexpr uint M = )";
+  shader += std::to_string(mrows);
+  shader += R"(;
+  constexpr uint STREAMS = 2 * S;
+  const uint rb = tgpig * ROWS;
+  const uint r = tiisg & 15u;
+  const uint stream = sgitg * 2u + (tiisg >> 4);
+  const uint tiles_per_row = ncols >> 4;
+  device const uint* code = reinterpret_cast<device const uint*>(src0 + 32);
+  threadgroup float partials[S * M * 16];
+  threadgroup half2 tmcq_tg[ftq_entries];
+)";
+  if (externalTable) {
+    shader += R"(
+  for (uint i = sgitg * 32u + tiisg; i < ftq_entries / 4u; i += S * 32u)
+    reinterpret_cast<threadgroup uint4*>(tmcq_tg)[i] = codebook[i];
+)";
+  } else {
+    shader += R"(
+  tmcq_w1_load_table(tmcq_tg, sgitg * 32u + tiisg, S * 32u);
+)";
+  }
+  shader += R"(
+  threadgroup_barrier(mem_flags::mem_threadgroup);
+
+)";
+  shader += R"(
+  float acc0[M], acc1[M];
+  for (uint m = 0; m < M; m++)
+    acc0[m] = acc1[m] = 0;
+)";
+  if (vr) {
+    shader += R"(
+  const uint off0 = ftq_vr_prefix[rb >> 4];
+  const uint VW = (ftq_vr_prefix[(rb >> 4) + 1u] - off0) / tiles_per_row;
+  device const uint* row_code = code + ((nrows >> 4) + 1u) + off0;
+  switch (VW) {
+)";
+    for (uint32_t i = 0; i < 21; i++)
+      if (levelMask & (1u << i))
+        shader += "  case " + std::to_string((8 + 2 * i) / 2) + "u:\n" + ccv_nnc_mfa_ftq_w1_rate_source(8 + 2 * i, ftq_gemv_accumulate) + "  break;\n";
+    // A rate outside the level mask (rejected when the weights are loaded) adds nothing.
+    shader += "  default:\n  break;\n  }\n";
+  } else {
+    shader += "  device const uint* row_code = code + (ulong)(rb >> 4) * tiles_per_row * " + std::to_string(n / 2) + "u;\n";
+    shader += ccv_nnc_mfa_ftq_w1_rate_source(n, ftq_gemv_accumulate);
+  }
+  shader += R"(
+  float acc[M];
+  for (uint m = 0; m < M; m++)
+    acc[m] = acc0[m] + acc1[m];
+  for (uint m = 0; m < M; m++) {
+    const float value = acc[m] + simd_shuffle_xor(acc[m], 16);
+    if (tiisg < 16)
+      partials[(sgitg * M + m) * 16 + r] = value;
+  }
+  threadgroup_barrier(mem_flags::mem_threadgroup);
+  const uint row = rb + r;
+  if (sgitg == 0 && tiisg < 16 && row < nrows) {
+    const float scale = (float)scales[row];
+)";
+  if (fusedBias) {
+    shader += R"(
+    const float biasv = (float)bias[row];
+)";
+  }
+  shader += R"(
+    for (uint m = 0; m < M; m++) {
+      float value = 0;
+      for (uint s = 0; s < S; s++)
+        value += partials[(s * M + m) * 16 + r];
+      value *= scale;
+)";
+  if (fusedBias) {
+    shader += R"(
+      value += biasv;
+)";
+  }
+  shader += R"(
+      dst[output_row_stride * m + row] = (real)value;
+    }
+  }
+}
+)";
+}
 }
 
 Int8GemvKernel::Int8GemvKernel(Int8GemvKernelDescriptor descriptor, MTL::Device* const device) {
@@ -1123,6 +1294,7 @@ Int8GemvKernel::Int8GemvKernel(Int8GemvKernelDescriptor descriptor, MTL::Device*
   mrows = descriptor.mrows;
   batched = descriptor.batched;
   format = descriptor.format;
+  levelMask = descriptor.levelMask;
   memoryPrecision = descriptor.memoryPrecision;
   CCV_NNC_MFA_PRECONDITION(!batched || !fusedBias);
   CCV_NNC_MFA_PRECONDITION(mrows <= 3 || format == 0 || format == CCV_NNC_QX_8I_ROWWISE_Q5_K || format == CCV_NNC_QX_8I_ROWWISE_Q6_K);
@@ -1160,6 +1332,15 @@ std::string Int8GemvKernel::createSource() const noexcept {
     append_tmcq_kernel(shader, format, mrows, fusedBias);
     if (tmcq_codebook_log2(format))
       rewrite_w1_codebook(shader, tmcq_codebook_log2(format));
+    return shader;
+  }
+  if (is_ftq(format) || is_ftq_vr(format)) {
+    CCV_NNC_MFA_PRECONDITION(mrows >= 1 && mrows <= 3);
+    // The FTQ kernel takes an external codebook natively (log2Entries / externalTable).
+    const uint32_t log2 = tmcq_codebook_log2(format);
+    CCV_NNC_MFA_PRECONDITION(log2 == 0 || (log2 >= 9 && log2 <= 11));
+    CCV_NNC_MFA_PRECONDITION(!tmcq_codebook_fold(format) || log2 == 9);
+    append_ftq_kernel(shader, format, mrows, fusedBias, log2 ? log2 : 9, log2 != 0, tmcq_codebook_fold(format), levelMask);
     return shader;
   }
   if (format != 0) {

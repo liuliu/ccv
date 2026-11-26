@@ -14,7 +14,8 @@ static void serializeBinaries(MTL::BinaryArchive* const binaryArchive, const std
   binaryArchive->serializeToURL(NS::URL::fileURLWithPath(NS::String::string(pathToWrite.c_str(), NS::UTF8StringEncoding)), &error);
 }
 
-// IQ2_XXS, Q2_K, IQ3_XXS and TMCQ expand weight fragments in registers for 32-row tiles at every M.
+// IQ2_XXS, Q2_K, IQ3_XXS, TMCQ and static-rate FTQ expand weight fragments in registers for 32-row tiles at every M
+// (static-rate FTQ from rate 32 takes 64-row tiles at long prefill, SegmentedScaledGEMMKernel::registerTileRows).
 // A SIMD group's 32 weight rows are two whole TMCQ tile rows, and a lane's 16 consecutive K values
 // one row of a tile. On M5 Ultra (DeepSeek routed shapes) this beat TMCQ's former threadgroup path
 // (16- or 64-row tiles decoding 8 x 8 tiles into a 128 x 128 block) at every measured batch size,
@@ -22,14 +23,16 @@ static void serializeBinaries(MTL::BinaryArchive* const binaryArchive, const std
 static bool usesRegisterTiles(const uint32_t format) noexcept
 {
   return format == CCV_NNC_QX_8I_ROWWISE_IQ2_XXS || format == CCV_NNC_QX_8I_ROWWISE_Q2_K || format == CCV_NNC_QX_8I_ROWWISE_IQ3_XXS ||
-    segmentedTMCQRate(format);
+    segmentedTMCQRate(format) || segmentedFTQRate(format);
 }
 
 // The selected tile's rows. Other packed formats waste most of a 64-row tile on sparse
 // batches, so they use 16 rows for short prefill.
 static uint16_t tileRows(const uint32_t format, const uint64_t M, const uint32_t binCount) noexcept
 {
-  if (!format || usesRegisterTiles(format))
+  if (usesRegisterTiles(format))
+    return SegmentedScaledGEMMKernel::registerTileRows(format, M, binCount);
+  if (!format)
     return 32;
   return M <= (uint64_t)binCount * 4 ? 16 : 64;
 }
@@ -72,8 +75,11 @@ std::size_t std::hash<SegmentedScaledGEMMDescriptor>::operator()(const Segmented
 
 SegmentedScaledGEMMKernelDescriptor SegmentedScaledGEMMDescriptor::kernelDescriptor() const noexcept
 {
-  if (usesRegisterTiles(format))
-    return SegmentedScaledGEMMKernelDescriptor(simd::ushort3 { 32, 64, 64 }, 2, ioPrecision, useBias, loadM, format);
+  if (usesRegisterTiles(format)) {
+    // 32 or 64 rows (static-rate FTQ at long prefill) by 64 columns, two SIMD groups of 32 columns each.
+    const uint16_t rows = tileRows(format, matrixDimensions[0], binCount);
+    return SegmentedScaledGEMMKernelDescriptor(simd::ushort3 { rows, 64, 64 }, 2, ioPrecision, useBias, loadM, format);
+  }
   return SegmentedScaledGEMMKernelDescriptor(
       simd::ushort3 { tileRows(format, matrixDimensions[0], binCount), 128, 128 },
       4,

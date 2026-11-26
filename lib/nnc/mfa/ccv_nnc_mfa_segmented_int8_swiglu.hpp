@@ -18,8 +18,8 @@ typedef struct {
   uint32_t shared_rows;
   // The shared expert's weights: 0 for Q8_0, or CCV_NNC_QX_8I_ROWWISE_Q5_K / Q6_K.
   uint32_t shared_format;
-  // The external codebook of a TMCQ format whose bits 16 - 23 hold its log2 entry count (ccv_nnc_mfa_codebook_format);
-  // bound at buffer(15). NULL for the built-in table.
+  // The external codebook of a TMCQ or static-rate FTQ format whose bits 16 - 23 hold its log2 entry count (and, for
+  // FTQ, bit 24 a quadrant-folded table; ccv_nnc_mfa_codebook_format); bound at buffer(15). NULL for the built-in table.
   mtl_buffer_t* codebook;
 } ccv_nnc_mfa_segmented_int8_swiglu_params_t;
 

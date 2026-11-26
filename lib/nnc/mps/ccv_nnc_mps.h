@@ -105,13 +105,18 @@ id<MTLBuffer> mpgetbuffer(const ccv_nnc_tensor_t* const tensor);
 /** Encode a buffer-to-buffer copy of size bytes. One blit copies at most 4 GiB (it stops there without an error),
  * so this encodes it in chunks. */
 void ccv_nnc_mps_blit_copy(id<MTLBlitCommandEncoder> encoder, id<MTLBuffer> source, const size_t source_offset, id<MTLBuffer> destination, const size_t destination_offset, const size_t size);
-/** The format of the data after the inline codebook of a TMCQ format (ccv_nnc_codebook.h) whose data starts at
- * offset in buffer: the table read from the buffer (shared storage) and registered, its slot in bits 16 - 23.
- * format unchanged if it has no inline codebook; -1 if the table is invalid or the buffer is not CPU-visible. */
+/** The format of the data after the inline codebook of a TMCQ, FTQ or FTQ-VR format (ccv_nnc_codebook.h) whose data
+ * starts at offset in buffer: the table read from the buffer (shared storage) and registered, its slot in bits 16 - 23
+ * (for FTQ any, registered folded when the blob header after the table says so). The FTQ blob header must name the
+ * inline table (nonzero id, which is never looked up; log2 P, crc32 and structure of the prefix).
+ * format unchanged if it has no inline codebook; -1 if the table or that header is invalid or the buffer is not
+ * CPU-visible. */
 int ccv_nnc_mps_8i_rowwise_x_resolve_inline(id<MTLBuffer> buffer, const off_t offset, const int format);
-/** tensor itself unless it is a TMCQ tensor with an inline codebook. Then *view, a copy whose data starts after the
- * table and whose reserved field names the table's slot (ccv_nnc_mps_8i_rowwise_x_resolve_inline), which every
- * kernel takes like any slot. NULL if the table is invalid, or for a tensor view. */
+/** tensor itself unless it is a TMCQ, FTQ or FTQ-VR tensor with an inline codebook. Then *view, a copy whose data
+ * starts after the table and whose reserved field names the table's slot (ccv_nnc_mps_8i_rowwise_x_resolve_inline),
+ * which every kernel takes like any slot. An on-demand file-backed tensor reads the table (and the FTQ header) with
+ * pread, once per buffer object, offset and reserved field. NULL if the table or the FTQ header is invalid, or for a
+ * tensor view. */
 const ccv_nnc_tensor_t* ccv_nnc_mps_8i_rowwise_x_inline_view(const ccv_nnc_tensor_t* const tensor, ccv_nnc_tensor_t* const view);
 /** Returns 1 for an on-demand file-backed tensor and 0 for any other tensor. */
 int ccv_nnc_mps_file_backed_region(const ccv_nnc_tensor_t* tensor, ccv_nnc_mps_file_backed_region_t* region);

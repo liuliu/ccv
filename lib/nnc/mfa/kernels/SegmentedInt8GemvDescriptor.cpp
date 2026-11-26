@@ -41,8 +41,8 @@ std::size_t std::hash<SegmentedInt8GemvDescriptor>::operator()(
 
 uint32_t SegmentedInt8GemvDescriptor::groupSize() const noexcept
 {
-  // One 16 x 16 TMCQ tile is a 256-weight group; see CCV_NNC_QX_8I_ROWWISE_TMCQ_N16.
-  if (segmentedTMCQRate(format))
+  // One 16 x 16 TMCQ / FTQ tile is a 256-weight group; see CCV_NNC_QX_8I_ROWWISE_TMCQ_N16.
+  if (segmentedTMCQRate(format) || segmentedFTQRate(format))
     return 256;
   switch (format) {
     case 0:
@@ -80,6 +80,8 @@ uint32_t SegmentedInt8GemvDescriptor::groupBits() const noexcept
   // K % 16 == 0.
   if (const uint32_t rate = segmentedTMCQRate(format))
     return 16 * rate;
+  if (const uint32_t rate = segmentedFTQRate(format))
+    return 16 * rate;
   switch (format) {
     case 0:
       return 0;
@@ -116,6 +118,9 @@ uint64_t SegmentedInt8GemvDescriptor::inputScaleOffset() const noexcept
   const uint32_t K = matrixDimensions[1];
   if (format == 0)
     return ((uint64_t)expertCount * N * K + 127) & ~UINT64_C(127);
+  // FTQ: the scales of the whole (expertCount N) x K blob, after its header (its schedule's scale_offset).
+  if (const uint32_t rate = segmentedFTQRate(format))
+    return ccv_nnc_8i_rowwise_x_ftq_schedule_of_rate(rate, (uint64_t)expertCount * N, K).scale_offset;
   const uint64_t payloadBits = segmentedTMCQRate(format) ?
     tmcq_tile_count((uint64_t)expertCount * N, K) * groupBits() :
     (uint64_t)expertCount * N * groupsPerRow() * groupBits();
@@ -129,12 +134,13 @@ uint64_t SegmentedInt8GemvDescriptor::weightExpertStride() const noexcept
   const uint32_t K = matrixDimensions[1];
   if (format == 0)
     return (uint64_t)N * K;
-  const uint64_t expertBits = segmentedTMCQRate(format) ?
+  const uint64_t expertBits = (segmentedTMCQRate(format) || segmentedFTQRate(format)) ?
     tmcq_tile_count(N, K) * groupBits() :
     (uint64_t)N * groupsPerRow() * groupBits();
   CCV_NNC_MFA_PRECONDITION((expertBits % 8) == 0);
-  // TMCQ experts are whole tile rows read as 32-bit words.
-  CCV_NNC_MFA_PRECONDITION(!segmentedTMCQRate(format) || ((N % 16) == 0 && (expertBits % 32) == 0));
+  // TMCQ / FTQ experts are whole tile rows read as 32-bit words (an FTQ expert starts expertBits / 8 bytes after the
+  // previous one, all after the blob's 32-byte header).
+  CCV_NNC_MFA_PRECONDITION(!(segmentedTMCQRate(format) || segmentedFTQRate(format)) || ((N % 16) == 0 && (expertBits % 32) == 0));
   return expertBits / 8;
 }
 
@@ -219,13 +225,13 @@ std::pair<
 
 uint32_t segmentedInt8GemvSIMDGroupsPerThreadgroup(const uint32_t format)
 {
-  return (format == CCV_NNC_QX_8I_ROWWISE_Q2_K || segmentedTMCQRate(format)) ? 4 : kSegmentedInt8GemvSIMDGroupsPerThreadgroup;
+  return (format == CCV_NNC_QX_8I_ROWWISE_Q2_K || segmentedTMCQRate(format) || segmentedFTQRate(format)) ? 4 : kSegmentedInt8GemvSIMDGroupsPerThreadgroup;
 }
 
 uint32_t segmentedTMCQRate(const uint32_t format)
 {
   // Bits 16 - 23 may name an external codebook's log2 entry count (TMCQDecodeSource.hpp); no other modifier bits.
-  if (!tmcq_codebook_format_ok(format))
+  if (!tmcq_codebook_format_ok(format, false))
     return 0;
   const uint32_t codec = format & 0xffu;
   if ((format & ~(0xffu | 0xff0000u)) || codec < CCV_NNC_QX_8I_ROWWISE_TMCQ_N16 || codec > CCV_NNC_QX_8I_ROWWISE_TMCQ_N32)
@@ -233,10 +239,18 @@ uint32_t segmentedTMCQRate(const uint32_t format)
   return 16 + 2 * (codec - CCV_NNC_QX_8I_ROWWISE_TMCQ_N16);
 }
 
+uint32_t segmentedFTQRate(const uint32_t format)
+{
+  const uint32_t codec = format & 0xffu;
+  if (!tmcq_codebook_format_ok(format, true) || codec < CCV_NNC_QX_8I_ROWWISE_FTQ_N16 || codec > CCV_NNC_QX_8I_ROWWISE_FTQ_N48)
+    return 0;
+  return 8 + 2 * (codec - CCV_NNC_QX_8I_ROWWISE_FTQ_BLOCK_FIRST);
+}
+
 uint32_t segmentedInt8GemvRowsPerThreadgroup(const uint32_t format)
 {
-  // TMCQ: one 16-row tile row per threadgroup, its SIMD groups splitting K.
-  if (segmentedTMCQRate(format))
+  // TMCQ / FTQ: one 16-row tile row per threadgroup, its SIMD groups splitting K.
+  if (segmentedTMCQRate(format) || segmentedFTQRate(format))
     return 16;
   return kSegmentedInt8GemvRowsPerSIMDGroup * segmentedInt8GemvSIMDGroupsPerThreadgroup(format);
 }

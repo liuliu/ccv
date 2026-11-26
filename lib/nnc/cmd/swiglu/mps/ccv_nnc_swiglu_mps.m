@@ -38,7 +38,7 @@ static int _ccv_nnc_swiglu_codebook(const ccv_nnc_tensor_view_t* const gate_w, c
 		}
 	if (slots[0] != slots[1])
 		return 0;
-	return ccv_nnc_mfa_codebook_format(ccv_nnc_default_mfa_context(), slots[0], format, codebook);
+	return ccv_nnc_mfa_codebook_format(ccv_nnc_default_mfa_context(), slots[0], 0, format, codebook);
 }
 
 static size_t _ccv_nnc_swiglu_align_up(const size_t value, const size_t alignment)
@@ -115,6 +115,9 @@ static int _ccv_nnc_swiglu_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hi
 	const int rowwise_shape_supported = gate_format == 0 ?
 		(K % 4) == 0 : ccv_nnc_8i_rowwise_x_is_tmcq(gate_format) ? (K % 16) == 0 && (N % 16) == 0 : (K % 256) == 0 && (N % 256) == 0;
 	if (rowwise_weights && !rowwise_shape_supported)
+		return CCV_NNC_EXEC_INVALID;
+	// FTQ only decodes through GEMM_FORWARD.
+	if (rowwise_weights && ccv_nnc_8i_rowwise_x_is_ftq_any(gate_format))
 		return CCV_NNC_EXEC_INVALID;
 	// TMCQ weights have no direct row kernel here: they take the matrix paths below, which decode
 	// their 16 x 16 tiles first (N % 16 and K % 16 above). No TMCQ codec takes a Hadamard rotation.

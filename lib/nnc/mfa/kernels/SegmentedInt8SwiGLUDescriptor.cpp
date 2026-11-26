@@ -36,8 +36,8 @@ std::size_t std::hash<SegmentedInt8SwiGLUDescriptor>::operator()(
 
 uint32_t SegmentedInt8SwiGLUDescriptor::groupSize() const noexcept
 {
-  // One 16 x 16 TMCQ tile is a 256-weight group; see CCV_NNC_QX_8I_ROWWISE_TMCQ_N16.
-  if (segmentedTMCQRate(format))
+  // One 16 x 16 TMCQ / FTQ tile is a 256-weight group; see CCV_NNC_QX_8I_ROWWISE_TMCQ_N16.
+  if (segmentedTMCQRate(format) || segmentedFTQRate(format))
     return 256;
   switch (format) {
     case CCV_NNC_QX_8I_ROWWISE_Q2_K:
@@ -62,6 +62,9 @@ uint32_t SegmentedInt8SwiGLUDescriptor::groupsPerRow() const noexcept
 
 uint64_t SegmentedInt8SwiGLUDescriptor::inputScaleOffset() const noexcept
 {
+  // FTQ: the FP16 scales of the whole (expertCount N) x K blob, after its header (its schedule's scale_offset).
+  if (const uint32_t rate = segmentedFTQRate(format))
+    return ccv_nnc_8i_rowwise_x_ftq_schedule_of_rate(rate, (uint64_t)expertCount * matrixDimensions[0], matrixDimensions[1]).scale_offset;
   // TMCQ: (rows / 16) (K / 16) tiles of 16n bits (tmcq_tile_count), for N % 16 == 0 and K % 16 == 0.
   if (const uint32_t rate = segmentedTMCQRate(format)) {
     const uint64_t payloadBits =
@@ -108,6 +111,15 @@ uint64_t SegmentedInt8SwiGLUDescriptor::inputScaleOffset() const noexcept
 
 uint64_t SegmentedInt8SwiGLUDescriptor::weightExpertStride() const noexcept
 {
+  // FTQ: an expert is (N / 16) (K / 16) tiles of 16 n bits; the kernel adds the blob's 32-byte header.
+  if (const uint32_t rate = segmentedFTQRate(format)) {
+    CCV_NNC_MFA_PRECONDITION((matrixDimensions[0] % 16) == 0 && (matrixDimensions[1] % 16) == 0);
+    const uint64_t expertBits =
+      tmcq_tile_count(matrixDimensions[0], matrixDimensions[1]) * 16 * rate;
+    // Tiles are read as 32-bit words.
+    CCV_NNC_MFA_PRECONDITION((expertBits % 32) == 0);
+    return expertBits / 8;
+  }
   if (const uint32_t rate = segmentedTMCQRate(format)) {
     CCV_NNC_MFA_PRECONDITION((matrixDimensions[0] % 16) == 0 && (matrixDimensions[1] % 16) == 0);
     const uint64_t expertBits =

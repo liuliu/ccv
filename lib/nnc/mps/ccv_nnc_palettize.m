@@ -92,7 +92,7 @@ void ccv_nnc_mps_dequantize_8i_rowwise(const void* input, const int datatype, co
 	}
 }
 
-// The MFA format of a TMCQ tensor format whose bits 16 - 23 name a codebook slot (ccv_nnc_codebook.h): the
+// The MFA format of a TMCQ / FTQ tensor format whose bits 16 - 23 name a codebook slot (ccv_nnc_codebook.h): the
 // slot is replaced by log2 of the table's entry count, and *codebook is the table's buffer (NULL for slot 0).
 static uint32_t _ccv_nnc_mps_codebook_format(ccv_nnc_mfa_context_t* const context, const int format, mtl_buffer_t** const codebook)
 {
@@ -102,11 +102,14 @@ static uint32_t _ccv_nnc_mps_codebook_format(ccv_nnc_mfa_context_t* const contex
 	*codebook = NULL;
 	if (!slot)
 		return kernel;
-	assert(ccv_nnc_8i_rowwise_x_is_tmcq(format) && "codebook slots exist for TMCQ only");
+	assert(ccv_nnc_8i_rowwise_x_is_tiled(format) && "codebook slots exist for TMCQ / FTQ only");
 	int entries = 0;
 	*codebook = ccv_nnc_mfa_codebook_buffer(context, slot, &entries);
 	assert(*codebook && "the tensor names a codebook slot that is not registered");
-	return (kernel & ~(uint32_t)CCV_NNC_CODEBOOK_SLOT_MASK) | ((uint32_t)ccv_nnc_codebook_log2_entries(entries) << 16);
+	const int fold = !!(ccv_nnc_codebook_flags(slot) & CCV_NNC_CODEBOOK_FOLD);
+	assert((!fold || ccv_nnc_8i_rowwise_x_is_ftq_any(format)) && "folded codebooks exist for FTQ only");
+	// A quadrant-folded table is bit 24 of the MFA format (CCV_NNC_MFA_CODEBOOK_FOLD).
+	return (kernel & ~(uint32_t)CCV_NNC_CODEBOOK_SLOT_MASK) | ((uint32_t)ccv_nnc_codebook_log2_entries(entries) << 16) | (fold ? 1u << 24 : 0);
 }
 
 void ccv_nnc_mps_dequantize_8i_rowwise_x(const void* input, const int datatype, const size_t input_length, const size_t row_length, const int format, void* output, const size_t output_length, void* const command_buffer)
@@ -131,7 +134,8 @@ void ccv_nnc_mps_dequantize_8i_rowwise_x(const void* input, const int datatype, 
 	}
 	assert(mtl_data_type != UINT32_MAX);
 	ccv_nnc_mfa_context_t* context = ccv_nnc_default_mfa_context();
-	// An inline codebook is the start of the input: decode the data after it with the table's slot.
+	// FTQ has no floating-point decode. An inline codebook is the start of the input: decode the data after it with the
+	// table's slot.
 	const size_t inline_size = ccv_nnc_8i_rowwise_x_inline_codebook_size(format);
 	const int payload_format = ccv_nnc_mps_8i_rowwise_x_resolve_inline((id<MTLBuffer>)input, 0, format);
 	assert(payload_format >= 0 && "the inline codebook is invalid or its buffer is not CPU-visible");

@@ -10,6 +10,9 @@
 // the four of a dispatch with a fused shared expert, with the same summation order.
 constexpr uint32_t kSegmentedInt8SwiGLUTMCQSIMDGroups = 8;
 constexpr uint32_t kSegmentedInt8SwiGLUTMCQSharedSIMDGroups = 4;
+// SIMD groups per threadgroup of a static-rate FTQ segmented SwiGLU dispatch, each with two of the K streams. Eight
+// (twice the segmented FTQ GEMV's four) measured faster at M = 1 on M5 Ultra and no slower from M = 48 to 112.
+constexpr uint32_t kSegmentedInt8SwiGLUFTQSIMDGroups = 8;
 
 // SIMD groups per threadgroup of a TMCQ segmented SwiGLU dispatch.
 constexpr uint32_t segmentedInt8SwiGLUTMCQSIMDGroups(const bool sharedFused)

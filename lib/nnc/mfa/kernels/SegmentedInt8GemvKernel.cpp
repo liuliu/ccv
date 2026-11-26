@@ -1186,6 +1186,110 @@ kernel void segmented_int8_gemv(
 
 }
 
+// Static-rate FTQ, one activation row per route, as the TMCQ kernel above: one threadgroup per 16-row tile row of the
+// routed expert, its 2 S half SIMD groups streaming over the tile columns and lane r = tiisg & 15 taking row r of
+// each tile, with the same windows, half2 table copy and lookups as the dense FTQ GEMV (ccv_nnc_mfa_ftq_w1_source).
+// The weight is one CCVFTQSR blob of expert_count experts: expert e's tiles start weight_expert_stride bytes apart
+// after the 32-byte header, and its FP16 row scales are e * nrows into the blob's scales (buffer 3), whatever the
+// activation type. An external table (log2Entries / externalTable / fold) arrives half2 at buffer(11).
+static void append_ftq_m1_kernel(std::string& shader, const uint32_t rate, const uint32_t log2Entries, const bool externalTable, const bool fold)
+{
+  shader += R"(
+#include <metal_stdlib>
+using namespace metal;
+)";
+  shader += ccv_nnc_mfa_tmcq_decode_source();
+  shader += ccv_nnc_mfa_tmcq_w1_helpers;
+  shader += ccv_nnc_mfa_ftq_w1_source(log2Entries, fold);
+  shader += "constant constexpr uint S = " + std::to_string(segmentedInt8GemvSIMDGroupsPerThreadgroup(CCV_NNC_QX_8I_ROWWISE_FTQ_N16)) + ";\n";
+  shader += R"(
+kernel void segmented_int8_gemv(
+  device const uchar *src0 [[buffer(0)]],
+  device const real *src1 [[buffer(1)]],
+  device real *dst [[buffer(2)]],
+  device const half *scales [[buffer(3)]],
+  device const int *indices [[buffer(5)]],
+  device const int *counts [[buffer(6)]],
+)";
+  if (externalTable) {
+    shader += R"(
+  device const uint4 *codebook [[buffer(11)]],
+)";
+  }
+  shader += R"(
+  uint tgpig_position [[threadgroup_position_in_grid]],
+  uint sgitg [[simdgroup_index_in_threadgroup]],
+  uint tiisg [[thread_index_in_simdgroup]]
+) {
+  // One threadgroup per 16-row tile row; its S SIMD groups split K and add up in partials.
+  constexpr uint STREAMS = 2 * S;
+  const uint threadgroups_per_route = nrows / 16u;
+  const uint route = tgpig_position / threadgroups_per_route;
+  threadgroup int route_expert;
+  threadgroup float partials[S * 16];
+  // The route lookup's barrier below also publishes the table copy.
+  threadgroup half2 tmcq_tg[ftq_entries];
+)";
+  if (externalTable) {
+    shader += R"(
+  for (uint i = sgitg * 32u + tiisg; i < ftq_entries / 4u; i += S * 32u)
+    reinterpret_cast<threadgroup uint4*>(tmcq_tg)[i] = codebook[i];
+)";
+  } else {
+    shader += R"(
+  tmcq_w1_load_table(tmcq_tg, sgitg * 32u + tiisg, S * 32u);
+)";
+  }
+  shader += R"(
+  if (sgitg == 0 && tiisg == 0) {
+    route_expert = -1;
+    uint row_offset = 0;
+    for (uint bin = 0; bin < bin_count; bin++) {
+      const int count = counts[bin];
+      if (count <= 0)
+        continue;
+      const uint next_row_offset = row_offset + (uint)count;
+      if (route < next_row_offset) {
+        route_expert = indices[bin];
+        break;
+      }
+      row_offset = next_row_offset;
+    }
+  }
+  threadgroup_barrier(mem_flags::mem_threadgroup);
+  const int expert = route_expert;
+  if (expert < 0 || expert >= (int)expert_count)
+    return;
+  const uint tile_row = tgpig_position - route * threadgroups_per_route;
+  const uint tiles_per_row = ncols / 16u;
+  const uint r = tiisg & 15u;
+  const uint stream = sgitg * 2u + (tiisg >> 4);
+  // An expert is nrows / 16 whole tile rows, so weight_expert_stride is a whole number of words.
+)";
+  shader += "  device const uint* row_code = (device const uint*)(src0 + 32 + (ulong)expert * weight_expert_stride) + (ulong)tile_row * tiles_per_row * " + std::to_string(rate / 2) + "u;\n";
+  shader += R"(
+  src1 += broadcast_input ? 0 : (ulong)route * ncols;
+  device const real4* y4 = (device const real4*)src1;
+  float acc0[1] = { 0 };
+)";
+  shader += ccv_nnc_mfa_ftq_w1_rate_source(rate,
+    "    acc0[0] += dot(qa[0], float4(y4[tc * 4u + 0u])) + dot(qa[1], float4(y4[tc * 4u + 1u])) + dot(qa[2], float4(y4[tc * 4u + 2u])) + dot(qa[3], float4(y4[tc * 4u + 3u]));\n");
+  shader += R"(
+  float total = acc0[0] + simd_shuffle_xor(acc0[0], 16);
+  if (tiisg < 16)
+    partials[sgitg * 16u + r] = total;
+  threadgroup_barrier(mem_flags::mem_threadgroup);
+  if (sgitg == 0 && tiisg < 16) {
+    total = 0;
+    for (uint s = 0; s < S; s++)
+      total += partials[s * 16u + r];
+    const uint row = tile_row * 16u + r;
+    dst[(ulong)route * nrows + row] = (real)(total * (float)scales[(ulong)expert * nrows + row]);
+  }
+}
+)";
+}
+
 SegmentedInt8GemvKernel::SegmentedInt8GemvKernel(SegmentedInt8GemvKernelDescriptor descriptor, MTL::Device* const device) {
   fusedBias = descriptor.fusedBias;
   mrows = descriptor.mrows;
@@ -1207,6 +1311,14 @@ SegmentedInt8GemvKernel::SegmentedInt8GemvKernel(SegmentedInt8GemvKernelDescript
 std::string SegmentedInt8GemvKernel::createSource() const noexcept {
   std::string shader = createConstants() + "\n";
   if (format != 0) {
+    if (const uint32_t rate = segmentedFTQRate(format)) {
+      // No bias: SEGMENTED_GEMM_FORWARD rejects one with FTQ weights.
+      CCV_NNC_MFA_PRECONDITION(!fusedBias);
+      const uint32_t log2 = tmcq_codebook_log2(format);
+      CCV_NNC_MFA_PRECONDITION(!tmcq_codebook_fold(format) || log2 == 9);
+      append_ftq_m1_kernel(shader, rate, log2 ? log2 : 9, log2 != 0, tmcq_codebook_fold(format));
+      return shader;
+    }
     if (const uint32_t rate = segmentedTMCQRate(format)) {
       append_tmcq_m1_kernel(shader, rate, fusedBias);
       if (const uint32_t log2 = tmcq_codebook_log2(format)) {

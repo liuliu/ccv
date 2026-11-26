@@ -286,16 +286,31 @@ static int _ccv_nnc_segmented_gemm_routed_forw(const ccv_nnc_cmd_t cmd, const cc
 		const int w_qx_subtype = w->info.datatype & 0xf00;
 		const int w_qx_8i_rowwise = (w_qx_subtype == CCV_NNC_QX_8I_ROWWISE || w_qx_subtype == CCV_NNC_QX_8I_ROWWISE_X);
 		const uint32_t w_8i_rowwise_x_format = w_qx_subtype == CCV_NNC_QX_8I_ROWWISE_X ? (uint32_t)ccv_nnc_8i_rowwise_x_kernel_format(w->info.reserved) : 0;
-		// External pair codebooks (ccv_nnc_codebook.h): a TMCQ weight may name one in bits 16 - 23 of reserved (0 is the
-		// built-in table). The TMCQ kernels below (fused GEMV, fused tile GEMM, selected-expert decode, fp decode) take
-		// it; no other codec here does.
+		// External pair codebooks (ccv_nnc_codebook.h): a TMCQ or FTQ weight may name one in bits 16 - 23 of reserved (0 is
+		// the built-in table). The TMCQ kernels below (fused GEMV, fused tile GEMM, selected-expert decode, fp decode) and
+		// the FTQ ones (fused GEMV, fused tile GEMM, selected-expert decode) take it, FTQ also quadrant folded; no other codec
+		// here does.
 		const int w_codebook_slot = w_qx_subtype == CCV_NNC_QX_8I_ROWWISE_X ? ccv_nnc_codebook_slot_of(w->info.reserved) : 0;
-		if (w_codebook_slot && !ccv_nnc_8i_rowwise_x_is_tmcq(w->info.reserved))
+		if (w_codebook_slot && !ccv_nnc_8i_rowwise_x_is_tmcq(w->info.reserved) && !ccv_nnc_8i_rowwise_x_is_ftq(w->info.reserved))
 			return CCV_NNC_EXEC_INVALID;
-		// The MFA format of the TMCQ kernels: the codec plus, for an external codebook, its log2 entry count.
+		// The MFA format of the TMCQ / FTQ kernels: the codec plus, for an external codebook, its log2 entry count (and
+		// the fold bit of a folded FTQ table).
 		uint32_t w_8i_rowwise_x_codebook_format = w_8i_rowwise_x_format;
 		mtl_buffer_t* w_codebook = NULL;
-		if (!ccv_nnc_mfa_codebook_format(ccv_nnc_default_mfa_context(), w_codebook_slot, &w_8i_rowwise_x_codebook_format, &w_codebook))
+		if (!ccv_nnc_mfa_codebook_format(ccv_nnc_default_mfa_context(), w_codebook_slot, ccv_nnc_8i_rowwise_x_is_ftq(w_8i_rowwise_x_format), &w_8i_rowwise_x_codebook_format, &w_codebook))
+			return CCV_NNC_EXEC_INVALID;
+		const int a_datatype = CCV_GET_DATA_TYPE(a->info.datatype) == CCV_QX ? ((a->info.datatype & 0xff) << 12) : a->info.datatype;
+		const int w_datatype = CCV_GET_DATA_TYPE(w->info.datatype) == CCV_QX ? ((w->info.datatype & 0xff) << 12) : w->info.datatype;
+		// Static-rate FTQ: the [E, N, K] weight is one CCVFTQSR blob of E N rows (expert e's tiles at 32 + e (N / 16)
+		// (K / 16) 2n bytes, its FP16 scales at e N of the blob's scales), on the same 16 x 16 tile grid as TMCQ. One
+		// activation row per bin takes the fused FTQ GEMV; other batches take the W8A8 segmented scaled GEMM, decoding
+		// the tiles in registers (N % 64 and K % 64, see ccv_nnc_mfa_segmented_scaled_gemm_fuses_packed_format) or
+		// expanding the selected experts to int8 rows first. FP16 or FP32 activation, weight base and output alike, no bias, no
+		// Hadamard rotation; variable-rate FTQ has no fixed expert stride and is rejected.
+		const int w_ftq = ccv_nnc_8i_rowwise_x_is_ftq_any(w_8i_rowwise_x_format);
+		if (w_ftq && (!ccv_nnc_8i_rowwise_x_is_ftq(w_8i_rowwise_x_format) || (w_8i_rowwise_x_format & CCV_NNC_QX_8I_ROWWISE_HADAMARD_256) || bias ||
+			(w_datatype != CCV_16F && w_datatype != CCV_32F) || a->info.datatype != w_datatype || b->info.datatype != w_datatype ||
+			is_transpose_a || !is_transpose_w || !is_contiguous || (b_cols % 16) != 0 || (w_rows % 16) != 0 || (w->dataof % 4) != 0))
 			return CCV_NNC_EXEC_INVALID;
 		// TMCQ weights are 16 x 16 tiles: each expert must be whole tile rows (N % 16) over whole
 		// tiles (K % 16), and no codec takes a Hadamard rotation with them. The GEMV decodes tiles in
@@ -306,8 +321,6 @@ static int _ccv_nnc_segmented_gemm_routed_forw(const ccv_nnc_cmd_t cmd, const cc
 			(!(w_8i_rowwise_x_format & CCV_NNC_QX_8I_ROWWISE_HADAMARD_256) && (b_cols % 16) == 0 && (w_rows % 16) == 0 &&
 			 // The kernels read tiles as 32-bit words.
 			 (w->dataof % 4) == 0);
-		const int a_datatype = CCV_GET_DATA_TYPE(a->info.datatype) == CCV_QX ? ((a->info.datatype & 0xff) << 12) : a->info.datatype;
-		const int w_datatype = CCV_GET_DATA_TYPE(w->info.datatype) == CCV_QX ? ((w->info.datatype & 0xff) << 12) : w->info.datatype;
 		const int is_same_dtype =
 			(a_datatype == w_datatype) &&
 			(a_datatype == b->info.datatype) &&
@@ -376,9 +389,9 @@ static int _ccv_nnc_segmented_gemm_routed_forw(const ccv_nnc_cmd_t cmd, const cc
 			(CCV_GET_DATA_TYPE(b->info.datatype) != CCV_QX) &&
 			(!bias || CCV_GET_DATA_TYPE(bias->info.datatype) != CCV_QX) &&
 			((w_rows % 4) == 0) &&
-			// TMCQ: K % 16 and N % 16 (whole tiles), as the dense GEMV gate.
+			// TMCQ / FTQ: K % 16 and N % 16 (whole tiles), as the dense GEMV gate.
 			(!w_8i_rowwise_x_format ||
-				(w_tmcq ? ((w_rows % 16) == 0 && (b_cols % 16) == 0) : ((w_rows % 256) == 0 && (b_cols % 256) == 0))) &&
+				((w_tmcq || w_ftq) ? ((w_rows % 16) == 0 && (b_cols % 16) == 0) : ((w_rows % 256) == 0 && (b_cols % 256) == 0))) &&
 			w_tmcq_supported &&
 			!is_transpose_a &&
 			is_transpose_w &&
@@ -389,6 +402,10 @@ static int _ccv_nnc_segmented_gemm_routed_forw(const ccv_nnc_cmd_t cmd, const cc
 			!(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA);
 		const int is_mfa_supported =
 			ccv_nnc_mfa_context_supported(context) && is_contiguous && is_same_dtype && is_supported_dtype && !(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA);
+		// The generic path below decodes weights to floating point, which FTQ does not have (FP16 without neural
+		// accelerators, or MFA disabled).
+		if (w_ftq && !use_segmented_int8_gemv && !use_segmented_scaled_gemm)
+			return CCV_NNC_EXEC_INVALID;
 
 		size_t a_data_size = 0;
 		if (CCV_GET_DATA_TYPE(a->info.datatype) == CCV_QX && ((a_qx_subtype >= 0x400 && a_qx_subtype <= 0x800) || a_qx_subtype == CCV_NNC_QX_8I_ROWWISE || a_qx_subtype == CCV_NNC_QX_8I_ROWWISE_X))
@@ -499,7 +516,7 @@ static int _ccv_nnc_segmented_gemm_routed_forw(const ccv_nnc_cmd_t cmd, const cc
 			ccv_nnc_mfa_segmented_scaled_gemm_params_t params = {
 				.data_type = mtl_data_type,
 				// Packed weights can be decoded per tile instead of expanding the expert bank into scratch.
-				// The predicate takes the shape: N % 64 and K % 64 for TMCQ, N % 256 and K % 256 for the others.
+				// The predicate takes the shape: N % 64 and K % 64 for TMCQ and FTQ, N % 256 and K % 256 for the others.
 				.format = use_neural_accelerators && !bias &&
 					ccv_nnc_mfa_segmented_scaled_gemm_fuses_packed_format(w_8i_rowwise_x_format, b_rows, bincount, (uint32_t)b_cols, (uint32_t)w_rows) ? w_8i_rowwise_x_codebook_format : 0,
 				.M = (uint32_t)(b_rows + ccv_max(bincount - 2, 0)) / ccv_max(bincount - 1, 1),

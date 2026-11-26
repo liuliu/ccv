@@ -13,6 +13,7 @@
 #import <MetalPerformanceShadersGraph/MetalPerformanceShadersGraph.h>
 #import <objc/runtime.h>
 #import <os/lock.h>
+#import <errno.h>
 #import <limits.h>
 #import <sys/stat.h>
 #import <sys/utsname.h>
@@ -703,18 +704,51 @@ off_t mpgetoffset(const ccv_nnc_tensor_t* const tensor)
 // The resolved reserved fields of the inline codebooks of an on-demand file-backed buffer object, by data offset.
 static char ccv_nnc_mps_inline_codebook_key;
 
+// Bytes of an inline-codebook tensor read on the host to resolve its table: the table and its zero padding, and for
+// FTQ / FTQ-VR the 32-byte blob header after it, 0 if it has no inline codebook.
+static size_t _ccv_nnc_mps_8i_rowwise_x_inline_head_size(const int format)
+{
+	const size_t size = ccv_nnc_8i_rowwise_x_inline_codebook_size(format);
+	return size && ccv_nnc_8i_rowwise_x_is_ftq_any(format) ? size + 32 : size;
+}
+
+// The reserved field for the data after the inline codebook at the start of head (_ccv_nnc_mps_8i_rowwise_x_inline_head_size
+// bytes): the table registered (folded when an FTQ header says so, ccv_nnc_8i_rowwise_x_resolve_inline). For FTQ any,
+// the blob header must name that table: a nonzero id (it stays the id the blob was fitted with and is never looked
+// up), log2 of the prefix's P, the prefix's crc32, structure 0 or 1 (1 only for 512 base pairs, which the folded
+// registration requires) and zeros in bits 18 - 31. The kernels then take the table from the resolved slot only. -1
+// if any of it does not hold.
+static int _ccv_nnc_mps_8i_rowwise_x_resolve_inline_head(const uint8_t* const head, const int format)
+{
+	const size_t inline_size = ccv_nnc_8i_rowwise_x_inline_codebook_size(format);
+	const int resolved = ccv_nnc_8i_rowwise_x_resolve_inline(head, _ccv_nnc_mps_8i_rowwise_x_inline_head_size(format), format);
+	if (resolved < 0 || !inline_size || !ccv_nnc_8i_rowwise_x_is_ftq_any(format))
+		return resolved;
+	uint32_t field, crc, prefix_crc;
+	memcpy(&field, head + inline_size + 24, 4);
+	memcpy(&crc, head + inline_size + 28, 4);
+	memcpy(&prefix_crc, head + 12, 4);
+	const int entries = ccv_nnc_8i_rowwise_x_inline_codebook_entries(format);
+	const uint32_t structure = (field >> 16) & 3;
+	const int slot = ccv_nnc_codebook_slot_of(resolved);
+	if ((field & 0xff) == 0 || (field >> 18) != 0 || (int)((field >> 8) & 0xff) != ccv_nnc_codebook_log2_entries(entries) || crc != prefix_crc ||
+		structure > 1 || (structure == 1 && entries != 512) || (structure == 1) != !!(ccv_nnc_codebook_flags(slot) & CCV_NNC_CODEBOOK_FOLD))
+		return -1;
+	return resolved;
+}
+
 int ccv_nnc_mps_8i_rowwise_x_resolve_inline(id<MTLBuffer> buffer, const off_t offset, const int format)
 {
 	if (!ccv_nnc_8i_rowwise_x_inline_codebook_entries(format))
 		return format;
-	if (!ccv_nnc_8i_rowwise_x_is_tmcq(format) || !buffer || offset < 0)
+	if (!ccv_nnc_8i_rowwise_x_codebook_is_valid(format) || !buffer || offset < 0)
 		return -1;
-	const size_t size = ccv_nnc_8i_rowwise_x_inline_codebook_size(format);
+	const size_t size = _ccv_nnc_mps_8i_rowwise_x_inline_head_size(format);
 	// Private storage (x86_64) has no CPU view of the table.
 	const unsigned char* const contents = (const unsigned char*)buffer.contents;
 	if (!contents || (uint64_t)offset + size > buffer.length)
 		return -1;
-	return ccv_nnc_codebook_resolve_inline(contents + offset, format);
+	return _ccv_nnc_mps_8i_rowwise_x_resolve_inline_head(contents + offset, format);
 }
 
 const ccv_nnc_tensor_t* ccv_nnc_mps_8i_rowwise_x_inline_view(const ccv_nnc_tensor_t* const tensor, ccv_nnc_tensor_t* const view)
@@ -722,9 +756,11 @@ const ccv_nnc_tensor_t* ccv_nnc_mps_8i_rowwise_x_inline_view(const ccv_nnc_tenso
 	if (!tensor || CCV_GET_DATA_TYPE(tensor->info.datatype) != CCV_QX || (tensor->info.datatype & 0xf00) != CCV_NNC_QX_8I_ROWWISE_X ||
 		!ccv_nnc_8i_rowwise_x_inline_codebook_entries(tensor->info.reserved))
 		return tensor;
-	if (CCV_IS_TENSOR_VIEW(tensor) || !ccv_nnc_8i_rowwise_x_is_tmcq(tensor->info.reserved))
+	if (CCV_IS_TENSOR_VIEW(tensor) || !ccv_nnc_8i_rowwise_x_codebook_is_valid(tensor->info.reserved))
 		return 0;
 	const size_t size = ccv_nnc_8i_rowwise_x_inline_codebook_size(tensor->info.reserved);
+	// The table, and for FTQ any the blob header it is checked against.
+	const size_t head_size = _ccv_nnc_mps_8i_rowwise_x_inline_head_size(tensor->info.reserved);
 	int reserved;
 	ccv_nnc_mps_file_backed_region_t region;
 	if (ccv_nnc_mps_file_backed_region(tensor, &region))
@@ -740,16 +776,19 @@ const ccv_nnc_tensor_t* ccv_nnc_mps_8i_rowwise_x_inline_view(const ccv_nnc_tenso
 			if (cached && (cached.longLongValue & ~(int64_t)0xffffffff) == reserved_in)
 				reserved = (int)(uint32_t)cached.longLongValue;
 			else {
-				uint8_t pairs[128 + 4096];
-				assert(size <= sizeof(pairs));
-				const int fd = region.size >= size ? open(region.path.UTF8String, O_RDONLY, 0) : -1;
+				uint8_t head[128 + 4096 + 32];
+				assert(head_size <= sizeof(head));
+				const int fd = region.size >= head_size ? open(region.path.UTF8String, O_RDONLY, 0) : -1;
 				if (fd < 0)
 					return 0;
-				const ssize_t read_size = pread(fd, pairs, size, region.offset);
+				ssize_t read_size;
+				do {
+					read_size = pread(fd, head, head_size, region.offset);
+				} while (read_size < 0 && errno == EINTR);
 				close(fd);
-				if (read_size != (ssize_t)size)
+				if (read_size != (ssize_t)head_size)
 					return 0;
-				reserved = ccv_nnc_codebook_resolve_inline(pairs, tensor->info.reserved);
+				reserved = _ccv_nnc_mps_8i_rowwise_x_resolve_inline_head(head, tensor->info.reserved);
 				if (reserved >= 0)
 				{
 					NSMutableDictionary* const table = cache ? cache : [NSMutableDictionary dictionary];
