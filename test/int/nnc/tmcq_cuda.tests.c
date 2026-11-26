@@ -711,11 +711,11 @@ TEST_CASE("cublas forward gemm with CPU-quantized TMCQ weights matches the CPU d
 	}
 }
 
-TEST_CASE("CUDA index select rejects TMCQ embeddings")
+TEST_CASE("CUDA index select rejects TMCQ, FTQ and FTQ-VR embeddings")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_INDEX_SELECT_FORWARD, CCV_NNC_BACKEND_GPU_REF));
-	// A tile spans 16 rows. K = 256 and K = 272 (off the old 256 grid).
-	const int formats[] = {CCV_NNC_QX_8I_ROWWISE_TMCQ_N16, CCV_NNC_QX_8I_ROWWISE_TMCQ_N24};
+	// Every tiled format: a tile spans 16 rows. K = 256 and K = 272 (off the old 256 grid).
+	const int formats[] = {CCV_NNC_QX_8I_ROWWISE_TMCQ_N16, CCV_NNC_QX_8I_ROWWISE_FTQ_N20, CCV_NNC_QX_8I_ROWWISE_FTQ_VR_N20};
 	const int ks[] = {256, 272};
 	int f, k;
 	for (f = 0; f < sizeof(formats) / sizeof(formats[0]); f++)
@@ -726,7 +726,7 @@ TEST_CASE("CUDA index select rejects TMCQ embeddings")
 			ccv_nnc_tensor_t* const gb = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, 2, ks[k]), 0);
 			ccv_nnc_cmd_t cmd = CMD_INDEX_SELECT_FORWARD();
 			cmd.backend = CCV_NNC_BACKEND_GPU_REF;
-			REQUIRE_EQ(ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(ga, gindices), TENSOR_LIST(gb), 0), CCV_NNC_EXEC_INVALID, "a TMCQ row cannot be gathered on its own: format=%x k=%d", formats[f], ks[k]);
+			REQUIRE_EQ(ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(ga, gindices), TENSOR_LIST(gb), 0), CCV_NNC_EXEC_INVALID, "a tiled row cannot be gathered on its own: format=%x k=%d", formats[f], ks[k]);
 			ccv_nnc_tensor_free(gb);
 			ccv_nnc_tensor_free(gindices);
 			ccv_nnc_tensor_free(ga);

@@ -15,7 +15,7 @@ TARGETS += sol_attention.tests
 
 TARGETS += relative_bias_attention.tests attention_residual.tests message_gate.tests
 
-TARGETS += tmcq_mps.tests tmcq_cuda.tests tmcq_codebook_mps.tests tmcq_codebook_paths_mps.tests
+TARGETS += tmcq_mps.tests tmcq_cuda.tests ftq_mps.tests tmcq_codebook_mps.tests tmcq_codebook_paths_mps.tests ftq_segmented_mps.tests
 
 TARGET_SRCS := $(patsubst %,%.c,$(TARGETS))
 

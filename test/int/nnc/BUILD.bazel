@@ -199,6 +199,34 @@ cc_binary(
 )
 
 cc_binary(
+	name = "ftq_mps.tests",
+	linkopts = select({
+		"@platforms//os:macos": ["-Wl,-U,___test_case_setup,-U,___test_case_teardown"],
+		"//conditions:default": [],
+	}),
+	srcs = ["ftq_mps.tests.c", "trellis_table_alt.inc"],
+	copts = ccv_default_copts(),
+	deps = [
+		"//test:case",
+		"//lib:nnc"
+	]
+)
+
+cc_binary(
+	name = "ftq_segmented_mps.tests",
+	linkopts = select({
+		"@platforms//os:macos": ["-Wl,-U,___test_case_setup,-U,___test_case_teardown"],
+		"//conditions:default": [],
+	}),
+	srcs = ["ftq_segmented_mps.tests.c"],
+	copts = ccv_default_copts(),
+	deps = [
+		"//test:case",
+		"//lib:nnc"
+	]
+)
+
+cc_binary(
 	name = "tmcq_codebook_mps.tests",
 	linkopts = select({
 		"@platforms//os:macos": ["-Wl,-U,___test_case_setup,-U,___test_case_teardown"],

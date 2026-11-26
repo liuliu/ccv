@@ -1161,7 +1161,7 @@ TEST_CASE("mps tmcq gemm rejects K % 16 != 0 and rows % 16 != 0 without assertin
 		{
 			const int n_dim = shapes[s][0], k_dim = shapes[s][1];
 			const int format = CCV_NNC_QX_8I_ROWWISE_TMCQ_N22;
-			// An off-grid TMCQ tensor cannot be allocated (ccv_nnc_tensor_data_size asserts), so allocate the
+			// An off-grid tiled tensor cannot be allocated (ccv_nnc_tensor_data_size asserts), so allocate the
 			// enclosing tile grid and present the off-grid shape only to the command.
 			ccv_nnc_tensor_param_t wp = tmcq_params(CCV_TENSOR_GPU_MEMORY, CCV_16F, (n_dim + 15) / 16 * 16, (k_dim + 15) / 16 * 16);
 			wp.datatype = ((CCV_16F >> 12) & 0xff) | CCV_QX | CCV_NNC_QX_8I_ROWWISE_X;
