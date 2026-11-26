@@ -7,6 +7,7 @@
 
 typedef struct {
 	int entries;
+	int flags;
 	uint32_t crc32;
 	int8_t* pairs;
 } ccv_nnc_codebook_t;
@@ -42,20 +43,24 @@ uint32_t ccv_nnc_codebook_crc32(const void* data, const size_t size)
 	return crc ^ 0xffffffffu;
 }
 
-int ccv_nnc_codebook_register(const int8_t* const pairs, const int entries)
+int ccv_nnc_codebook_register_with_flags(const int8_t* const pairs, const int entries, const int flags)
 {
+	if (flags & ~CCV_NNC_CODEBOOK_FOLD)
+		return -1;
 	if (ccv_nnc_codebook_log2_entries(entries) < 0)
 		return -1;
 	const size_t size = (size_t)entries * 2;
 	size_t i;
 	for (i = 0; i < size; i++)
-		if (pairs[i] == -128)
+		if (pairs[i] == -128 || ((flags & CCV_NNC_CODEBOOK_FOLD) && pairs[i] < 0))
 			return -1;
+	if ((flags & CCV_NNC_CODEBOOK_FOLD) && entries != 512)
+		return -1;
 	const uint32_t crc = ccv_nnc_codebook_crc32(pairs, size);
 	pthread_mutex_lock(&codebook_mutex);
 	int slot;
 	for (slot = 1; slot <= codebook_count; slot++)
-		if (codebooks[slot].entries == entries && codebooks[slot].crc32 == crc && memcmp(codebooks[slot].pairs, pairs, size) == 0)
+		if (codebooks[slot].entries == entries && codebooks[slot].flags == flags && codebooks[slot].crc32 == crc && memcmp(codebooks[slot].pairs, pairs, size) == 0)
 		{
 			pthread_mutex_unlock(&codebook_mutex);
 			return slot;
@@ -70,12 +75,36 @@ int ccv_nnc_codebook_register(const int8_t* const pairs, const int entries)
 	memcpy(copy, pairs, size);
 	slot = codebook_count + 1;
 	codebooks[slot].entries = entries;
+	codebooks[slot].flags = flags;
 	codebooks[slot].crc32 = crc;
 	codebooks[slot].pairs = copy;
 	// Publish after the entry is complete; readers of a slot they were handed never see it half-written.
 	__atomic_store_n(&codebook_count, slot, __ATOMIC_RELEASE);
 	pthread_mutex_unlock(&codebook_mutex);
 	return slot;
+}
+
+int ccv_nnc_codebook_register(const int8_t* const pairs, const int entries)
+{
+	return ccv_nnc_codebook_register_with_flags(pairs, entries, 0);
+}
+
+int ccv_nnc_codebook_flags(const int slot)
+{
+	if (slot == 0)
+		return 0;
+	if (slot < 0 || slot > __atomic_load_n(&codebook_count, __ATOMIC_ACQUIRE))
+		return -1;
+	return codebooks[slot].flags;
+}
+
+int ccv_nnc_codebook_fold_slot(const int slot)
+{
+	if (slot <= 0 || ccv_nnc_codebook_flags(slot) != 0)
+		return -1;
+	int entries;
+	const int8_t* const pairs = ccv_nnc_codebook_get(slot, &entries, 0);
+	return pairs ? ccv_nnc_codebook_register_with_flags(pairs, entries, CCV_NNC_CODEBOOK_FOLD) : -1;
 }
 
 static uint32_t builtin_crc = 0;
@@ -146,6 +175,11 @@ size_t ccv_nnc_codebook_serialize(const int slot, void* const data, const size_t
 
 int ccv_nnc_codebook_resolve_inline(const void* const data, const int reserved)
 {
+	return ccv_nnc_codebook_resolve_inline_with_flags(data, reserved, 0);
+}
+
+int ccv_nnc_codebook_resolve_inline_with_flags(const void* const data, const int reserved, const int flags)
+{
 	const int entries = ccv_nnc_codebook_inline_entries(reserved);
 	if (!entries)
 		return reserved;
@@ -166,10 +200,15 @@ int ccv_nnc_codebook_resolve_inline(const void* const data, const int reserved)
 	const int count = __atomic_load_n(&codebook_count, __ATOMIC_ACQUIRE);
 	int slot;
 	for (slot = 1; slot <= count; slot++)
-		if (codebooks[slot].entries == entries && codebooks[slot].crc32 == crc && memcmp(codebooks[slot].pairs, pairs, size) == 0)
+		if (codebooks[slot].entries == entries && codebooks[slot].flags == flags && codebooks[slot].crc32 == crc && memcmp(codebooks[slot].pairs, pairs, size) == 0)
 			break;
 	if (slot > count)
-		slot = ccv_nnc_codebook_register_serialized(p, CCV_NNC_CODEBOOK_HEADER_SIZE + size);
+	{
+		// The stored crc32 must be the table's; register_with_flags computes it and checks the values.
+		if (ccv_nnc_codebook_crc32(pairs, size) != crc)
+			return -1;
+		slot = ccv_nnc_codebook_register_with_flags(pairs, entries, flags);
+	}
 	if (slot < 0)
 		return -1;
 	return ccv_nnc_codebook_with_slot(reserved & ~CCV_NNC_CODEBOOK_INLINE_MASK, slot);

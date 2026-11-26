@@ -1,4 +1,4 @@
-/* The built-in trellis pair codebook of TMCQ: 512 pairs (q0 for weight 2j, q1 for weight
+/* The built-in trellis pair codebook (TMCQ, and FTQ with table id 0): 512 pairs (q0 for weight 2j, q1 for weight
  * 2j + 1), interleaved int8. Pair k = ((uint32_t)state * 0x83DCD12Du) >> 23. crc32 0x4b7574dc, sha256 of the 1024
  * bytes = 830ff43f1222371bb131cfd15d12f26a3881e4ba96584f1484345cb0f1605a3a. Weights that carry their own codebook
  * inline do not use it. Do not edit by hand. */

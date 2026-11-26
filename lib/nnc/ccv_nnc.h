@@ -1189,6 +1189,93 @@ enum {
 	CCV_NNC_QX_8I_ROWWISE_TMCQ_N28,
 	CCV_NNC_QX_8I_ROWWISE_TMCQ_N30,
 	CCV_NNC_QX_8I_ROWWISE_TMCQ_N32,
+	CCV_NNC_QX_8I_ROWWISE_RESERVED_31,
+	/* FTQ (fused trellis quantization), static rate: FP16 tensors, or FP32 tensors (the same blob with the same FP16
+	 * scales, see ccv_nnc_8i_rowwise_x_scale_size) where a backend takes them (the Metal segmented GEMM / SwiGLU and MoE
+	 * weights streaming), requires row_count % 16 == 0 and row_length % 16 == 0. The
+	 * weight is cut into the same 16 x 16 tiles as TMCQ (tiles row-major over the tile grid, weights row-major inside a
+	 * tile); each tile is a tail-biting trellis of exactly 16 n bits (n even), whose pair j (weights 2j, 2j + 1, j =
+	 * 0 .. 127) reads the 16-bit LSB-first state window ending at bit floor((j + 1) n / 8), wrapping inside the tile, and
+	 * takes pair k = (state * 0x83DCD12D) >> (32 - log2 P) of a P-pair int8 table. The weight is row_scale * q8.
+	 * The data is one blob: a 32-byte header ("CCVFTQSR", then rows, cols, high_bits = 16 n, drop_count = 0, table,
+	 * table_crc as little-endian uint32), the code (tiles * 2 n bytes, LSB-first, tile t at bit 16 n t, so every tile
+	 * starts on a 32-bit word), zero padding to align128(32 + tiles * 2 n) of the blob and one FP16 scale per row
+	 * (see ccv_nnc_8i_rowwise_x_ftq_schedule). Any other high_bits or a non-zero drop_count is rejected, so is a stored
+	 * blob of any other size than align128(32 + tiles * 2 n) + 2 rows, or a row scale that is NaN, infinite or negative
+	 * (-0 passes as 0). Table bits
+	 * 0 - 7 are the id of the table the blob was fitted with (0 = the built-in table, see ccv_nnc_codebook.h; any
+	 * other id is kept as written and never looked up), bits 8 - 15 log2 P (9, 10 or 11), bits 16 - 17 the structure
+	 * (0 plain, 1 quadrant fold: 512 base pairs, base pair (h >> 16) & 511 of h = state * 0x83DCD12D, the first value
+	 * negated when bit 15 of h is set and the second when bit 31 is), bits 18 - 31 zero; table_crc is the zlib crc32 of
+	 * the table (0 for the built-in one). The tensor's codebook slot (reserved bits 16 - 23) must name the same table:
+	 * slot 0 for id 0, otherwise a table of that log2 P and crc32, folded if and only if the structure is 1. In a
+	 * checkpoint a table other than the built-in one is inline (CCV_NNC_QX_8I_ROWWISE_CODEBOOK_INLINE_MASK). SR in the magic stands for static rate (one rate for every
+	 * tile row); variable-rate FTQ blobs start with "CCVFTQVR". An [E, N, K] tensor (MoE experts) is one blob of E N rows
+	 * of K: expert e's tiles start at byte 32 + e (N / 16) (K / 16) 2 n and its row r's scale is scale e N + r of the
+	 * blob, so N % 16 == 0 keeps every expert on whole tile rows. */
+	/* Static-rate FTQ owns codes FTQ_BLOCK_FIRST .. FTQ_BLOCK_LAST: format FTQ_BLOCK_FIRST + (n - 8) / 2 is rate n
+	 * (even n = 8 .. 134), so n = 8 + 2 (format - FTQ_BLOCK_FIRST). Only n = 16 .. 48 are open; the other codes of
+	 * the block are rejected. Variable-rate FTQ (CCVFTQVR) owns the next block, FTQ_VR_BLOCK_FIRST ..
+	 * FTQ_VR_BLOCK_LAST, by the same rule on the mean rate. Codes from FTQ_VR_BLOCK_LAST + 1 to 255 are left for
+	 * later formats. */
+	CCV_NNC_QX_8I_ROWWISE_FTQ_BLOCK_FIRST = 32,
+	CCV_NNC_QX_8I_ROWWISE_FTQ_N16 = CCV_NNC_QX_8I_ROWWISE_FTQ_BLOCK_FIRST + (16 - 8) / 2,
+	CCV_NNC_QX_8I_ROWWISE_FTQ_N18,
+	CCV_NNC_QX_8I_ROWWISE_FTQ_N20,
+	CCV_NNC_QX_8I_ROWWISE_FTQ_N22,
+	CCV_NNC_QX_8I_ROWWISE_FTQ_N24,
+	CCV_NNC_QX_8I_ROWWISE_FTQ_N26,
+	CCV_NNC_QX_8I_ROWWISE_FTQ_N28,
+	CCV_NNC_QX_8I_ROWWISE_FTQ_N30,
+	CCV_NNC_QX_8I_ROWWISE_FTQ_N32,
+	CCV_NNC_QX_8I_ROWWISE_FTQ_N34,
+	CCV_NNC_QX_8I_ROWWISE_FTQ_N36,
+	CCV_NNC_QX_8I_ROWWISE_FTQ_N38,
+	CCV_NNC_QX_8I_ROWWISE_FTQ_N40,
+	CCV_NNC_QX_8I_ROWWISE_FTQ_N42,
+	CCV_NNC_QX_8I_ROWWISE_FTQ_N44,
+	CCV_NNC_QX_8I_ROWWISE_FTQ_N46,
+	CCV_NNC_QX_8I_ROWWISE_FTQ_N48,
+	CCV_NNC_QX_8I_ROWWISE_FTQ_BLOCK_LAST = CCV_NNC_QX_8I_ROWWISE_FTQ_BLOCK_FIRST + 63,
+	CCV_NNC_QX_8I_ROWWISE_FTQ_VR_BLOCK_FIRST = CCV_NNC_QX_8I_ROWWISE_FTQ_BLOCK_LAST + 1,
+	/* Variable-rate FTQ (VR: variable rate), CCV_NNC_QX_8I_ROWWISE_FTQ_VR_N16 .. N48, mean rate
+	 * nm = 8 + 2 (format - FTQ_VR_BLOCK_FIRST), so FTQ_VR_N<nm>. FP16 tensors only, rows % 16 == 0, cols % 16 == 0.
+	 * R = rows / 16 tile rows of C = cols / 16 tiles. Blob (little endian):
+	 *   [0, 8)    magic "CCVFTQVR"
+	 *   [8, 32)   uint32 rows, cols, 16 * nm, level_mask, table, table_crc
+	 *             level_mask: bit i set when rate n = 8 + 2 i (8 ... 48) occurs; at most 6 bits set.
+	 *             table, table_crc: as in static-rate FTQ (id bits 0 - 7, log2 pairs 8 - 15, structure 16 - 17;
+	 *             crc32, 0 for id 0).
+	 *   [32, 32 + 4 (R + 1))  uint32 off[R + 1], word offsets from the code start, off[0] = 0, non-decreasing.
+	 *   code      starts at word 8 + R + 1; tile row r is words off[r] .. off[r + 1] and holds C tiles of 16 n_r bits
+	 *             each, n_r = 2 (off[r + 1] - off[r]) / C, so every tile starts on a word; inside a tile it is
+	 *             static-rate FTQ at rate n_r (including the wrap of the first windows; for n_r < 16 rows 0 and 1
+	 *             of the tile wrap).
+	 *   padding   zero bytes up to scale_offset = align128(32 + 4 (R + 1) + R C 2 nm).
+	 *   scales    FP16 row scales, 2 rows bytes. Blob size = scale_offset + 2 rows.
+	 * A reader rejects the blob unless: the magic matches, rows / cols / 16 nm match the tensor and format, every n_r
+	 * is a set bit of level_mask, at most 6 bits are set, off is non-decreasing with off[R] <= R C nm / 2, every
+	 * off[r + 1] - off[r] is a multiple of C (so n_r is even), the padding is zero, the stored blob is exactly
+	 * scale_offset + 2 rows bytes, every row scale is finite and not negative (-0 passes as 0), and the table checks of
+	 * static-rate FTQ pass. */
+	CCV_NNC_QX_8I_ROWWISE_FTQ_VR_N16 = CCV_NNC_QX_8I_ROWWISE_FTQ_VR_BLOCK_FIRST + (16 - 8) / 2,
+	CCV_NNC_QX_8I_ROWWISE_FTQ_VR_N18,
+	CCV_NNC_QX_8I_ROWWISE_FTQ_VR_N20,
+	CCV_NNC_QX_8I_ROWWISE_FTQ_VR_N22,
+	CCV_NNC_QX_8I_ROWWISE_FTQ_VR_N24,
+	CCV_NNC_QX_8I_ROWWISE_FTQ_VR_N26,
+	CCV_NNC_QX_8I_ROWWISE_FTQ_VR_N28,
+	CCV_NNC_QX_8I_ROWWISE_FTQ_VR_N30,
+	CCV_NNC_QX_8I_ROWWISE_FTQ_VR_N32,
+	CCV_NNC_QX_8I_ROWWISE_FTQ_VR_N34,
+	CCV_NNC_QX_8I_ROWWISE_FTQ_VR_N36,
+	CCV_NNC_QX_8I_ROWWISE_FTQ_VR_N38,
+	CCV_NNC_QX_8I_ROWWISE_FTQ_VR_N40,
+	CCV_NNC_QX_8I_ROWWISE_FTQ_VR_N42,
+	CCV_NNC_QX_8I_ROWWISE_FTQ_VR_N44,
+	CCV_NNC_QX_8I_ROWWISE_FTQ_VR_N46,
+	CCV_NNC_QX_8I_ROWWISE_FTQ_VR_N48,
+	CCV_NNC_QX_8I_ROWWISE_FTQ_VR_BLOCK_LAST = CCV_NNC_QX_8I_ROWWISE_FTQ_VR_BLOCK_FIRST + 63,
 };
 
 /* Modifiers for the format argument / tensor reserved field of ROWWISE_X. */
@@ -1292,17 +1379,26 @@ CCV_WARN_UNUSED(size_t) ccv_nnc_8i_rowwise_x_data_size(const int format, const i
  * CCV_NNC_QX_8I_ROWWISE_HADAMARD_256 (returns 0).
  * @param hessian_length The number of elements in @p hessian. It must be a multiple of
  * row_length * row_length. Multiple slices partition rows evenly, as with imatrix.
- * TMCQ is fitted unweighted with the built-in table: a tail-biting Viterbi per tile on the
- * squared error, row scale rms(row) / cb_rms (cb_rms the code rms over all window states). It
- * returns 0 with an imatrix or a Hessian, or with a codebook slot.
+ * TMCQ and FTQ are fitted unweighted with the built-in table: a tail-biting Viterbi per tile on the
+ * squared error, row scale rms(row) / cb_rms (cb_rms the code rms over all window states). They
+ * return 0 with an imatrix or a Hessian, or with a codebook slot; FTQ takes CCV_16F input only and
+ * writes the whole CCVFTQSR blob.
  */
 CCV_WARN_UNUSED(size_t) ccv_nnc_quantize_8i_rowwise_x(const void* input, const int datatype, const int memory_type, const size_t input_length, const size_t row_length, const int format, const float* const imatrix, const size_t imatrix_length, const float* const hessian, const size_t hessian_length, void* output, const size_t output_length);
+/**
+ * Quantize FP16 weights into variable-rate FTQ (CCV_NNC_QX_8I_ROWWISE_FTQ_VR_N16 .. N48), fitted as
+ * ccv_nnc_quantize_8i_rowwise_x fits static-rate FTQ, with the built-in table.
+ * @param rates The rate n_r of each tile row (rows / 16 of them): even, 8 ... 48, at most 6 distinct values and
+ * sum n_r <= (rows / 16) nm. 0 gives every tile row the mean rate nm of the format.
+ * @return The blob size, or 0 without writing output for invalid rates, shape or insufficient output space.
+ */
+CCV_WARN_UNUSED(size_t) ccv_nnc_quantize_8i_rowwise_x_ftq_vr(const void* input, const int datatype, const int memory_type, const size_t input_length, const size_t row_length, const int format, const int* const rates, void* output, const size_t output_length);
 /**
  * Dequantize a row-wise-x int8-compatible format back to @p datatype.
  * H256 logical-weight decoding is not supported yet.
  * Passing only the base codec explicitly decodes the stored rotated values.
- * @return 0, or -1 if the weights are rejected: a codebook slot that is not registered or names a table for a
- *   codec other than TMCQ.
+ * @return 0, or -1 if the weights are rejected: an FTQ container that does not match its format, schedule or
+ *   codebook, or a codebook slot that is not registered or names a table for a codec other than TMCQ / FTQ.
  *   These checks hold in release builds too.
  */
 int ccv_nnc_dequantize_8i_rowwise_x(const void* input, const int datatype, const int memory_type, const size_t input_length, const size_t row_length, const int format, void* output, const size_t output_length);
