@@ -32,6 +32,7 @@ NAMatMulSmallMKernel::NAMatMulSmallMKernel(NAMatMulSmallMKernelDescriptor descri
   executionSIMDGroups = descriptor.executionSIMDGroups;
   useBias = descriptor.useBias;
   loadM = descriptor.loadM;
+  fp32Accumulation = descriptor.fp32Accumulation;
 
   source = createSource();
 
@@ -67,6 +68,11 @@ std::string NAMatMulSmallMKernel::createSource() const noexcept
   source.SetValue("MEMORY_NAME_B", memoryName('B'));
   source.SetValue("MEMORY_NAME_C", memoryName('C'));
   source.SetValue("MEMORY_NAME_BIAS", memoryName('S'));
+  // The accumulator and packed partial-sum type. With fp32Accumulation the
+  // partials stay FP32 through reduce_diagonal, which rounds to C once.
+  source.SetValue("REGISTER_NAME_C", fp32Accumulation ? "float" : memoryName('C'));
+  // FP32 operands keep full precision; relaxed lets the neural accelerators truncate them.
+  source.SetValue("RELAXED_PRECISION", (memoryPrecisions.A.value == GEMMOperandPrecision::FP32 || memoryPrecisions.B.value == GEMMOperandPrecision::FP32) ? "false" : "true");
   source.SetValue("BLOCK_DIMENSIONS_M", std::to_string(blockDimensions[0]));
   source.SetValue("BLOCK_DIMENSIONS_N", std::to_string(blockDimensions[1]));
   source.SetValue("BLOCK_DIMENSIONS_K", std::to_string(blockDimensions[2]));
@@ -100,7 +106,7 @@ constant uint RHS_PACKED_ROWS = N * {{PACK}};
   source += R"(
 kernel void matmul_small_m_block_view(device {{MEMORY_NAME_B}}* A_buf [[buffer(0)]],
                                       device {{MEMORY_NAME_A}}* B_buf [[buffer(1)]],
-                                      device {{MEMORY_NAME_C}}* C_buf [[buffer(2)]],
+                                      device {{REGISTER_NAME_C}}* C_buf [[buffer(2)]],
 \)";
   if (loadM) {
     source += R"(                                      const device uint* loadM_buf [[buffer(3)]],
@@ -134,14 +140,14 @@ kernel void matmul_small_m_block_view(device {{MEMORY_NAME_B}}* A_buf [[buffer(0
         {{BLOCK_DIMENSIONS_K}},
         false,
         true,
-        true,
+        {{RELAXED_PRECISION}},
         matmul2d_descriptor::mode::multiply_accumulate);
     matmul2d<matmul_descriptor, execution_simdgroups<{{EXECUTION_SIMD_GROUPS}}>> matmul_op;
-    auto cT = matmul_op.get_destination_cooperative_tensor<decltype(A), decltype(B), {{MEMORY_NAME_C}}>();
+    auto cT = matmul_op.get_destination_cooperative_tensor<decltype(A), decltype(B), {{REGISTER_NAME_C}}>();
     #pragma clang loop unroll(full)
     for (unsigned short i = 0; i < cT.get_capacity(); ++i) {
       if (cT.is_valid_element(i)) {
-        cT[i] = {{MEMORY_NAME_C}}(0);
+        cT[i] = {{REGISTER_NAME_C}}(0);
       }
     }
     #pragma clang loop unroll(full)
@@ -157,7 +163,7 @@ kernel void matmul_small_m_block_view(device {{MEMORY_NAME_B}}* A_buf [[buffer(0
           dynamic_length_v<int>,
           false,
           true,
-          true,
+          {{RELAXED_PRECISION}},
           matmul2d_descriptor::mode::multiply_accumulate);
       matmul2d<residual_descriptor, execution_simdgroups<{{EXECUTION_SIMD_GROUPS}}>> residual_op;
       auto mAr = A.slice<dynamic_extent, {{BLOCK_DIMENSIONS_M}}>(KPACK / {{BLOCK_DIMENSIONS_K}} * {{BLOCK_DIMENSIONS_K}}, row_block);
@@ -188,16 +194,16 @@ kernel void matmul_small_m_block_view(device {{MEMORY_NAME_B}}* A_buf [[buffer(0
         dynamic_length_v<int>,
         false,
         true,
-        true,
+        {{RELAXED_PRECISION}},
         matmul2d_descriptor::mode::multiply_accumulate);
     matmul2d<matmul_descriptor, execution_simdgroups<{{EXECUTION_SIMD_GROUPS}}>> matmul_op;
     auto mA = A.slice(0, row_block);
     auto mB = B.slice(0, col_block);
-    auto cT = matmul_op.get_destination_cooperative_tensor<decltype(mA), decltype(mB), {{MEMORY_NAME_C}}>();
+    auto cT = matmul_op.get_destination_cooperative_tensor<decltype(mA), decltype(mB), {{REGISTER_NAME_C}}>();
     #pragma clang loop unroll(full)
     for (unsigned short i = 0; i < cT.get_capacity(); ++i) {
       if (cT.is_valid_element(i)) {
-        cT[i] = {{MEMORY_NAME_C}}(0);
+        cT[i] = {{REGISTER_NAME_C}}(0);
       }
     }
     matmul_op.run(mA, mB, cT);
@@ -221,7 +227,7 @@ kernel void matmul_small_m_block_view(device {{MEMORY_NAME_B}}* A_buf [[buffer(0
   }
 }
 
-kernel void reduce_diagonal(device const {{MEMORY_NAME_C}}* src [[buffer(0)]],
+kernel void reduce_diagonal(device const {{REGISTER_NAME_C}}* src [[buffer(0)]],
                             device {{MEMORY_NAME_C}}* dst [[buffer(1)]],
 )";
   if (useBias) {

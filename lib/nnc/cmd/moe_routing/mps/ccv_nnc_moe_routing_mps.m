@@ -115,8 +115,10 @@ static int _ccv_nnc_moe_routing_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint
 		route->info.dim[0] != expert_count) {
 		return CCV_NNC_EXEC_INVALID;
 	}
-	// A few tokens, as a speculative verify routes, take the MFA kernel too.
-	if (((token_count == 1 && kth <= 32) || (token_count <= 16 && kth <= 8)) && expert_count <= 512)
+	// MFA routes every token count of up to 8 experts the same way: lowest expert index on ties, and
+	// log1p with its compensation. MPSGraph keeps the rest.
+	if (((token_count == 1 && kth <= 32) || kth <= 8) && expert_count <= 512 &&
+		(token_count <= 16 || hidden * CCV_GET_DATA_TYPE_SIZE(activation->info.datatype) >= 8))
 	{
 		@autoreleasepool {
 			ccv_nnc_mfa_context_t* const context = ccv_nnc_default_mfa_context();

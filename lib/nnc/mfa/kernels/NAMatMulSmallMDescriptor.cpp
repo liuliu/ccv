@@ -27,7 +27,8 @@ bool NAMatMulSmallMDescriptor::operator==(const NAMatMulSmallMDescriptor& rhs) c
   simd_all(lhsMatrixDimensions == rhsMatrixDimensions) &&
   memoryPrecisions == rhs.memoryPrecisions &&
   useBias == rhs.useBias &&
-  loadM == rhs.loadM;
+  loadM == rhs.loadM &&
+  fp32Accumulation == rhs.fp32Accumulation;
 }
 
 uint16_t NAMatMulSmallMDescriptor::pack() const noexcept
@@ -83,7 +84,7 @@ NAMatMulSmallMScratchOffsets NAMatMulSmallMDescriptor::scratchOffsets() const no
   const uint32_t N = matrixDimensions[1];
   const uint32_t packValue = pack();
   const uint32_t splitKValue = splitK();
-  const size_t bytes = memoryPrecisions.C.size();
+  const size_t bytes = fp32Accumulation ? sizeof(float) : memoryPrecisions.C.size();
   size_t offset = 0;
   const size_t partials = align_up(offset, 256);
   offset = partials + (size_t)splitKValue * M * packValue * N * bytes;
@@ -106,6 +107,7 @@ std::size_t std::hash<NAMatMulSmallMDescriptor>::operator()(const NAMatMulSmallM
       hash.memoryPrecisions.bias.value }));
   seed = combine_32(seed, hash.useBias ? 1 : 0);
   seed = combine_32(seed, hash.loadM ? 1 : 0);
+  seed = combine_32(seed, hash.fp32Accumulation ? 1 : 0);
   return seed;
 }
 
@@ -177,7 +179,7 @@ std::pair<NAMatMulSmallMKernelDescriptor, PipelineValue<NAMatMulSmallMKernel>*> 
   };
 
   auto kernelDesc = NAMatMulSmallMKernelDescriptor(
-      blockDimensions(), memoryPrecisions, pack(), executionSIMDGroups(), useBias, loadM);
+      blockDimensions(), memoryPrecisions, pack(), executionSIMDGroups(), useBias, loadM, fp32Accumulation);
   NAMatMulSmallMKernel* kernel = createKernel(kernelDesc);
   auto constants = createConstants();
   PipelineValue<NAMatMulSmallMKernel>* output = new PipelineValue<NAMatMulSmallMKernel> {

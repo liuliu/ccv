@@ -27,7 +27,7 @@ using namespace metal;
 
 inline float stable_sigmoid(const float value)
 {
-  const float tail = 1.0f / (1.0f + exp(abs(value)));
+  const float tail = metal::precise::divide(1.0f, 1.0f + metal::precise::exp(abs(value)));
   return tail + step(0.0f, value) * (1.0f - 2.0f * tail);
 }
 
@@ -36,9 +36,9 @@ inline float stable_sigmoid(const float value)
     // The sigmoid reads the gate itself, while the soft caps bound its linear factor and up. The
     // fast tanh loses accuracy for large inputs, as in the tanh kernel.
     source += "inline float soft_cap_swiglu(const float gate, const float up)\n{\n  return (";
-    source += descriptor.upSoftCap ? "up_soft_cap * precise::tanh(up / up_soft_cap)" : "up";
+    source += descriptor.upSoftCap ? "up_soft_cap * precise::tanh(precise::divide(up, up_soft_cap))" : "up";
     source += ") * (";
-    source += descriptor.gateSoftCap ? "gate_soft_cap * precise::tanh(gate / gate_soft_cap)" : "gate";
+    source += descriptor.gateSoftCap ? "gate_soft_cap * precise::tanh(precise::divide(gate, gate_soft_cap))" : "gate";
     source += ") * stable_sigmoid(gate);\n}\n\n";
   }
   if (descriptor.format != 0) {

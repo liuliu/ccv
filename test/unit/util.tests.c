@@ -425,6 +425,9 @@ TEST_CASE("half precision and float-point conversion")
 		h[i] = i;
 	ccv_half_precision_to_float(h, f, 0x10000);
 	ccv_float_to_half_precision(f, b, 0x10000);
+	for (i = 0; i < 0x10000; i++) // Signaling NaN comes back quieted.
+		if ((h[i] & 0x7c00) == 0x7c00 && (h[i] & 0x3ff))
+			h[i] |= 0x200;
 	REQUIRE_ARRAY_EQ(uint16_t, h, b, 0x10000, "half precision convert to float and then convert back should match exactly");
 	for (i = 0; i <= 2048; i++)
 		f[i] = i;
@@ -440,6 +443,46 @@ TEST_CASE("half precision and float-point conversion")
 	ccfree(f);
 	ccfree(b);
 	ccfree(c);
+}
+
+TEST_CASE("float to half precision and bfloat round to nearest even")
+{
+	// 1 + 2^-11 ties to 1, 1 + 3 * 2^-11 ties up to 1 + 2^-9, just above a tie rounds up, 65519 stays
+	// finite, 65520 overflows, 2^-25 ties to zero, just above it is the smallest subnormal, and a
+	// NaN with only low mantissa bits stays NaN.
+	const uint32_t in[] = {
+		0x3f801000, 0x3f803000, 0x3f801001, 0x477fefff, 0x477ff000, 0x33000000, 0x33000001, 0x7f800001,
+		0xbf801000, 0x387fe000, 0x7f800000, 0x00000001,
+	};
+	const uint16_t half[] = {
+		0x3c00, 0x3c02, 0x3c01, 0x7bff, 0x7c00, 0x0000, 0x0001, 0x7e00,
+		0xbc00, 0x0400, 0x7c00, 0x0000,
+	};
+	uint16_t out[sizeof(in) / sizeof(in[0])];
+	ccv_float_to_half_precision((const float*)in, out, sizeof(in) / sizeof(in[0]));
+	REQUIRE_ARRAY_EQ(uint16_t, out, half, sizeof(in) / sizeof(in[0]), "float to half should round to nearest even");
+	const double din[] = { 1 + 0x1p-11, 1 + 0x1p-11 + 0x1p-40, 65519.99, 65520, 0x1p-25, 0x1p-25 + 0x1p-60 };
+	const uint16_t dhalf[] = { 0x3c00, 0x3c01, 0x7bff, 0x7c00, 0x0000, 0x0001 };
+	uint16_t dout[sizeof(din) / sizeof(din[0])];
+	ccv_double_to_half_precision(din, dout, sizeof(din) / sizeof(din[0]));
+	REQUIRE_ARRAY_EQ(uint16_t, dout, dhalf, sizeof(din) / sizeof(din[0]), "double to half should round once to nearest even");
+	// bfloat: 1 + 2^-8 ties to 1, 1 + 3 * 2^-8 ties up, just above a tie rounds up, low-bit NaN stays NaN.
+	const uint32_t bin[] = { 0x3f808000, 0x3f818000, 0x3f808001, 0x7f800001, 0x7f7fffff };
+	const uint16_t bf[] = { 0x3f80, 0x3f82, 0x3f81, 0x7fc0, 0x7f80 };
+	uint16_t bout[sizeof(bin) / sizeof(bin[0])];
+	ccv_float_to_bfloat((const float*)bin, bout, sizeof(bin) / sizeof(bin[0]));
+	REQUIRE_ARRAY_EQ(uint16_t, bout, bf, sizeof(bin) / sizeof(bin[0]), "float to bfloat should round to nearest even");
+	// double to bfloat rounds once: just above a float tie rounds up, and float subnormals are kept.
+	const double dbin[] = { 1 + 0x1p-8, 1 + 0x1p-8 + 0x1p-40, 0x1p-130 * (1 + 0x1p-8 + 0x1p-50), -0x1p-149 };
+	const uint16_t dbf[] = { 0x3f80, 0x3f81, 0x0008, 0x8000 };
+	uint16_t dbout[sizeof(dbin) / sizeof(dbin[0])];
+	ccv_double_to_bfloat(dbin, dbout, sizeof(dbin) / sizeof(dbin[0]));
+	REQUIRE_ARRAY_EQ(uint16_t, dbout, dbf, sizeof(dbin) / sizeof(dbin[0]), "double to bfloat should round once to nearest even");
+	const uint16_t bh_in[] = { 0x3f81, 0x3f80, 0x7f81, 0x4780 };
+	const uint16_t bh[] = { 0x3c08, 0x3c00, 0x7e08, 0x7c00 };
+	uint16_t bh_out[sizeof(bh_in) / sizeof(bh_in[0])];
+	ccv_bfloat_to_half_precision(bh_in, bh_out, sizeof(bh_in) / sizeof(bh_in[0]));
+	REQUIRE_ARRAY_EQ(uint16_t, bh_out, bh, sizeof(bh_in) / sizeof(bh_in[0]), "bfloat to half should keep NaN and overflow at 65520");
 }
 
 #include "case_main.h"

@@ -272,8 +272,8 @@ kernel void quantize_activation(
     }
   }
   const float max_abs = quantize_reduce_max(local_max, scratch, sgid, lane_id);
-  const float scale = max_abs > 0.0f ? max_abs / 127.0f : (1.0f / 127.0f);
-  const float inv_scale = max_abs > 0.0f ? 127.0f / max_abs : 127.0f;
+  const float scale = max_abs > 0.0f ? metal::precise::divide(max_abs, 127.0f) : (1.0f / 127.0f);
+  const float inv_scale = max_abs > 0.0f ? metal::precise::divide(127.0f, max_abs) : 127.0f;
   if (tid == 0)
     scales[row] = ({{IO_TYPE}})scale;
   device char4* dst4 = reinterpret_cast<device char4*>(dst);
@@ -300,8 +300,8 @@ kernel void quantize_activation(
       local_max = max(local_max, max(max(fabs(value[0]), fabs(value[1])), max(fabs(value[2]), fabs(value[3]))));
     }
     const float max_abs = quantize_reduce_max(local_max, scratch, sgid, lane_id);
-    const float scale = max_abs > 0.0f ? max_abs / 127.0f : (1.0f / 127.0f);
-    const float inv_scale = max_abs > 0.0f ? 127.0f / max_abs : 127.0f;
+    const float scale = max_abs > 0.0f ? metal::precise::divide(max_abs, 127.0f) : (1.0f / 127.0f);
+    const float inv_scale = max_abs > 0.0f ? metal::precise::divide(127.0f, max_abs) : 127.0f;
     if (tid == 0)
       scales[row] = ({{IO_TYPE}})scale;
     for (uint i = tid; i < vectors_per_row; i += {{QUANT_THREADS}}) {
@@ -312,8 +312,8 @@ kernel void quantize_activation(
     for (uint i = tid; i < K; i += {{QUANT_THREADS}})
       local_max = max(local_max, fabs((float)src[{{QUANTIZATION_SOURCE_BASE}} + i]));
     const float max_abs = quantize_reduce_max(local_max, scratch, sgid, lane_id);
-    const float scale = max_abs > 0.0f ? max_abs / 127.0f : (1.0f / 127.0f);
-    const float inv_scale = max_abs > 0.0f ? 127.0f / max_abs : 127.0f;
+    const float scale = max_abs > 0.0f ? metal::precise::divide(max_abs, 127.0f) : (1.0f / 127.0f);
+    const float inv_scale = max_abs > 0.0f ? metal::precise::divide(127.0f, max_abs) : 127.0f;
     if (tid == 0)
       scales[row] = ({{IO_TYPE}})scale;
     for (uint i = tid; i < K; i += {{QUANT_THREADS}}) {
@@ -474,7 +474,12 @@ inline void multiply_register(const device int8_t* A, const device int8_t* B,
         const short col = n * 16 + origin.x + i % 4;
         const float a = row < rows ? float(A_scale[row]) : 0.0f;
         const float b = col < columns ? float(B_scale[col]) : 0.0f;
-        float value = float(accum.fragments[m * 2 + n][i]) * a * b;
+        float value;
+        {
+#pragma METAL fp math_mode(safe)
+          // Fixed (acc * a) * b order: fast-math must not reassociate the dequantization.
+          value = (float(accum.fragments[m * 2 + n][i]) * a) * b;
+        }
 )";
     if (useBias)
       source += "        if (col < columns) value += float(bias[col]);";
@@ -674,7 +679,11 @@ inline void multiply_register(const device int8_t* A, const device int8_t* B,
         auto idx = cT.get_multidimensional_index(i);
         const uint row = M_group_offset + (uint)idx[1];
         const uint col = N_group_offset + (uint)idx[0];
-        float value = (float)cT[i] * (float)A_scale_buf[row] * (float)B_scale_buf[col];
+        float value;
+        {
+#pragma METAL fp math_mode(safe)
+          value = ((float)cT[i] * (float)A_scale_buf[row]) * (float)B_scale_buf[col];
+        }
 )";
   if (useBias) {
     source += R"(
@@ -712,9 +721,12 @@ inline void multiply_register(const device int8_t* A, const device int8_t* B,
         const uint row = (uint)idx[1];
         const uint col = (uint)idx[0];
         if (col < N_block_size && row < M_block_size) {
-          float value = (float)cT[i] *
-              (float)A_scale_buf[M_group_offset + row] *
-              (float)B_scale_buf[N_group_offset + col];
+          float value;
+          {
+#pragma METAL fp math_mode(safe)
+            value = ((float)cT[i] * (float)A_scale_buf[M_group_offset + row]) *
+                (float)B_scale_buf[N_group_offset + col];
+          }
 )";
   if (useBias) {
     source += R"(
