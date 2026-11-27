@@ -94,6 +94,38 @@ static void _tmcq_store(const int datatype, void* const data, const size_t i, co
 		((double*)data)[i] = v;
 }
 
+// The GPU decodes (CUDA and Metal, as for the other codecs) round FP16 / BF16 to nearest even; the CPU decode narrows
+// through ccv_float_to_half_precision / ccv_float_to_bfloat (_tmcq_store).
+static void _tmcq_store_nearest(const int datatype, void* const data, const size_t i, const double v)
+{
+	const float f = (float)v;
+	uint32_t x;
+	memcpy(&x, &f, sizeof(x));
+	if (datatype == CCV_16F)
+	{
+		const uint32_t sign = (x >> 16) & 0x8000;
+		uint32_t ax = x & 0x7fffffffu;
+		uint16_t h;
+		if (ax >= 0x7f800000u)
+			h = (uint16_t)(sign | 0x7c00 | (ax > 0x7f800000u ? 0x200 : 0));
+		else if (ax >= 0x477ff000u)
+			h = (uint16_t)(sign | 0x7c00);
+		else if (ax < 0x38800000u) {
+			float af;
+			memcpy(&af, &ax, sizeof(af));
+			h = (uint16_t)(sign | (uint32_t)lrintf(af * 16777216.0f));
+		} else {
+			ax += 0xfffu + ((ax >> 13) & 1);
+			ax -= 0x38000000u;
+			h = (uint16_t)(sign | (ax >> 13));
+		}
+		((uint16_t*)data)[i] = h;
+	} else if (datatype == CCV_16BF)
+		((uint16_t*)data)[i] = (uint16_t)((x + 0x7fffu + ((x >> 16) & 1)) >> 16);
+	else
+		_tmcq_store(datatype, data, i, v);
+}
+
 // Fills TMCQ weights: their own table (the built-in pairs in a random order, so the codes keep their statistics), a
 // payload of random bits (every bit string is a valid payload) and random row scales of the datatype. Returns the
 // scale offset.
@@ -163,7 +195,7 @@ TEST_CASE("TMCQ reference decode reads the expected codes of a fixed payload")
 	}
 }
 
-TEST_CASE("TMCQ CUDA dequantization matches the CPU decode bit for bit")
+TEST_CASE("TMCQ CUDA dequantization matches the reference decode rounded to nearest bit for bit")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_GPU_CUBLAS));
 #ifdef HAVE_CUDA
@@ -206,13 +238,13 @@ TEST_CASE("TMCQ CUDA dequantization matches the CPU decode bit for bit")
 						REQUIRE_EQ(qsize, ((((size_t)rows * (k / 256) * 16 * n + 7) / 8 + 127) & ~(size_t)127) + (size_t)rows * CCV_GET_DATA_TYPE_SIZE(datatypes[d]), "K %% 256 keeps the row-wise size");
 					}
 					const size_t scale_offset = _tmcq_fill(q, datatypes[d], rows, 0.01, &dsfmt);
-					// Expected: the reference codes times the row scales, narrowed like the CPU decode.
+					// Expected: the reference codes times the row scales, rounded to nearest.
 					int8_t* const codes = (int8_t*)ccmalloc(count);
 					_tmcq_reference_codes(q->data.u8, rows, k, n, codes);
 					ccv_nnc_tensor_t* const expected = ccv_nnc_tensor_new(0, host_params, 0);
 					size_t i;
 					for (i = 0; i < count; i++)
-						_tmcq_store(datatypes[d], expected->data.u8, i, _tmcq_load(datatypes[d], q->data.u8 + scale_offset, i / k) * codes[i]);
+						_tmcq_store_nearest(datatypes[d], expected->data.u8, i, _tmcq_load(datatypes[d], q->data.u8 + scale_offset, i / k) * codes[i]);
 					// The unaligned case writes one element past a 16-byte boundary, through the scalar stores.
 					ccv_nnc_tensor_param_t out_params = gpu_params;
 					out_params.dim[0] = rows + 1;
@@ -224,7 +256,7 @@ TEST_CASE("TMCQ CUDA dequantization matches the CPU decode bit for bit")
 					ccv_nnc_tensor_t* const actual = ccv_nnc_tensor_new(0, host_params, 0);
 					ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(&gview), TENSOR_LIST(actual), 0);
 					const int equal = memcmp(expected->data.u8, actual->data.u8, count * CCV_GET_DATA_TYPE_SIZE(datatypes[d])) == 0;
-					REQUIRE(equal, "TMCQ fp dequantization should match the CPU decode bit for bit: n=%d datatype=%x rows=%d k=%d unaligned=%d", n, datatypes[d], rows, k, unaligned);
+					REQUIRE(equal, "TMCQ fp dequantization should match the reference rounded to nearest bit for bit: n=%d datatype=%x rows=%d k=%d unaligned=%d", n, datatypes[d], rows, k, unaligned);
 					// The public entry point dispatches to the same kernel.
 					ccv_nnc_dequantize_8i_rowwise_x(gq->data.u8, datatypes[d], CCV_TENSOR_GPU_MEMORY, qsize, k, format, gout->data.u8, count);
 					gview = ccv_nnc_tensor(gout->data.u8, gpu_params, 0);
@@ -401,9 +433,9 @@ static double _tmcq_gemm_max_rel_diff(const int datatype, const int format, cons
 			if (fast_path)
 				w_f[i * k + j] = (float)(scale * codes[(size_t)i * k + j]);
 			else {
-				// The fallback decodes into the datatype (truncating like the CPU decode) before cuBLAS.
+				// The fallback decodes into the datatype (rounding to nearest) before cuBLAS.
 				uint8_t v[8];
-				_tmcq_store(datatype, v, 0, scale * codes[(size_t)i * k + j]);
+				_tmcq_store_nearest(datatype, v, 0, scale * codes[(size_t)i * k + j]);
 				w_f[i * k + j] = (float)_tmcq_load(datatype, v, 0);
 			}
 		}
@@ -588,7 +620,7 @@ TEST_CASE("cublas forward gemm with TMCQ weights runs the CUTLASS int8 GEMM from
 #endif
 }
 
-TEST_CASE("TMCQ CUDA dequantization matches ccv_nnc_dequantize_8i_rowwise_x on CPU bit for bit")
+TEST_CASE("TMCQ CUDA and CPU dequantization match the reference decode bit for bit, each with its rounding")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_GPU_CUBLAS));
 #ifdef HAVE_CUDA
@@ -639,12 +671,15 @@ TEST_CASE("TMCQ CUDA dequantization matches ccv_nnc_dequantize_8i_rowwise_x on C
 					_tmcq_store(datatypes[d], reference->data.u8, i, _tmcq_load(datatypes[d], q->data.u8 + scale_offset, i / k) * codes[i]);
 				const size_t bytes = count * CCV_GET_DATA_TYPE_SIZE(datatypes[d]);
 				REQUIRE(memcmp(expected->data.u8, reference->data.u8, bytes) == 0, "CPU TMCQ decode should match the reference: n=%d datatype=%x source=%d", n, datatypes[d], source);
+				// The GPU decode rounds to nearest (the same as the CPU API for FP32 and FP64).
+				for (i = 0; i < count; i++)
+					_tmcq_store_nearest(datatypes[d], reference->data.u8, i, _tmcq_load(datatypes[d], q->data.u8 + scale_offset, i / k) * codes[i]);
 				ccv_nnc_tensor_t* const gout = ccv_nnc_tensor_new(0, gpu_params, 0);
 				ccv_nnc_tensor_t* const actual = ccv_nnc_tensor_new(0, host_params, 0);
 				ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(q), TENSOR_LIST(gq), 0);
 				ccv_nnc_dequantize_8i_rowwise_x(gq->data.u8, datatypes[d], CCV_TENSOR_GPU_MEMORY, qsize, k, format, gout->data.u8, count);
 				ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(gout), TENSOR_LIST(actual), 0);
-				REQUIRE(memcmp(expected->data.u8, actual->data.u8, bytes) == 0, "GPU TMCQ decode should match the CPU API bit for bit: n=%d datatype=%x source=%d", n, datatypes[d], source);
+				REQUIRE(memcmp(reference->data.u8, actual->data.u8, bytes) == 0, "GPU TMCQ decode should match the reference rounded to nearest bit for bit: n=%d datatype=%x source=%d", n, datatypes[d], source);
 				// The int8 conversion holds the CPU codes: the CPU decode with FP32 scales of 1.
 				ccv_nnc_tensor_t* const g8 = ccv_nnc_tensor_new(0, ccv_nnc_tensor_8i_rowwise(gpu_params), 0);
 				ccv_nnc_tensor_t* const h8 = ccv_nnc_tensor_new(0, ccv_nnc_tensor_8i_rowwise(host_params), 0);

@@ -808,7 +808,8 @@ TEST_CASE("mps tmcq index select is rejected")
 
 // Tile-row boundaries of the int8 decode, which runs in blocks of 2 neighbouring tiles x 16 rows: 1, 3, 13 and 17 tile
 // rows (16 x 256, 48 x 256, 208 x 768, 272 x 512). GPU int8 decode, CPU decode and the one-hot GEMV (M = 1 .. 3) must equal the
-// reference bit for bit.
+// reference bit for bit: the GPU rounds to nearest even, the CPU decode narrows through ccv_float_to_half_precision as
+// every CPU codec does.
 TEST_CASE("mps tmcq decode is exact across odd tile-row counts")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_MPS));
@@ -834,7 +835,12 @@ TEST_CASE("mps tmcq decode is exact across odd tile-row counts")
 			ccv_nnc_dequantize_8i_rowwise_x(hq->data.u8, CCV_16F, CCV_TENSOR_CPU_MEMORY, size, cols, format, out, (size_t)rows * cols);
 			size_t cpu_mismatches = 0;
 			for (k = 0; k < (size_t)rows * cols; k++)
-				cpu_mismatches += out[k] != tmcq_float_to_half_rne((float)q8[k] * scales[k / cols]);
+			{
+				const float value = (float)q8[k] * scales[k / cols];
+				uint16_t h;
+				ccv_float_to_half_precision(&value, &h, 1);
+				cpu_mismatches += out[k] != h;
+			}
 			ccfree(out);
 			REQUIRE_EQ((int)cpu_mismatches, 0, "TMCQ %dx%d n%d CPU decode", rows, cols, n);
 			// GPU int8 decode, codes and scales.

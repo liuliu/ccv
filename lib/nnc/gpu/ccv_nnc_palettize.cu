@@ -1336,17 +1336,16 @@ static __device__ __forceinline__ uint2 _ccv_nnc_8i_rowwise_x_tmcq_decode_oct(co
 	return make_uint2(codes[0] | (codes[1] << 16), codes[2] | (codes[3] << 16));
 }
 
-// row_scale x q8 in the datatype, bit for bit what the CPU decode writes: the product is exact in float (at most
-// 11 + 7 significant bits for 16-bit scales), then CPU narrows it to FP16 / BF16 with ccv_float_to_half_precision /
-// ccv_float_to_bfloat, which truncate, thus round towards zero here as well.
+// row_scale x q8 in the datatype: the product is exact in float (at most 11 + 7 significant bits for 16-bit scales), then
+// rounds to nearest even, as the other codecs' CUDA decodes and the Metal decode do.
 static __device__ __forceinline__ __half _ccv_nnc_8i_rowwise_x_tmcq_mul(const __half scale, const int q)
 {
-	return __float2half_rz(__half2float(scale) * (float)q);
+	return __float2half_rn(__half2float(scale) * (float)q);
 }
 
 static __device__ __forceinline__ __nv_bfloat16 _ccv_nnc_8i_rowwise_x_tmcq_mul(const __nv_bfloat16 scale, const int q)
 {
-	return __float2bfloat16_rz(__bfloat162float(scale) * (float)q);
+	return __float2bfloat16_rn(__bfloat162float(scale) * (float)q);
 }
 
 static __device__ __forceinline__ float _ccv_nnc_8i_rowwise_x_tmcq_mul(const float scale, const int q)
