@@ -14,7 +14,7 @@
 // Metal TMCQ tests: the int8 and fp decode kernels, the selected (MoE expert) int8 decode, the TMCQ
 // GEMV (M = 1..3) and the decode-then-GEMM paths. Every expected value comes from tmcq_ref_q8 /
 // tmcq_ref_decode below, written from the TMCQ format at the byte level from the tensor data (its pair table, then
-// the tiles), independent of the Metal helpers in lib/nnc/mfa/kernels/TMCQDecodeSource.hpp. Any bit string is a valid
+// the tiles), independent of the Metal decoders in lib/nnc/mfa/kernels. Any bit string is a valid
 // TMCQ payload, so payloads are random bytes, and every tensor has its own table (tmcq_fill_weights): a kernel that
 // read any other table fails.
 //

@@ -1,8 +1,6 @@
 #include "SegmentedInt8SwiGLUDescriptor.hpp"
-#include "SegmentedInt8GemvDescriptor.hpp"
 #include "../ccv_nnc_mfa.hpp"
 #include "../ccv_nnc_mfa_error.hpp"
-#include "TMCQDecodeSource.hpp"
 #include "../ccv_nnc_mfa_hash.hpp"
 
 bool SegmentedInt8SwiGLUDescriptor::operator==(const SegmentedInt8SwiGLUDescriptor& rhs) const
@@ -37,7 +35,7 @@ std::size_t std::hash<SegmentedInt8SwiGLUDescriptor>::operator()(
 uint32_t SegmentedInt8SwiGLUDescriptor::groupSize() const noexcept
 {
   // One 16 x 16 TMCQ tile is a 256-weight group; see CCV_NNC_QX_8I_ROWWISE_TMCQ_N16.
-  if (segmentedTMCQRate(format))
+  if (ccv_nnc_mfa_tmcq_rate(format))
     return 256;
   switch (format) {
     case CCV_NNC_QX_8I_ROWWISE_Q2_K:
@@ -62,10 +60,10 @@ uint32_t SegmentedInt8SwiGLUDescriptor::groupsPerRow() const noexcept
 
 uint64_t SegmentedInt8SwiGLUDescriptor::inputScaleOffset() const noexcept
 {
-  // TMCQ: (rows / 16) (K / 16) tiles of 16n bits (tmcq_tile_count), for N % 16 == 0 and K % 16 == 0.
-  if (const uint32_t rate = segmentedTMCQRate(format)) {
+  // TMCQ: (rows / 16) (K / 16) tiles of 16n bits (ccv_nnc_mfa_tmcq_tile_count), for N % 16 == 0 and K % 16 == 0.
+  if (const uint32_t rate = ccv_nnc_mfa_tmcq_rate(format)) {
     const uint64_t payloadBits =
-      tmcq_tile_count((uint64_t)expertCount * matrixDimensions[0], matrixDimensions[1]) * 16 * rate;
+      ccv_nnc_mfa_tmcq_tile_count((uint64_t)expertCount * matrixDimensions[0], matrixDimensions[1]) * 16 * rate;
     const uint64_t payloadBytes = (payloadBits + 7) / 8;
     return (payloadBytes + 127) & ~UINT64_C(127);
   }
@@ -108,10 +106,10 @@ uint64_t SegmentedInt8SwiGLUDescriptor::inputScaleOffset() const noexcept
 
 uint64_t SegmentedInt8SwiGLUDescriptor::weightExpertStride() const noexcept
 {
-  if (const uint32_t rate = segmentedTMCQRate(format)) {
+  if (const uint32_t rate = ccv_nnc_mfa_tmcq_rate(format)) {
     CCV_NNC_MFA_PRECONDITION((matrixDimensions[0] % 16) == 0 && (matrixDimensions[1] % 16) == 0);
     const uint64_t expertBits =
-      tmcq_tile_count(matrixDimensions[0], matrixDimensions[1]) * 16 * rate;
+      ccv_nnc_mfa_tmcq_tile_count(matrixDimensions[0], matrixDimensions[1]) * 16 * rate;
     // Tiles are read as 32-bit words.
     CCV_NNC_MFA_PRECONDITION((expertBits % 32) == 0);
     return expertBits / 8;

@@ -8,7 +8,6 @@ using namespace ccv::nnc;
 #include "kernels/Int8MatMulDescriptor.hpp"
 #include "kernels/Int8MatMulKernelDescriptor.hpp"
 #include "kernels/Int8MatMulKernel.hpp"
-#include "kernels/SegmentedInt8GemvDescriptor.hpp"
 
 namespace {
 
@@ -225,7 +224,7 @@ void ccv_nnc_mfa_encode_scaled_swiglu(
   // TMCQ weights (16 x 16 tiles, N % 16 and K % 16, no modifier bits) are decoded to int8 rows below like every packed
   // format, which take whole 256-weight blocks.
   CCV_NNC_MFA_PRECONDITION(
-    params.format == 0 || (segmentedTMCQRate(params.format) ?
+    params.format == 0 || (ccv_nnc_mfa_tmcq_rate(params.format) ?
       ((params.N % 16) == 0 && (params.K % 16) == 0) : ((params.N % 256) == 0 && (params.K % 256) == 0)));
 
   if (!params.use_neural_accelerators) {

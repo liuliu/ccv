@@ -1,5 +1,4 @@
 #include "SegmentedInt8GemvKernel.hpp"
-#include "TMCQDecodeSource.hpp"
 #include "../ccv_nnc_mfa.hpp"
 
 #include "../../ccv_nnc_8i_rowwise_packed_grids.inc"
@@ -1072,119 +1071,6 @@ kernel void segmented_int8_gemv(
 )";
 }
 
-// Tiles each lane of the TMCQ kernel decodes per loop iteration.
-constexpr uint32_t TMCQ_W1_SEGMENTED_UNROLL = 2;
-
-// TMCQ, one activation row per route. The weight is a grid of 16 x 16 tiles (row-major over the
-// grid, n / 2 words each), and each threadgroup owns one 16-row tile row of the routed expert: its
-// 2 S half SIMD groups are streams over the tile columns (tile columns stream, stream + 2 S, ...),
-// and lane r = tiisg & 15 of a half takes row r of each tile. The 16 lanes of a half read the same
-// 16 activations and the same tile words, so every activation load serves 16 rows. The pair table
-// is a half2 threadgroup copy (see tmcq_w1_decode_words), which drops the int-to-float converts of
-// the decoded weights. Row scales multiply the reduced integer-code sums, as for the other formats.
-static void append_tmcq_m1_kernel(std::string& shader, const uint32_t rate, const bool fusedBias)
-{
-  shader += R"(
-#include <metal_stdlib>
-using namespace metal;
-)";
-  shader += ccv_nnc_mfa_tmcq_decode_source();
-  shader += ccv_nnc_mfa_tmcq_w1_helpers;
-  shader += "constant constexpr uint TMCQ_N = " + std::to_string(rate) + ";\n";
-  shader += "constant constexpr uint TMCQ_TILE_WORDS = TMCQ_N / 2;\n";
-  shader += "constant constexpr uint S = " + std::to_string(segmentedInt8GemvSIMDGroupsPerThreadgroup(CCV_NNC_QX_8I_ROWWISE_TMCQ_N16)) + ";\n";
-  shader += R"(
-kernel void segmented_int8_gemv(
-  device const uchar *src0 [[buffer(0)]],
-  device const real *src1 [[buffer(1)]],
-  device real *dst [[buffer(2)]],
-  device const real *scales [[buffer(3)]],
-)";
-  if (fusedBias) {
-    shader += R"(
-  device const real *bias [[buffer(4)]],
-)";
-  }
-  shader += R"(
-  device const int *indices [[buffer(5)]],
-  device const int *counts [[buffer(6)]],
-  device const uint *codebook [[buffer(11)]],
-  uint tgpig_position [[threadgroup_position_in_grid]],
-  uint sgitg [[simdgroup_index_in_threadgroup]],
-  uint tiisg [[thread_index_in_simdgroup]]
-) {
-  // One threadgroup per 16-row tile row; its S SIMD groups split K and add up in partials.
-  constexpr uint M = 1;
-  constexpr uint STREAMS = 2 * S;
-  const uint tile_rows = nrows / 16u;
-  const uint threadgroups_per_route = tile_rows;
-  const uint route = tgpig_position / threadgroups_per_route;
-  threadgroup int route_expert;
-  threadgroup float partials[S * 16];
-  // The route lookup's barrier below also publishes the table copy.
-  threadgroup half2 tmcq_tg[512];
-  tmcq_codebook_load(tmcq_tg, codebook, sgitg * 32u + tiisg, S * 32u);
-  if (sgitg == 0 && tiisg == 0) {
-    route_expert = -1;
-    uint row_offset = 0;
-    for (uint bin = 0; bin < bin_count; bin++) {
-      const int count = counts[bin];
-      if (count <= 0)
-        continue;
-      const uint next_row_offset = row_offset + (uint)count;
-      if (route < next_row_offset) {
-        route_expert = indices[bin];
-        break;
-      }
-      row_offset = next_row_offset;
-    }
-  }
-  threadgroup_barrier(mem_flags::mem_threadgroup);
-  const int expert = route_expert;
-  if (expert < 0 || expert >= (int)expert_count)
-    return;
-  const uint tile_row = tgpig_position - route * threadgroups_per_route;
-
-  // An expert is nrows / 16 whole tile rows, so weight_expert_stride (bytes) is a multiple of the
-  // 2n-byte tile and every tile starts on a word.
-  const uint tiles_per_row = ncols / 16u;
-  device const uint* tiles = (device const uint*)(src0 + (ulong)expert * weight_expert_stride) +
-    (ulong)tile_row * tiles_per_row * TMCQ_TILE_WORDS;
-  src1 += broadcast_input ? 0 : (ulong)route * ncols;
-  device const real4* y4 = (device const real4*)src1;
-  const uint r = tiisg & 15u;
-  const uint stream = sgitg * 2u + (tiisg >> 4);
-  const tmcq_w1_row_words layout = tmcq_w1_row_layout(TMCQ_N, r);
-  float sum[M];
-  const uint tc_end = tiles_per_row;
-)";
-  shader += tmcq_w1_loop_source(TMCQ_W1_SEGMENTED_UNROLL, "(threadgroup const half2*)tmcq_tg",
-    "    acc@[0] += dot(q@[0], float4(y4[tc@ * 4u + 0u])) + dot(q@[1], float4(y4[tc@ * 4u + 1u])) + dot(q@[2], float4(y4[tc@ * 4u + 2u])) + dot(q@[3], float4(y4[tc@ * 4u + 3u]));\n",
-    "TMCQ_N");
-  shader += R"(
-  float total = sum[0] + simd_shuffle_xor(sum[0], 16);
-  if (tiisg < 16)
-    partials[sgitg * 16u + r] = total;
-  threadgroup_barrier(mem_flags::mem_threadgroup);
-  if (sgitg == 0 && tiisg < 16) {
-    total = 0;
-    for (uint s = 0; s < S; s++)
-      total += partials[s * 16u + r];
-    const uint row = tile_row * 16u + r;
-    float value = total * (float)scales[(ulong)expert * nrows + row];
-)";
-  if (fusedBias) {
-    shader += R"(
-    value += (float)bias[(ulong)expert * nrows + row];
-)";
-  }
-  shader += R"(
-    dst[(ulong)route * nrows + row] = (real)value;
-  }
-}
-)";
-}
-
 }
 
 SegmentedInt8GemvKernel::SegmentedInt8GemvKernel(SegmentedInt8GemvKernelDescriptor descriptor, MTL::Device* const device) {
@@ -1208,8 +1094,198 @@ SegmentedInt8GemvKernel::SegmentedInt8GemvKernel(SegmentedInt8GemvKernelDescript
 std::string SegmentedInt8GemvKernel::createSource() const noexcept {
   std::string shader = createConstants() + "\n";
   if (format != 0) {
-    if (const uint32_t rate = segmentedTMCQRate(format)) {
-      append_tmcq_m1_kernel(shader, rate, fusedBias);
+    if (const uint32_t rate = ccv_nnc_mfa_tmcq_rate(format)) {
+      // TMCQ, one activation row per route. The weight is a grid of 16 x 16 tiles (row-major over
+      // the grid, Rate / 2 words each), and each threadgroup owns one 16-row tile row of the routed
+      // expert: its 2 S half SIMD groups are streams over the tile columns (tile columns stream,
+      // stream + 2 S, ...), and lane r = tiisg & 15 of a half takes row r of each tile. The 16 lanes
+      // of a half read the same 16 activations and the same tile words, so every activation load
+      // serves 16 rows, and each lane reads the words of two tiles before decoding either. The pair
+      // table is a half2 threadgroup copy, which drops the int-to-float converts of the decoded
+      // weights. Row scales multiply the reduced integer-code sums, as for the other formats.
+      shader += R"(
+#include <metal_stdlib>
+using namespace metal;
+)";
+      shader += "constant constexpr uint Rate = " + std::to_string(rate) + ";\n";
+      shader += "constant constexpr uint TileWords = Rate / 2;\n";
+      shader += "constant constexpr uint S = " + std::to_string(segmentedInt8GemvSIMDGroupsPerThreadgroup(format)) + ";\n";
+      shader += R"(
+// The 32 bits of the little-endian pair (lo, hi) starting at bit o (0 <= o < 32).
+// (hi << 1) << (31 - o) is hi << (32 - o) without an undefined 32-bit shift when o == 0.
+inline uint tmcq_funnel(uint lo, uint hi, uint o)
+{
+  return (lo >> o) | ((hi << 1) << (31u - o));
+}
+
+// Lane index of count threads copies the weight's 512 int8 pairs into threadgroup half2 (int8
+// values are exact in half), two pairs per 32-bit load. The caller adds the barrier.
+inline void tmcq_codebook_load(threadgroup half2* table, device const uint* codebook, uint index, uint count)
+{
+  for (uint i = index; i < 256u; i += count)
+  {
+    const char4 pairs = as_type<char4>(codebook[i]);
+    table[2u * i] = half2(pairs.xy);
+    table[2u * i + 1u] = half2(pairs.zw);
+  }
+}
+
+// Weight t of a tile reads the 15-bit window ending at bit floor((t + 1) Rate / 16) of the tile,
+// wrapping from the tile's end for weight 0; weights 2 j and 2 j + 1 take the window of weight
+// 2 j + 1, cw, as the pair (cw * 0x83DCD12D) >> 23 of the table. Row r's windows start at bit
+// first = r Rate + floor(Rate / 16) - 15 and end by (r + 1) Rate, at most Rate + 14 <= 46 bits: the
+// three words i0, i1, i2 from the first window's word, shifted right by s0 = first % 32. Only row
+// 0 starts before the tile, and only its first word wraps to the tile's end.
+struct tmcq_row_words
+{
+  uint i0, i1, i2, s0;
+};
+
+inline tmcq_row_words tmcq_row_layout(uint r)
+{
+  const int words = int(TileWords);
+  const int first = int(r * Rate + (Rate >> 4)) - 15;
+  const int w = first >> 5;
+  tmcq_row_words l;
+  l.s0 = uint(first) & 31u;
+  l.i0 = uint(w < 0 ? w + words : w);
+  l.i1 = uint(w + 1 >= words ? w + 1 - words : w + 1);
+  l.i2 = uint(w + 2 >= words ? w + 2 - words : w + 2);
+  return l;
+}
+
+// The 16 weights of a tile row from its words w0, w1, w2 (tmcq_row_layout), as q[0 .. 3] = columns
+// 0-3, ..., 12-15. Only the 8 odd windows are read.
+inline void tmcq_decode_row(uint w0, uint w1, uint w2, uint s0, thread float4* q, threadgroup const half2* table)
+{
+  const uint a = tmcq_funnel(w0, w1, s0);
+  const uint b = tmcq_funnel(w1, w2, s0);
+  float2 c[8];
+  #pragma clang loop unroll(full)
+  for (uint i = 0; i < 8u; ++i)
+  {
+    const uint k = (((2u * i + 2u) * Rate) >> 4) - (Rate >> 4);
+    const uint window = k + 15u <= 32u ? (a >> k) : ((a >> k) | (b << (32u - k)));
+    c[i] = float2(table[((window & 0x7fffu) * 0x83DCD12Du) >> 23]);
+  }
+  q[0] = float4(c[0], c[1]);
+  q[1] = float4(c[2], c[3]);
+  q[2] = float4(c[4], c[5]);
+  q[3] = float4(c[6], c[7]);
+}
+
+kernel void segmented_int8_gemv(
+  device const uchar *src0 [[buffer(0)]],
+  device const real *src1 [[buffer(1)]],
+  device real *dst [[buffer(2)]],
+  device const real *scales [[buffer(3)]],
+)";
+      if (fusedBias) {
+        shader += R"(
+  device const real *bias [[buffer(4)]],
+)";
+      }
+      shader += R"(
+  device const int *indices [[buffer(5)]],
+  device const int *counts [[buffer(6)]],
+  device const uint *codebook [[buffer(11)]],
+  uint tgpig_position [[threadgroup_position_in_grid]],
+  uint sgitg [[simdgroup_index_in_threadgroup]],
+  uint tiisg [[thread_index_in_simdgroup]]
+) {
+  // One threadgroup per 16-row tile row; its S SIMD groups split K and add up in partials.
+  constexpr uint Streams = 2 * S;
+  const uint tile_rows = nrows / 16u;
+  const uint threadgroups_per_route = tile_rows;
+  const uint route = tgpig_position / threadgroups_per_route;
+  threadgroup int route_expert;
+  threadgroup float partials[S * 16];
+  // The route lookup's barrier below also publishes the table copy.
+  threadgroup half2 table[512];
+  tmcq_codebook_load(table, codebook, sgitg * 32u + tiisg, S * 32u);
+  if (sgitg == 0 && tiisg == 0) {
+    route_expert = -1;
+    uint row_offset = 0;
+    for (uint bin = 0; bin < bin_count; bin++) {
+      const int count = counts[bin];
+      if (count <= 0)
+        continue;
+      const uint next_row_offset = row_offset + (uint)count;
+      if (route < next_row_offset) {
+        route_expert = indices[bin];
+        break;
+      }
+      row_offset = next_row_offset;
+    }
+  }
+  threadgroup_barrier(mem_flags::mem_threadgroup);
+  const int expert = route_expert;
+  if (expert < 0 || expert >= (int)expert_count)
+    return;
+  const uint tile_row = tgpig_position - route * threadgroups_per_route;
+
+  // An expert is nrows / 16 whole tile rows, so weight_expert_stride (bytes) is a multiple of the
+  // 2 Rate-byte tile and every tile starts on a word. A tile row is ncols words, so the tile
+  // offsets inside it stay 32-bit.
+  const uint tiles_per_row = ncols / 16u;
+  device const uint* tiles = (device const uint*)(src0 + (ulong)expert * weight_expert_stride) +
+    (ulong)tile_row * tiles_per_row * TileWords;
+  src1 += broadcast_input ? 0 : (ulong)route * ncols;
+  device const real4* y4 = (device const real4*)src1;
+  const uint r = tiisg & 15u;
+  const uint stream = sgitg * 2u + (tiisg >> 4);
+  const tmcq_row_words layout = tmcq_row_layout(r);
+  float acc0 = 0;
+  float acc1 = 0;
+  uint tc = stream;
+  for (; tc + Streams < tiles_per_row; tc += 2u * Streams) {
+    const uint tc1 = tc + Streams;
+    device const uint* tile0 = tiles + tc * TileWords;
+    const uint w0_0 = tile0[layout.i0];
+    const uint w1_0 = tile0[layout.i1];
+    const uint w2_0 = tile0[layout.i2];
+    device const uint* tile1 = tiles + tc1 * TileWords;
+    const uint w0_1 = tile1[layout.i0];
+    const uint w1_1 = tile1[layout.i1];
+    const uint w2_1 = tile1[layout.i2];
+    float4 q0[4];
+    tmcq_decode_row(w0_0, w1_0, w2_0, layout.s0, q0, table);
+    acc0 += dot(q0[0], float4(y4[tc * 4u + 0u])) + dot(q0[1], float4(y4[tc * 4u + 1u])) + dot(q0[2], float4(y4[tc * 4u + 2u])) + dot(q0[3], float4(y4[tc * 4u + 3u]));
+    float4 q1[4];
+    tmcq_decode_row(w0_1, w1_1, w2_1, layout.s0, q1, table);
+    acc1 += dot(q1[0], float4(y4[tc1 * 4u + 0u])) + dot(q1[1], float4(y4[tc1 * 4u + 1u])) + dot(q1[2], float4(y4[tc1 * 4u + 2u])) + dot(q1[3], float4(y4[tc1 * 4u + 3u]));
+  }
+  for (; tc < tiles_per_row; tc += Streams) {
+    device const uint* tile0 = tiles + tc * TileWords;
+    const uint w0_0 = tile0[layout.i0];
+    const uint w1_0 = tile0[layout.i1];
+    const uint w2_0 = tile0[layout.i2];
+    float4 q0[4];
+    tmcq_decode_row(w0_0, w1_0, w2_0, layout.s0, q0, table);
+    acc0 += dot(q0[0], float4(y4[tc * 4u + 0u])) + dot(q0[1], float4(y4[tc * 4u + 1u])) + dot(q0[2], float4(y4[tc * 4u + 2u])) + dot(q0[3], float4(y4[tc * 4u + 3u]));
+  }
+  const float sum = acc0 + acc1;
+  float total = sum + simd_shuffle_xor(sum, 16);
+  if (tiisg < 16)
+    partials[sgitg * 16u + r] = total;
+  threadgroup_barrier(mem_flags::mem_threadgroup);
+  if (sgitg == 0 && tiisg < 16) {
+    total = 0;
+    for (uint s = 0; s < S; s++)
+      total += partials[s * 16u + r];
+    const uint row = tile_row * 16u + r;
+    float value = total * (float)scales[(ulong)expert * nrows + row];
+)";
+      if (fusedBias) {
+        shader += R"(
+    value += (float)bias[(ulong)expert * nrows + row];
+)";
+      }
+      shader += R"(
+    dst[(ulong)route * nrows + row] = (real)value;
+  }
+}
+)";
       return shader;
     }
     if (format == CCV_NNC_QX_8I_ROWWISE_Q6_K) {

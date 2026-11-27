@@ -1,7 +1,5 @@
 #include "ccv_nnc_mfa.hpp"
-#include "kernels/TMCQDecodeSource.hpp"
 #include "kernels/SegmentedInt8SwiGLUDescriptor.hpp"
-#include "kernels/SegmentedInt8GemvDescriptor.hpp"
 
 using namespace ccv::nnc;
 
@@ -54,7 +52,7 @@ void ccv_nnc_mfa_encode_segmented_int8_swiglu(
     params.expert_count > 0 && params.bincount > 0);
   // TMCQ: whole 16 x 16 tiles (one threadgroup per tile row, a tile loop over any K / 16); the other codecs take
   // whole 256-weight blocks.
-  CCV_NNC_MFA_PRECONDITION(segmentedTMCQRate(params.format) ?
+  CCV_NNC_MFA_PRECONDITION(ccv_nnc_mfa_tmcq_rate(params.format) ?
     (params.K % 16 == 0 && params.N % 16 == 0) : (params.K % 256 == 0 && params.N % 256 == 0));
   CCV_NNC_MFA_PRECONDITION(
     params.format == CCV_NNC_QX_8I_ROWWISE_IQ2_XXS ||
@@ -63,10 +61,10 @@ void ccv_nnc_mfa_encode_segmented_int8_swiglu(
     params.format == CCV_NNC_QX_8I_ROWWISE_Q2_K ||
     params.format == CCV_NNC_QX_8I_ROWWISE_IQ1_S ||
     params.format == CCV_NNC_QX_8I_ROWWISE_IQ1_M ||
-    segmentedTMCQRate(params.format) != 0);
+    ccv_nnc_mfa_tmcq_rate(params.format) != 0);
 
   // TMCQ tiles are read as 32-bit words.
-  CCV_NNC_MFA_PRECONDITION(!segmentedTMCQRate(params.format) ||
+  CCV_NNC_MFA_PRECONDITION(!ccv_nnc_mfa_tmcq_rate(params.format) ||
     ((tensorOffsets[0] % 4) == 0 && (tensorOffsets[1] % 4) == 0));
 
   SegmentedInt8SwiGLUDescriptor descriptor;
@@ -81,7 +79,7 @@ void ccv_nnc_mfa_encode_segmented_int8_swiglu(
   descriptor.memoryPrecision = ioPrecision(params.data_type);
   // Four rows per threadgroup (one per SIMD group), or for TMCQ one 16-row tile row whose SIMD groups
   // split K.
-  const NS::UInteger rowsPerThreadgroup = segmentedTMCQRate(params.format) ? 16 : 4;
+  const NS::UInteger rowsPerThreadgroup = ccv_nnc_mfa_tmcq_rate(params.format) ? 16 : 4;
   const NS::UInteger threadgroupsPerRoute = (params.N + rowsPerThreadgroup - 1) / rowsPerThreadgroup;
   const NS::UInteger routedThreadgroups = threadgroupsPerRoute * params.M;
   descriptor.sharedRows = params.shared_rows;
@@ -97,7 +95,7 @@ void ccv_nnc_mfa_encode_segmented_int8_swiglu(
   auto encoder = commandBatch->startCommand();
   encoder->setComputePipelineState(pipeline.get());
   // TMCQ weights as stored: their pair tables at buffer(15) and buffer(16), then the tiles.
-  const size_t codebookSize = (size_t)tmcq_codebook_size(params.format);
+  const size_t codebookSize = (size_t)ccv_nnc_mfa_tmcq_codebook_size(params.format);
   if (codebookSize) {
     encoder->setBuffer(tensors[0], tensorOffsets[0], 15);
     encoder->setBuffer(tensors[1], tensorOffsets[1], 16);
@@ -138,7 +136,7 @@ void ccv_nnc_mfa_encode_segmented_int8_swiglu(
 
   const MTL::Size gridSize(routedThreadgroups + sharedThreadgroups, 1, 1);
   // 128 threads, or for TMCQ one SIMD group per K split.
-  const NS::UInteger threadgroupThreads = segmentedTMCQRate(params.format) ?
+  const NS::UInteger threadgroupThreads = ccv_nnc_mfa_tmcq_rate(params.format) ?
     32 * segmentedInt8SwiGLUTMCQSIMDGroups(params.shared_rows > 0) : 128;
   const MTL::Size threadgroupSize(threadgroupThreads, 1, 1);
   encoder->dispatchThreadgroups(gridSize, threadgroupSize);

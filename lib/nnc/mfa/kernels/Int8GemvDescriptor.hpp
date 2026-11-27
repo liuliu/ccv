@@ -10,12 +10,10 @@
 
 constexpr uint32_t kInt8GemvRowsPerThreadgroup = 2;
 constexpr uint32_t kInt8GemvSIMDGroupsPerThreadgroup = 4;
-// TMCQ tiles span 16 rows, so a TMCQ threadgroup computes one tile row of outputs.
+// TMCQ tiles span 16 rows, so a TMCQ threadgroup computes one tile row of outputs, with 16 SIMD
+// groups splitting its tile columns (see Int8GemvKernel::createSource).
 constexpr uint32_t kInt8GemvTMCQRowsPerThreadgroup = 16;
-
-// SIMD groups of a TMCQ GEMV threadgroup (one tile row) for `mrows` activation rows; every other
-// format uses kInt8GemvSIMDGroupsPerThreadgroup. See append_tmcq_kernel in Int8GemvKernel.cpp.
-uint32_t int8GemvTMCQSIMDGroups(const uint32_t mrows);
+constexpr uint32_t kInt8GemvTMCQSIMDGroupsPerThreadgroup = 16;
 
 struct Int8GemvKernelDescriptor {
   uint8_t fusedBias;

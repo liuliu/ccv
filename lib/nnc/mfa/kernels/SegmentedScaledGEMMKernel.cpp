@@ -3,8 +3,6 @@
 #include "CodeWriter.hpp"
 #include "Dequantize8iRowwiseXDescriptor.hpp"
 #include "Dequantize8iRowwiseXKernel.hpp"
-#include "SegmentedInt8GemvDescriptor.hpp"
-#include "TMCQDecodeSource.hpp"
 #include "../../ccv_nnc_8i_rowwise_packed_grids.inc"
 #include "../ccv_nnc_mfa.hpp"
 
@@ -186,13 +184,13 @@ bool SegmentedScaledGEMMKernel::fusesPackedFormat(uint32_t format, uint64_t M, u
     return false;
   // Whole decoder blocks: TMCQ's register tiles are 32 x 64 x 64 (BLOCK_N = 64 columns, K in steps of 64); the other
   // packed decoders assume every packed row is whole 256-weight groups and every 128 or 256 column tile is full.
-  if (segmentedTMCQRate(format) ? ((N % 64) != 0 || (K % 64) != 0) : ((N % 256) != 0 || (K % 256) != 0))
+  if (ccv_nnc_mfa_tmcq_rate(format) ? ((N % 64) != 0 || (K % 64) != 0) : ((N % 256) != 0 || (K % 256) != 0))
     return false;
   // TMCQ's register decoder decodes each weight again for every 32-row tile. On M5 Ultra (DeepSeek
   // routed shapes) it beat expanding the selected experts from 2 to 256 rows per bin over 384
   // experts and tied at 4096 rows per bin over 6 experts; at 16384 rows per bin expanding was
   // about 3% faster.
-  if (segmentedTMCQRate(format))
+  if (ccv_nnc_mfa_tmcq_rate(format))
     return M <= (uint64_t)binCount * 4096;
   // Dedicated tile decoders beat expanding the expert bank at every measured batch size.
   if (format == CCV_NNC_QX_8I_ROWWISE_IQ2_XXS || format == CCV_NNC_QX_8I_ROWWISE_IQ3_XXS || format == CCV_NNC_QX_8I_ROWWISE_Q2_K ||
@@ -211,7 +209,7 @@ std::string SegmentedScaledGEMMKernel::createSource() const noexcept
   source.SetValue("BLOCK_K", std::to_string(blockDimensions[2]));
   source.SetValue("SIMDGROUPS", std::to_string(executionSIMDGroups));
   source.SetValue("IO_TYPE", ioPrecision.name());
-  const uint32_t tmcqRate = segmentedTMCQRate(format);
+  const uint32_t tmcqRate = ccv_nnc_mfa_tmcq_rate(format);
   std::string packedRowBytes;
   if (tmcqRate) {
     // The weight is a grid of 16 x 16 tiles, 2n bytes each, row-major over the grid. An expert's
@@ -331,8 +329,46 @@ kernel void segmented_scaled_gemm_plan(
   } else if (format == CCV_NNC_QX_8I_ROWWISE_IQ1_S || format == CCV_NNC_QX_8I_ROWWISE_IQ1_M) {
     source += create_iq1_tile_source(format);
   } else if (tmcqRate) {
-    source += ccv_nnc_mfa_tmcq_decode_source();
-    source += tmcq_w3_decode_source();
+    source += R"(
+// The 32 bits of the little-endian pair (lo, hi) starting at bit o (0 <= o < 32).
+// (hi << 1) << (31 - o) is hi << (32 - o) without an undefined 32-bit shift when o == 0.
+inline uint tmcq_funnel(uint lo, uint hi, uint o)
+{
+  return (lo >> o) | ((hi << 1) << (31u - o));
+}
+
+// Row r's 16 codes of an n-rate tile (n / 2 words) packed as int8 bytes, columns 4 c ... 4 c + 3 in word
+// c (little-endian), the layout the register fragments take. Weight t reads the 15-bit window ending
+// at bit floor((t + 1) n / 16) of the tile, wrapping from the tile's end for weight 0; weights 2 j and
+// 2 j + 1 take the window of weight 2 j + 1, cw, as pair (cw * 0x83DCD12D) >> 23 of the table, one
+// ushort with q8[2 j] in the low byte. The row's windows start at bit first = r n + floor(n / 16) - 15
+// and end by (r + 1) n: three words from the first window's word, shifted right by first % 32. Only
+// row 0 starts before the tile, and only its first word wraps to the tile's end.
+inline uint4 tmcq_decode_row_bytes(device const uint* tile, uint n, uint r, threadgroup const ushort* table)
+{
+  const int words = int(n >> 1);
+  const int first = int(r * n + (n >> 4)) - 15;
+  const int w = first >> 5; // -1 only for row 0
+  const uint s0 = uint(first) & 31u;
+  const int i0 = w < 0 ? w + words : w;
+  const int i1 = w + 1 >= words ? w + 1 - words : w + 1;
+  const int i2 = w + 2 >= words ? w + 2 - words : w + 2;
+  const uint w0 = tile[i0];
+  const uint w1 = tile[i1];
+  const uint w2 = tile[i2];
+  const uint a = tmcq_funnel(w0, w1, s0);
+  const uint b = tmcq_funnel(w1, w2, s0);
+  uint t[8];
+  #pragma clang loop unroll(full)
+  for (uint i = 0; i < 8u; ++i)
+  {
+    const uint k = (((2u * i + 2u) * n) >> 4) - (n >> 4);
+    const uint window = k + 15u <= 32u ? (a >> k) : ((a >> k) | (b << (32u - k)));
+    t[i] = table[((window & 0x7fffu) * 0x83DCD12Du) >> 23];
+  }
+  return uint4(t[0] | (t[1] << 16), t[2] | (t[3] << 16), t[4] | (t[5] << 16), t[6] | (t[7] << 16));
+}
+)";
   } else if (format && format != CCV_NNC_QX_8I_ROWWISE_Q2_K)
     source += Dequantize8iRowwiseXKernel::createDecodeGroupSource(format);
   if (blockDimensions[2] == 64) {
@@ -499,7 +535,7 @@ __attribute__((always_inline)) inline void decode_weight_tiles(thread register_t
   for (short n = 0; n < 2; ++n) {
     #pragma clang loop unroll(full)
     for (short r = 0; r < 2; ++r)
-      set_fragments(tiles, n, r, tmcq_w3_decode_row16_words(tile + uint(n) * (K / 16u) * ({{TMCQ_RATE}}u / 2u), {{TMCQ_RATE}}u, uint(origin.y) + uint(r) * 8u, tables.table));
+      set_fragments(tiles, n, r, tmcq_decode_row_bytes(tile + uint(n) * (K / 16u) * ({{TMCQ_RATE}}u / 2u), {{TMCQ_RATE}}u, uint(origin.y) + uint(r) * 8u, tables.table));
   }
 }
 )";

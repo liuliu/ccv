@@ -1,7 +1,6 @@
 #include "ccv_nnc_mfa.hpp"
 #include "kernels/Int8GemvDescriptor.hpp"
 #include "kernels/Int8GemvKernel.hpp"
-#include "kernels/TMCQDecodeSource.hpp"
 using namespace ccv::nnc;
 
 namespace {
@@ -19,12 +18,6 @@ static GEMMOperandPrecision io_precision(const uint64_t data_type) noexcept
       CCV_NNC_MFA_PRECONDITION(false);
       return GEMMOperandPrecision::FP16;
   }
-}
-
-bool is_tmcq(const uint32_t format) noexcept
-{
-  const uint32_t codec = format & CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK;
-  return codec >= CCV_NNC_QX_8I_ROWWISE_TMCQ_N16 && codec <= CCV_NNC_QX_8I_ROWWISE_TMCQ_N32;
 }
 
 }
@@ -60,7 +53,7 @@ void ccv_nnc_mfa_encode_scaled_gemv(ccv_nnc_mfa_context_t* context, ccv_nnc_mfa_
   }
   // TMCQ tiles span 16 rows and 16 columns, so TMCQ needs N % 16 and K % 16; its kernel reads the payload as 32-bit
   // words.
-  if (is_tmcq(params.format)) {
+  if (ccv_nnc_mfa_tmcq_rate(params.format)) {
     CCV_NNC_MFA_PRECONDITION((params.ncols % 16) == 0 && (params.nrows % 16) == 0);
     CCV_NNC_MFA_PRECONDITION((tensor_offsets[0] % 4) == 0 && (batchDimension == 1 || (params.batch_stride_weights % 4) == 0));
   } else {
@@ -97,7 +90,7 @@ void ccv_nnc_mfa_encode_scaled_gemv(ccv_nnc_mfa_context_t* context, ccv_nnc_mfa_
   auto pipeline = pipelineValue->pipeline;
 
   // A TMCQ weight as stored: its pair table at buffer(5), then the tiles.
-  const size_t codebook_size = (size_t)tmcq_codebook_size(params.format);
+  const size_t codebook_size = (size_t)ccv_nnc_mfa_tmcq_codebook_size(params.format);
   if (codebook_size)
     encoder->setBuffer(tensors[0], tensor_offsets[0], NS::UInteger(5));
   encoder->setBuffer(tensors[0], tensor_offsets[0] + codebook_size, NS::UInteger(0));

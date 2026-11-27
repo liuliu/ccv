@@ -1,6 +1,4 @@
 #include "SegmentedInt8SwiGLUKernel.hpp"
-#include "SegmentedInt8GemvDescriptor.hpp"
-#include "TMCQDecodeSource.hpp"
 #include "../ccv_nnc_mfa.hpp"
 #include "../../ccv_nnc_8i_rowwise_packed_grids.inc"
 
@@ -509,9 +507,9 @@ static void appendSegmentedSwiGLUKernels(
 {
   // TMCQ routes take the gate and up pair tables at buffer(15) and buffer(16), and route_scratch: the gate and up
   // partial sums of each K split, then the two half2 tables (512 floats' worth each).
-  const bool tmcq = segmentedTMCQRate(descriptor.format) != 0;
+  const bool tmcq = ccv_nnc_mfa_tmcq_rate(descriptor.format) != 0;
   const std::string tmcqBuffers = tmcq ? "  device const uint* gate_codebook [[buffer(15)]],\n  device const uint* up_codebook [[buffer(16)]],\n" : "";
-  const std::string tmcqScratch = tmcq ? "  threadgroup float route_scratch[2 * TMCQ_K_SPLITS * 16 + 1024];\n" : "";
+  const std::string tmcqScratch = tmcq ? "  threadgroup float route_scratch[2 * KSplits * 16 + 1024];\n" : "";
   const std::string tmcqArguments = tmcq ? "route_scratch, gate_codebook, up_codebook, " : "";
   shader += R"(
 kernel void segmented_int8_swiglu(
@@ -1295,14 +1293,80 @@ constant ulong weight_expert_stride [[function_constant(7)]];
 #include <metal_stdlib>
 using namespace metal;
 )";
-  shader += ccv_nnc_mfa_tmcq_decode_source();
-  shader += ccv_nnc_mfa_tmcq_w2_source();
-  shader += "constant constexpr uint TMCQ_N = " + std::to_string(rate) + ";\n";
-  shader += "constant constexpr uint TMCQ_K_SPLITS = " + std::to_string(kSegmentedInt8SwiGLUTMCQSIMDGroups) + ";\n";
-  shader += "constant constexpr uint TMCQ_K_SIMDGROUPS = " +
+  shader += "constant constexpr uint Rate = " + std::to_string(rate) + ";\n";
+  shader += "constant constexpr uint TileWords = Rate / 2;\n";
+  shader += "constant constexpr uint KSplits = " + std::to_string(kSegmentedInt8SwiGLUTMCQSIMDGroups) + ";\n";
+  shader += "constant constexpr uint KSIMDGroups = " +
     std::to_string(segmentedInt8SwiGLUTMCQSIMDGroups(descriptor.sharedFused)) + ";\n";
-  shader += "constant constexpr uint TMCQ_TILE_WORDS = TMCQ_N / 2;\n";
   shader += R"(
+// The 32 bits of the little-endian pair (lo, hi) starting at bit o (0 <= o < 32).
+// (hi << 1) << (31 - o) is hi << (32 - o) without an undefined 32-bit shift when o == 0.
+inline uint tmcq_funnel(uint lo, uint hi, uint o)
+{
+  return (lo >> o) | ((hi << 1) << (31u - o));
+}
+
+// Lane index of count threads copies the weight's 512 int8 pairs into threadgroup half2 (int8
+// values are exact in half), two pairs per 32-bit load. The caller adds the barrier.
+inline void tmcq_codebook_load(threadgroup half2* table, device const uint* codebook, uint index, uint count)
+{
+  for (uint i = index; i < 256u; i += count)
+  {
+    const char4 pairs = as_type<char4>(codebook[i]);
+    table[2u * i] = half2(pairs.xy);
+    table[2u * i + 1u] = half2(pairs.zw);
+  }
+}
+
+// Codes of rows r0 .. r0 + R - 1 of a tile: q[4 * rr .. 4 * rr + 3] are row r0 + rr's columns 0-3, ...,
+// 12-15. Weight t reads the 15-bit window ending at bit floor((t + 1) Rate / 16) of the tile, wrapping
+// from the tile's end for weight 0; weights 2 j and 2 j + 1 take the window of weight 2 j + 1, cw, as
+// the pair (cw * 0x83DCD12D) >> 23 of the half2 table. The R rows are one run of consecutive tile
+// words (mod Rate / 2), loaded once for all of them: for Rate = 22 two rows take the same three words
+// as one. R is a template parameter so that the word and funnel arrays have fixed sizes and stay in
+// registers.
+template <uint R>
+inline void tmcq_decode_rows(device const uint* tile, uint r0, thread half4* q, threadgroup const half2* table)
+{
+  constexpr int words = int(TileWords);
+  // Bits from the first window of row r0 to the end of row r0 + R - 1, in 32-bit funnels.
+  constexpr uint funnels = (R * Rate - (Rate >> 4) + 15u + 31u) >> 5;
+  const int first = int(r0 * Rate + (Rate >> 4)) - 15;
+  const int w = first >> 5; // -1 only for row 0
+  const uint s0 = uint(first) & 31u;
+  uint x[funnels + 1];
+  #pragma clang loop unroll(full)
+  for (uint m = 0; m <= funnels; ++m)
+  {
+    const int i = w + int(m);
+    x[m] = tile[i < 0 ? i + words : (i >= words ? i - words : i)];
+  }
+  // One spare funnel so that the not taken arm of the window select below stays in bounds.
+  uint f[funnels + 1];
+  #pragma clang loop unroll(full)
+  for (uint m = 0; m < funnels; ++m)
+    f[m] = tmcq_funnel(x[m], x[m + 1], s0);
+  f[funnels] = 0;
+  #pragma clang loop unroll(full)
+  for (uint rr = 0; rr < R; ++rr)
+  {
+    half2 c[8];
+    #pragma clang loop unroll(full)
+    for (uint i = 0; i < 8u; ++i)
+    {
+      const uint k = rr * Rate + (((2u * i + 2u) * Rate) >> 4) - (Rate >> 4);
+      const uint fi = k >> 5;
+      const uint sub = k & 31u;
+      const uint window = sub + 15u <= 32u ? (f[fi] >> sub) : ((f[fi] >> sub) | (f[fi + 1] << (32u - sub)));
+      c[i] = table[((window & 0x7fffu) * 0x83DCD12Du) >> 23];
+    }
+    q[4 * rr + 0] = half4(c[0], c[1]);
+    q[4 * rr + 1] = half4(c[2], c[3]);
+    q[4 * rr + 2] = half4(c[4], c[5]);
+    q[4 * rr + 3] = half4(c[6], c[7]);
+  }
+}
+
 inline float stable_sigmoid(const float value)
 {
   const float tail = 1.0f / (1.0f + exp(abs(value)));
@@ -1321,12 +1385,10 @@ inline float stable_sigmoid(const float value)
   }
   appendRoutesSignature(shader, true);
   shader += R"(
-  // One threadgroup per 16-row tile row. K is split k_splits ways and the partial sums add up in
-  // route_scratch in split order. Each SIMD group takes splits simdgroup_index, + k_simdgroups, ...:
+  // One threadgroup per 16-row tile row. K is split KSplits ways and the partial sums add up in
+  // route_scratch in split order. Each SIMD group takes splits simdgroup_index, + KSIMDGroups, ...:
   // one with eight SIMD groups, two with the four of a fused shared expert, which keeps the routed
   // rows bit for bit the same either way.
-  constexpr uint k_splits = TMCQ_K_SPLITS;
-  constexpr uint k_simdgroups = TMCQ_K_SIMDGROUPS;
   const uint tile_rows = nrows / 16u;
   const uint threadgroups_per_route = tile_rows;
   const uint route = threadgroup_position / threadgroups_per_route;
@@ -1346,10 +1408,10 @@ inline float stable_sigmoid(const float value)
     }
   }
   // Gate and up each come with their own pair table.
-  threadgroup half2* const gate_table = (threadgroup half2*)(route_scratch + 2u * k_splits * 16u);
+  threadgroup half2* const gate_table = (threadgroup half2*)(route_scratch + 2u * KSplits * 16u);
   threadgroup half2* const up_table = gate_table + 512;
-  tmcq_codebook_load(gate_table, gate_codebook, simdgroup_index * 32u + lane, 32u * k_simdgroups);
-  tmcq_codebook_load(up_table, up_codebook, simdgroup_index * 32u + lane, 32u * k_simdgroups);
+  tmcq_codebook_load(gate_table, gate_codebook, simdgroup_index * 32u + lane, 32u * KSIMDGroups);
+  tmcq_codebook_load(up_table, up_codebook, simdgroup_index * 32u + lane, 32u * KSIMDGroups);
   threadgroup_barrier(mem_flags::mem_threadgroup);
   const int expert = route_expert;
   if (expert < 0 || expert >= (int)expert_count)
@@ -1366,7 +1428,7 @@ inline float stable_sigmoid(const float value)
   // An expert is nrows / 16 whole tile rows, so weight_expert_stride (bytes) is a multiple of the
   // 2n-byte tile and every tile starts on a word.
   const uint tiles_per_row = ncols / 16u;
-  const ulong tile_row_word = (ulong)tile_row * tiles_per_row * TMCQ_TILE_WORDS;
+  const ulong tile_row_word = (ulong)tile_row * tiles_per_row * TileWords;
   device const uint* gate_tiles =
     (device const uint*)(gate_weights + (ulong)expert * weight_expert_stride) + tile_row_word;
   device const uint* up_tiles =
@@ -1383,21 +1445,22 @@ inline float stable_sigmoid(const float value)
   constexpr uint lanes_per_tile = 16u / rows_per_lane;
   constexpr uint tiles_per_simdgroup = 32u / lanes_per_tile;
   const uint r0 = (lane % lanes_per_tile) * rows_per_lane;
-  for (uint split = simdgroup_index; split < k_splits; split += k_simdgroups) {
+  for (uint split = simdgroup_index; split < KSplits; split += KSIMDGroups) {
     float gate_sum[rows_per_lane] = {};
     float up_sum[rows_per_lane] = {};
     // A lane whose stream runs past the tile row (ncols % 512 != 0) adds nothing.
     for (uint tc = split * tiles_per_simdgroup + lane / lanes_per_tile; tc < tiles_per_row;
-         tc += tiles_per_simdgroup * k_splits) {
-      const ulong tile_word = (ulong)tc * TMCQ_TILE_WORDS;
+         tc += tiles_per_simdgroup * KSplits) {
+      // A tile row is ncols words, so the tile offset inside it stays 32-bit.
+      const uint tile_word = tc * TileWords;
       const float4 y0 = float4(activation4[tc * 4u + 0u]);
       const float4 y1 = float4(activation4[tc * 4u + 1u]);
       const float4 y2 = float4(activation4[tc * 4u + 2u]);
       const float4 y3 = float4(activation4[tc * 4u + 3u]);
       half4 g[4 * rows_per_lane];
       half4 u[4 * rows_per_lane];
-      tmcq_w2_decode_rows<TMCQ_N, rows_per_lane>(gate_tiles + tile_word, r0, g, gate_table);
-      tmcq_w2_decode_rows<TMCQ_N, rows_per_lane>(up_tiles + tile_word, r0, u, up_table);
+      tmcq_decode_rows<rows_per_lane>(gate_tiles + tile_word, r0, g, gate_table);
+      tmcq_decode_rows<rows_per_lane>(up_tiles + tile_word, r0, u, up_table);
       #pragma clang loop unroll(full)
       for (uint rr = 0; rr < rows_per_lane; ++rr) {
         gate_sum[rr] += dot(float4(g[4 * rr + 0]), y0) + dot(float4(g[4 * rr + 1]), y1) +
@@ -1418,7 +1481,7 @@ inline float stable_sigmoid(const float value)
       #pragma clang loop unroll(full)
       for (uint rr = 0; rr < rows_per_lane; ++rr) {
         route_scratch[split * 16u + r0 + rr] = gate_sum[rr];
-        route_scratch[(k_splits + split) * 16u + r0 + rr] = up_sum[rr];
+        route_scratch[(KSplits + split) * 16u + r0 + rr] = up_sum[rr];
       }
     }
   }
@@ -1427,9 +1490,9 @@ inline float stable_sigmoid(const float value)
     const uint r = lane;
     float gate_sum = 0;
     float up_sum = 0;
-    for (uint s = 0; s < k_splits; ++s) {
+    for (uint s = 0; s < KSplits; ++s) {
       gate_sum += route_scratch[s * 16u + r];
-      up_sum += route_scratch[(k_splits + s) * 16u + r];
+      up_sum += route_scratch[(KSplits + s) * 16u + r];
     }
     const uint row = tile_row * 16u + r;
     float gate0 = gate_sum * (float)gate_scales[row];
@@ -1621,7 +1684,7 @@ SegmentedInt8SwiGLUKernel::SegmentedInt8SwiGLUKernel(
     CCV_NNC_MFA_CHECK_ERROR(error);
     return;
   }
-  if (const uint32_t rate = segmentedTMCQRate(descriptor.format)) {
+  if (const uint32_t rate = ccv_nnc_mfa_tmcq_rate(descriptor.format)) {
     source = buildTMCQShader(descriptor, rate);
     auto string = NS::String::string(source.c_str(), NS::UTF8StringEncoding);
     NS::Error* error = nil;

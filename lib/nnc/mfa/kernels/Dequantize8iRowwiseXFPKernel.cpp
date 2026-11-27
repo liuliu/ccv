@@ -1,5 +1,4 @@
 #include "Dequantize8iRowwiseXFPKernel.hpp"
-#include "TMCQDecodeSource.hpp"
 #include "../ccv_nnc_mfa.hpp"
 
 #include "../../ccv_nnc_8i_rowwise_packed_grids.inc"
@@ -149,68 +148,6 @@ inline void decode_group(device const uchar* source, const ulong group_index, th
 }
 }
 
-namespace {
-
-static bool is_tmcq(const uint32_t format)
-{
-	const uint32_t codec = format & CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK;
-	return codec >= CCV_NNC_QX_8I_ROWWISE_TMCQ_N16 && codec <= CCV_NNC_QX_8I_ROWWISE_TMCQ_N32;
-}
-
-// TMCQ fp decode, the fallback for paths that take floating-point weights. Same thread mapping
-// as the int8 decode in Dequantize8iRowwiseXKernel.cpp: one thread per row segment (16 weights of
-// one row inside one tile), consecutive threads on consecutive tile columns of the same row. The
-// weight is the exact float product q8 * scale (q8 has at most 8 significant bits), converted once
-// to the output type with Metal's default rounding, like this kernel's other formats. The CPU and
-// CUDA decodes round 16F / 16BF toward zero, so the two can differ by one ulp there.
-static std::string create_tmcq_fp_source(const uint32_t format)
-{
-	const uint32_t n = 16 + 2 * ((format & CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK) - CCV_NNC_QX_8I_ROWWISE_TMCQ_N16);
-	std::string shader = R"(
-#include <metal_stdlib>
-using namespace metal;
-)";
-	shader += "constant uint tmcq_n = " + std::to_string(n) + ";\n";
-	shader += "constant uint tmcq_tile_words = " + std::to_string(n / 2) + ";\n";
-	shader += ccv_nnc_mfa_tmcq_decode_source();
-	shader += R"(
-kernel void dequantize_8i_rowwise_x_fp(
-  device const uchar* source [[buffer(0)]],
-  device uchar* destination [[buffer(1)]],
-  device const real* scales [[buffer(2)]],
-  device const uint* codebook [[buffer(3)]],
-
-  uint3 tgid [[threadgroup_position_in_grid]],
-  ushort lid [[thread_index_in_threadgroup]]
-) {
-  threadgroup half2 tmcq_codes[512];
-  tmcq_codebook_load(tmcq_codes, codebook, lid, threadgroup_size);
-  threadgroup_barrier(mem_flags::mem_threadgroup);
-  const tmcq_codebook_char2 table = { tmcq_codes };
-  const uint x = tgid.x * threadgroup_size + lid;
-  // total_groups tiles of 16 segments each.
-  if (x >= total_groups * 16u)
-    return;
-  const uint tiles_per_row = row_length >> 4;
-  const uint row = x / tiles_per_row;
-  const uint tc = x - row * tiles_per_row;
-  const ulong tile_index = (ulong)(row >> 4) * tiles_per_row + tc;
-  device const uint* tile = reinterpret_cast<device const uint*>(source) + tile_index * tmcq_tile_words;
-  int4 q[4];
-  tmcq_decode_row16(tile, tmcq_n, row & 15u, q, table);
-  const float scale = (float)scales[row];
-  device vec<real, 4>* destination4 = reinterpret_cast<device vec<real, 4>*>(reinterpret_cast<device real*>(destination) + (ulong)row * row_length + (tc << 4));
-  destination4[0] = vec<real, 4>(float4(q[0]) * scale);
-  destination4[1] = vec<real, 4>(float4(q[1]) * scale);
-  destination4[2] = vec<real, 4>(float4(q[2]) * scale);
-  destination4[3] = vec<real, 4>(float4(q[3]) * scale);
-}
-)";
-	return shader;
-}
-
-}
-
 Dequantize8iRowwiseXFPKernel::Dequantize8iRowwiseXFPKernel(Dequantize8iRowwiseXFPKernelDescriptor descriptor, MTL::Device* const device)
 {
 	format = descriptor.format;
@@ -229,7 +166,7 @@ MTL::Size Dequantize8iRowwiseXFPKernel::gridSize(uint32_t groups, uint32_t group
 	// Each SIMD group recovers one H256 block; ordinary decode uses one
 	// thread per packed group. Derive dispatch from the current descriptor.
 	// TMCQ uses 16 threads per tile (one per row segment), so 16 tiles per threadgroup.
-	if (is_tmcq(format))
+	if (ccv_nnc_mfa_tmcq_rate(format))
 		return MTL::Size((groups + 15) / 16, 1, 1);
 	const uint32_t groupsPerThreadgroup = (format & CCV_NNC_QX_8I_ROWWISE_HADAMARD_256) ? 8 * (256 / groupSize) : 256;
 	return MTL::Size((groups + groupsPerThreadgroup - 1) / groupsPerThreadgroup, 1, 1);
@@ -238,9 +175,106 @@ MTL::Size Dequantize8iRowwiseXFPKernel::gridSize(uint32_t groups, uint32_t group
 std::string Dequantize8iRowwiseXFPKernel::createSource() const noexcept
 {
 	const uint32_t codec = format & CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK;
-	if (is_tmcq(format))
-		return createConstants() + "\n" + create_tmcq_fp_source(format);
 	std::string shader = createConstants() + "\n";
+	if (const uint32_t rate = ccv_nnc_mfa_tmcq_rate(format)) {
+		// TMCQ, the fallback for paths that take floating-point weights. Same thread mapping as the
+		// int8 decode in Dequantize8iRowwiseXKernel.cpp: one thread per row segment (16 weights of one
+		// row inside one tile), consecutive threads on consecutive tile columns of the same row. The
+		// weight is the exact float product q8 * scale (q8 has at most 8 significant bits), converted
+		// once to the output type with Metal's rounding to nearest, like this kernel's other formats
+		// and the CUDA decode (the CPU decode narrows through ccv_float_to_half_precision /
+		// ccv_float_to_bfloat).
+		shader += R"(
+#include <metal_stdlib>
+using namespace metal;
+)";
+		shader += "constant constexpr uint Rate = " + std::to_string(rate) + ";\n";
+		shader += "constant constexpr uint TileWords = Rate / 2;\n";
+		shader += R"(
+// The 32 bits of the little-endian pair (lo, hi) starting at bit o (0 <= o < 32).
+// (hi << 1) << (31 - o) is hi << (32 - o) without an undefined 32-bit shift when o == 0.
+inline uint tmcq_funnel(uint lo, uint hi, uint o)
+{
+  return (lo >> o) | ((hi << 1) << (31u - o));
+}
+
+// Lane index of count threads copies the weight's 512 int8 pairs into threadgroup half2 (int8
+// values are exact in half), two pairs per 32-bit load. The caller adds the barrier.
+inline void tmcq_codebook_load(threadgroup half2* table, device const uint* codebook, uint index, uint count)
+{
+  for (uint i = index; i < 256u; i += count)
+  {
+    const char4 pairs = as_type<char4>(codebook[i]);
+    table[2u * i] = half2(pairs.xy);
+    table[2u * i + 1u] = half2(pairs.zw);
+  }
+}
+
+// int8 codes of row r (weights 16 r ... 16 r + 15) of a tile, as q[0 .. 3] = columns 0-3, ..., 12-15,
+// the same as the int8 decode's tmcq_decode_row (see Dequantize8iRowwiseXKernel.cpp for the windows).
+inline void tmcq_decode_row(device const uint* tile, uint r, thread int4* q, threadgroup const half2* table)
+{
+  const int words = int(TileWords);
+  const int first = int(r * Rate + (Rate >> 4)) - 15;
+  const int w = first >> 5; // -1 only for row 0
+  const uint s0 = uint(first) & 31u;
+  const int i0 = w < 0 ? w + words : w;
+  const int i1 = w + 1 >= words ? w + 1 - words : w + 1;
+  const int i2 = w + 2 >= words ? w + 2 - words : w + 2;
+  const uint w0 = tile[i0];
+  const uint w1 = tile[i1];
+  const uint w2 = tile[i2];
+  const uint a = tmcq_funnel(w0, w1, s0);
+  const uint b = tmcq_funnel(w1, w2, s0);
+  int c[16];
+  #pragma clang loop unroll(full)
+  for (uint i = 0; i < 8u; ++i)
+  {
+    const uint k = (((2u * i + 2u) * Rate) >> 4) - (Rate >> 4);
+    const uint window = k + 15u <= 32u ? (a >> k) : ((a >> k) | (b << (32u - k)));
+    const char2 v = char2(table[((window & 0x7fffu) * 0x83DCD12Du) >> 23]);
+    c[2u * i] = v.x;
+    c[2u * i + 1u] = v.y;
+  }
+  q[0] = int4(c[0], c[1], c[2], c[3]);
+  q[1] = int4(c[4], c[5], c[6], c[7]);
+  q[2] = int4(c[8], c[9], c[10], c[11]);
+  q[3] = int4(c[12], c[13], c[14], c[15]);
+}
+
+kernel void dequantize_8i_rowwise_x_fp(
+  device const uchar* source [[buffer(0)]],
+  device uchar* destination [[buffer(1)]],
+  device const real* scales [[buffer(2)]],
+  device const uint* codebook [[buffer(3)]],
+
+  uint3 tgid [[threadgroup_position_in_grid]],
+  ushort lid [[thread_index_in_threadgroup]]
+) {
+  threadgroup half2 table[512];
+  tmcq_codebook_load(table, codebook, lid, threadgroup_size);
+  threadgroup_barrier(mem_flags::mem_threadgroup);
+  const uint x = tgid.x * threadgroup_size + lid;
+  // total_groups tiles of 16 segments each.
+  if (x >= total_groups * 16u)
+    return;
+  const uint tiles_per_row = row_length >> 4;
+  const uint row = x / tiles_per_row;
+  const uint tc = x - row * tiles_per_row;
+  const ulong tile_index = (ulong)(row >> 4) * tiles_per_row + tc;
+  device const uint* tile = reinterpret_cast<device const uint*>(source) + tile_index * TileWords;
+  int4 q[4];
+  tmcq_decode_row(tile, row & 15u, q, table);
+  const float scale = (float)scales[row];
+  device vec<real, 4>* destination4 = reinterpret_cast<device vec<real, 4>*>(reinterpret_cast<device real*>(destination) + (ulong)row * row_length + (tc << 4));
+  destination4[0] = vec<real, 4>(float4(q[0]) * scale);
+  destination4[1] = vec<real, 4>(float4(q[1]) * scale);
+  destination4[2] = vec<real, 4>(float4(q[2]) * scale);
+  destination4[3] = vec<real, 4>(float4(q[3]) * scale);
+}
+)";
+		return shader;
+	}
 	if (codec == CCV_NNC_QX_8I_ROWWISE_IQ2_XXS) {
 		append_compact_grid(shader, "iq2xxs_grid", ccv_nnc_8i_rowwise_packed_iq2xxs_grid, 256, [](const uint16_t value) { return (uint32_t)value; });
 		append_compact_grid(shader, "iq2xxs_ksigns", ccv_nnc_8i_rowwise_packed_iq2xxs_ksigns, 128, [](const uint8_t value) { return (uint32_t)value; });

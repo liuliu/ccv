@@ -4,7 +4,6 @@
 #include "../ccv_nnc_mfa_hash.hpp"
 #include "../ccv_nnc_mfa_error.hpp"
 #include "../ccv_nnc_mfa.hpp"
-#include "SegmentedInt8GemvDescriptor.hpp"
 
 namespace {
 
@@ -22,7 +21,7 @@ static void serializeBinaries(MTL::BinaryArchive* const binaryArchive, const std
 static bool usesRegisterTiles(const uint32_t format) noexcept
 {
   return format == CCV_NNC_QX_8I_ROWWISE_IQ2_XXS || format == CCV_NNC_QX_8I_ROWWISE_Q2_K || format == CCV_NNC_QX_8I_ROWWISE_IQ3_XXS ||
-    segmentedTMCQRate(format);
+    ccv_nnc_mfa_tmcq_rate(format);
 }
 
 // The selected tile's rows. Other packed formats waste most of a 64-row tile on sparse

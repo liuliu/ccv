@@ -1,6 +1,4 @@
 #include "ccv_nnc_mfa.hpp"
-#include "kernels/TMCQDecodeSource.hpp"
-#include "kernels/SegmentedInt8GemvDescriptor.hpp"
 using namespace ccv::nnc;
 
 #include "kernels/ShaderCache.hpp"
@@ -152,7 +150,7 @@ void ccv_nnc_mfa_encode_segmented_scaled_gemm(
   // and K % 256 (SegmentedScaledGEMMKernel::fusesPackedFormat).
   CCV_NNC_MFA_PRECONDITION(params.format == 0 ||
     ((params.format & ~CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK) == 0 && params.use_neural_accelerators &&
-      !params.fused_bias && (segmentedTMCQRate(params.format) ? (params.N % 64 == 0 && params.K % 64 == 0) : (params.N % 256 == 0 && params.K % 256 == 0))));
+      !params.fused_bias && (ccv_nnc_mfa_tmcq_rate(params.format) ? (params.N % 64 == 0 && params.K % 64 == 0) : (params.N % 256 == 0 && params.K % 256 == 0))));
   if (!params.use_neural_accelerators) {
     CCV_NNC_MFA_PRECONDITION(params.data_type == MTL::DataTypeFloat && !params.fused_bias && num_tensors == 5);
     CCV_NNC_MFA_PRECONDITION((params.N % 8) == 0 && (params.K % 8) == 0);
@@ -306,7 +304,7 @@ void ccv_nnc_mfa_encode_segmented_scaled_gemm(
     if (num_tensors >= 6)
       encoder->useResource(tensors[5], MTL::ResourceUsageRead);
     // A TMCQ weight as stored: its pair table at buffer(7), then the tiles.
-    const size_t codebook_size = (size_t)tmcq_codebook_size(params.format);
+    const size_t codebook_size = (size_t)ccv_nnc_mfa_tmcq_codebook_size(params.format);
     if (codebook_size)
       encoder->setBuffer(tensors[3], tensor_offsets[3], 7);
     encoder->setBuffer(scratch, 0, 0);

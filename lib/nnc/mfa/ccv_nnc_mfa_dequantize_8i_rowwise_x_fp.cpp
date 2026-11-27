@@ -1,7 +1,6 @@
 #include "ccv_nnc_mfa.hpp"
 #include "kernels/Dequantize8iRowwiseXFPDescriptor.hpp"
 #include "kernels/Dequantize8iRowwiseXFPKernel.hpp"
-#include "kernels/TMCQDecodeSource.hpp"
 
 using namespace ccv::nnc;
 
@@ -41,7 +40,7 @@ void ccv_nnc_mfa_encode_dequantize_8i_rowwise_x_fp(ccv_nnc_mfa_context_t* contex
 	}
 	CCV_NNC_MFA_PRECONDITION(num_tensors == 2);
 	// A TMCQ weight as stored: its pair table at buffer(3), then the tiles.
-	const size_t codebook_size = (size_t)tmcq_codebook_size(params.format);
+	const size_t codebook_size = (size_t)ccv_nnc_mfa_tmcq_codebook_size(params.format);
 	if (codebook_size) {
 		encoder->setBuffer(tensors[0], tensor_offsets[0], NS::UInteger(3));
 		encoder->setBuffer(tensors[0], tensor_offsets[0] + codebook_size, NS::UInteger(0));

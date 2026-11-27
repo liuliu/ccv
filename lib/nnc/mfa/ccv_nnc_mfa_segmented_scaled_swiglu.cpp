@@ -6,8 +6,6 @@ using namespace ccv::nnc;
 #include "kernels/NAInt8MatMulKernelDescriptor.hpp"
 #include "kernels/NAInt8MatMulDescriptor.hpp"
 #include "kernels/SegmentedScaledGEMMKernel.hpp"
-#include "kernels/SegmentedInt8GemvDescriptor.hpp"
-#include "kernels/TMCQDecodeSource.hpp"
 #include "kernels/SegmentedScaledGEMMKernelDescriptor.hpp"
 #include "kernels/SegmentedScaledGEMMDescriptor.hpp"
 #include "kernels/Int8MatMulDescriptor.hpp"
@@ -245,7 +243,7 @@ static void encode_projection(
   if (destination != scratch)
     encoder->useResource(destination, MTL::ResourceUsageWrite);
   // A TMCQ weight of the fused tile decode as stored: its pair table at buffer(7), then the tiles.
-  const size_t codebook_size = (size_t)tmcq_codebook_size(execution.segmented_desc.format);
+  const size_t codebook_size = (size_t)ccv_nnc_mfa_tmcq_codebook_size(execution.segmented_desc.format);
   if (codebook_size)
     encoder->setBuffer(weight, weight_offset, 7);
   encoder->setBuffer(scratch, 0, 0);
@@ -288,7 +286,7 @@ void ccv_nnc_mfa_encode_segmented_scaled_swiglu(
   // only for the shapes SegmentedScaledGEMMKernel::fusesPackedFormat accepts. The other codecs take whole 256-weight
   // blocks.
   CCV_NNC_MFA_PRECONDITION(
-    params.format == 0 || (segmentedTMCQRate(params.format) ?
+    params.format == 0 || (ccv_nnc_mfa_tmcq_rate(params.format) ?
       ((params.N % 16) == 0 && (params.K % 16) == 0) : ((params.N % 256) == 0 && (params.K % 256) == 0)));
 
   if (!params.use_neural_accelerators) {
