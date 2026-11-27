@@ -1436,13 +1436,17 @@ static void _ccv_nnc_8i_rowwise_packed_quant_iq3_xxs(const double* const y, cons
 }
 
 // A tile of T = 16 n bits from bit 256 + start of an FTQ blob (the code follows the 32-byte header). Pair j reads
-// the 16-bit LSB-first window ending at floor((j + 1) T / 128), wrapping inside the tile, and takes pair
-// (state * 0x83DCD12D) >> shift of the table (shift 23 for 512 pairs). shift 0: a quadrant-folded table
-// (CCV_NNC_CODEBOOK_FOLD): h = state * 0x83DCD12D takes base pair (h >> 16) & 511, the first value negated
+// the L-bit LSB-first window ending at floor((j + 1) T / 128), wrapping inside the tile (L = 16 + 2 window, see
+// CCV_NNC_QX_8I_ROWWISE_FTQ_WINDOW_SHIFT), and takes pair (x * 0x83DCD12D) >> shift of the table with
+// x = state + (state >> 16) (x = state for L = 16; shift 23 for 512 pairs). shift 0: a quadrant-folded table
+// (CCV_NNC_CODEBOOK_FOLD): h = x * 0x83DCD12D takes base pair (h >> 16) & 511, the first value negated
 // when bit 15 of h is set and the second when bit 31 is.
-static void _ccv_nnc_8i_rowwise_ftq_decode_tile(const uint8_t* const input, const uint64_t start, const int T, const int8_t* const table, const int shift, int8_t* const q8)
+static void _ccv_nnc_8i_rowwise_ftq_decode_tile(const uint8_t* const input, const uint64_t start, const int T, const int window, const int8_t* const table, const int shift, int8_t* const q8)
 {
 	assert(T >= 16 && T <= 768);
+	assert(window >= 0 && window <= 3);
+	const int L = 16 + 2 * window;
+	assert(L <= T);
 	uint8_t bits[768];
 	int p;
 	for (p = 0; p < T; p++)
@@ -1454,11 +1458,12 @@ static void _ccv_nnc_8i_rowwise_ftq_decode_tile(const uint8_t* const input, cons
 	for (pj = 0; pj < 128; pj++)
 	{
 		const int end = (pj + 1) * T / 128;
-		const int first = (end + T - 16) % T;
+		const int first = (end + T - L) % T;
 		uint32_t state = 0;
 		int j;
-		for (j = 0; j < 16; j++)
+		for (j = 0; j < L; j++)
 			state |= (uint32_t)bits[(first + j) % T] << j;
+		state += state >> 16;
 		if (shift == 0)
 		{
 			const uint32_t h = state * 0x83DCD12Du;
@@ -2348,6 +2353,10 @@ static size_t _ccv_nnc_quantize_8i_rowwise_x_trellis(const void* input, const in
 	const int vr = ccv_nnc_8i_rowwise_x_is_ftq_vr(format);
 	if ((ftq || vr) && (row_count > UINT32_MAX || row_length > UINT32_MAX))
 		return 0;
+	// The CPU encoder searches 16-bit windows only; wider windows (CCV_NNC_QX_8I_ROWWISE_FTQ_WINDOW_SHIFT) decode
+	// but are fitted elsewhere.
+	if (ccv_nnc_8i_rowwise_x_ftq_window(format))
+		return 0;
 	const size_t tile_rows = row_count / CCV_NNC_8I_ROWWISE_TRELLIS_TILE;
 	const size_t strips = row_length / CCV_NNC_8I_ROWWISE_TRELLIS_TILE;
 	const int n = ftq ? ccv_nnc_8i_rowwise_x_ftq_rate(format) : vr ? ccv_nnc_8i_rowwise_x_ftq_vr_rate(format) : ccv_nnc_8i_rowwise_x_tmcq_rate(format);
@@ -2931,8 +2940,10 @@ CCV_WARN_UNUSED(size_t) ccv_nnc_quantize_8i_rowwise_x(const void* input, const i
 		if (hessian_length < matrix_length || hessian_length % matrix_length != 0 || row_count % (hessian_length / matrix_length) != 0)
 			return 0;
 	}
-	// The quantizer encodes with the built-in codebook only, and no FTQ rate that is not open.
-	if (ccv_nnc_8i_rowwise_x_codebook_slot(format) != 0 || ccv_nnc_8i_rowwise_x_inline_codebook_entries(format) || ccv_nnc_8i_rowwise_x_is_ftq_unopened(format))
+	// The quantizer encodes with the built-in codebook only, 16-bit FTQ state windows only, and no FTQ rate that is not
+	// open.
+	if (ccv_nnc_8i_rowwise_x_codebook_slot(format) != 0 || ccv_nnc_8i_rowwise_x_inline_codebook_entries(format) || ccv_nnc_8i_rowwise_x_ftq_window(format) ||
+		ccv_nnc_8i_rowwise_x_is_ftq_unopened(format))
 		return 0;
 	if (ccv_nnc_8i_rowwise_x_is_tiled(format))
 	{
@@ -2947,7 +2958,7 @@ CCV_WARN_UNUSED(size_t) ccv_nnc_quantize_8i_rowwise_x(const void* input, const i
 CCV_WARN_UNUSED(size_t) ccv_nnc_quantize_8i_rowwise_x_ftq_vr(const void* input, const int datatype, const int memory_type, const size_t input_length, const size_t row_length, const int format, const int* const rates, void* output, const size_t output_length)
 {
 	assert(memory_type == CCV_TENSOR_CPU_MEMORY);
-	if (!ccv_nnc_8i_rowwise_x_is_ftq_vr(format) || ccv_nnc_8i_rowwise_x_codebook_slot(format) != 0 || (format & CCV_NNC_QX_8I_ROWWISE_HADAMARD_256) ||
+	if (!ccv_nnc_8i_rowwise_x_is_ftq_vr(format) || ccv_nnc_8i_rowwise_x_codebook_slot(format) != 0 || ccv_nnc_8i_rowwise_x_ftq_window(format) || (format & CCV_NNC_QX_8I_ROWWISE_HADAMARD_256) ||
 		datatype != CCV_16F || row_length == 0 || row_length % 16 != 0 || input_length % row_length != 0 || input_length == 0 || (input_length / row_length) % 16 != 0)
 		return 0;
 	return _ccv_nnc_quantize_8i_rowwise_x_trellis(input, datatype, input_length, row_length, format, rates, output, output_length);
@@ -2956,14 +2967,15 @@ CCV_WARN_UNUSED(size_t) ccv_nnc_quantize_8i_rowwise_x_ftq_vr(const void* input, 
 // The table of an FTQ header (table field, table_crc) against the tensor's codebook slot: id 0 is the built-in table
 // (log2 9, crc 0, slot 0); otherwise the slot is a registered table of 2^log2 pairs whose crc32 is table_crc. Bits
 // 16 - 17 are the structure, 0 plain, 1 quadrant fold (a non-zero id of 512 base pairs, the slot registered with
-// CCV_NNC_CODEBOOK_FOLD); bits 18 - 31 are zero. Returns the table and the lookup shift (32 - log2, 0 when folded),
-// or 0 if any check fails.
-static const int8_t* _ccv_nnc_8i_rowwise_ftq_table(const int slot, const uint32_t field, const uint32_t table_crc, int* const shift)
+// CCV_NNC_CODEBOOK_FOLD); bits 18 - 29 are zero and bits 30 - 31 are the state window of the tensor's format
+// (CCV_NNC_QX_8I_ROWWISE_FTQ_WINDOW_SHIFT). Returns the table and the lookup shift (32 - log2, 0 when folded), or 0 if any check fails.
+static const int8_t* _ccv_nnc_8i_rowwise_ftq_table(const int format, const uint32_t field, const uint32_t table_crc, int* const shift)
 {
+	const int slot = ccv_nnc_codebook_slot_of(format);
 	const uint32_t table_id = field & 0xff;
 	const uint32_t table_log2 = (field >> 8) & 0xff;
 	const uint32_t table_structure = (field >> 16) & 3;
-	if ((field >> 18) != 0 || table_structure > 1)
+	if (ccv_nnc_8i_rowwise_x_ftq_header_window_mismatch(field, format) || table_structure > 1)
 		return 0;
 	const int slot_flags = ccv_nnc_codebook_flags(slot);
 	if (slot_flags < 0 || (table_structure == 1) != !!(slot_flags & CCV_NNC_CODEBOOK_FOLD) || (table_structure == 1 && (table_id == 0 || table_log2 != 9)))
@@ -3014,7 +3026,7 @@ static const int8_t* _ccv_nnc_8i_rowwise_ftq_container(const uint8_t* const u8, 
 		return 0;
 	// The header's table must be the tensor's codebook slot, see _ccv_nnc_8i_rowwise_ftq_table. A mismatch would
 	// index out of the table.
-	const int8_t* const table = _ccv_nnc_8i_rowwise_ftq_table(ccv_nnc_codebook_slot_of(format), header[4], header[5], shift);
+	const int8_t* const table = _ccv_nnc_8i_rowwise_ftq_table(format, header[4], header[5], shift);
 	if (!table)
 		return 0;
 	// The rest of the container: unused bits of the last code byte and the padding to the scales are zero,
@@ -3092,7 +3104,7 @@ int ccv_nnc_8i_rowwise_x_ftq_vr_check(const void* const data, const size_t lengt
 	if ((level_mask >> 21) != 0 || __builtin_popcount(level_mask) > 6)
 		return -1;
 	int shift;
-	if (!_ccv_nnc_8i_rowwise_ftq_table(ccv_nnc_codebook_slot_of(format), header[4], header[5], &shift))
+	if (!_ccv_nnc_8i_rowwise_ftq_table(format, header[4], header[5], &shift))
 		return -1;
 	uint32_t previous;
 	memcpy(&previous, u8 + 32, 4);
@@ -3135,6 +3147,9 @@ int ccv_nnc_dequantize_8i_rowwise_x(const void* input, const int datatype, const
 		return -1;
 	if (memory_type != CCV_TENSOR_CPU_MEMORY)
 	{
+		// The GPU FTQ decoders read 16-bit state windows only (CCV_NNC_QX_8I_ROWWISE_FTQ_WINDOW_SHIFT).
+		if (ccv_nnc_8i_rowwise_x_ftq_window(format_in))
+			return -1;
 		// A GPU backend reads an inline codebook from the buffer itself; any other slot is checked here.
 		const int codebook_slot = ccv_nnc_codebook_slot_of(format_in);
 		if (codebook_slot && !ccv_nnc_8i_rowwise_x_inline_codebook_entries(format_in) && !ccv_nnc_codebook_get(codebook_slot, 0, 0))
@@ -3201,7 +3216,7 @@ int ccv_nnc_dequantize_8i_rowwise_x(const void* input, const int datatype, const
 			{
 				int8_t q8[256];
 				const uint64_t start = ((uint64_t)tr * strips + tc) * schedule.high_bits;
-				_ccv_nnc_8i_rowwise_ftq_decode_tile(u8, start, (int)schedule.high_bits, table, shift, q8);
+				_ccv_nnc_8i_rowwise_ftq_decode_tile(u8, start, (int)schedule.high_bits, ccv_nnc_8i_rowwise_x_ftq_window(format), table, shift, q8);
 				int t;
 				for (t = 0; t < 256; t++)
 					_ccv_nnc_8i_rowwise_packed_write_value(output, datatype, ((size_t)tr * 16 + t / 16) * row_length + tc * 16 + t % 16, scale[t / 16] * q8[t]);
@@ -3220,7 +3235,7 @@ int ccv_nnc_dequantize_8i_rowwise_x(const void* input, const int datatype, const
 		uint32_t header[6];
 		memcpy(header, u8 + 8, sizeof(header));
 		int shift;
-		const int8_t* const table = _ccv_nnc_8i_rowwise_ftq_table(ccv_nnc_codebook_slot_of(format), header[4], header[5], &shift);
+		const int8_t* const table = _ccv_nnc_8i_rowwise_ftq_table(format, header[4], header[5], &shift);
 		const size_t tile_rows = row_count / 16;
 		const size_t strips = row_length / 16;
 		// Tile tc of tile row r: 16 n_r bits from word off[r] + tc n_r / 2 of the code, which starts at word 8 + R + 1;
@@ -3238,7 +3253,7 @@ int ccv_nnc_dequantize_8i_rowwise_x(const void* input, const int datatype, const
 			{
 				int8_t q8[256];
 				const uint64_t start = ((uint64_t)tile_rows + 1 + off[0]) * 32 + (uint64_t)tc * 16 * nr;
-				_ccv_nnc_8i_rowwise_ftq_decode_tile(u8, start, 16 * nr, table, shift, q8);
+				_ccv_nnc_8i_rowwise_ftq_decode_tile(u8, start, 16 * nr, ccv_nnc_8i_rowwise_x_ftq_window(format), table, shift, q8);
 				int t;
 				for (t = 0; t < 256; t++)
 					_ccv_nnc_8i_rowwise_packed_write_value(output, datatype, ((size_t)tr * 16 + t / 16) * row_length + tc * 16 + t % 16, scale[t / 16] * q8[t]);

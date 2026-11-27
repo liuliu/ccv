@@ -303,6 +303,19 @@ static inline int ccv_nnc_8i_rowwise_x_is_ftq_vr(const int format)
 	return codec >= CCV_NNC_QX_8I_ROWWISE_FTQ_VR_N16 && codec <= CCV_NNC_QX_8I_ROWWISE_FTQ_VR_N48;
 }
 
+/* The FTQ state window w of format (bits 26 - 27): an L = 16 + 2 w bit window. */
+static inline int ccv_nnc_8i_rowwise_x_ftq_window(const int format)
+{
+	return (format & CCV_NNC_QX_8I_ROWWISE_FTQ_WINDOW_MASK) >> CCV_NNC_QX_8I_ROWWISE_FTQ_WINDOW_SHIFT;
+}
+
+/* Whether table field `field` of an FTQ blob header (CCVFTQSR or CCVFTQVR) does not name the state window of format,
+ * or has a bit of 18 - 29 set: bits 30 - 31 hold the window (see CCV_NNC_QX_8I_ROWWISE_FTQ_WINDOW_SHIFT). */
+static inline int ccv_nnc_8i_rowwise_x_ftq_header_window_mismatch(const unsigned int field, const int format)
+{
+	return (field & 0x3ffc0000u) != 0 || (int)(field >> 30) != ccv_nnc_8i_rowwise_x_ftq_window(format);
+}
+
 /* Static- or variable-rate FTQ. */
 static inline int ccv_nnc_8i_rowwise_x_is_ftq_any(const int format)
 {
@@ -322,6 +335,9 @@ static inline int ccv_nnc_8i_rowwise_x_is_ftq_unopened(const int format)
 static inline int ccv_nnc_8i_rowwise_x_codebook_is_valid(const int format)
 {
 	if (ccv_nnc_8i_rowwise_x_is_ftq_unopened(format))
+		return 0;
+	// Only FTQ and FTQ-VR have a state window other than 16 bits.
+	if (ccv_nnc_8i_rowwise_x_ftq_window(format) && !ccv_nnc_8i_rowwise_x_is_ftq_any(format))
 		return 0;
 	const int is_inline = !!ccv_nnc_8i_rowwise_x_inline_codebook_entries(format);
 	if (ccv_nnc_8i_rowwise_x_is_tmcq(format) || ccv_nnc_8i_rowwise_x_is_ftq_any(format))

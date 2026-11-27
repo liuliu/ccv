@@ -162,6 +162,21 @@ static int _ccv_nnc_tensor_stored_codebook_slot(const int reserved)
 	return ccv_nnc_8i_rowwise_x_codebook_slot(reserved) ? -1 : 0;
 }
 
+// Whether a raw FTQ payload (inline codebook, if any, then the blob) of format `reserved` has a header whose state
+// window is not the format's. A payload too short for a header, or without the FTQ magic, only fails a wide window.
+static int _ccv_nnc_tensor_ftq_payload_window_mismatch(const void* const payload, const size_t payload_size, const int reserved)
+{
+	const size_t inline_size = ccv_nnc_8i_rowwise_x_inline_codebook_size(reserved);
+	if (!payload || payload_size < inline_size + 32)
+		return ccv_nnc_8i_rowwise_x_ftq_window(reserved) != 0;
+	const uint8_t* const head = (const uint8_t*)payload + inline_size;
+	if (memcmp(head, ccv_nnc_8i_rowwise_x_is_ftq_vr(reserved) ? "CCVFTQVR" : "CCVFTQSR", 8) != 0)
+		return ccv_nnc_8i_rowwise_x_ftq_window(reserved) != 0;
+	uint32_t field;
+	memcpy(&field, head + 24, 4);
+	return ccv_nnc_8i_rowwise_x_ftq_header_window_mismatch(field, reserved);
+}
+
 int ccv_nnc_tensor_write(const ccv_nnc_tensor_t* const tensor, void* const handle, const char* const name, const ccv_nnc_tensor_io_option_t* const options)
 {
 	assert(CCV_IS_TENSOR_CONTIGUOUS(tensor));
@@ -276,6 +291,18 @@ int ccv_nnc_tensor_write(const ccv_nnc_tensor_t* const tensor, void* const handl
 			payload = tensor->data.u8;
 	}
 #endif
+	// A raw FTQ blob names its state window in its header, which must be the format's: a reader checks the two
+	// against each other, and a 16-bit reader would decode a wide blob as another one. Data encoded by an identifier
+	// codec has no header a reader can check, so a wide window is only stored raw (ccv_nnc_tensor_read rejects it).
+	const int ftq_payload = CCV_GET_DATA_TYPE(params.datatype) == CCV_QX && (params.datatype & 0xf00) == CCV_NNC_QX_8I_ROWWISE_X &&
+		ccv_nnc_8i_rowwise_x_is_ftq_any(params.reserved);
+	if (ftq_payload && (identifier ? ccv_nnc_8i_rowwise_x_ftq_window(params.reserved) != 0 : _ccv_nnc_tensor_ftq_payload_window_mismatch(payload, payload_size, params.reserved)))
+	{
+		sqlite3_finalize(tensor_insert_stmt);
+		if (workspace)
+			free(workspace);
+		return CCV_IO_ERROR;
+	}
 	int result = SQLITE_TOOBIG;
 	int bind_result = payload_size <= INT_MAX ? sqlite3_bind_blob(tensor_insert_stmt, 6, payload, (int)payload_size, 0) : SQLITE_TOOBIG;
 	if (bind_result == SQLITE_OK)
@@ -336,7 +363,12 @@ int ccv_nnc_tensor_write(const ccv_nnc_tensor_t* const tensor, void* const handl
 	const int chunk_size = _ccv_nnc_tensor_io_blob_chunk_size(conn);
 	assert(chunk_size > 0);
 	const size_t first_size = ccv_min(payload_size, (size_t)chunk_size);
-	bind_result = first_size < payload_size ? sqlite3_bind_blob(tensor_insert_stmt, 6, payload, (int)first_size, SQLITE_STATIC) : SQLITE_TOOBIG;
+	// A reader checks a raw FTQ blob's header (and its inline codebook) from the first part alone, so a part too
+	// short for both is not written.
+	if (ftq_payload && !identifier && first_size < ccv_nnc_8i_rowwise_x_inline_codebook_size(params.reserved) + 32)
+		bind_result = SQLITE_TOOBIG;
+	else
+		bind_result = first_size < payload_size ? sqlite3_bind_blob(tensor_insert_stmt, 6, payload, (int)first_size, SQLITE_STATIC) : SQLITE_TOOBIG;
 	if (bind_result == SQLITE_OK)
 		bind_result = _ccv_nnc_tensor_io_delete_splits(conn, name);
 	if (bind_result == SQLITE_OK)
@@ -376,10 +408,16 @@ int ccv_nnc_tensor_write(const ccv_nnc_tensor_t* const tensor, void* const handl
 }
 
 // Whether row-wise-x params do not name the inline codebook bits stored_inline_bits of the stored weight (0: the
-// stored weight has none, nothing to match). Params of another datatype are left to the decode callback.
-static int _ccv_nnc_tensor_inline_codebook_mismatch(const ccv_nnc_tensor_param_t params, const int stored_inline_bits)
+// stored weight has none, nothing to match), or name another FTQ state window than stored_window (the window of a
+// stored row-wise-x weight, -1: not such a weight, nothing to match). Params of another datatype are left to the
+// decode callback.
+static int _ccv_nnc_tensor_inline_codebook_mismatch(const ccv_nnc_tensor_param_t params, const int stored_inline_bits, const int stored_window)
 {
-	if (!stored_inline_bits || CCV_GET_DATA_TYPE(params.datatype) != CCV_QX || (params.datatype & 0xf00) != CCV_NNC_QX_8I_ROWWISE_X)
+	if (CCV_GET_DATA_TYPE(params.datatype) != CCV_QX || (params.datatype & 0xf00) != CCV_NNC_QX_8I_ROWWISE_X)
+		return 0;
+	if (stored_window >= 0 && ccv_nnc_8i_rowwise_x_ftq_window(params.reserved) != stored_window)
+		return 1;
+	if (!stored_inline_bits)
 		return 0;
 	return (params.reserved & (CCV_NNC_CODEBOOK_INLINE_MASK | CCV_NNC_CODEBOOK_SLOT_MASK)) != stored_inline_bits;
 }
@@ -420,6 +458,9 @@ int ccv_nnc_tensor_read(void* const handle, const char* const name, const ccv_nn
 	// For a weight with an inline codebook, its codebook bits (slot 255 and P): a row-wise-x read into caller params or
 	// an existing tensor must name the same, since the table is part of the data and sets its size.
 	int stored_inline_bits = 0;
+	// For a row-wise-x weight, its FTQ state window (0 for every other codec): params or an existing tensor must name
+	// the same, since the blob is decoded with it. -1: not such a weight.
+	int stored_window = -1;
 	{
 		const sqlite_int64 stored_datatype_mix = sqlite3_column_int64(tensor_select_stmt, 3);
 		const int stored_datatype = (int)(stored_datatype_mix & 0xffffffff);
@@ -432,6 +473,7 @@ int ccv_nnc_tensor_read(void* const handle, const char* const name, const ccv_nn
 				sqlite3_finalize(tensor_select_stmt);
 				return CCV_IO_ERROR;
 			}
+			stored_window = ccv_nnc_8i_rowwise_x_ftq_window(stored_reserved);
 			if (ccv_nnc_8i_rowwise_x_inline_codebook_entries(stored_reserved))
 				stored_inline_bits = stored_reserved & (CCV_NNC_CODEBOOK_INLINE_MASK | CCV_NNC_CODEBOOK_SLOT_MASK);
 			// An FTQ blob says in its header (table bits 16 - 17) whether its table is quadrant folded; the kernels
@@ -452,7 +494,11 @@ int ccv_nnc_tensor_read(void* const handle, const char* const name, const ccv_nn
 				if (ftq_inline_size)
 				{
 					// Only a raw blob carries an inline codebook; the codebook and the blob header are in the first part.
-					const int resolved = stored_identifier == 0 && head && (size_t)head_bytes >= ftq_inline_size + 32 ? ccv_nnc_8i_rowwise_x_resolve_inline(head, head_bytes, stored_reserved) : -1;
+					// A header naming another state window fails before its table is registered.
+					uint32_t inline_field = 0;
+					if (stored_identifier == 0 && head && (size_t)head_bytes >= ftq_inline_size + 32)
+						memcpy(&inline_field, head + ftq_inline_size + 24, 4);
+					const int resolved = stored_identifier == 0 && head && (size_t)head_bytes >= ftq_inline_size + 32 && !ccv_nnc_8i_rowwise_x_ftq_header_window_mismatch(inline_field, stored_reserved) ? ccv_nnc_8i_rowwise_x_resolve_inline(head, head_bytes, stored_reserved) : -1;
 					if (resolved < 0)
 					{
 						sqlite3_finalize(tensor_select_stmt);
@@ -461,6 +507,13 @@ int ccv_nnc_tensor_read(void* const handle, const char* const name, const ccv_nn
 					check_slot = ccv_nnc_codebook_slot_of(resolved);
 					head += ftq_inline_size;
 					head_bytes -= (int)ftq_inline_size;
+				}
+				// Data encoded by an identifier codec is not the blob, so has no header to check a wide state window
+				// against.
+				if (stored_identifier != 0 && stored_window != 0)
+				{
+					sqlite3_finalize(tensor_select_stmt);
+					return CCV_IO_ERROR;
 				}
 				uint32_t table_field = 0;
 				if (vr)
@@ -483,6 +536,12 @@ int ccv_nnc_tensor_read(void* const handle, const char* const name, const ccv_nn
 					}
 					memcpy(&table_field, head + 24, 4);
 				} else if (stored_identifier == 0 || codebook_slot != 0) {
+					sqlite3_finalize(tensor_select_stmt);
+					return CCV_IO_ERROR;
+				}
+				// The header names the format's state window (also for a metadata-only read, which checks no more).
+				if (stored_identifier == 0 && ccv_nnc_8i_rowwise_x_ftq_header_window_mismatch(table_field, stored_reserved))
+				{
 					sqlite3_finalize(tensor_select_stmt);
 					return CCV_IO_ERROR;
 				}
@@ -512,7 +571,7 @@ int ccv_nnc_tensor_read(void* const handle, const char* const name, const ccv_nn
 			datatype = sqlite3_column_int64(tensor_select_stmt, 3) & 0xffffffff;
 			tensor_params = *tensor_params_optional;
 			assert(!(flags & CCV_NNC_TENSOR_READ_METADATA_ONLY));
-			if (_ccv_nnc_tensor_inline_codebook_mismatch(tensor_params, stored_inline_bits))
+			if (_ccv_nnc_tensor_inline_codebook_mismatch(tensor_params, stored_inline_bits, stored_window))
 			{
 				sqlite3_finalize(tensor_select_stmt);
 				return CCV_IO_ERROR;
@@ -553,7 +612,7 @@ int ccv_nnc_tensor_read(void* const handle, const char* const name, const ccv_nn
 		datatype = sqlite3_column_int64(tensor_select_stmt, 3) & 0xffffffff;
 		tensor_params = tensor->info;
 		assert(!(flags & CCV_NNC_TENSOR_READ_METADATA_ONLY));
-		if (_ccv_nnc_tensor_inline_codebook_mismatch(tensor_params, stored_inline_bits))
+		if (_ccv_nnc_tensor_inline_codebook_mismatch(tensor_params, stored_inline_bits, stored_window))
 		{
 			sqlite3_finalize(tensor_select_stmt);
 			return CCV_IO_ERROR;

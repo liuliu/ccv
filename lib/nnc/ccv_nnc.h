@@ -1206,7 +1206,8 @@ enum {
 	 * 0 - 7 are the id of the table the blob was fitted with (0 = the built-in table, see ccv_nnc_codebook.h; any
 	 * other id is kept as written and never looked up), bits 8 - 15 log2 P (9, 10 or 11), bits 16 - 17 the structure
 	 * (0 plain, 1 quadrant fold: 512 base pairs, base pair (h >> 16) & 511 of h = state * 0x83DCD12D, the first value
-	 * negated when bit 15 of h is set and the second when bit 31 is), bits 18 - 31 zero; table_crc is the zlib crc32 of
+	 * negated when bit 15 of h is set and the second when bit 31 is), bits 18 - 29 zero, bits 30 - 31 the state window
+	 * (0 for the 16-bit window described here, see CCV_NNC_QX_8I_ROWWISE_FTQ_WINDOW_SHIFT); table_crc is the zlib crc32 of
 	 * the table (0 for the built-in one). The tensor's codebook slot (reserved bits 16 - 23) must name the same table:
 	 * slot 0 for id 0, otherwise a table of that log2 P and crc32, folded if and only if the structure is 1. In a
 	 * checkpoint a table other than the built-in one is inline (CCV_NNC_QX_8I_ROWWISE_CODEBOOK_INLINE_MASK). SR in the magic stands for static rate (one rate for every
@@ -1244,8 +1245,8 @@ enum {
 	 *   [0, 8)    magic "CCVFTQVR"
 	 *   [8, 32)   uint32 rows, cols, 16 * nm, level_mask, table, table_crc
 	 *             level_mask: bit i set when rate n = 8 + 2 i (8 ... 48) occurs; at most 6 bits set.
-	 *             table, table_crc: as in static-rate FTQ (id bits 0 - 7, log2 pairs 8 - 15, structure 16 - 17;
-	 *             crc32, 0 for id 0).
+	 *             table, table_crc: as in static-rate FTQ (id bits 0 - 7, log2 pairs 8 - 15, structure 16 - 17,
+	 *             zero 18 - 29, state window 30 - 31; crc32, 0 for id 0).
 	 *   [32, 32 + 4 (R + 1))  uint32 off[R + 1], word offsets from the code start, off[0] = 0, non-decreasing.
 	 *   code      starts at word 8 + R + 1; tile row r is words off[r] .. off[r + 1] and holds C tiles of 16 n_r bits
 	 *             each, n_r = 2 (off[r + 1] - off[r]) / C, so every tile starts on a word; inside a tile it is
@@ -1298,6 +1299,15 @@ enum {
 	 * whole tensor. The bits are the same in a checkpoint and in memory. */
 	CCV_NNC_QX_8I_ROWWISE_CODEBOOK_INLINE_SHIFT = 24,
 	CCV_NNC_QX_8I_ROWWISE_CODEBOOK_INLINE_MASK = 0x3000000,
+	/* State window of FTQ and FTQ-VR, bits 26 - 27: w = 0, 1, 2, 3 for an L = 16 + 2 w bit window (16, 18, 20, 22).
+	 * 0 is the window described above. With L > 16 pair j reads the L-bit LSB-first window ending at the same bit
+	 * (wrapping inside the tile) and its hash is h = (state + (state >> 16)) * 0x83DCD12D (mod 2^32); the pair is then taken
+	 * from h exactly as for L = 16 (for L = 16, state >> 16 = 0, so the rule is the same). The premix keeps the new
+	 * bits of a window in the hash bits that pick the folded signs (bit 15 of h depends only on bits 0 - 15 of its
+	 * multiplicand). The blob names the same w in table bits 30 - 31 of its header (bits 18 - 29 stay zero), so a
+	 * reader that does not know the window rejects it. Every other codec has w = 0. */
+	CCV_NNC_QX_8I_ROWWISE_FTQ_WINDOW_SHIFT = 26,
+	CCV_NNC_QX_8I_ROWWISE_FTQ_WINDOW_MASK = 0xc000000,
 };
 
 /**

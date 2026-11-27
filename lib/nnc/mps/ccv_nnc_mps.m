@@ -720,6 +720,8 @@ static size_t _ccv_nnc_mps_8i_rowwise_x_inline_head_size(const int format)
 // if any of it does not hold.
 static int _ccv_nnc_mps_8i_rowwise_x_resolve_inline_head(const uint8_t* const head, const int format)
 {
+	if (ccv_nnc_8i_rowwise_x_ftq_window(format))
+		return -1;
 	const size_t inline_size = ccv_nnc_8i_rowwise_x_inline_codebook_size(format);
 	const int resolved = ccv_nnc_8i_rowwise_x_resolve_inline(head, _ccv_nnc_mps_8i_rowwise_x_inline_head_size(format), format);
 	if (resolved < 0 || !inline_size || !ccv_nnc_8i_rowwise_x_is_ftq_any(format))
@@ -739,6 +741,9 @@ static int _ccv_nnc_mps_8i_rowwise_x_resolve_inline_head(const uint8_t* const he
 
 int ccv_nnc_mps_8i_rowwise_x_resolve_inline(id<MTLBuffer> buffer, const off_t offset, const int format)
 {
+	// The Metal FTQ kernels read 16-bit state windows only (CCV_NNC_QX_8I_ROWWISE_FTQ_WINDOW_SHIFT).
+	if (ccv_nnc_8i_rowwise_x_ftq_window(format))
+		return -1;
 	if (!ccv_nnc_8i_rowwise_x_inline_codebook_entries(format))
 		return format;
 	if (!ccv_nnc_8i_rowwise_x_codebook_is_valid(format) || !buffer || offset < 0)
@@ -753,8 +758,13 @@ int ccv_nnc_mps_8i_rowwise_x_resolve_inline(id<MTLBuffer> buffer, const off_t of
 
 const ccv_nnc_tensor_t* ccv_nnc_mps_8i_rowwise_x_inline_view(const ccv_nnc_tensor_t* const tensor, ccv_nnc_tensor_t* const view)
 {
-	if (!tensor || CCV_GET_DATA_TYPE(tensor->info.datatype) != CCV_QX || (tensor->info.datatype & 0xf00) != CCV_NNC_QX_8I_ROWWISE_X ||
-		!ccv_nnc_8i_rowwise_x_inline_codebook_entries(tensor->info.reserved))
+	if (!tensor || CCV_GET_DATA_TYPE(tensor->info.datatype) != CCV_QX || (tensor->info.datatype & 0xf00) != CCV_NNC_QX_8I_ROWWISE_X)
+		return tensor;
+	// The Metal FTQ kernels read 16-bit state windows only (CCV_NNC_QX_8I_ROWWISE_FTQ_WINDOW_SHIFT), with or without
+	// an inline codebook.
+	if (ccv_nnc_8i_rowwise_x_ftq_window(tensor->info.reserved))
+		return 0;
+	if (!ccv_nnc_8i_rowwise_x_inline_codebook_entries(tensor->info.reserved))
 		return tensor;
 	if (CCV_IS_TENSOR_VIEW(tensor) || !ccv_nnc_8i_rowwise_x_codebook_is_valid(tensor->info.reserved))
 		return 0;

@@ -1454,6 +1454,380 @@ TEST_CASE("FTQ CPU decode of random blobs matches the reference for K % 16")
 		}
 }
 
+// The pair of an L-bit FTQ window (CCV_NNC_QX_8I_ROWWISE_FTQ_WINDOW_SHIFT): x = state + (state >> 16), h = x *
+// 0x83DCD12D; table: the built-in pairs (fold 0) or a quadrant-folded base table (fold 1).
+static void _test_ftq_wide_ref_tile(const uint8_t* const blob, const uint64_t start, const int T, const int L, const int8_t* const table, const int fold, int8_t* const q8)
+{
+	int j, b;
+	for (j = 0; j < 128; j++)
+	{
+		const int end = (j + 1) * T / 128;
+		uint32_t state = 0;
+		for (b = 0; b < L; b++)
+			state |= (uint32_t)_test_tmcq_bit(blob, start + (uint64_t)((end + T - L + b) % T)) << b;
+		const uint32_t h = (state + (state >> 16)) * 0x83DCD12Du;
+		if (fold)
+		{
+			const uint32_t k = (h >> 16) & 511;
+			q8[2 * j] = (h & 0x8000u) ? -table[2 * k] : table[2 * k];
+			q8[2 * j + 1] = (h & 0x80000000u) ? -table[2 * k + 1] : table[2 * k + 1];
+		} else {
+			const uint32_t k = h >> 23;
+			q8[2 * j] = table[2 * k];
+			q8[2 * j + 1] = table[2 * k + 1];
+		}
+	}
+}
+
+TEST_CASE("FTQ CPU decode of random blobs with an 18, 20 and 22-bit window matches the reference")
+{
+	static const int rates[] = { 16, 32, 48 };
+	static const int shapes[][2] = { { 32, 1152 }, { 16, 272 } };
+	int8_t base[1024];
+	int i;
+	for (i = 0; i < 1024; i++)
+		base[i] = (int8_t)((i * 37 + 11) % 120);
+	const int folded = ccv_nnc_codebook_register_with_flags(base, 512, CCV_NNC_CODEBOOK_FOLD);
+	REQUIRE(folded > 0, "the folded table registers");
+	uint32_t folded_crc = 0;
+	ccv_nnc_codebook_get(folded, 0, &folded_crc);
+	uint32_t seed = 0x2b0fu;
+	int w, f, s, r;
+	for (w = 1; w <= 3; w++)
+		for (f = 0; f < 2; f++)
+			for (s = 0; s < 2; s++)
+				for (r = 0; r < 3; r++)
+				{
+					const int rows = shapes[s][0], cols = shapes[s][1], n = rates[r], L = 16 + 2 * w;
+					const int narrow = ccv_nnc_codebook_with_slot(CCV_NNC_QX_8I_ROWWISE_FTQ_N16 + (n - 16) / 2, f ? folded : 0);
+					const int format = narrow | (w << CCV_NNC_QX_8I_ROWWISE_FTQ_WINDOW_SHIFT);
+					REQUIRE_EQ(ccv_nnc_8i_rowwise_x_ftq_window(format), w, "the format names window %d", w);
+					const size_t size = ccv_nnc_8i_rowwise_x_data_size(format, CCV_16F, (size_t)rows * cols, cols);
+					const ccv_nnc_8i_rowwise_x_ftq_schedule_t schedule = ccv_nnc_8i_rowwise_x_ftq_schedule(format, rows, cols);
+					uint8_t* const blob = ccmalloc(size);
+					memset(blob, 0, size);
+					memcpy(blob, "CCVFTQSR", 8);
+					const uint32_t field = (f ? 1u | (1u << 16) : 0u) | (9u << 8) | ((uint32_t)w << 30);
+					uint32_t header[6] = { (uint32_t)rows, (uint32_t)cols, schedule.high_bits, 0, field, f ? folded_crc : 0 };
+					memcpy(blob + 8, header, sizeof(header));
+					for (i = 0; i < (int)(schedule.code_bits / 8); i++)
+					{
+						seed ^= seed << 13, seed ^= seed >> 17, seed ^= seed << 5;
+						blob[32 + i] = (uint8_t)(seed >> 24);
+					}
+					float* const scales = ccmalloc(sizeof(float) * rows);
+					for (i = 0; i < rows; i++)
+						scales[i] = 0.001f * (1 + (i * 5) % 11);
+					ccv_float_to_half_precision(scales, (uint16_t*)(blob + schedule.scale_offset), rows);
+					// The reference scales by the stored FP16 scales.
+					ccv_half_precision_to_float((const uint16_t*)(blob + schedule.scale_offset), scales, rows);
+					uint16_t* const expected = ccmalloc(sizeof(uint16_t) * rows * cols);
+					uint16_t* const actual = ccmalloc(sizeof(uint16_t) * rows * cols);
+					int tr, tc, t;
+					for (tr = 0; tr < rows / 16; tr++)
+						for (tc = 0; tc < cols / 16; tc++)
+						{
+							int8_t q8[256];
+							_test_ftq_wide_ref_tile(blob, 256 + ((uint64_t)tr * (cols / 16) + tc) * 16 * n, 16 * n, L, f ? base : ccv_nnc_trellis_builtin_table, f, q8);
+							for (t = 0; t < 256; t++)
+							{
+								const int row = tr * 16 + t / 16;
+								const float v = (float)q8[t] * scales[row];
+								ccv_float_to_half_precision(&v, expected + (size_t)row * cols + tc * 16 + t % 16, 1);
+							}
+						}
+					ccfree(scales);
+					REQUIRE_EQ(ccv_nnc_dequantize_8i_rowwise_x(blob, CCV_16F, CCV_TENSOR_CPU_MEMORY, size, cols, format, actual, (size_t)rows * cols), 0, "L%d %s %d x %d n%d decodes", L, f ? "folded" : "built-in", rows, cols, n);
+					REQUIRE_ARRAY_EQ(uint16_t, expected, actual, rows * cols, "L%d %s %d x %d n%d decode matches the reference", L, f ? "folded" : "built-in", rows, cols, n);
+					REQUIRE_EQ(ccv_nnc_8i_rowwise_x_ftq_load_check(blob, size, format, rows, cols), 0, "L%d n%d passes the load check", L, n);
+					// The header and the format must name the same window: a 16-bit reader rejects the blob, and so
+					// does any other window.
+					REQUIRE_EQ(ccv_nnc_dequantize_8i_rowwise_x(blob, CCV_16F, CCV_TENSOR_CPU_MEMORY, size, cols, narrow, actual, (size_t)rows * cols), -1, "L%d blob with a 16-bit format", L);
+					REQUIRE_EQ(ccv_nnc_8i_rowwise_x_ftq_load_check(blob, size, narrow, rows, cols), -1, "L%d blob fails the 16-bit load check", L);
+					const int other = narrow | ((w % 3 + 1) << CCV_NNC_QX_8I_ROWWISE_FTQ_WINDOW_SHIFT);
+					REQUIRE_EQ(ccv_nnc_dequantize_8i_rowwise_x(blob, CCV_16F, CCV_TENSOR_CPU_MEMORY, size, cols, other, actual, (size_t)rows * cols), -1, "L%d blob with another window", L);
+					header[4] = field & ~(3u << 30);
+					memcpy(blob + 8, header, sizeof(header));
+					REQUIRE_EQ(ccv_nnc_dequantize_8i_rowwise_x(blob, CCV_16F, CCV_TENSOR_CPU_MEMORY, size, cols, format, actual, (size_t)rows * cols), -1, "a 16-bit header with an L%d format", L);
+					header[4] = field | (1u << 18);
+					memcpy(blob + 8, header, sizeof(header));
+					REQUIRE_EQ(ccv_nnc_dequantize_8i_rowwise_x(blob, CCV_16F, CCV_TENSOR_CPU_MEMORY, size, cols, format, actual, (size_t)rows * cols), -1, "table bits 18 - 29 stay zero");
+					ccfree(actual);
+					ccfree(expected);
+					ccfree(blob);
+				}
+	// Only FTQ and FTQ-VR take a window; the CPU encoder does not search one.
+	float values[256 * 16];
+	for (i = 0; i < 256 * 16; i++)
+		values[i] = 0.01f * ((i * 13) % 17 - 8);
+	uint16_t half[256 * 16];
+	ccv_float_to_half_precision(values, half, 256 * 16);
+	const int wide = CCV_NNC_QX_8I_ROWWISE_FTQ_N32 | (2 << CCV_NNC_QX_8I_ROWWISE_FTQ_WINDOW_SHIFT);
+	const size_t packed_size = ccv_nnc_8i_rowwise_x_data_size(CCV_NNC_QX_8I_ROWWISE_FTQ_N32, CCV_16F, 256 * 16, 256);
+	uint8_t* const packed = ccmalloc(packed_size);
+	REQUIRE_EQ(ccv_nnc_quantize_8i_rowwise_x(half, CCV_16F, CCV_TENSOR_CPU_MEMORY, 256 * 16, 256, CCV_NNC_QX_8I_ROWWISE_FTQ_N32, 0, 0, 0, 0, packed, packed_size), packed_size, "the CPU encoder fits a 16-bit window");
+	REQUIRE_EQ(ccv_nnc_quantize_8i_rowwise_x(half, CCV_16F, CCV_TENSOR_CPU_MEMORY, 256 * 16, 256, wide, 0, 0, 0, 0, packed, packed_size), 0, "the CPU encoder does not fit a 20-bit window");
+	ccfree(packed);
+	REQUIRE_EQ(ccv_nnc_8i_rowwise_x_codebook_is_valid(CCV_NNC_QX_8I_ROWWISE_TMCQ_N32 | (1 << CCV_NNC_QX_8I_ROWWISE_FTQ_WINDOW_SHIFT)), 0, "TMCQ has no window");
+	REQUIRE_EQ(ccv_nnc_8i_rowwise_x_codebook_is_valid(CCV_NNC_QX_8I_ROWWISE_FTQ_VR_N32 | (3 << CCV_NNC_QX_8I_ROWWISE_FTQ_WINDOW_SHIFT)), 1, "FTQ-VR may take a window");
+	const size_t q4_size = ccv_nnc_8i_rowwise_x_data_size(CCV_NNC_QX_8I_ROWWISE_Q4_K, CCV_16F, 256 * 16, 256);
+	uint8_t* const q4 = ccmalloc(q4_size);
+	REQUIRE_EQ(ccv_nnc_quantize_8i_rowwise_x(half, CCV_16F, CCV_TENSOR_CPU_MEMORY, 256 * 16, 256, CCV_NNC_QX_8I_ROWWISE_Q4_K | (1 << CCV_NNC_QX_8I_ROWWISE_FTQ_WINDOW_SHIFT), 0, 0, 0, 0, q4, q4_size), 0, "a window on another codec does not quantize");
+	ccfree(q4);
+	const int vr_wide = CCV_NNC_QX_8I_ROWWISE_FTQ_VR_N24 | (1 << CCV_NNC_QX_8I_ROWWISE_FTQ_WINDOW_SHIFT);
+	const int vr_rates[] = { 16, 32 };
+	const size_t vr_size = ccv_nnc_8i_rowwise_x_data_size(vr_wide, CCV_16F, 256 * 16, 256);
+	uint8_t* const vr = ccmalloc(vr_size);
+	REQUIRE_EQ(ccv_nnc_quantize_8i_rowwise_x_ftq_vr(half, CCV_16F, CCV_TENSOR_CPU_MEMORY, 256 * 16, 256, vr_wide, vr_rates, vr, vr_size), 0, "the CPU encoder does not fit a wide FTQ-VR window");
+	ccfree(vr);
+}
+
+// A random wide-window blob of format (static-rate n or variable-rate with tile row rates row_rates), built-in table,
+// and its reference decode. The blob is ccmalloc'ed, *size its size.
+static uint8_t* _test_ftq_wide_blob(const int format, const int rows, const int cols, const int* const row_rates, uint32_t* const seed, size_t* const size, uint16_t* const expected)
+{
+	const int vr = ccv_nnc_8i_rowwise_x_is_ftq_vr(format);
+	const int w = ccv_nnc_8i_rowwise_x_ftq_window(format), L = 16 + 2 * w;
+	const int R = rows / 16, C = cols / 16;
+	*size = ccv_nnc_8i_rowwise_x_data_size(format, CCV_16F, (size_t)rows * cols, cols);
+	uint8_t* const blob = ccmalloc(*size);
+	memset(blob, 0, *size);
+	const int nm = vr ? ccv_nnc_8i_rowwise_x_ftq_vr_rate(format) : ccv_nnc_8i_rowwise_x_ftq_rate(format);
+	uint32_t level_mask = 0;
+	int i, r;
+	for (r = 0; r < R; r++)
+		level_mask |= 1u << ((row_rates[r] - 8) / 2);
+	memcpy(blob, vr ? "CCVFTQVR" : "CCVFTQSR", 8);
+	const uint32_t header[6] = { (uint32_t)rows, (uint32_t)cols, 16u * nm, vr ? level_mask : 0, (9u << 8) | ((uint32_t)w << 30), 0 };
+	memcpy(blob + 8, header, sizeof(header));
+	// Code start (bytes) and each tile row's start (bits).
+	const size_t code = vr ? 32 + 4 * (size_t)(R + 1) : 32;
+	uint64_t* const row_bits = ccmalloc(sizeof(uint64_t) * R);
+	uint32_t off = 0;
+	for (r = 0; r < R; r++)
+	{
+		if (vr)
+			memcpy(blob + 32 + 4 * r, &off, 4);
+		row_bits[r] = (uint64_t)code * 8 + (uint64_t)off * 32;
+		off += (uint32_t)(C * row_rates[r] / 2);
+	}
+	if (vr)
+		memcpy(blob + 32 + 4 * R, &off, 4);
+	for (i = 0; i < (int)off * 4; i++)
+	{
+		*seed ^= *seed << 13, *seed ^= *seed >> 17, *seed ^= *seed << 5;
+		blob[code + i] = (uint8_t)(*seed >> 24);
+	}
+	const size_t scale_offset = *size - 2 * (size_t)rows;
+	float* const scales = ccmalloc(sizeof(float) * rows);
+	for (i = 0; i < rows; i++)
+		scales[i] = 0.001f * (1 + (i * 7) % 13);
+	ccv_float_to_half_precision(scales, (uint16_t*)(blob + scale_offset), rows);
+	ccv_half_precision_to_float((const uint16_t*)(blob + scale_offset), scales, rows);
+	int tc, t;
+	for (r = 0; r < R; r++)
+		for (tc = 0; tc < C; tc++)
+		{
+			int8_t q8[256];
+			_test_ftq_wide_ref_tile(blob, row_bits[r] + (uint64_t)tc * 16 * row_rates[r], 16 * row_rates[r], L, ccv_nnc_trellis_builtin_table, 0, q8);
+			for (t = 0; t < 256; t++)
+			{
+				const int row = r * 16 + t / 16;
+				const float v = (float)q8[t] * scales[row];
+				ccv_float_to_half_precision(&v, expected + (size_t)row * cols + tc * 16 + t % 16, 1);
+			}
+		}
+	ccfree(scales);
+	ccfree(row_bits);
+	return blob;
+}
+
+TEST_CASE("FTQ-VR CPU decode of random blobs with an 18, 20 and 22-bit window matches the reference")
+{
+	enum { rows = 64, cols = 272 };
+	// Tile row rates of mean 24 (8 wraps the first windows of rows 0 and 1, see CCV_NNC_QX_8I_ROWWISE_FTQ_VR_N16).
+	static const int row_rates[] = { 8, 48, 16, 24 };
+	uint32_t seed = 0x51edu;
+	uint16_t* const expected = ccmalloc(sizeof(uint16_t) * rows * cols);
+	uint16_t* const actual = ccmalloc(sizeof(uint16_t) * rows * cols);
+	int w;
+	for (w = 1; w <= 3; w++)
+	{
+		const int narrow = CCV_NNC_QX_8I_ROWWISE_FTQ_VR_N24;
+		const int format = narrow | (w << CCV_NNC_QX_8I_ROWWISE_FTQ_WINDOW_SHIFT);
+		size_t size;
+		uint8_t* const blob = _test_ftq_wide_blob(format, rows, cols, row_rates, &seed, &size, expected);
+		uint32_t mask = 0;
+		REQUIRE_EQ(ccv_nnc_8i_rowwise_x_ftq_vr_check(blob, size, format, rows, cols, &mask), 0, "L%d FTQ-VR blob passes the check", 16 + 2 * w);
+		REQUIRE_EQ(ccv_nnc_dequantize_8i_rowwise_x(blob, CCV_16F, CCV_TENSOR_CPU_MEMORY, size, cols, format, actual, (size_t)rows * cols), 0, "L%d FTQ-VR decodes", 16 + 2 * w);
+		REQUIRE_ARRAY_EQ(uint16_t, expected, actual, rows * cols, "L%d FTQ-VR decode matches the reference", 16 + 2 * w);
+		REQUIRE_EQ(ccv_nnc_8i_rowwise_x_ftq_vr_check(blob, size, narrow, rows, cols, 0), -1, "L%d FTQ-VR blob fails the 16-bit check", 16 + 2 * w);
+		REQUIRE_EQ(ccv_nnc_dequantize_8i_rowwise_x(blob, CCV_16F, CCV_TENSOR_CPU_MEMORY, size, cols, narrow, actual, (size_t)rows * cols), -1, "L%d FTQ-VR blob with a 16-bit format", 16 + 2 * w);
+		ccfree(blob);
+	}
+	ccfree(actual);
+	ccfree(expected);
+}
+
+static int _test_xor_encode(const void* const data, const size_t data_size, const int datatype, const int* const dimensions, const int dimension_count, void* const context, void* const encoded, size_t* const encoded_size, ccv_nnc_tensor_param_t* const params, unsigned int* const identifier)
+{
+	size_t i;
+	for (i = 0; i < data_size; i++)
+		((uint8_t*)encoded)[i] = ((const uint8_t*)data)[i] ^ 0x5a;
+	*encoded_size = data_size;
+	*identifier = 7;
+	return 1;
+}
+
+static int _test_xor_decode(const void* const data, const size_t data_size, const int datatype, const int* const dimensions, const int dimension_count, const unsigned int identifier, void* const context, const ccv_nnc_tensor_param_t tensor_params, ccv_nnc_tensor_t** const tensor_out, void* const decoded, size_t* const decoded_size)
+{
+	if (identifier != 7)
+		return 0;
+	if (!*tensor_out)
+		*tensor_out = ccv_nnc_tensor_new(0, tensor_params, 0);
+	uint8_t* const output = decoded ? (uint8_t*)decoded : tensor_out[0]->data.u8;
+	size_t i;
+	const size_t size = ccv_min(*decoded_size, data_size);
+	for (i = 0; i < size; i++)
+		output[i] = ((const uint8_t*)data)[i] ^ 0x5a;
+	*decoded_size = size;
+	return 1;
+}
+
+TEST_CASE("wide-window FTQ is stored raw only, and a split keeps an FTQ header in the first part")
+{
+	enum { rows = 32, cols = 256 };
+	static const int rates[] = { 32, 32 };
+	uint32_t seed = 0x3c5du;
+	uint16_t* const expected = ccmalloc(sizeof(uint16_t) * rows * cols);
+	sqlite3* db = 0;
+	REQUIRE_EQ(sqlite3_open(":memory:", &db), SQLITE_OK, "in-memory database opens");
+	const ccv_nnc_tensor_io_option_t options = { .decode = _test_xor_decode, .encode = _test_xor_encode };
+	// An identifier codec: a 16-bit FTQ weight round-trips, a wide one is not written (a reader has no header to check).
+	int w;
+	for (w = 0; w < 2; w++)
+	{
+		const int format = CCV_NNC_QX_8I_ROWWISE_FTQ_N32 | (w << CCV_NNC_QX_8I_ROWWISE_FTQ_WINDOW_SHIFT);
+		size_t size;
+		uint8_t* const blob = _test_ftq_wide_blob(format, rows, cols, rates, &seed, &size, expected);
+		ccv_nnc_tensor_t* const packed = ccv_nnc_tensor_new(0, ccv_nnc_tensor_8i_rowwise_x(CPU_TENSOR_NHWC(16F, rows, cols), format), 0);
+		memcpy(packed->data.u8, blob, size);
+		if (w) {
+			REQUIRE_EQ(ccv_nnc_tensor_write(packed, db, "encoded", &options), CCV_IO_ERROR, "a wide window is not written through an identifier codec");
+		} else {
+			REQUIRE_EQ(ccv_nnc_tensor_write(packed, db, "encoded", &options), CCV_IO_FINAL, "a 16-bit window writes through an identifier codec");
+			ccv_nnc_tensor_t* restored = 0;
+			REQUIRE_EQ(ccv_nnc_tensor_read(db, "encoded", &options, 0, 0, &restored), CCV_IO_FINAL, "and reads back");
+			REQUIRE_EQ(restored->info.reserved, format, "with its format");
+			REQUIRE_EQ(memcmp(restored->data.u8, blob, size), 0, "and its payload");
+			ccv_nnc_tensor_free(restored);
+		}
+		ccv_nnc_tensor_free(packed);
+		ccfree(blob);
+	}
+	// Split tensors: the header must be in the first part. With a 1000-byte limit the parts are 500 bytes and a wide
+	// SR and VR blob round-trip; with a 60-byte limit the first part (30 bytes) cannot hold the header.
+	sqlite3_limit(db, SQLITE_LIMIT_LENGTH, 1000);
+	int v;
+	for (v = 0; v < 2; v++)
+	{
+		static const int vr_rates[] = { 16, 32 };
+		const int format = (v ? CCV_NNC_QX_8I_ROWWISE_FTQ_VR_N24 : CCV_NNC_QX_8I_ROWWISE_FTQ_N32) | (3 << CCV_NNC_QX_8I_ROWWISE_FTQ_WINDOW_SHIFT);
+		size_t size;
+		uint8_t* const blob = _test_ftq_wide_blob(format, rows, cols, v ? vr_rates : rates, &seed, &size, expected);
+		ccv_nnc_tensor_t* const packed = ccv_nnc_tensor_new(0, ccv_nnc_tensor_8i_rowwise_x(CPU_TENSOR_NHWC(16F, rows, cols), format), 0);
+		memcpy(packed->data.u8, blob, size);
+		REQUIRE(size > 1000, "the blob is split");
+		REQUIRE_EQ(ccv_nnc_tensor_write(packed, db, "split", 0), CCV_IO_FINAL, "a split wide blob writes");
+		ccv_nnc_tensor_t* restored = 0;
+		REQUIRE_EQ(ccv_nnc_tensor_read(db, "split", 0, 0, 0, &restored), CCV_IO_FINAL, "and reads back");
+		REQUIRE_EQ(restored->info.reserved, format, "with its window");
+		REQUIRE_EQ(memcmp(restored->data.u8, blob, size), 0, "and its payload");
+		ccv_nnc_tensor_free(restored);
+		ccv_nnc_tensor_free(packed);
+		ccfree(blob);
+	}
+	sqlite3_limit(db, SQLITE_LIMIT_LENGTH, 60);
+	{
+		size_t size;
+		uint8_t* const blob = _test_ftq_wide_blob(CCV_NNC_QX_8I_ROWWISE_FTQ_N32, rows, cols, rates, &seed, &size, expected);
+		ccv_nnc_tensor_t* const packed = ccv_nnc_tensor_new(0, ccv_nnc_tensor_8i_rowwise_x(CPU_TENSOR_NHWC(16F, rows, cols), CCV_NNC_QX_8I_ROWWISE_FTQ_N32), 0);
+		memcpy(packed->data.u8, blob, size);
+		REQUIRE_EQ(ccv_nnc_tensor_write(packed, db, "tiny", 0), CCV_IO_ERROR, "a first part shorter than the FTQ header is not written");
+		ccv_nnc_tensor_free(packed);
+		ccfree(blob);
+	}
+	sqlite3_close(db);
+	ccfree(expected);
+}
+
+TEST_CASE("wide-window FTQ and FTQ-VR survive tensor persistence and a read names the stored window")
+{
+	enum { rows = 32, cols = 256 };
+	static const int row_rates[] = { 16, 32 };
+	uint32_t seed = 0x7a31u;
+	uint16_t* const expected = ccmalloc(sizeof(uint16_t) * rows * cols);
+	sqlite3* db = 0;
+	REQUIRE_EQ(sqlite3_open(":memory:", &db), SQLITE_OK, "in-memory database opens");
+	int v;
+	for (v = 0; v < 2; v++)
+	{
+		const int narrow = v ? CCV_NNC_QX_8I_ROWWISE_FTQ_VR_N24 : CCV_NNC_QX_8I_ROWWISE_FTQ_N32;
+		const int format = narrow | (2 << CCV_NNC_QX_8I_ROWWISE_FTQ_WINDOW_SHIFT);
+		const int fixed_rates[] = { 32, 32 };
+		size_t size;
+		uint8_t* const blob = _test_ftq_wide_blob(format, rows, cols, v ? row_rates : fixed_rates, &seed, &size, expected);
+		const ccv_nnc_tensor_param_t params = ccv_nnc_tensor_8i_rowwise_x(CPU_TENSOR_NHWC(16F, rows, cols), format);
+		const ccv_nnc_tensor_param_t narrow_params = ccv_nnc_tensor_8i_rowwise_x(CPU_TENSOR_NHWC(16F, rows, cols), narrow);
+		ccv_nnc_tensor_t* const packed = ccv_nnc_tensor_new(0, params, 0);
+		REQUIRE_EQ(ccv_nnc_tensor_data_size_without_padding(packed->info), size, "tensor size matches the blob");
+		memcpy(packed->data.u8, blob, size);
+		const char* const name = v ? "ftq_vr_wide" : "ftq_wide";
+		REQUIRE_EQ(ccv_nnc_tensor_write(packed, db, name, 0), CCV_IO_FINAL, "%s writes", name);
+		ccv_nnc_tensor_t* restored = 0;
+		REQUIRE_EQ(ccv_nnc_tensor_read(db, name, 0, 0, 0, &restored), CCV_IO_FINAL, "%s reads", name);
+		REQUIRE_EQ(restored->info.reserved, format, "%s keeps its window", name);
+		REQUIRE_EQ(memcmp(restored->data.u8, blob, size), 0, "%s payload persists", name);
+		ccv_nnc_tensor_free(restored);
+		restored = 0;
+		REQUIRE_EQ(ccv_nnc_tensor_read(db, name, 0, CCV_NNC_TENSOR_READ_METADATA_ONLY, 0, &restored), CCV_IO_FINAL, "%s metadata reads", name);
+		REQUIRE_EQ(restored->info.reserved, format, "%s metadata keeps its window", name);
+		ccv_nnc_tensor_free(restored);
+		// Params or a tensor naming another window fail the read.
+		restored = 0;
+		REQUIRE_EQ(ccv_nnc_tensor_read(db, name, 0, 0, &narrow_params, &restored), CCV_IO_ERROR, "%s into 16-bit params", name);
+		REQUIRE(restored == 0, "no tensor is left");
+		restored = ccv_nnc_tensor_new(0, narrow_params, 0);
+		ccv_nnc_tensor_t* const narrow_tensor = restored;
+		REQUIRE_EQ(ccv_nnc_tensor_read(db, name, 0, 0, 0, &restored), CCV_IO_ERROR, "%s into a 16-bit tensor", name);
+		ccv_nnc_tensor_free(narrow_tensor);
+		restored = 0;
+		REQUIRE_EQ(ccv_nnc_tensor_read(db, name, 0, 0, &params, &restored), CCV_IO_FINAL, "%s into params of its window", name);
+		ccv_nnc_tensor_free(restored);
+		// A header naming another window than the stored format fails the read, metadata only too.
+		uint32_t field;
+		memcpy(&field, blob + 24, 4);
+		const uint32_t narrow_field = field & ~(3u << 30);
+		memcpy(blob + 24, &narrow_field, 4);
+		REQUIRE_EQ(_test_set_stored_data(db, name, blob, size), 0, "a 16-bit header is stored");
+		restored = 0;
+		REQUIRE_EQ(ccv_nnc_tensor_read(db, name, 0, CCV_NNC_TENSOR_READ_METADATA_ONLY, 0, &restored), CCV_IO_ERROR, "%s with a 16-bit header, metadata", name);
+		REQUIRE_EQ(ccv_nnc_tensor_read(db, name, 0, 0, 0, &restored), CCV_IO_ERROR, "%s with a 16-bit header", name);
+		// The writer checks the header against the format both ways.
+		memcpy(packed->data.u8, blob, size);
+		REQUIRE_EQ(ccv_nnc_tensor_write(packed, db, name, 0), CCV_IO_ERROR, "a 16-bit header does not write as %s", name);
+		memcpy(blob + 24, &field, 4);
+		ccv_nnc_tensor_t* const narrow_packed = ccv_nnc_tensor_new(0, narrow_params, 0);
+		memcpy(narrow_packed->data.u8, blob, size);
+		REQUIRE_EQ(ccv_nnc_tensor_write(narrow_packed, db, name, 0), CCV_IO_ERROR, "a wide header does not write with a 16-bit format");
+		ccv_nnc_tensor_free(narrow_packed);
+		ccv_nnc_tensor_free(packed);
+		ccfree(blob);
+	}
+	sqlite3_close(db);
+	ccfree(expected);
+}
+
 TEST_CASE("FTQ and FTQ_VR quantize K = 1152 and K = 272 into blobs that decode as the reference")
 {
 	static const int shapes[][2] = { { 64, 1152 }, { 48, 272 } };
