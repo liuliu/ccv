@@ -136,6 +136,12 @@ bool is_tmcq_format(const uint32_t format)
   return format >= CCV_NNC_QX_8I_ROWWISE_TMCQ_N16 && format <= CCV_NNC_QX_8I_ROWWISE_TMCQ_N32;
 }
 
+// A TMCQ weight starts with its 512-pair table (any 1024 bytes are a valid one), then the tiles and scales.
+size_t rowwise_x_codebook_size(const uint32_t format)
+{
+  return is_tmcq_format(format) ? 1024 : 0;
+}
+
 uint32_t ceil_div(const uint32_t x, const uint32_t y)
 {
   return (x + y - 1) / y;
@@ -345,8 +351,9 @@ std::vector<uint8_t> make_packed_rowwise_x(
   const size_t payload_bytes = (payload_bits + 7) / 8;
   const size_t scale_offset = align_up(payload_bytes, 128);
   const size_t rowwise_scale_offset = align_up((size_t)rows * cols, 128);
-  std::vector<uint8_t> packed(scale_offset + (size_t)rows * sizeof(T), 0);
-  for (size_t i = 0; i < scale_offset; ++i)
+  const size_t codebook_size = rowwise_x_codebook_size(format);
+  std::vector<uint8_t> packed(codebook_size + scale_offset + (size_t)rows * sizeof(T), 0);
+  for (size_t i = 0; i < codebook_size + scale_offset; ++i)
     packed[i] = (uint8_t)((i * 131 + format * 17 + 23) & 0xff);
   if (format == CCV_NNC_QX_8I_ROWWISE_Q5_K || format == CCV_NNC_QX_8I_ROWWISE_Q4_K || format == CCV_NNC_QX_8I_ROWWISE_Q3_K) {
     const uint32_t groups_per_row = ceil_div(cols, group_size);
@@ -369,7 +376,7 @@ std::vector<uint8_t> make_packed_rowwise_x(
         packed[(metadata_bit + b) >> 3] &= (uint8_t)~(1u << ((metadata_bit + b) & 7));
     }
   }
-  std::memcpy(packed.data() + scale_offset, rowwise.data() + rowwise_scale_offset, (size_t)rows * sizeof(T));
+  std::memcpy(packed.data() + codebook_size + scale_offset, rowwise.data() + rowwise_scale_offset, (size_t)rows * sizeof(T));
   return packed;
 }
 
@@ -581,9 +588,13 @@ void encode_dequant_x(
     MTL::Buffer* const rowwise)
 {
   encoder->setComputePipelineState(pipelines.dequant_x.get());
-  encoder->setBuffer(quantized, 0, 0);
+  // A TMCQ weight as stored: its pair table at buffer(5), then the tiles.
+  const size_t codebook_size = rowwise_x_codebook_size(pipelines.packed_format);
+  if (codebook_size)
+    encoder->setBuffer(quantized, 0, 5);
+  encoder->setBuffer(quantized, codebook_size, 0);
   encoder->setBuffer(rowwise, 0, 1);
-  encoder->setBuffer(quantized, rowwise_x_scale_offset(pipelines.packed_format, shape), 2);
+  encoder->setBuffer(quantized, codebook_size + rowwise_x_scale_offset(pipelines.packed_format, shape), 2);
   encoder->setBuffer(rowwise, rowwise_scale_offset(shape), 3);
   encoder->dispatchThreadgroups(
       pipelines.dequant_x_kernel->gridSize(pipelines.dequant_x_dispatch_items),
@@ -600,10 +611,14 @@ void encode_scaled_x_gemv(
     MTL::Buffer* const bias)
 {
   encoder->setComputePipelineState(pipelines.scaled_x.get());
-  encoder->setBuffer(quantized, 0, 0);
+  // A TMCQ weight as stored: its pair table at buffer(5), then the tiles.
+  const size_t codebook_size = rowwise_x_codebook_size(pipelines.packed_format);
+  if (codebook_size)
+    encoder->setBuffer(quantized, 0, 5);
+  encoder->setBuffer(quantized, codebook_size, 0);
   encoder->setBuffer(vector, 0, 1);
   encoder->setBuffer(output, 0, 2);
-  encoder->setBuffer(quantized, rowwise_x_scale_offset(pipelines.packed_format, shape), 3);
+  encoder->setBuffer(quantized, codebook_size + rowwise_x_scale_offset(pipelines.packed_format, shape), 3);
   if (bias)
     encoder->setBuffer(bias, 0, 4);
   encoder->dispatchThreadgroups(
