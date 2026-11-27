@@ -7,7 +7,7 @@ ReduceLogSumExpKernel::ReduceLogSumExpKernel(ReduceLogSumExpKernelDescriptor des
   source = createSource();
   auto source_string = NS::String::string(source.c_str(), NS::UTF8StringEncoding);
   NS::Error* error = nil;
-  library = NS::TransferPtr(device->newLibrary(source_string, nil, &error));
+  library = ccv::nnc::mfa::compile_source(device, source_string, &error);
   CCV_NNC_MFA_CHECK_ERROR(error);
 }
 

@@ -8,7 +8,7 @@ LogKernel::LogKernel(LogKernelDescriptor descriptor, MTL::Device* const device) 
   source = createSource();
   threadgroupSize = MTL::Size(256, 1, 1);
   NS::Error* error = nil;
-  library = NS::TransferPtr(device->newLibrary(NS::String::string(source.c_str(), NS::UTF8StringEncoding), nil, &error));
+  library = ccv::nnc::mfa::compile_source(device, NS::String::string(source.c_str(), NS::UTF8StringEncoding), &error);
   CCV_NNC_MFA_CHECK_ERROR(error);
 }
 
