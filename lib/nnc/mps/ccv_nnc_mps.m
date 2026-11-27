@@ -686,15 +686,6 @@ id<MTLBuffer> mpgetbuffer(const ccv_nnc_tensor_t* const tensor)
 	return (id<MTLBuffer>)obj;
 }
 
-void ccv_nnc_mps_blit_copy(id<MTLBlitCommandEncoder> encoder, id<MTLBuffer> source, const size_t source_offset, id<MTLBuffer> destination, const size_t destination_offset, const size_t size)
-{
-	// A single copyFromBuffer: stops at 4 GiB on Apple silicon (the command still completes): copy 1 GiB at a time.
-	const size_t chunk = (size_t)1 << 30;
-	size_t done;
-	for (done = 0; done < size; done += chunk)
-		[encoder copyFromBuffer:source sourceOffset:source_offset + done toBuffer:destination destinationOffset:destination_offset + done size:ccv_min(chunk, size - done)];
-}
-
 off_t mpgetoffset(const ccv_nnc_tensor_t* const tensor)
 {
 	return tensor->dataof;
@@ -839,7 +830,7 @@ void mpmemcpy(void* dest, const off_t dest_off, const int dest_type, const void*
 			id<MTLBuffer> buffer_a = [ccv_nnc_default_device() newBufferWithBytesNoCopy:aligned_ptr length:aligned_size options:MTLResourceCPUCacheModeDefaultCache | MTLResourceStorageModeShared deallocator:nil];
 			id<MTLCommandBuffer> command_buffer = [MPSCommandBuffer commandBufferFromCommandQueue:_ccv_nnc_default_queue()];
 			id<MTLBlitCommandEncoder> encoder = [command_buffer blitCommandEncoder];
-			ccv_nnc_mps_blit_copy(encoder, buffer_a, offset_a, buffer_b, offset_b, n);
+			[encoder copyFromBuffer:buffer_a sourceOffset:offset_a toBuffer:buffer_b destinationOffset:offset_b size:n];
 			[encoder endEncoding];
 			[command_buffer commit];
 			[command_buffer waitUntilCompleted];
@@ -855,7 +846,7 @@ void mpmemcpy(void* dest, const off_t dest_off, const int dest_type, const void*
 			id<MTLBuffer> buffer_b = [ccv_nnc_default_device() newBufferWithBytesNoCopy:aligned_ptr length:aligned_size options:MTLResourceCPUCacheModeDefaultCache | MTLResourceStorageModeShared deallocator:nil];
 			id<MTLCommandBuffer> command_buffer = [MPSCommandBuffer commandBufferFromCommandQueue:_ccv_nnc_default_queue()];
 			id<MTLBlitCommandEncoder> encoder = [command_buffer blitCommandEncoder];
-			ccv_nnc_mps_blit_copy(encoder, buffer_a, offset_a, buffer_b, offset_b, n);
+			[encoder copyFromBuffer:buffer_a sourceOffset:offset_a toBuffer:buffer_b destinationOffset:offset_b size:n];
 			[encoder endEncoding];
 			[command_buffer commit];
 			[command_buffer waitUntilCompleted];

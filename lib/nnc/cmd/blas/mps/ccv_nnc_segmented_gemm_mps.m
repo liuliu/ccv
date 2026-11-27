@@ -428,10 +428,7 @@ static int _ccv_nnc_segmented_gemm_routed_forw(const ccv_nnc_cmd_t cmd, const cc
 			}
 		}
 
-		// Only MFA computes a segmented GEMM here (no MPSGraph path): reject the rest, e.g. a quantized weight
-		// whose row scales are not in the activation type, rather than compute it wrong without asserts.
-		if (!is_mfa_supported)
-			return CCV_NNC_EXEC_INVALID;
+		assert(is_mfa_supported);
 		if (use_segmented_int8_gemv)
 		{
 			// The shared expert fuses when it is Q8_0 rows over one activation row of the same width

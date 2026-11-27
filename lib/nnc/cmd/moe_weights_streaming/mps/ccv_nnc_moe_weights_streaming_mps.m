@@ -938,9 +938,9 @@ static int _ccv_nnc_moe_weights_streaming_forw(const ccv_nnc_cmd_t cmd, const cc
 				{
 					if (inputs[i] == outputs[i])
 						continue;
-					ccv_nnc_mps_blit_copy(encoder, mpgetbuffer(inputs[i]), mpgetoffset(inputs[i]),
-						mpgetbuffer(outputs[i]), mpgetoffset(outputs[i]),
-						ccv_nnc_tensor_data_size_without_padding(inputs[i]->info));
+					[encoder copyFromBuffer:mpgetbuffer(inputs[i]) sourceOffset:mpgetoffset(inputs[i])
+						toBuffer:mpgetbuffer(outputs[i]) destinationOffset:mpgetoffset(outputs[i])
+						size:ccv_nnc_tensor_data_size_without_padding(inputs[i]->info)];
 				}
 				[encoder endEncoding];
 				ccv_nnc_stream_context_finish_mps_command_buffer(stream_context, command_buffer);

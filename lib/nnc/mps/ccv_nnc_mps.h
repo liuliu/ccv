@@ -102,9 +102,6 @@ typedef struct {
 
 off_t mpgetoffset(const ccv_nnc_tensor_t* const tensor);
 id<MTLBuffer> mpgetbuffer(const ccv_nnc_tensor_t* const tensor);
-/** Encode a buffer-to-buffer copy of size bytes. One blit copies at most 4 GiB (it stops there without an error),
- * so this encodes it in chunks. */
-void ccv_nnc_mps_blit_copy(id<MTLBlitCommandEncoder> encoder, id<MTLBuffer> source, const size_t source_offset, id<MTLBuffer> destination, const size_t destination_offset, const size_t size);
 /** The format of the data after the inline codebook of a TMCQ format (ccv_nnc_codebook.h) whose data starts at
  * offset in buffer: the table read from the buffer (shared storage) and registered, its slot in bits 16 - 23.
  * format unchanged if it has no inline codebook; -1 if the table is invalid or the buffer is not CPU-visible. */
