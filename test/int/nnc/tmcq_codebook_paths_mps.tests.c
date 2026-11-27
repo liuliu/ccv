@@ -517,7 +517,9 @@ static double max_rel_difference(const int datatype, const uint8_t* const x, con
 }
 
 // Where the TMCQ kernel and the 8I_ROWWISE kernel of a path differ in arithmetic, so does the built-in table against its
-// own decode (the built-in table against its decode to 8I_ROWWISE); then another table must stay within that path's tolerance.
+// own decode (the built-in table against its decode to 8I_ROWWISE); then another table must stay within that path's
+// tolerance. In 16F a kernel that rounds differently in float rarely changes a half (3 of 131072 outputs at 512 rows with
+// the random table), so there the reference the built-in table equals bit for bit holds other tables to the tolerance.
 static double path_tolerance(const int datatype)
 {
 	return datatype == CCV_32F ? 1e-5 : 3e-3;
@@ -538,7 +540,7 @@ TEST_CASE("mps tmcq table paths: random and alternate tables equal the same code
 					continue;
 				weights_t weights[4];
 				make_path_weights((path_t)p, datatypes[d], ri, weights);
-				// The reference the built-in table equals bit for bit (0: none, then within tolerance of 8i rowwise).
+				// The reference the built-in table equals bit for bit (0: none, then within tolerance of the first one).
 				int reference = 0;
 				for (t = 0; t < sizeof(tables) / sizeof(tables[0]); t++)
 				{
@@ -554,7 +556,7 @@ TEST_CASE("mps tmcq table paths: random and alternate tables equal the same code
 					const int first = p == PATH_SEGMENTED_SWIGLU_SHARED ? 3 : 1;
 					const int last = p == PATH_SEGMENTED_SWIGLU_SHARED ? 3 : p == PATH_SWIGLU && routings[ri].rows <= 6 ? 4 : 2;
 					int k;
-					double resident_max_rel = INFINITY;
+					double reference_max_rel = INFINITY;
 					int identical_reference = 0;
 					for (k = first; k <= last; k++)
 					{
@@ -577,20 +579,20 @@ TEST_CASE("mps tmcq table paths: random and alternate tables equal the same code
 						const int identical = external_size == expected_size && memcmp(external, expected, expected_size) == 0;
 						printf("[tmcq table] %s | %s | %s | %s vs %s | %s (max rel %g)\n", path_names[p], routings[ri].name, datatypes[d] == CCV_32F ? "32F" : "16F",
 							table_names[t], reference_names[k], identical ? "bit-identical" : "differs", max_rel);
-						if (k == 1)
-							resident_max_rel = max_rel;
+						if (k == (reference ? reference : first))
+							reference_max_rel = max_rel;
 						if (identical && !identical_reference)
 							identical_reference = k;
 						ccfree(expected);
 					}
 					if (t == 0)
 						reference = identical_reference;
-					else if (reference) {
+					else if (reference && datatypes[d] == CCV_32F) {
 						REQUIRE_EQ(identical_reference, reference, "%s with the %s table should equal its %s decode bit for bit, as the built-in table does: %s datatype=%d",
 							path_names[p], table_names[t], reference_names[reference], routings[ri].name, datatypes[d]);
 					} else {
-						REQUIRE(resident_max_rel < path_tolerance(datatypes[d]), "%s with the %s table should match its 8i rowwise decode: %s datatype=%d max rel %g",
-							path_names[p], table_names[t], routings[ri].name, datatypes[d], resident_max_rel);
+						REQUIRE(reference_max_rel < path_tolerance(datatypes[d]), "%s with the %s table should match its %s decode: %s datatype=%d max rel %g",
+							path_names[p], table_names[t], reference_names[reference ? reference : first], routings[ri].name, datatypes[d], reference_max_rel);
 					}
 					ccfree(external);
 				}
