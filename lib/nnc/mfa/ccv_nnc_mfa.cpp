@@ -3,6 +3,7 @@
 using namespace ccv::nnc;
 
 #include <algorithm>
+#include <cstring>
 #include <deque>
 #include <iostream>
 #include <limits>
@@ -20,6 +21,17 @@ namespace nnc {
 namespace mfa {
 
 constexpr uint64_t kDurableScratchCacheLimitBytes = 2ULL * 1024 * 1024 * 1024;
+
+NS::SharedPtr<MTL::Library> compile_source(MTL::Device* device, NS::String* source, NS::Error** error) {
+  const char* const source_string = source->cString(NS::UTF8StringEncoding);
+  if (!source_string || !std::strstr(source_string, "bfloat"))
+    return NS::TransferPtr(device->newLibrary(source, nil, error));
+  auto options = NS::TransferPtr(MTL::CompileOptions::alloc()->init());
+  // The bfloat type requires Metal 3.1, including when built with an older SDK.
+  if (options->languageVersion() < MTL::LanguageVersion(0x30001))
+    options->setLanguageVersion(MTL::LanguageVersion(0x30001));
+  return NS::TransferPtr(device->newLibrary(source, options.get(), error));
+}
 
 struct durable_scratch_pool {
   std::mutex mutex;

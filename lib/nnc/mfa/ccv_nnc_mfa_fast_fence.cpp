@@ -105,7 +105,7 @@ static int _ccv_nnc_mfa_ensure_fast_fence_pipeline(mfa::context* const context, 
 	attempted = 1;
 	auto string = NS::String::string(_ccv_nnc_mfa_fast_fence_source(), NS::UTF8StringEncoding);
 	NS::Error* error = nil;
-	auto library = NS::TransferPtr(context->device->newLibrary(string, nil, &error));
+	auto library = ccv::nnc::mfa::compile_source(context->device.get(), string, &error);
 	if (!library.get() || error)
 		return 0;
 	auto constants = NS::TransferPtr(MTL::FunctionConstantValues::alloc()->init());

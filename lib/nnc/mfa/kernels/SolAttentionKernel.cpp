@@ -1,7 +1,7 @@
 #include "SolAttentionKernel.hpp"
 #include "GEMMHeaders.hpp"
 #include "CodeWriter.hpp"
-#include "../ccv_nnc_mfa_error.hpp"
+#include "../ccv_nnc_mfa.hpp"
 #include <algorithm>
 
 namespace {
@@ -1402,8 +1402,8 @@ SolAttentionKernel::SolAttentionKernel(MTL::Device* device, const SolAttentionKe
   denseThreadgroupMemoryAllocation = dense.threadgroupMemoryAllocation + queryBytes;
   source = createSolSource(dense, sparse, blockSize, useRouteBits);
   NS::Error* error = nullptr;
-  library =
-      NS::TransferPtr(device->newLibrary(NS::String::string(source.c_str(), NS::UTF8StringEncoding), nullptr, &error));
+  library = ccv::nnc::mfa::compile_source(
+      device, NS::String::string(source.c_str(), NS::UTF8StringEncoding), &error);
   // Newer shader compilers reject the private async-copy intrinsic. Native
   // attention may use a precompiled library; Sol retains a portable load path.
   if (!library) {
@@ -1412,8 +1412,8 @@ SolAttentionKernel::SolAttentionKernel(MTL::Device* device, const SolAttentionKe
     dense.disableAsyncCopy = sparse.disableAsyncCopy = true;
     source = createSolSource(dense, sparse, blockSize, useRouteBits);
     error = nullptr;
-    library = NS::TransferPtr(
-        device->newLibrary(NS::String::string(source.c_str(), NS::UTF8StringEncoding), nullptr, &error));
+    library = ccv::nnc::mfa::compile_source(
+        device, NS::String::string(source.c_str(), NS::UTF8StringEncoding), &error);
   }
   CCV_NNC_MFA_CHECK_ERROR(error);
 }

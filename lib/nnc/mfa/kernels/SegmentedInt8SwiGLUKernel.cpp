@@ -1394,7 +1394,7 @@ SegmentedInt8SwiGLUKernel::SegmentedInt8SwiGLUKernel(
     source = buildIQ2XSShader(descriptor);
     auto string = NS::String::string(source.c_str(), NS::UTF8StringEncoding);
     NS::Error* error = nil;
-    library = NS::TransferPtr(device->newLibrary(string, nil, &error));
+    library = ccv::nnc::mfa::compile_source(device, string, &error);
     CCV_NNC_MFA_CHECK_ERROR(error);
     return;
   }
@@ -1402,7 +1402,7 @@ SegmentedInt8SwiGLUKernel::SegmentedInt8SwiGLUKernel(
     source = buildIQ3XXSShader(descriptor);
     auto string = NS::String::string(source.c_str(), NS::UTF8StringEncoding);
     NS::Error* error = nil;
-    library = NS::TransferPtr(device->newLibrary(string, nil, &error));
+    library = ccv::nnc::mfa::compile_source(device, string, &error);
     CCV_NNC_MFA_CHECK_ERROR(error);
     return;
   }
@@ -1411,7 +1411,7 @@ SegmentedInt8SwiGLUKernel::SegmentedInt8SwiGLUKernel(
     source = buildIQ1Shader(descriptor);
     auto string = NS::String::string(source.c_str(), NS::UTF8StringEncoding);
     NS::Error* error = nil;
-    library = NS::TransferPtr(device->newLibrary(string, nil, &error));
+    library = ccv::nnc::mfa::compile_source(device, string, &error);
     CCV_NNC_MFA_CHECK_ERROR(error);
     return;
   }
@@ -1419,7 +1419,7 @@ SegmentedInt8SwiGLUKernel::SegmentedInt8SwiGLUKernel(
     source = buildQ2KShader(descriptor);
     auto string = NS::String::string(source.c_str(), NS::UTF8StringEncoding);
     NS::Error* error = nil;
-    library = NS::TransferPtr(device->newLibrary(string, nil, &error));
+    library = ccv::nnc::mfa::compile_source(device, string, &error);
     CCV_NNC_MFA_CHECK_ERROR(error);
     return;
   }
@@ -1614,6 +1614,6 @@ inline float stable_sigmoid(const float value)
   source = std::move(shader);
   auto string = NS::String::string(source.c_str(), NS::UTF8StringEncoding);
   NS::Error* error = nil;
-  library = NS::TransferPtr(device->newLibrary(string, nil, &error));
+  library = ccv::nnc::mfa::compile_source(device, string, &error);
   CCV_NNC_MFA_CHECK_ERROR(error);
 }

@@ -85,6 +85,8 @@ namespace mfa {
 class context;
 struct durable_scratch_pool;
 
+NS::SharedPtr<MTL::Library> compile_source(MTL::Device* device, NS::String* source, NS::Error** error);
+
 class context {
 public:
   bool supported;

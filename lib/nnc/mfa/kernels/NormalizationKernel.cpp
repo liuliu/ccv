@@ -51,7 +51,7 @@ NormalizationKernel::NormalizationKernel(NormalizationKernelDescriptor descripto
 
   auto string = NS::String::string(source.c_str(), NS::UTF8StringEncoding);
   NS::Error* error = nil;
-  library = NS::TransferPtr(device->newLibrary(string, nil, &error));
+  library = ccv::nnc::mfa::compile_source(device, string, &error);
   CCV_NNC_MFA_CHECK_ERROR(error);
 }
 

@@ -1,5 +1,5 @@
 #include "TanhKernel.hpp"
-#include "../ccv_nnc_mfa_error.hpp"
+#include "../ccv_nnc_mfa.hpp"
 
 TanhKernel::TanhKernel(TanhKernelDescriptor descriptor, MTL::Device* const device) {
   gradient = descriptor.gradient;
@@ -10,7 +10,7 @@ TanhKernel::TanhKernel(TanhKernelDescriptor descriptor, MTL::Device* const devic
   source = createSource();
 
   NS::Error* error = nil;
-  library = NS::TransferPtr(device->newLibrary(NS::String::string(source.c_str(), NS::UTF8StringEncoding), nil, &error));
+  library = ccv::nnc::mfa::compile_source(device, NS::String::string(source.c_str(), NS::UTF8StringEncoding), &error);
   CCV_NNC_MFA_CHECK_ERROR(error);
 }
 
