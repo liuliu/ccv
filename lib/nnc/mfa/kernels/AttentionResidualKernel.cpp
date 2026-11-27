@@ -34,7 +34,9 @@ using namespace metal;
 // The states of a row are its block states, [block, row, channel], and then its partial state.
 // Each query's output is a softmax mixture of the RMS-normalized states, scored by the query's
 // dot product with them. A threadgroup takes a row, and each thread every THREADS-th channel.
-kernel void attention_residual(
+// The compiler must fit all THREADS threads: left to itself, it can spend registers on a wide
+// mixture (three FP32 queries over eight block states on M2 Max) and cap the pipeline below them.
+[[kernel, max_total_threads_per_threadgroup(THREADS)]] void attention_residual(
   device const real* blocks [[buffer(0)]],
   device const real* partial [[buffer(1)]],
   device const real* queries [[buffer(2)]],
