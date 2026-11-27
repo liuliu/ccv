@@ -1351,6 +1351,84 @@ TEST_CASE("MPS segmented SwiGLU decodes TMCQ tiles for one row and short routed 
 	}
 }
 
+TEST_CASE("MPS segmented SwiGLU soft caps TMCQ decode")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SEGMENTED_SWIGLU_FORWARD, CCV_NNC_BACKEND_MPS));
+	// The packed decode of 6 rows over 6 experts against the CPU command on the decoded weights. The projections are
+	// about 0.16 in magnitude, so caps of 0.1 and 0.15 change most outputs.
+	const int rows = 6, segments = 6, experts = 8, n = 256, k = 512;
+	const int formats[] = { CCV_NNC_QX_8I_ROWWISE_TMCQ_N16, CCV_NNC_QX_8I_ROWWISE_TMCQ_N22 };
+	const float caps[3][2] = { { 0.1f, 0.15f }, { 0.1f, 0 }, { 0, 0.15f } };
+	const int selected[] = { 7, 1, 5, 2, 6, 3 };
+	const int rows_per_segment[] = { 1, 1, 1, 1, 1, 1 };
+	int f, c, i;
+	for (f = 0; f < sizeof(formats) / sizeof(formats[0]); f++)
+	{
+		dsfmt_t dsfmt;
+		dsfmt_init_gen_rand(&dsfmt, 71 + f);
+		const ccv_nnc_tensor_param_t q_params = ccv_nnc_tensor_8i_rowwise_x(CPU_TENSOR_NHWC(32F, experts, n, k), formats[f]);
+		ccv_nnc_tensor_t* const hgate_q = ccv_nnc_tensor_new(0, q_params, 0);
+		ccv_nnc_tensor_t* const hup_q = ccv_nnc_tensor_new(0, q_params, 0);
+		ccv_nnc_tensor_t* const hgate = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, experts, n, k), 0);
+		ccv_nnc_tensor_t* const hup = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, experts, n, k), 0);
+		_segmented_swiglu_tmcq_weights(&dsfmt, formats[f], CCV_32F, experts * n, k, hgate_q->data.u8, hgate->data.f32);
+		_segmented_swiglu_tmcq_weights(&dsfmt, formats[f], CCV_32F, experts * n, k, hup_q->data.u8, hup->data.f32);
+		ccv_nnc_tensor_t* const ha = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, k), 0);
+		ccv_nnc_tensor_t* const hroute = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows), 0);
+		ccv_nnc_tensor_t* const hindices = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, segments), 0);
+		ccv_nnc_tensor_t* const hcounts = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, segments), 0);
+		for (i = 0; i < rows * k; i++)
+			ha->data.f32[i] = (float)(dsfmt_genrand_open_close(&dsfmt) - 0.5);
+		for (i = 0; i < rows; i++)
+			hroute->data.f32[i] = (float)(i + 1) / (rows + 1);
+		memcpy(hindices->data.i32, selected, sizeof(selected));
+		memcpy(hcounts->data.i32, rows_per_segment, sizeof(rows_per_segment));
+		ccv_nnc_tensor_param_t gpu_q_params = q_params;
+		gpu_q_params.type = CCV_TENSOR_GPU_MEMORY | 000;
+		ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, rows, k), 0);
+		ccv_nnc_tensor_t* const gate_q = ccv_nnc_tensor_new(0, gpu_q_params, 0);
+		ccv_nnc_tensor_t* const up_q = ccv_nnc_tensor_new(0, gpu_q_params, 0);
+		ccv_nnc_tensor_t* const route = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, rows), 0);
+		ccv_nnc_tensor_t* const indices = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32S, segments), 0);
+		ccv_nnc_tensor_t* const counts = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32S, segments), 0);
+		ccv_nnc_tensor_t* const output = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, rows, n), 0);
+		ccv_nnc_tensor_t* const actual = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, n), 0);
+		ccv_nnc_tensor_t* const expected = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, n), 0);
+		ccv_nnc_tensor_t* const uncapped = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, rows, n), 0);
+		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha, hgate_q, hup_q, hroute, hindices, hcounts), TENSOR_LIST(a, gate_q, up_q, route, indices, counts), 0);
+		ccv_nnc_cmd_t reference = CMD_SEGMENTED_SWIGLU_FORWARD(0);
+		reference.backend = CCV_NNC_BACKEND_CPU_REF;
+		ccv_nnc_cmd_exec(reference, ccv_nnc_no_hint, 0, TENSOR_LIST(ha, hindices, hcounts, hgate, hup, hroute), TENSOR_LIST(uncapped), 0);
+		for (c = 0; c < 3; c++)
+		{
+			ccv_nnc_cmd_t command = CMD_SEGMENTED_SWIGLU_SOFT_CAP_FORWARD(caps[c][0], caps[c][1]);
+			command.backend = CCV_NNC_BACKEND_MPS;
+			REQUIRE_EQ(ccv_nnc_cmd_exec(command, ccv_nnc_no_hint, 0, TENSOR_LIST(a, indices, counts, gate_q, up_q, route), TENSOR_LIST(output), 0),
+				CCV_NNC_EXEC_SUCCESS, "TMCQ segmented SwiGLU with soft caps should execute: format=%d", formats[f]);
+			ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(output), TENSOR_LIST(actual), 0);
+			command.backend = CCV_NNC_BACKEND_CPU_REF;
+			ccv_nnc_cmd_exec(command, ccv_nnc_no_hint, 0, TENSOR_LIST(ha, hindices, hcounts, hgate, hup, hroute), TENSOR_LIST(expected), 0);
+			double squared_error = 0, squared_reference = 0, capped_difference = 0, uncapped_norm = 0;
+			for (i = 0; i < rows * n; i++)
+			{
+				REQUIRE(isfinite(actual->data.f32[i]), "TMCQ output should be finite: format=%d", formats[f]);
+				squared_error += (actual->data.f32[i] - expected->data.f32[i]) * (actual->data.f32[i] - expected->data.f32[i]);
+				squared_reference += expected->data.f32[i] * expected->data.f32[i];
+				capped_difference += fabs((double)expected->data.f32[i] - uncapped->data.f32[i]);
+				uncapped_norm += fabs((double)uncapped->data.f32[i]);
+			}
+			REQUIRE(sqrt(squared_error / squared_reference) < 1e-5, "TMCQ decode should apply the soft caps (%g, %g): format=%d relative L2=%g", caps[c][0], caps[c][1], formats[f], sqrt(squared_error / squared_reference));
+			REQUIRE(capped_difference > 0.05 * uncapped_norm, "the soft caps should change these outputs");
+		}
+		ccv_nnc_tensor_t* const tensors[] = {
+			hgate_q, hup_q, hgate, hup, ha, hroute, hindices, hcounts,
+			a, gate_q, up_q, route, indices, counts, output, actual, expected, uncapped,
+		};
+		for (i = 0; i < sizeof(tensors) / sizeof(tensors[0]); i++)
+			ccv_nnc_tensor_free(tensors[i]);
+	}
+}
+
 TEST_CASE("MPS segmented SwiGLU TMCQ decode covers K 256 and 7168 over 1 and 64 experts")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_SEGMENTED_SWIGLU_FORWARD, CCV_NNC_BACKEND_MPS));

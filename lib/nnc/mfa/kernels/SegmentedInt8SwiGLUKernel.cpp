@@ -1287,6 +1287,10 @@ constant ulong weight_expert_stride [[function_constant(7)]];
 )";
   if (descriptor.clamp)
     shader += "constant float clamp_limit [[function_constant(8)]];\n";
+  if (descriptor.gateSoftCap)
+    shader += "constant float gate_soft_cap [[function_constant(11)]];\n";
+  if (descriptor.upSoftCap)
+    shader += "constant float up_soft_cap [[function_constant(12)]];\n";
   shader += R"(
 #include <metal_stdlib>
 using namespace metal;
@@ -1301,11 +1305,20 @@ using namespace metal;
   shader += R"(
 inline float stable_sigmoid(const float value)
 {
-  const float tail = metal::precise::divide(1.0f, 1.0f + metal::precise::exp(abs(value)));
+  const float tail = 1.0f / (1.0f + exp(abs(value)));
   return tail + step(0.0f, value) * (1.0f - 2.0f * tail);
 }
 
 )";
+  if (descriptor.gateSoftCap || descriptor.upSoftCap) {
+    // The sigmoid reads the gate itself, while the soft caps bound its linear factor and up. The
+    // fast tanh loses accuracy for large inputs, as in the tanh kernel.
+    shader += "inline float soft_cap_swiglu(const float gate, const float up)\n{\n  return (";
+    shader += descriptor.upSoftCap ? "up_soft_cap * precise::tanh(up / up_soft_cap)" : "up";
+    shader += ") * (";
+    shader += descriptor.gateSoftCap ? "gate_soft_cap * precise::tanh(gate / gate_soft_cap)" : "gate";
+    shader += ") * stable_sigmoid(gate);\n}\n\n";
+  }
   appendRoutesSignature(shader, true);
   shader += R"(
   // One threadgroup per 16-row tile row. K is split k_splits ways and the partial sums add up in
@@ -1427,16 +1440,12 @@ inline float stable_sigmoid(const float value)
     gate0 = min(gate0, clamp_limit);
     up0 = clamp(up0, -clamp_limit, clamp_limit);
 )";
+  shader += (descriptor.gateSoftCap || descriptor.upSoftCap) ? R"(
+    destination[row] = (real)(
+      route_weight * soft_cap_swiglu(gate0, up0));)" : R"(
+    destination[row] = (real)(
+      route_weight * up0 * gate0 * stable_sigmoid(gate0));)";
   shader += R"(
-    {
-      const float sigmoid_gate0 = stable_sigmoid(gate0);
-      {
-#pragma METAL fp math_mode(safe)
-        // ((up * gate) * sigmoid) * weight, as in the other segmented SwiGLU formats: fast-math
-        // must not reassociate the weighted product.
-        destination[row] = (real)(((up0 * gate0) * sigmoid_gate0) * route_weight);
-      }
-    }
   }
 }
 )";
