@@ -3,18 +3,27 @@
 
 #include <stdint.h>
 #include <string>
-#include "../ccv_nnc_mfa_error.hpp"
-
-// The built-in pair codebook of TMCQ, ccv_nnc_trellis_builtin_table[1024] (512 pairs, interleaved int8). The Metal
-// tables below are generated from it, so the .inc file stays the only copy.
-#include "../../ccv_nnc_trellis_builtin_table.inc"
+#include "../ccv_nnc_mfa.hpp"
 
 // Metal helpers shared by every kernel that decodes CCV_NNC_QX_8I_ROWWISE_TMCQ_N* weights.
 // Codec definition: see CCV_NNC_QX_8I_ROWWISE_TMCQ_N16 in ccv_nnc.h. A tile is 16 * n bits = n / 2
 // little-endian 32-bit words (n is even), so every tile starts on a word boundary. Weight t's window
 // is the 15-bit window ending at E_t = floor((t + 1) n / 16); weight 0's window wraps from the tile's
 // end. TMCQ decodes weights in pairs: weights 2j and 2j + 1 both read the window of weight 2j + 1,
-// cw, and take entry k = (cw * 0x83DCD12D) >> 23 of the 512-pair table as (q8[2j], q8[2j + 1]).
+// cw, and take entry k = (cw * 0x83DCD12D) >> 23 of the tensor's 512-pair table as (q8[2j], q8[2j + 1]).
+//
+// The table is the first tmcq_codebook_bytes of the tensor data. The MFA encoders take a TMCQ weight as stored: they
+// bind the table at the tensor's offset and the tiles tmcq_codebook_bytes after it, and every kernel copies the table
+// into threadgroup half2 (tmcq_codebook_load) before it decodes.
+static const uint64_t tmcq_codebook_bytes = 1024;
+
+// Bytes before the tiles of a weight of format as stored: tmcq_codebook_bytes for TMCQ, 0 for the other codecs.
+static inline uint64_t tmcq_codebook_size(const uint32_t format)
+{
+  const uint32_t codec = format & CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK;
+  return codec >= CCV_NNC_QX_8I_ROWWISE_TMCQ_N16 && codec <= CCV_NNC_QX_8I_ROWWISE_TMCQ_N32 ? tmcq_codebook_bytes : 0;
+}
+
 static const char* const ccv_nnc_mfa_tmcq_decode_helpers = R"(
 // The 32 bits of the little-endian pair (lo, hi) starting at bit o (0 <= o < 32).
 // (hi << 1) << (31 - o) is hi << (32 - o) without an undefined 32-bit shift when o == 0.
@@ -23,15 +32,34 @@ inline uint tmcq_funnel(uint lo, uint hi, uint o)
   return (lo >> o) | ((hi << 1) << (31u - o));
 }
 
-// Fills a threadgroup copy of the table, lane `index` of `count` threads. The caller adds the barrier.
-inline void tmcq_load_table(threadgroup char2* table, uint index, uint count)
+// Lane `index` of `count` threads copies the 512 int8 pairs of `codebook` into threadgroup half2 (int8 values are
+// exact in half), two pairs per 32-bit load. The caller adds the barrier.
+inline void tmcq_codebook_load(threadgroup half2* table, device const uint* codebook, uint index, uint count)
 {
-  for (uint i = index; i < 512u; i += count)
-    table[i] = tmcq_table[i];
+  for (uint i = index; i < 256u; i += count)
+  {
+    const char4 pairs = as_type<char4>(codebook[i]);
+    table[2u * i] = half2(pairs.xy);
+    table[2u * i + 1u] = half2(pairs.zw);
+  }
 }
 
-// int8 codes of row r (weights 16 r ... 16 r + 15) of a tile, as q[0 .. 3] = columns 0-3, ..., 12-15.
-// `table` is tmcq_table (constant) or a threadgroup copy from tmcq_load_table.
+// The threadgroup copy read as char2 (tmcq_decode_row16) and as ushort pairs, q8[2 k] in the low byte (the tmcq_w3
+// helpers).
+struct tmcq_codebook_char2
+{
+  threadgroup const half2* t;
+  char2 operator[](uint i) const { return char2(t[i]); }
+};
+
+struct tmcq_codebook_ushort
+{
+  threadgroup const half2* t;
+  ushort operator[](uint i) const { return as_type<ushort>(char2(t[i])); }
+};
+
+// int8 codes of row r (weights 16 r ... 16 r + 15) of a tile, as q[0 .. 3] = columns 0-3, ..., 12-15, from a
+// tmcq_codebook_char2 table.
 // The row's windows start at bits first + k_j, k_j = floor((j + 1) n / 16) - floor(n / 16), with
 // first = r n + floor(n / 16) - 15, and end by (r + 1) n: at most n + 14 <= 46 bits. Three words from
 // the first window's word cover them; shifting that 96-bit value right by first % 32 leaves a 64-bit
@@ -72,7 +100,7 @@ inline void tmcq_decode_row16(device const uint* tile, uint n, uint r, thread in
 )";
 
 // Helpers used only by the TMCQ GEMV kernels (dense Int8GemvKernel and SegmentedInt8GemvKernel).
-// They take the three tile words a row needs and return the row's 16 weights as float4s, reading a
+// They take the three tile words a row needs and return the row's 16 weights as float4s, reading the
 // half2 threadgroup copy of the pair table: every entry is one 32-bit bank word, and the weights need
 // no int-to-float converts before the float dot products.
 static const char* const ccv_nnc_mfa_tmcq_w1_helpers = R"(
@@ -94,14 +122,6 @@ inline tmcq_w1_row_words tmcq_w1_row_layout(uint n, uint r)
   l.i1 = uint(w + 1 >= words ? w + 1 - words : w + 1);
   l.i2 = uint(w + 2 >= words ? w + 2 - words : w + 2);
   return l;
-}
-
-// Fills a half2 threadgroup copy of tmcq_table (int8 values are exact in half), lane `index` of
-// `count` threads. The caller adds the barrier.
-inline void tmcq_w1_load_table(threadgroup half2* table, uint index, uint count)
-{
-  for (uint i = index; i < 512u; i += count)
-    table[i] = half2(float2(tmcq_table[i]));
 }
 
 // The 16 weights of a tile row from its three words w0, w1, w2 (tile words i0, i1, i2 of
@@ -172,25 +192,10 @@ static inline std::string tmcq_w1_loop_source(const uint32_t unroll, const std::
   return s;
 }
 
-// MSL for `constant char2 tmcq_table[512]` holding `table` followed by the helpers.
-static inline std::string ccv_nnc_mfa_tmcq_decode_source_of(const int8_t* const table)
-{
-  std::string s = "constant char2 tmcq_table[512] = {\n";
-  for (int i = 0; i < 512; i++)
-  {
-    s += "char2(" + std::to_string(table[2 * i]) + ", " + std::to_string(table[2 * i + 1]) + ")";
-    s += (i % 8 == 7) ? ",\n" : ", ";
-  }
-  s += "};\n";
-  s += ccv_nnc_mfa_tmcq_decode_helpers;
-  return s;
-}
-
-// tmcq_table is the built-in table.
+// MSL of the helpers every TMCQ kernel takes.
 static inline const char* ccv_nnc_mfa_tmcq_decode_source()
 {
-  static const std::string source = ccv_nnc_mfa_tmcq_decode_source_of(ccv_nnc_trellis_builtin_table);
-  return source.c_str();
+  return ccv_nnc_mfa_tmcq_decode_helpers;
 }
 
 // Register-fragment helpers for the segmented scaled GEMM prefill kernel only (tmcq_w3_*). They
@@ -225,41 +230,19 @@ inline uint4 tmcq_w3_decode_row16_words(device const uint* tile, uint n, uint r,
 }
 )";
 
-// MSL for `constant ushort tmcq_w3_table[512]` (entry i is ccv_nnc_trellis_builtin_table[2 i] in the low byte
-// and [2 i + 1] in the high byte) followed by the tmcq_w3_* helpers. Append after
-// ccv_nnc_mfa_tmcq_decode_source(), which defines tmcq_funnel.
+// MSL of the tmcq_w3_* helpers. Append after ccv_nnc_mfa_tmcq_decode_source(), which defines tmcq_funnel.
 static inline const char* tmcq_w3_decode_source()
 {
-  static const std::string source = [] {
-    std::string s = "constant ushort tmcq_w3_table[512] = {\n";
-    for (int i = 0; i < 512; i++)
-    {
-      const unsigned value = (unsigned)(uint8_t)ccv_nnc_trellis_builtin_table[2 * i] | ((unsigned)(uint8_t)ccv_nnc_trellis_builtin_table[2 * i + 1] << 8);
-      s += std::to_string(value) + "u";
-      s += (i % 16 == 15) ? ",\n" : ", ";
-    }
-    s += "};\n";
-    s += tmcq_w3_decode_helpers;
-    return s;
-  }();
-  return source.c_str();
+  return tmcq_w3_decode_helpers;
 }
 
-// Helpers for the segmented SwiGLU decode. They read a half2 copy of the pair table: every int8 code
+// Helpers for the segmented SwiGLU decode. They read the half2 copy of the pair table: every int8 code
 // is exact in half, and a half feeds a float FMA without the sign extension and int -> float
 // conversion that a char2 entry needs. The decoded codes are the same as tmcq_decode_row16's.
 static const char* const ccv_nnc_mfa_tmcq_w2_helpers = R"(
-// Fills a threadgroup copy of tmcq_w2_table, lane `index` of `count` threads. The caller adds the
-// barrier.
-inline void tmcq_w2_load_table(threadgroup half2* table, uint index, uint count)
-{
-  for (uint i = index; i < 512u; i += count)
-    table[i] = tmcq_w2_table[i];
-}
-
 // Codes of rows r0 .. r0 + R - 1 of an n = N tile: q[4 * rr .. 4 * rr + 3] are row r0 + rr's columns
-// 0-3, ..., 12-15, with the same windows and table entries as tmcq_decode_row16, from a half2 table
-// (tmcq_w2_table or a tmcq_w2_load_table copy). The R rows are one run of consecutive tile words
+// 0-3, ..., 12-15, with the same windows and table entries as tmcq_decode_row16, from the half2 table
+// (a tmcq_codebook_load copy). The R rows are one run of consecutive tile words
 // (mod N / 2), loaded once for all of them: for N = 22 two rows take the same three words as one.
 // N and R are template parameters so that the word and funnel arrays have fixed sizes and stay in
 // registers.
@@ -306,31 +289,10 @@ inline void tmcq_w2_decode_rows(device const uint* tile, uint r0, thread half4* 
 }
 )";
 
-// MSL for `constant half2 tmcq_w2_table[512]`, generated from ccv_nnc_trellis_builtin_table, followed by the
-// W2 helpers. Goes after ccv_nnc_mfa_tmcq_decode_source(), whose tmcq_funnel the helpers use.
+// MSL of the W2 helpers. Goes after ccv_nnc_mfa_tmcq_decode_source(), whose tmcq_funnel the helpers use.
 static inline const char* ccv_nnc_mfa_tmcq_w2_source()
 {
-  static const std::string source = [] {
-    std::string s = "constant half2 tmcq_w2_table[512] = {\n";
-    for (int i = 0; i < 512; i++)
-    {
-      s += "half2(" + std::to_string(ccv_nnc_trellis_builtin_table[2 * i]) + ", " + std::to_string(ccv_nnc_trellis_builtin_table[2 * i + 1]) + ")";
-      s += (i % 8 == 7) ? ",\n" : ", ";
-    }
-    s += "};\n";
-    s += ccv_nnc_mfa_tmcq_w2_helpers;
-    return s;
-  }();
-  return source.c_str();
-}
-
-// External codebooks (ccv_nnc_codebook.h). In the format of an MFA params struct, bits 16 - 23 of a TMCQ format
-// hold log2 of the entry count of an external codebook (9, 10 or 11), 0 for the built-in table: the dispatch puts
-// it there in place of the tensor's slot, so the pipeline key carries the table size and the table itself is a
-// buffer. With 0 every kernel is generated exactly as before, with the compile-time constant table.
-static inline uint32_t tmcq_codebook_log2(const uint32_t format)
-{
-  return (format >> 16) & 0xffu;
+  return ccv_nnc_mfa_tmcq_w2_helpers;
 }
 
 // The 16 x 16 tile grid of a rows x cols TMCQ weight (rows % 16 == 0, cols % 16 == 0): rows / 16 tile rows of
@@ -339,7 +301,7 @@ static inline uint32_t tmcq_codebook_log2(const uint32_t format)
 // bits per row, cols = 272 has 17 tiles per tile row).
 static inline uint64_t tmcq_tile_count(const uint64_t rows, const uint64_t cols)
 {
-  // The CPU codec's count (ccv_nnc_8i_rowwise_x_tile_count), so sizes and offsets agree with ccv_nnc_tensor_data_size.
+  // The CPU codec's count (ccv_nnc_8i_rowwise_x_payload_bits), so sizes and offsets agree with ccv_nnc_tensor_data_size.
   return (rows / 16) * (cols / 16);
 }
 
@@ -348,75 +310,6 @@ static inline uint64_t tmcq_tile_count(const uint64_t rows, const uint64_t cols)
 static inline uint64_t tmcq_tile_rows_bytes(const uint64_t rows, const uint64_t cols, const uint32_t tile_bits)
 {
   return tmcq_tile_count(rows, cols) * tile_bits / 8;
-}
-
-// The format bits an MFA TMCQ kernel accepts: the codec and the codebook's log2 (bits 16 - 23).
-static inline bool tmcq_codebook_format_ok(const uint32_t format)
-{
-  const uint32_t log2 = tmcq_codebook_log2(format);
-  if (log2 != 0 && (log2 < 9 || log2 > 11))
-    return false;
-  return (format & ~(0xffu | 0xff0000u)) == 0;
-}
-
-// MSL helpers for an external codebook of 1 << log2 pairs: the index shift and entry count, a copy of the table into
-// threadgroup memory, and accessors that read that copy like the built-in tables. The buffer holds the pairs already
-// converted to half2 (ccv_nnc_mfa_codebook_buffer; int8 values are exact in half), so the copy is plain 16-byte moves
-// and the GEMV lookups are the same float2(table[k]) as with the built-in half2 copy. Storage and lookups go through
-// these helpers only, so a different threadgroup layout changes this function alone.
-static inline std::string tmcq_codebook_source(const uint32_t log2)
-{
-  std::string s;
-  s += "constant uint tmcq_codebook_shift = " + std::to_string(32 - log2) + "u;\n";
-  s += "#define TMCQ_CODEBOOK_ENTRIES " + std::to_string(1u << log2) + "u\n";
-  s += R"(
-// Lane `index` of `count` threads copies the table, four pairs per 16-byte load (the buffer starts at offset 0). The
-// caller adds the barrier.
-inline void tmcq_codebook_load(threadgroup half2* table, device const uint4* codebook, uint index, uint count)
-{
-  for (uint i = index; i < TMCQ_CODEBOOK_ENTRIES / 4u; i += count)
-    ((threadgroup uint4*)table)[i] = codebook[i];
-}
-
-// The copy read as char2 (tmcq_decode_row16) and as ushort pairs, q8[2 k] in the low byte (the
-// tmcq_w3 helpers).
-struct tmcq_codebook_char2
-{
-  threadgroup const half2* t;
-  char2 operator[](uint i) const { return char2(t[i]); }
-};
-
-struct tmcq_codebook_ushort
-{
-  threadgroup const half2* t;
-  ushort operator[](uint i) const { return as_type<ushort>(char2(t[i])); }
-};
-)";
-  return s;
-}
-
-// Replaces every `from` in `text` with `to`; returns the number of replacements.
-static inline size_t tmcq_codebook_replace(std::string& text, const std::string& from, const std::string& to)
-{
-  size_t count = 0;
-  size_t at = 0;
-  while ((at = text.find(from, at)) != std::string::npos) {
-    text.replace(at, from.size(), to);
-    at += to.size();
-    count++;
-  }
-  return count;
-}
-
-// Rewrites a generated shader for an external codebook: the helpers go after the first `using namespace metal;`,
-// every pair index takes the codebook's shift instead of 23.
-static inline void tmcq_codebook_rewrite(std::string& shader, const uint32_t log2)
-{
-  const std::string anchor = "using namespace metal;\n";
-  const size_t at = shader.find(anchor);
-  CCV_NNC_MFA_PRECONDITION(at != std::string::npos);
-  shader.insert(at + anchor.size(), tmcq_codebook_source(log2));
-  CCV_NNC_MFA_PRECONDITION(tmcq_codebook_replace(shader, "0x83DCD12Du) >> 23", "0x83DCD12Du) >> tmcq_codebook_shift") > 0);
 }
 
 #endif

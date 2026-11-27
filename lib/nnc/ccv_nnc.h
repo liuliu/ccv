@@ -1158,28 +1158,15 @@ enum {
 	CCV_NNC_QX_8I_ROWWISE_Q6_K,
 	CCV_NNC_QX_8I_ROWWISE_IQ1_S,
 	CCV_NNC_QX_8I_ROWWISE_IQ1_M,
-	/* 13 - 21: reserved for upstream formats. */
-	CCV_NNC_QX_8I_ROWWISE_RESERVED_13,
-	CCV_NNC_QX_8I_ROWWISE_RESERVED_14,
-	CCV_NNC_QX_8I_ROWWISE_RESERVED_15,
-	CCV_NNC_QX_8I_ROWWISE_RESERVED_16,
-	CCV_NNC_QX_8I_ROWWISE_RESERVED_17,
-	CCV_NNC_QX_8I_ROWWISE_RESERVED_18,
-	CCV_NNC_QX_8I_ROWWISE_RESERVED_19,
-	CCV_NNC_QX_8I_ROWWISE_RESERVED_20,
-	CCV_NNC_QX_8I_ROWWISE_RESERVED_21,
-	/* TMCQ (trellis multiply-codebook quantization with a built-in pair codebook). Each 16 x 16 tile of the weight
-	 * (16 rows x 16 columns, tiles row-major over the tile grid, weights row-major inside a tile) is one
-	 * tail-biting bitshift trellis of 16 * n bits, n / 16 bits per weight. With E_t = floor((t + 1) * n / 16),
-	 * the weight pair 2j, 2j + 1 (j = 0..127) reads the 15-bit LSB-first window cw that ends at bit E_{2j+1}
-	 * (bits E - 15 .. E - 1, wrapping inside the tile), takes k = ((uint32_t)cw * 0x83DCD12D) >> 23 and gets
-	 * the int8 codes q8[2j] = T[2k], q8[2j + 1] = T[2k + 1] from the 1024-byte built-in table T in
-	 * ccv_nnc_trellis_builtin_table.inc. The weight is row_scale * q8 like every other row-wise-x codec. One value per even rate n = 16..32; requires row_count % 16 == 0 and
-	 * row_length % 16 == 0 (the payload is (row_count / 16) (row_length / 16) tiles of 2 n bytes, see
-	 * ccv_nnc_8i_rowwise_x_payload_bits; a kernel that needs more checks it itself). A nonzero codebook slot (reserved bits 16 - 23, see ccv_nnc_codebook.h) replaces T
-	 * with that codebook of P = 512, 1024 or 2048 pairs, and k = (cw * 0x83DCD12D) >> (32 - log2 P). ccv builds
-	 * in only that table, the table of files without a codebook; other tables come with the tensor itself
-	 * (CCV_NNC_QX_8I_ROWWISE_CODEBOOK_INLINE_MASK). */
+	/* TMCQ, a tail-biting trellis codec of n / 16 bits per weight, one value per even rate n = 16 .. 32. Each 16 x 16
+	 * tile of the weight (tiles row-major over the tile grid, weights row-major inside a tile) is one trellis of 16 n
+	 * bits. With E_t = floor((t + 1) n / 16), the weight pair 2j, 2j + 1 (j = 0 .. 127) reads the 15-bit LSB-first
+	 * window cw that ends at bit E_{2j+1} (bits E - 15 .. E - 1, wrapping inside the tile), takes
+	 * k = ((uint32_t)cw * 0x83DCD12D) >> 23 and gets the int8 codes q8[2j] = T[2k], q8[2j + 1] = T[2k + 1] of the
+	 * tensor's pair table T. The weight is row_scale * q8 like every other row-wise-x codec. The data starts with T,
+	 * 512 int8 pairs (1024 bytes, one table for the whole tensor), followed by the layout of the other codecs: the
+	 * (row_count / 16) (row_length / 16) tiles of 2 n bytes (ccv_nnc_8i_rowwise_x_payload_bits) and the row scales.
+	 * Requires row_count % 16 == 0 and row_length % 16 == 0. */
 	CCV_NNC_QX_8I_ROWWISE_TMCQ_N16,
 	CCV_NNC_QX_8I_ROWWISE_TMCQ_N18,
 	CCV_NNC_QX_8I_ROWWISE_TMCQ_N20,
@@ -1197,20 +1184,6 @@ enum {
 	/* W R_K, where R256 = H4^tensor4 / 16 and H4 is +1 except -1 on
 	 * its anti-diagonal. Requires K % 256 == 0; no output rotation. */
 	CCV_NNC_QX_8I_ROWWISE_HADAMARD_256 = 0x100,
-	/* Codebook slot of the trellis codecs, bits 16 - 23 (CCV_NNC_CODEBOOK_SLOT_MASK in ccv_nnc_codebook.h). 0 is
-	 * the built-in table, 255 an inline codebook (below), any other a table registered in this process, which a
-	 * checkpoint cannot hold (ccv_nnc_tensor_write rejects it). */
-	CCV_NNC_QX_8I_ROWWISE_CODEBOOK_SLOT_SHIFT = 16,
-	CCV_NNC_QX_8I_ROWWISE_CODEBOOK_SLOT_MASK = 0xff0000,
-	/* Inline codebook of a TMCQ tensor, bits 24 - 25: c = 1, 2, 3 for a table of P = 256 << c pairs (512, 1024,
-	 * 2048) at the start of the tensor data, with codebook slot 255 (CCV_NNC_CODEBOOK_INLINE_SLOT; no table is ever
-	 * registered there, so a ccv path that resolves slots but not inline codebooks rejects the tensor; readers older
-	 * than inline codebooks are not guaranteed to). 0 with any other slot. The data is then the serialized codebook (ccv_nnc_codebook.h: "CCVCBOOK", uint32
-	 * P, uint32 crc32, 2 P int8), zeros up to 128 + 2 P bytes, and the layout of the same tensor without an inline
-	 * codebook, byte for byte (payload and scales keep their alignment). A 3-D stack of experts has one table for the
-	 * whole tensor. The bits are the same in a checkpoint and in memory. */
-	CCV_NNC_QX_8I_ROWWISE_CODEBOOK_INLINE_SHIFT = 24,
-	CCV_NNC_QX_8I_ROWWISE_CODEBOOK_INLINE_MASK = 0x3000000,
 };
 
 /**
@@ -1292,20 +1265,17 @@ CCV_WARN_UNUSED(size_t) ccv_nnc_8i_rowwise_x_data_size(const int format, const i
  * CCV_NNC_QX_8I_ROWWISE_HADAMARD_256 (returns 0).
  * @param hessian_length The number of elements in @p hessian. It must be a multiple of
  * row_length * row_length. Multiple slices partition rows evenly, as with imatrix.
- * TMCQ is fitted unweighted with the built-in table: a tail-biting Viterbi per tile on the
- * squared error, row scale rms(row) / cb_rms (cb_rms the code rms over all window states). It
- * returns 0 with an imatrix or a Hessian, or with a codebook slot.
+ * TMCQ writes the built-in pair table (ccv_nnc_trellis_builtin_table.inc) at the start of the output and fits the
+ * tiles to it unweighted: a tail-biting Viterbi per tile on the squared error, row scale rms(row) / cb_rms (cb_rms
+ * the code rms over all window states). It returns 0 with an imatrix or a Hessian.
  */
 CCV_WARN_UNUSED(size_t) ccv_nnc_quantize_8i_rowwise_x(const void* input, const int datatype, const int memory_type, const size_t input_length, const size_t row_length, const int format, const float* const imatrix, const size_t imatrix_length, const float* const hessian, const size_t hessian_length, void* output, const size_t output_length);
 /**
  * Dequantize a row-wise-x int8-compatible format back to @p datatype.
  * H256 logical-weight decoding is not supported yet.
  * Passing only the base codec explicitly decodes the stored rotated values.
- * @return 0, or -1 if the weights are rejected: a codebook slot that is not registered or names a table for a
- *   codec other than TMCQ.
- *   These checks hold in release builds too.
  */
-int ccv_nnc_dequantize_8i_rowwise_x(const void* input, const int datatype, const int memory_type, const size_t input_length, const size_t row_length, const int format, void* output, const size_t output_length);
+void ccv_nnc_dequantize_8i_rowwise_x(const void* input, const int datatype, const int memory_type, const size_t input_length, const size_t row_length, const int format, void* output, const size_t output_length);
 
 /** @} */
 

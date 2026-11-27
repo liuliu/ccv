@@ -480,7 +480,8 @@ inline float2 dot_pair(
 
 // Every packed format's routed rows are segmented_int8_swiglu_routes, so the plain kernel and the
 // shared-expert kernel below work for all of them.
-static void appendRoutesSignature(std::string& shader)
+// TMCQ routes also take the K-split sums and pair tables in route_scratch, and the gate and up tables.
+static void appendRoutesSignature(std::string& shader, const bool tmcq = false)
 {
   shader += R"(
 inline void segmented_int8_swiglu_routes(
@@ -494,8 +495,10 @@ inline void segmented_int8_swiglu_routes(
   device const int* counts,
   device const real* route_weights,
   threadgroup int& route_expert,
-  threadgroup float* route_scratch,
-  uint threadgroup_position,
+)";
+  if (tmcq)
+    shader += "  threadgroup float* route_scratch,\n  device const uint* gate_codebook,\n  device const uint* up_codebook,\n";
+  shader += R"(  uint threadgroup_position,
   uint simdgroup_index,
   uint lane)
 {)";
@@ -504,9 +507,12 @@ inline void segmented_int8_swiglu_routes(
 static void appendSegmentedSwiGLUKernels(
   std::string& shader, const SegmentedInt8SwiGLUKernelDescriptor& descriptor)
 {
-  // TMCQ: gate and up partial sums of each K split, then the half2 pair table (512 floats' worth).
-  const std::string scratch = segmentedTMCQRate(descriptor.format) ?
-    "2 * TMCQ_K_SPLITS * 16 + 512" : "2 * 4 * 16";
+  // TMCQ routes take the gate and up pair tables at buffer(15) and buffer(16), and route_scratch: the gate and up
+  // partial sums of each K split, then the two half2 tables (512 floats' worth each).
+  const bool tmcq = segmentedTMCQRate(descriptor.format) != 0;
+  const std::string tmcqBuffers = tmcq ? "  device const uint* gate_codebook [[buffer(15)]],\n  device const uint* up_codebook [[buffer(16)]],\n" : "";
+  const std::string tmcqScratch = tmcq ? "  threadgroup float route_scratch[2 * TMCQ_K_SPLITS * 16 + 1024];\n" : "";
+  const std::string tmcqArguments = tmcq ? "route_scratch, gate_codebook, up_codebook, " : "";
   shader += R"(
 kernel void segmented_int8_swiglu(
   device const uchar* gate_weights [[buffer(0)]],
@@ -518,17 +524,14 @@ kernel void segmented_int8_swiglu(
   device const int* indices [[buffer(6)]],
   device const int* counts [[buffer(7)]],
   device const real* route_weights [[buffer(8)]],
-  uint threadgroup_position [[threadgroup_position_in_grid]],
+)" + tmcqBuffers + R"(  uint threadgroup_position [[threadgroup_position_in_grid]],
   uint simdgroup_index [[simdgroup_index_in_threadgroup]],
   uint lane [[thread_index_in_simdgroup]])
 {
   threadgroup int route_expert;
-  // Cross-SIMD-group partial sums for the formats that split K (TMCQ, followed by its threadgroup
-  // copy of the pair table); the others leave it unused.
-  threadgroup float route_scratch[)" + scratch + R"(];
-  segmented_int8_swiglu_routes(
+)" + tmcqScratch + R"(  segmented_int8_swiglu_routes(
     gate_weights, up_weights, activation, destination, gate_scales, up_scales,
-    indices, counts, route_weights, route_expert, route_scratch, threadgroup_position,
+    indices, counts, route_weights, route_expert, )" + tmcqArguments + R"(threadgroup_position,
     simdgroup_index, lane);
 }
 )";
@@ -660,15 +663,12 @@ kernel void segmented_int8_swiglu_shared(
   device real* shared_destination [[buffer(12)]],
   device const real* shared_gate_scales [[buffer(13)]],
   device const real* shared_up_scales [[buffer(14)]],
-  uint threadgroup_position [[threadgroup_position_in_grid]],
+)" + tmcqBuffers + R"(  uint threadgroup_position [[threadgroup_position_in_grid]],
   uint simdgroup_index [[simdgroup_index_in_threadgroup]],
   uint lane [[thread_index_in_simdgroup]])
 {
   threadgroup int route_expert;
-  // Cross-SIMD-group partial sums for the formats that split K (TMCQ, followed by its threadgroup
-  // copy of the pair table); the others leave it unused.
-  threadgroup float route_scratch[)" + scratch + R"(];
-  // Spread the shared threadgroups evenly through the grid, as the Q8_0 shared rows do.
+)" + tmcqScratch + R"(  // Spread the shared threadgroups evenly through the grid, as the Q8_0 shared rows do.
   const uint shared_threadgroups = (shared_nrows + shared_rows_per_threadgroup - 1u) / shared_rows_per_threadgroup;
   const uint total = routed_threadgroups + shared_threadgroups;
   const uint shared_before = (uint)((ulong)threadgroup_position * shared_threadgroups / total);
@@ -679,7 +679,7 @@ kernel void segmented_int8_swiglu_shared(
   else
     segmented_int8_swiglu_routes(
       gate_weights, up_weights, activation, destination, gate_scales, up_scales,
-      indices, counts, route_weights, route_expert, route_scratch, threadgroup_position - shared_before,
+      indices, counts, route_weights, route_expert, )" + tmcqArguments + R"(threadgroup_position - shared_before,
       simdgroup_index, lane);
 }
 )";
@@ -817,15 +817,12 @@ kernel void segmented_int8_swiglu_shared(
   device real* shared_destination [[buffer(12)]],
   device const real* shared_gate_scales [[buffer(13)]],
   device const real* shared_up_scales [[buffer(14)]],
-  uint threadgroup_position [[threadgroup_position_in_grid]],
+)" + tmcqBuffers + R"(  uint threadgroup_position [[threadgroup_position_in_grid]],
   uint simdgroup_index [[simdgroup_index_in_threadgroup]],
   uint lane [[thread_index_in_simdgroup]])
 {
   threadgroup int route_expert;
-  // Cross-SIMD-group partial sums for the formats that split K (TMCQ, followed by its threadgroup
-  // copy of the pair table); the others leave it unused.
-  threadgroup float route_scratch[)" + scratch + R"(];
-  threadgroup float partials[4][32];
+)" + tmcqScratch + R"(  threadgroup float partials[4][32];
   // Spread the shared threadgroups evenly through the grid: grouping them at either end leaves
   // most of the routed work without bandwidth-bound neighbors.
   const uint shared_threadgroups = (shared_nrows + 1u) / 2u;
@@ -838,7 +835,7 @@ kernel void segmented_int8_swiglu_shared(
   else
     segmented_int8_swiglu_routes(
       gate_weights, up_weights, activation, destination, gate_scales, up_scales,
-      indices, counts, route_weights, route_expert, route_scratch, threadgroup_position - shared_before,
+      indices, counts, route_weights, route_expert, )" + tmcqArguments + R"(threadgroup_position - shared_before,
       simdgroup_index, lane);
 }
 )";
@@ -1265,30 +1262,9 @@ inline float stable_sigmoid(const float value)
 // TMCQ routes: each threadgroup owns one 16-row tile row of the routed expert's gate and up weights,
 // and its SIMD groups split K. In a SIMD group each run of eight lanes takes one tile of its K
 // streams, every lane two adjacent rows of it, whose codes share one run of tile words; the eight
-// lanes share each activation load. The codes come from a threadgroup half2 copy of the pair
-// table. Gate and up each finish their whole dot product and take their row scale before the clamp
+// lanes share each activation load. The codes come from threadgroup half2 copies of the gate and up pair
+// tables. Gate and up each finish their whole dot product and take their row scale before the clamp
 // and SiLU, as the other formats do.
-// An external codebook (TMCQ with a codebook slot): the half2 buffer (ccv_nnc_mfa_codebook_buffer) at buffer(15) of every kernel goes to
-// segmented_int8_swiglu_routes, which copies it into the half2 table after the K-split sums in route_scratch (sized for
-// the table) instead of the built-in table; lookups only change their shift.
-static void rewriteTMCQCodebook(std::string& shader, const uint32_t log2)
-{
-  tmcq_codebook_rewrite(shader, log2);
-  CCV_NNC_MFA_PRECONDITION(tmcq_codebook_replace(shader,
-    "  threadgroup float* route_scratch,\n  uint threadgroup_position,",
-    "  threadgroup float* route_scratch,\n  device const uint4* codebook,\n  uint threadgroup_position,") == 1);
-  CCV_NNC_MFA_PRECONDITION(tmcq_codebook_replace(shader,
-    "route_expert, route_scratch, threadgroup_position",
-    "route_expert, route_scratch, codebook, threadgroup_position") >= 1);
-  CCV_NNC_MFA_PRECONDITION(tmcq_codebook_replace(shader,
-    "  uint threadgroup_position [[threadgroup_position_in_grid]],",
-    "  device const uint4* codebook [[buffer(15)]],\n  uint threadgroup_position [[threadgroup_position_in_grid]],") >= 1);
-  CCV_NNC_MFA_PRECONDITION(tmcq_codebook_replace(shader,
-    "  tmcq_w2_load_table(table, simdgroup_index * 32u + lane, 32u * k_simdgroups);",
-    "  tmcq_codebook_load(table, codebook, simdgroup_index * 32u + lane, 32u * k_simdgroups);") == 1);
-  CCV_NNC_MFA_PRECONDITION(tmcq_codebook_replace(shader, " * 16 + 512]", " * 16 + TMCQ_CODEBOOK_ENTRIES]") >= 1);
-}
-
 static std::string buildTMCQShader(
   const SegmentedInt8SwiGLUKernelDescriptor& descriptor, const uint32_t rate)
 {
@@ -1330,7 +1306,7 @@ inline float stable_sigmoid(const float value)
 }
 
 )";
-  appendRoutesSignature(shader);
+  appendRoutesSignature(shader, true);
   shader += R"(
   // One threadgroup per 16-row tile row. K is split k_splits ways and the partial sums add up in
   // route_scratch in split order. Each SIMD group takes splits simdgroup_index, + k_simdgroups, ...:
@@ -1356,8 +1332,11 @@ inline float stable_sigmoid(const float value)
       row_offset = next_row_offset;
     }
   }
-  threadgroup half2* const table = (threadgroup half2*)(route_scratch + 2u * k_splits * 16u);
-  tmcq_w2_load_table(table, simdgroup_index * 32u + lane, 32u * k_simdgroups);
+  // Gate and up each come with their own pair table.
+  threadgroup half2* const gate_table = (threadgroup half2*)(route_scratch + 2u * k_splits * 16u);
+  threadgroup half2* const up_table = gate_table + 512;
+  tmcq_codebook_load(gate_table, gate_codebook, simdgroup_index * 32u + lane, 32u * k_simdgroups);
+  tmcq_codebook_load(up_table, up_codebook, simdgroup_index * 32u + lane, 32u * k_simdgroups);
   threadgroup_barrier(mem_flags::mem_threadgroup);
   const int expert = route_expert;
   if (expert < 0 || expert >= (int)expert_count)
@@ -1404,8 +1383,8 @@ inline float stable_sigmoid(const float value)
       const float4 y3 = float4(activation4[tc * 4u + 3u]);
       half4 g[4 * rows_per_lane];
       half4 u[4 * rows_per_lane];
-      tmcq_w2_decode_rows<TMCQ_N, rows_per_lane>(gate_tiles + tile_word, r0, g, table);
-      tmcq_w2_decode_rows<TMCQ_N, rows_per_lane>(up_tiles + tile_word, r0, u, table);
+      tmcq_w2_decode_rows<TMCQ_N, rows_per_lane>(gate_tiles + tile_word, r0, g, gate_table);
+      tmcq_w2_decode_rows<TMCQ_N, rows_per_lane>(up_tiles + tile_word, r0, u, up_table);
       #pragma clang loop unroll(full)
       for (uint rr = 0; rr < rows_per_lane; ++rr) {
         gate_sum[rr] += dot(float4(g[4 * rr + 0]), y0) + dot(float4(g[4 * rr + 1]), y1) +
@@ -1635,8 +1614,6 @@ SegmentedInt8SwiGLUKernel::SegmentedInt8SwiGLUKernel(
   }
   if (const uint32_t rate = segmentedTMCQRate(descriptor.format)) {
     source = buildTMCQShader(descriptor, rate);
-    if (const uint32_t log2 = tmcq_codebook_log2(descriptor.format))
-      rewriteTMCQCodebook(source, log2);
     auto string = NS::String::string(source.c_str(), NS::UTF8StringEncoding);
     NS::Error* error = nil;
     library = NS::TransferPtr(device->newLibrary(string, nil, &error));

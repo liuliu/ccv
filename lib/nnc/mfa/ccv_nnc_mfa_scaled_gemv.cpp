@@ -1,6 +1,7 @@
 #include "ccv_nnc_mfa.hpp"
 #include "kernels/Int8GemvDescriptor.hpp"
 #include "kernels/Int8GemvKernel.hpp"
+#include "kernels/TMCQDecodeSource.hpp"
 using namespace ccv::nnc;
 
 namespace {
@@ -95,20 +96,18 @@ void ccv_nnc_mfa_encode_scaled_gemv(ccv_nnc_mfa_context_t* context, ccv_nnc_mfa_
   pool->drain();
   auto pipeline = pipelineValue->pipeline;
 
-  encoder->setBuffer(tensors[0], tensor_offsets[0], NS::UInteger(0));
+  // A TMCQ weight as stored: its pair table at buffer(5), then the tiles.
+  const size_t codebook_size = (size_t)tmcq_codebook_size(params.format);
+  if (codebook_size)
+    encoder->setBuffer(tensors[0], tensor_offsets[0], NS::UInteger(5));
+  encoder->setBuffer(tensors[0], tensor_offsets[0] + codebook_size, NS::UInteger(0));
   encoder->setBuffer(tensors[1], tensor_offsets[1], NS::UInteger(1));
   encoder->setBuffer(tensors[2], tensor_offsets[2], NS::UInteger(2));
-  encoder->setBuffer(tensors[0], tensor_offsets[0] + scale_buffer_offset, NS::UInteger(3));
+  encoder->setBuffer(tensors[0], tensor_offsets[0] + codebook_size + scale_buffer_offset, NS::UInteger(3));
   if (num_tensors == 4) {
     encoder->setBuffer(tensors[3], tensor_offsets[3], NS::UInteger(4));
   }
 
-  if ((params.format >> 16) & 0xffu) {
-    // External codebook (TMCQ only), see ccv_nnc_mfa_scaled_gemv_params_t::codebook.
-    CCV_NNC_MFA_PRECONDITION(params.codebook != nullptr);
-    encoder->setBuffer(params.codebook, 0, NS::UInteger(5));
-    encoder->useResource(params.codebook, MTL::ResourceUsageRead);
-  }
   encoder->setComputePipelineState(pipeline.get());
   encoder->useResource(tensors[0], MTL::ResourceUsageRead);
   encoder->useResource(tensors[1], MTL::ResourceUsageRead);

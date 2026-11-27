@@ -3,7 +3,6 @@
 #include "nnc/ccv_nnc_internal.h"
 #include "nnc/_ccv_nnc_stream.h"
 #include "nnc/ccv_nnc_easy.h"
-#include "nnc/ccv_nnc_codebook.h"
 #include "3rdparty/khash/khash.h"
 #include <string.h>
 #import <CoreFoundation/CoreFoundation.h>
@@ -689,76 +688,6 @@ id<MTLBuffer> mpgetbuffer(const ccv_nnc_tensor_t* const tensor)
 off_t mpgetoffset(const ccv_nnc_tensor_t* const tensor)
 {
 	return tensor->dataof;
-}
-
-// The resolved reserved fields of the inline codebooks of an on-demand file-backed buffer object, by data offset.
-static char ccv_nnc_mps_inline_codebook_key;
-
-int ccv_nnc_mps_8i_rowwise_x_resolve_inline(id<MTLBuffer> buffer, const off_t offset, const int format)
-{
-	if (!ccv_nnc_8i_rowwise_x_inline_codebook_entries(format))
-		return format;
-	if (!ccv_nnc_8i_rowwise_x_is_tmcq(format) || !buffer || offset < 0)
-		return -1;
-	const size_t size = ccv_nnc_8i_rowwise_x_inline_codebook_size(format);
-	// Private storage (x86_64) has no CPU view of the table.
-	const unsigned char* const contents = (const unsigned char*)buffer.contents;
-	if (!contents || (uint64_t)offset + size > buffer.length)
-		return -1;
-	return ccv_nnc_codebook_resolve_inline(contents + offset, format);
-}
-
-const ccv_nnc_tensor_t* ccv_nnc_mps_8i_rowwise_x_inline_view(const ccv_nnc_tensor_t* const tensor, ccv_nnc_tensor_t* const view)
-{
-	if (!tensor || CCV_GET_DATA_TYPE(tensor->info.datatype) != CCV_QX || (tensor->info.datatype & 0xf00) != CCV_NNC_QX_8I_ROWWISE_X ||
-		!ccv_nnc_8i_rowwise_x_inline_codebook_entries(tensor->info.reserved))
-		return tensor;
-	if (CCV_IS_TENSOR_VIEW(tensor) || !ccv_nnc_8i_rowwise_x_is_tmcq(tensor->info.reserved))
-		return 0;
-	const size_t size = ccv_nnc_8i_rowwise_x_inline_codebook_size(tensor->info.reserved);
-	int reserved;
-	ccv_nnc_mps_file_backed_region_t region;
-	if (ccv_nnc_mps_file_backed_region(tensor, &region))
-	{
-		// An on-demand file-backed tensor: read the table from the file rather than map the whole tensor, once per
-		// buffer object and offset (the file is read-only for the life of the object; a read costs a few us).
-		id const object = (id)tensor->data.u8;
-		NSNumber* const key = @((long long)tensor->dataof);
-		const int64_t reserved_in = (int64_t)(uint32_t)tensor->info.reserved << 32;
-		@synchronized(object) {
-			NSMutableDictionary* const cache = objc_getAssociatedObject(object, &ccv_nnc_mps_inline_codebook_key);
-			NSNumber* const cached = cache[key];
-			if (cached && (cached.longLongValue & ~(int64_t)0xffffffff) == reserved_in)
-				reserved = (int)(uint32_t)cached.longLongValue;
-			else {
-				uint8_t pairs[128 + 4096];
-				assert(size <= sizeof(pairs));
-				const int fd = region.size >= size ? open(region.path.UTF8String, O_RDONLY, 0) : -1;
-				if (fd < 0)
-					return 0;
-				const ssize_t read_size = pread(fd, pairs, size, region.offset);
-				close(fd);
-				if (read_size != (ssize_t)size)
-					return 0;
-				reserved = ccv_nnc_codebook_resolve_inline(pairs, tensor->info.reserved);
-				if (reserved >= 0)
-				{
-					NSMutableDictionary* const table = cache ? cache : [NSMutableDictionary dictionary];
-					table[key] = @(reserved_in | (int64_t)(uint32_t)reserved);
-					if (!cache)
-						objc_setAssociatedObject(object, &ccv_nnc_mps_inline_codebook_key, table, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-				}
-			}
-		}
-	} else
-		reserved = ccv_nnc_mps_8i_rowwise_x_resolve_inline(mpgetbuffer(tensor), mpgetoffset(tensor), tensor->info.reserved);
-	if (reserved < 0)
-		return 0;
-	*view = *tensor;
-	view->info.reserved = reserved;
-	view->dataof += (off_t)size;
-	view->data_size = tensor->data_size > size ? tensor->data_size - size : 0;
-	return view;
 }
 
 void* mpmemmap(const char* file, const size_t size, const off_t offset, const int flags)

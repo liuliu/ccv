@@ -251,31 +251,14 @@ static bool is_tmcq(const uint32_t format)
 	return codec >= CCV_NNC_QX_8I_ROWWISE_TMCQ_N16 && codec <= CCV_NNC_QX_8I_ROWWISE_TMCQ_N32;
 }
 
-// The 2-tile block map of tile_pair_row_column covers 16 tiles_per_row threads of a tile row only for an even
-// tiles_per_row. For an odd one the last 16 threads (from 16 (tiles_per_row - 1), a multiple of 32) take the last tile,
-// one row each, so every (row, tile column) segment is still decoded by exactly one of the 16 tiles_per_row threads.
-static void tile_pair_tail_source(std::string& shader)
-{
-	const std::string body = "  return uint2(tile_row * 16u + ((in_tile_row & 31u) >> 1), (in_tile_row >> 5) * 2u + (in_tile_row & 1u));\n";
-	const size_t at = shader.find(body);
-	CCV_NNC_MFA_PRECONDITION(at != std::string::npos && shader.find(body, at + 1) == std::string::npos);
-	shader.insert(at,
-		"  // An odd tiles_per_row: the last 16 threads of the tile row take its last tile, one row each.\n"
-		"  if ((tiles_per_row & 1u) && in_tile_row >= 16u * (tiles_per_row - 1u))\n"
-		"    return uint2(tile_row * 16u + (in_tile_row & 15u), tiles_per_row - 1u);\n");
-	const std::string note = "Needs tiles_per_row even (row_length % 256 == 0 here).";
-	const size_t comment = shader.find(note);
-	if (comment != std::string::npos)
-		shader.replace(comment, note.size(), "An odd tiles_per_row ends in 16 threads on its last tile.");
-}
-
 // TMCQ int8 decode. A tile spans 16 rows, so the per-group kernels above do not apply. Thread
 // mapping: one thread per row segment, i.e. the 16 weights one output row takes from one tile.
 // Threads go in blocks of 2 neighbouring tiles x 16 rows (tile_pair_row_column): the 32 lanes of a
 // SIMD group read the n adjacent words of two tiles (coalesced) and write 32-byte pieces of 16 output
 // rows. dispatch_items (see the descriptors) is max(rows * K / 16, scale bytes); total_groups /
 // groups_per_expert count tiles. `tail` (an odd tiles_per_row, K % 32 == 16) gives the last tile of every tile row to
-// 16 threads of its own (tile_pair_tail_source); without it the source is the original one for even tiles_per_row.
+// 16 threads of its own. The pair table is at buffer(5) (the plain kernel binds 0 - 3, the selected one 0 - 4); each
+// threadgroup copies it before any thread returns.
 static std::string create_tmcq_source(const uint32_t format, const bool tail)
 {
 	const uint32_t n = 16 + 2 * ((format & CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK) - CCV_NNC_QX_8I_ROWWISE_TMCQ_N16);
@@ -289,23 +272,31 @@ using namespace metal;
 	shader += R"(
 // Thread x of a tile grid -> (output row, tile column) in blocks of 2 neighbouring tiles x 16 rows: the 32 lanes of a
 // SIMD group decode the 16 rows of two adjacent tiles, so they read adjacent code words (the row-major order spread a
-// tile's 16 readers over 16 SIMD groups, uncoalesced). Needs tiles_per_row even (row_length % 256 == 0 here).
+// tile's 16 readers over 16 SIMD groups, uncoalesced).
 inline uint2 tile_pair_row_column(const uint x, const uint tiles_per_row)
 {
   const uint tile_row = x / (16u * tiles_per_row);
   const uint in_tile_row = x - tile_row * (16u * tiles_per_row);
+)";
+	if (tail)
+		shader += R"(
+  // An odd tiles_per_row: the last 16 threads of the tile row take its last tile, one row each.
+  if ((tiles_per_row & 1u) && in_tile_row >= 16u * (tiles_per_row - 1u))
+    return uint2(tile_row * 16u + (in_tile_row & 15u), tiles_per_row - 1u);
+)";
+	shader += R"(
   return uint2(tile_row * 16u + ((in_tile_row & 31u) >> 1), (in_tile_row >> 5) * 2u + (in_tile_row & 1u));
 }
 
 // Writes the 16 int8 weights of `row` (local to the tile grid starting at `source`) in tile column
 // `tc` to destination[row * row_length + 16 * tc ...].
-inline void tmcq_store_segment(device const uchar* source, device uchar* destination, const uint row, const uint tc)
+inline void tmcq_store_segment(device const uchar* source, device uchar* destination, const uint row, const uint tc, const tmcq_codebook_char2 table)
 {
   const uint tiles_per_row = row_length >> 4;
   const ulong tile_index = (ulong)(row >> 4) * tiles_per_row + tc;
   device const uint* tile = reinterpret_cast<device const uint*>(source) + tile_index * tmcq_tile_words;
   int4 q[4];
-  tmcq_decode_row16(tile, tmcq_n, row & 15u, q, tmcq_table);
+  tmcq_decode_row16(tile, tmcq_n, row & 15u, q, table);
   device char4* destination4 = reinterpret_cast<device char4*>(destination + (ulong)row * row_length + (tc << 4));
   destination4[0] = char4(q[0]);
   destination4[1] = char4(q[1]);
@@ -318,17 +309,22 @@ kernel void dequantize_8i_rowwise_x(
   device uchar* destination [[buffer(1)]],
   device const uchar* input_scales [[buffer(2)]],
   device uchar* output_scales [[buffer(3)]],
+  device const uint* codebook [[buffer(5)]],
 
   uint3 tgid [[threadgroup_position_in_grid]],
   ushort lid [[thread_index_in_threadgroup]]
 ) {
+  threadgroup half2 tmcq_codes[512];
+  tmcq_codebook_load(tmcq_codes, codebook, lid, threadgroup_size);
+  threadgroup_barrier(mem_flags::mem_threadgroup);
+  const tmcq_codebook_char2 table = { tmcq_codes };
   const uint x = tgid.x * threadgroup_size + lid;
   if (x >= dispatch_items)
     return;
   // total_groups tiles of 16 segments each.
   if (x < total_groups * 16u) {
     const uint2 rc = tile_pair_row_column(x, row_length >> 4);
-    tmcq_store_segment(source, destination, rc.x, rc.y);
+    tmcq_store_segment(source, destination, rc.x, rc.y, table);
   }
   if (x < scale_bytes)
     output_scales[x] = input_scales[x];
@@ -340,10 +336,15 @@ kernel void dequantize_8i_rowwise_x_selected(
   device uchar* destination [[buffer(2)]],
   device const uchar* input_scales [[buffer(3)]],
   device uchar* output_scales [[buffer(4)]],
+  device const uint* codebook [[buffer(5)]],
 
   uint3 tgid [[threadgroup_position_in_grid]],
   ushort lid [[thread_index_in_threadgroup]]
 ) {
+  threadgroup half2 tmcq_codes[512];
+  tmcq_codebook_load(tmcq_codes, codebook, lid, threadgroup_size);
+  threadgroup_barrier(mem_flags::mem_threadgroup);
+  const tmcq_codebook_char2 table = { tmcq_codes };
   const uint x = tgid.x * threadgroup_size + lid;
   const uint active_expert = tgid.y;
   if (x >= selected_dispatch_items_per_expert)
@@ -357,7 +358,7 @@ kernel void dequantize_8i_rowwise_x_selected(
     const uint2 rc = tile_pair_row_column(x, row_length >> 4);
     device const uchar* expert_source = source + (ulong)expert * groups_per_expert * (tmcq_tile_words * 4u);
     device uchar* expert_destination = destination + (ulong)expert * rows_per_expert * row_length;
-    tmcq_store_segment(expert_source, expert_destination, rc.x, rc.y);
+    tmcq_store_segment(expert_source, expert_destination, rc.x, rc.y, table);
   }
   if (x < scale_bytes_per_expert) {
     output_scales[expert * scale_bytes_per_expert + x] =
@@ -388,8 +389,6 @@ kernel void dequantize_8i_rowwise_x_selected_plan(
   dispatch_args[2] = 1;
 }
 )";
-	if (tail)
-		tile_pair_tail_source(shader);
 	return shader;
 }
 
@@ -735,33 +734,10 @@ inline void decode_group(device const uchar* source, const ulong group_index, th
 	return shader;
 }
 
-// An external codebook (tmcq_codebook_log2(format) != 0) for the TMCQ int8 decode: every decoding kernel of the shader
-// takes the table at buffer(5) (the plain kernel binds 0 - 3, the selected one 0 - 4), copies it into threadgroup
-// memory before any thread returns and reads it through tmcq_codebook_char2.
-static void rewrite_decode_codebook(std::string& shader, const uint32_t log2)
-{
-	CCV_NNC_MFA_PRECONDITION(log2 >= 9 && log2 <= 11);
-	tmcq_codebook_rewrite(shader, log2);
-	CCV_NNC_MFA_PRECONDITION(tmcq_codebook_replace(shader, "\n\n  uint3 tgid [[threadgroup_position_in_grid]],", "\n  device const uint4* codebook [[buffer(5)]],\n\n  uint3 tgid [[threadgroup_position_in_grid]],") >= 1);
-	CCV_NNC_MFA_PRECONDITION(tmcq_codebook_replace(shader, "  const uint x = tgid.x * threadgroup_size + lid;\n",
-		"  threadgroup half2 tmcq_codes[TMCQ_CODEBOOK_ENTRIES];\n"
-		"  tmcq_codebook_load(tmcq_codes, codebook, lid, threadgroup_size);\n"
-		"  threadgroup_barrier(mem_flags::mem_threadgroup);\n"
-		"  const tmcq_codebook_char2 tmcq_ext = { tmcq_codes };\n"
-		"  const uint x = tgid.x * threadgroup_size + lid;\n") >= 1);
-	CCV_NNC_MFA_PRECONDITION(tmcq_codebook_replace(shader, "const uint row, const uint tc)\n{", "const uint row, const uint tc, const tmcq_codebook_char2 tmcq_ext)\n{") == 1);
-	CCV_NNC_MFA_PRECONDITION(tmcq_codebook_replace(shader, "q, tmcq_table);", "q, tmcq_ext);") == 1);
-	CCV_NNC_MFA_PRECONDITION(tmcq_codebook_replace(shader, "rc.x, rc.y);", "rc.x, rc.y, tmcq_ext);") == 2);
-}
-
 std::string Dequantize8iRowwiseXKernel::createSource() const noexcept
 {
-	if (is_tmcq(format)) {
-		std::string shader = createConstants() + "\n" + create_tmcq_source(format, (tileTail & 1) != 0);
-		if (tmcq_codebook_log2(format))
-			rewrite_decode_codebook(shader, tmcq_codebook_log2(format));
-		return shader;
-	}
+	if (is_tmcq(format))
+		return createConstants() + "\n" + create_tmcq_source(format, (tileTail & 1) != 0);
 	std::string shader = createConstants() + "\n";
 	shader += R"(
 #include <metal_stdlib>

@@ -1,6 +1,7 @@
 #include "ccv_nnc_mfa.hpp"
 #include "kernels/Dequantize8iRowwiseXFPDescriptor.hpp"
 #include "kernels/Dequantize8iRowwiseXFPKernel.hpp"
+#include "kernels/TMCQDecodeSource.hpp"
 
 using namespace ccv::nnc;
 
@@ -39,13 +40,19 @@ void ccv_nnc_mfa_encode_dequantize_8i_rowwise_x_fp(ccv_nnc_mfa_context_t* contex
 		num_tensors += 1;
 	}
 	CCV_NNC_MFA_PRECONDITION(num_tensors == 2);
+	// A TMCQ weight as stored: its pair table at buffer(3), then the tiles.
+	const size_t codebook_size = (size_t)tmcq_codebook_size(params.format);
+	if (codebook_size) {
+		encoder->setBuffer(tensors[0], tensor_offsets[0], NS::UInteger(3));
+		encoder->setBuffer(tensors[0], tensor_offsets[0] + codebook_size, NS::UInteger(0));
+	}
 
 	Dequantize8iRowwiseXFPDescriptor descriptor;
 	descriptor.format = params.format;
 	descriptor.memoryPrecision = memory_precision_for_data_type(params.data_type);
 	descriptor.rowLength = (uint32_t)params.row_length;
 	descriptor.length = params.length;
-	encoder->setBuffer(tensors[0], tensor_offsets[0] + (size_t)descriptor.inputScaleOffset(), NS::UInteger(2));
+	encoder->setBuffer(tensors[0], tensor_offsets[0] + codebook_size + (size_t)descriptor.inputScaleOffset(), NS::UInteger(2));
 
 	auto pool = NS::AutoreleasePool::alloc()->init();
 	auto& shaderCache = context->kernel_cache;
@@ -58,12 +65,6 @@ void ccv_nnc_mfa_encode_dequantize_8i_rowwise_x_fp(ccv_nnc_mfa_context_t* contex
 	encoder->setComputePipelineState(pipeline.get());
 	encoder->useResource(tensors[0], MTL::ResourceUsageRead);
 	encoder->useResource(tensors[1], MTL::ResourceUsageWrite);
-	if ((params.format >> 16) & 0xffu) {
-		// External codebook (TMCQ only), see ccv_nnc_mfa_dequantize_8i_rowwise_x_fp_params_t::codebook.
-		CCV_NNC_MFA_PRECONDITION(params.codebook != nullptr);
-		encoder->setBuffer(params.codebook, 0, NS::UInteger(3));
-		encoder->useResource(params.codebook, MTL::ResourceUsageRead);
-	}
 
 	MTL::Size gridSize = kernel->gridSize(descriptor.totalGroups(), descriptor.groupSize());
 	CCV_NNC_MFA_PRECONDITION(gridSize.width > 0 && gridSize.height > 0 && gridSize.depth > 0);

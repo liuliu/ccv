@@ -151,7 +151,7 @@ void ccv_nnc_mfa_encode_segmented_scaled_gemm(
   // A fused packed format takes whole tile decoder blocks: TMCQ N % 64 and K % 64 (register tiles), the others N % 256
   // and K % 256 (SegmentedScaledGEMMKernel::fusesPackedFormat).
   CCV_NNC_MFA_PRECONDITION(params.format == 0 ||
-    (((params.format & ~CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK) == 0 || (segmentedTMCQRate(params.format) && tmcq_codebook_log2(params.format))) && params.use_neural_accelerators &&
+    ((params.format & ~CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK) == 0 && params.use_neural_accelerators &&
       !params.fused_bias && (segmentedTMCQRate(params.format) ? (params.N % 64 == 0 && params.K % 64 == 0) : (params.N % 256 == 0 && params.K % 256 == 0))));
   if (!params.use_neural_accelerators) {
     CCV_NNC_MFA_PRECONDITION(params.data_type == MTL::DataTypeFloat && !params.fused_bias && num_tensors == 5);
@@ -305,20 +305,18 @@ void ccv_nnc_mfa_encode_segmented_scaled_gemm(
     encoder->useResource(tensors[4], MTL::ResourceUsageWrite);
     if (num_tensors >= 6)
       encoder->useResource(tensors[5], MTL::ResourceUsageRead);
+    // A TMCQ weight as stored: its pair table at buffer(7), then the tiles.
+    const size_t codebook_size = (size_t)tmcq_codebook_size(params.format);
+    if (codebook_size)
+      encoder->setBuffer(tensors[3], tensor_offsets[3], 7);
     encoder->setBuffer(scratch, 0, 0);
-    encoder->setBuffer(tensors[3], tensor_offsets[3], 1);
+    encoder->setBuffer(tensors[3], tensor_offsets[3] + codebook_size, 1);
     encoder->setBuffer(tensors[4], tensor_offsets[4], 2);
     encoder->setBuffer(scratch, a_layout.scale_offset, 3);
-    encoder->setBuffer(tensors[3], tensor_offsets[3] + b_scale_offset, 4);
+    encoder->setBuffer(tensors[3], tensor_offsets[3] + codebook_size + b_scale_offset, 4);
     encoder->setBuffer(scratch, p_layout.records_offset, 5);
     if (num_tensors >= 6)
       encoder->setBuffer(tensors[5], tensor_offsets[5], 6);
-    if (tmcq_codebook_log2(params.format)) {
-      // External codebook (TMCQ with a codebook slot), see ccv_nnc_mfa_segmented_scaled_gemm_params_t::codebook.
-      CCV_NNC_MFA_PRECONDITION(params.codebook != nullptr);
-      encoder->setBuffer(params.codebook, 0, 7);
-      encoder->useResource(params.codebook, MTL::ResourceUsageRead);
-    }
     encoder->dispatchThreadgroups(
         scratch,
         p_layout.dispatch_offset,

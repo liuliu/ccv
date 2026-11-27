@@ -204,7 +204,6 @@ void ccv_nnc_mfa_prepare_scaled_swiglu(
       .format = params.format,
       .row_length = params.K,
       .length = (uint64_t)params.N * params.K,
-      .codebook = params.codebook,
     };
     ccv_nnc_mfa_prepare_dequantize_8i_rowwise_x(context, decode_params);
   }
@@ -223,15 +222,11 @@ void ccv_nnc_mfa_encode_scaled_swiglu(
     ++num_tensors;
   CCV_NNC_MFA_PRECONDITION(num_tensors == 4);
   CCV_NNC_MFA_PRECONDITION(params.M > 0 && params.N > 0 && params.K > 0);
-  // TMCQ weights (16 x 16 tiles, N % 16 and K % 16) are decoded to int8 rows below like every packed format, which
-  // take whole 256-weight blocks; TMCQ carries no modifier bits but an external codebook's log2 entry count (bits 16 -
-  // 23).
+  // TMCQ weights (16 x 16 tiles, N % 16 and K % 16, no modifier bits) are decoded to int8 rows below like every packed
+  // format, which take whole 256-weight blocks.
   CCV_NNC_MFA_PRECONDITION(
-    params.format == 0 || (segmentedTMCQRate(params.format & CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK) ?
+    params.format == 0 || (segmentedTMCQRate(params.format) ?
       ((params.N % 16) == 0 && (params.K % 16) == 0) : ((params.N % 256) == 0 && (params.K % 256) == 0)));
-  CCV_NNC_MFA_PRECONDITION(!segmentedTMCQRate(params.format & CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK) ||
-    (params.format & ~(CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK | 0xff0000u)) == 0);
-  CCV_NNC_MFA_PRECONDITION(!(params.format & 0xff0000u) || params.codebook != nullptr);
 
   if (!params.use_neural_accelerators) {
     CCV_NNC_MFA_PRECONDITION(
@@ -427,7 +422,6 @@ void ccv_nnc_mfa_encode_scaled_swiglu(
     .format = params.format,
     .row_length = params.K,
     .length = (uint64_t)params.N * params.K,
-    .codebook = params.codebook,
   };
   const size_t weight_scale_offset = rowwise_8i_scale_offset(params.N, params.K);
   for (int projection = 0; projection < 2; ++projection) {

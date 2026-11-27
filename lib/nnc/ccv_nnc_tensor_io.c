@@ -4,7 +4,6 @@
 #include "ccv_internal.h"
 #include "_ccv_nnc_symbolic_graph.h"
 #include "3rdparty/sqlite3/sqlite3.h"
-#include "ccv_nnc_codebook.h"
 #include <limits.h>
 #include <stdint.h>
 #ifdef HAVE_CUDA
@@ -149,30 +148,12 @@ static int _ccv_nnc_tensor_io_read_split_data(sqlite3* const conn, const char* c
 
 // MARK - Level-1 API
 
-// The codebook slot of a row-wise-x weight stored with reserved field `reserved`: 0 (the built-in table), the inline
-// slot 255 for a TMCQ weight with an inline codebook (its table is checked where it is decoded), or -1 for anything
-// else: a slot with no inline codebook (a file-level codebook tensor is not supported), or an inline codebook on
-// another codec.
-static int _ccv_nnc_tensor_stored_codebook_slot(const int reserved)
-{
-	if (!ccv_nnc_8i_rowwise_x_codebook_is_valid(reserved))
-		return -1;
-	if (ccv_nnc_8i_rowwise_x_inline_codebook_entries(reserved))
-		return CCV_NNC_CODEBOOK_INLINE_SLOT;
-	return ccv_nnc_8i_rowwise_x_codebook_slot(reserved) ? -1 : 0;
-}
-
 int ccv_nnc_tensor_write(const ccv_nnc_tensor_t* const tensor, void* const handle, const char* const name, const ccv_nnc_tensor_io_option_t* const options)
 {
 	assert(CCV_IS_TENSOR_CONTIGUOUS(tensor));
 	assert(name);
 	sqlite3* conn = (sqlite3*)handle;
 	if (!conn)
-		return CCV_IO_ERROR;
-	// A row-wise-x weight is stored with the built-in table or an inline codebook; a slot registered in this process
-	// means nothing in a file.
-	if (CCV_GET_DATA_TYPE(tensor->info.datatype) == CCV_QX && (tensor->info.datatype & 0xf00) == CCV_NNC_QX_8I_ROWWISE_X &&
-		_ccv_nnc_tensor_stored_codebook_slot(tensor->info.reserved) < 0)
 		return CCV_IO_ERROR;
 	const char tensor_create_table_qs[] = "CREATE TABLE IF NOT EXISTS tensors "
 		"(name TEXT, type INTEGER, format INTEGER, datatype INTEGER, "
@@ -375,15 +356,6 @@ int ccv_nnc_tensor_write(const ccv_nnc_tensor_t* const tensor, void* const handl
 	return result == SQLITE_DONE ? CCV_IO_FINAL : CCV_IO_ERROR;
 }
 
-// Whether row-wise-x params do not name the inline codebook bits stored_inline_bits of the stored weight (0: the
-// stored weight has none, nothing to match). Params of another datatype are left to the decode callback.
-static int _ccv_nnc_tensor_inline_codebook_mismatch(const ccv_nnc_tensor_param_t params, const int stored_inline_bits)
-{
-	if (!stored_inline_bits || CCV_GET_DATA_TYPE(params.datatype) != CCV_QX || (params.datatype & 0xf00) != CCV_NNC_QX_8I_ROWWISE_X)
-		return 0;
-	return (params.reserved & (CCV_NNC_CODEBOOK_INLINE_MASK | CCV_NNC_CODEBOOK_SLOT_MASK)) != stored_inline_bits;
-}
-
 int ccv_nnc_tensor_read(void* const handle, const char* const name, const ccv_nnc_tensor_io_option_t* const options, const int flags, const ccv_nnc_tensor_param_t* const tensor_params_optional, ccv_nnc_tensor_t** const tensor_out)
 {
 	assert(name);
@@ -402,32 +374,9 @@ int ccv_nnc_tensor_read(void* const handle, const char* const name, const ccv_nn
 		return CCV_IO_ERROR;
 	}
 	ccv_nnc_tensor_t* tensor = *tensor_out;
-	const int tensor_provided = !!tensor;
 	ccv_nnc_tensor_param_t tensor_params;
 	int datatype = 0;
 	unsigned int identifier = 0;
-	// A row-wise-x weight: check its codebook first, so one that is not the built-in table or inline fails the read
-	// instead of decoding with the built-in table. codebook_slot < 0: not such a weight.
-	int codebook_slot = -1;
-	// For a weight with an inline codebook, its codebook bits (slot 255 and P): a row-wise-x read into caller params or
-	// an existing tensor must name the same, since the table is part of the data and sets its size.
-	int stored_inline_bits = 0;
-	{
-		const sqlite_int64 stored_datatype_mix = sqlite3_column_int64(tensor_select_stmt, 3);
-		const int stored_datatype = (int)(stored_datatype_mix & 0xffffffff);
-		if (CCV_GET_DATA_TYPE(stored_datatype) == CCV_QX && (stored_datatype & 0xf00) == CCV_NNC_QX_8I_ROWWISE_X)
-		{
-			const int stored_reserved = (int)((stored_datatype_mix >> 32) & 0xffffffff);
-			codebook_slot = _ccv_nnc_tensor_stored_codebook_slot(stored_reserved);
-			if (codebook_slot < 0)
-			{
-				sqlite3_finalize(tensor_select_stmt);
-				return CCV_IO_ERROR;
-			}
-			if (ccv_nnc_8i_rowwise_x_inline_codebook_entries(stored_reserved))
-				stored_inline_bits = stored_reserved & (CCV_NNC_CODEBOOK_INLINE_MASK | CCV_NNC_CODEBOOK_SLOT_MASK);
-		}
-	}
 	const sqlite_int64 format_mix = sqlite3_column_int64(tensor_select_stmt, 2);
 	const int has_splits = !!(format_mix & CCV_NNC_TENSOR_IO_SPLIT_FORMAT);
 	if (!tensor) // If the tensor is not provided, we need to create one.
@@ -438,11 +387,6 @@ int ccv_nnc_tensor_read(void* const handle, const char* const name, const ccv_nn
 			datatype = sqlite3_column_int64(tensor_select_stmt, 3) & 0xffffffff;
 			tensor_params = *tensor_params_optional;
 			assert(!(flags & CCV_NNC_TENSOR_READ_METADATA_ONLY));
-			if (_ccv_nnc_tensor_inline_codebook_mismatch(tensor_params, stored_inline_bits))
-			{
-				sqlite3_finalize(tensor_select_stmt);
-				return CCV_IO_ERROR;
-			}
 		} else {
 			const sqlite_int64 type = sqlite3_column_int64(tensor_select_stmt, 1);
 			identifier = (type >> 32) & 0xffffffff;
@@ -451,8 +395,6 @@ int ccv_nnc_tensor_read(void* const handle, const char* const name, const ccv_nn
 			const sqlite_int64 datatype_mix = sqlite3_column_int64(tensor_select_stmt, 3);
 			datatype = tensor_params.datatype = (datatype_mix & 0xffffffff);
 			tensor_params.reserved = (datatype_mix >> 32) & 0xffffffff;
-			if (codebook_slot >= 0)
-				tensor_params.reserved = ccv_nnc_codebook_with_slot(tensor_params.reserved, codebook_slot);
 			const void* const dim = sqlite3_column_blob(tensor_select_stmt, 4);
 			memcpy(tensor_params.dim, dim, ccv_min(sizeof(tensor_params.dim), sqlite3_column_bytes(tensor_select_stmt, 4)));
 		}
@@ -479,11 +421,6 @@ int ccv_nnc_tensor_read(void* const handle, const char* const name, const ccv_nn
 		datatype = sqlite3_column_int64(tensor_select_stmt, 3) & 0xffffffff;
 		tensor_params = tensor->info;
 		assert(!(flags & CCV_NNC_TENSOR_READ_METADATA_ONLY));
-		if (_ccv_nnc_tensor_inline_codebook_mismatch(tensor_params, stored_inline_bits))
-		{
-			sqlite3_finalize(tensor_select_stmt);
-			return CCV_IO_ERROR;
-		}
 	}
 	const void* data = sqlite3_column_blob(tensor_select_stmt, 0);
 	size_t data_bytes = sqlite3_column_bytes(tensor_select_stmt, 0);
@@ -498,24 +435,6 @@ int ccv_nnc_tensor_read(void* const handle, const char* const name, const ccv_nn
 			sqlite3_finalize(tensor_select_stmt);
 			return CCV_IO_ERROR;
 		}
-	}
-	// An inline codebook stored as is (no decoder takes these bytes) is checked here, once, on the host: magic, P,
-	// crc32, zero padding and values. Backends that cannot read the table on the host per command (CUDA) rely on it;
-	// a decoder that takes the bytes checks its output itself (ccv_nnc_codebook_resolve_inline).
-	if (stored_inline_bits && (!identifier || !options || !options->decode) &&
-		(data_bytes < ccv_nnc_8i_rowwise_x_inline_codebook_size(stored_inline_bits) || ccv_nnc_codebook_resolve_inline(data, stored_inline_bits) < 0))
-	{
-		if (split_workspace)
-			ccfree(split_workspace);
-		if (!tensor_provided && *tensor_out)
-		{
-			ccv_nnc_tensor_free(*tensor_out);
-			*tensor_out = 0;
-		}
-		sqlite3_reset(tensor_select_stmt);
-		sqlite3_clear_bindings(tensor_select_stmt);
-		sqlite3_finalize(tensor_select_stmt);
-		return CCV_IO_ERROR;
 	}
 	int dim[CCV_NNC_MAX_DIM_ALLOC];
 	memcpy(dim, sqlite3_column_blob(tensor_select_stmt, 4), ccv_min(sizeof(dim), sqlite3_column_bytes(tensor_select_stmt, 4)));
@@ -867,9 +786,6 @@ int ccv_nnc_tensor_read(void* const handle, const char* const name, const ccv_nn
 #endif
 	}
 	tensor_out[0]->type &= ~CCV_GARBAGE; // If it is marked as garbage, remove that mark now.
-	// The weight takes its stored codebook (the built-in table or inline, checked against caller params above).
-	if (codebook_slot >= 0 && CCV_GET_DATA_TYPE(tensor_out[0]->info.datatype) == CCV_QX && (tensor_out[0]->info.datatype & 0xf00) == CCV_NNC_QX_8I_ROWWISE_X)
-		tensor_out[0]->info.reserved = ccv_nnc_codebook_with_slot(tensor_out[0]->info.reserved, codebook_slot);
 	sqlite3_reset(tensor_select_stmt);
 	sqlite3_clear_bindings(tensor_select_stmt);
 	sqlite3_finalize(tensor_select_stmt);

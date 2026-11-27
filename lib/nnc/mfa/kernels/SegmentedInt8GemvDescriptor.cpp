@@ -224,11 +224,8 @@ uint32_t segmentedInt8GemvSIMDGroupsPerThreadgroup(const uint32_t format)
 
 uint32_t segmentedTMCQRate(const uint32_t format)
 {
-  // Bits 16 - 23 may name an external codebook's log2 entry count (TMCQDecodeSource.hpp); no other modifier bits.
-  if (!tmcq_codebook_format_ok(format))
-    return 0;
-  const uint32_t codec = format & 0xffu;
-  if ((format & ~(0xffu | 0xff0000u)) || codec < CCV_NNC_QX_8I_ROWWISE_TMCQ_N16 || codec > CCV_NNC_QX_8I_ROWWISE_TMCQ_N32)
+  const uint32_t codec = format & CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK;
+  if ((format & ~CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK) || codec < CCV_NNC_QX_8I_ROWWISE_TMCQ_N16 || codec > CCV_NNC_QX_8I_ROWWISE_TMCQ_N32)
     return 0;
   return 16 + 2 * (codec - CCV_NNC_QX_8I_ROWWISE_TMCQ_N16);
 }

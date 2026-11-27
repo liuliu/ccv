@@ -2,7 +2,6 @@
 #include "ccv_internal.h"
 #include "nnc/ccv_nnc.h"
 #include "nnc/ccv_nnc_easy.h"
-#include "nnc/ccv_nnc_codebook.h"
 #include "nnc/ccv_nnc_internal.h"
 #include "nnc/mps/ccv_nnc_mps.h"
 
@@ -20,27 +19,6 @@ static uint64_t _ccv_nnc_swiglu_mtl_datatype(const int datatype)
 	}
 }
 
-// The MFA format and codebook of a TMCQ gate / up pair reading an external pair codebook (ccv_nnc_codebook.h): format
-// is the kernel format, with log2 of the entry count of the codebook in bits 16 - 23 for a nonzero slot. Both weights
-// must name the same slot, and only TMCQ takes a nonzero one. Returns 0 if they cannot run together.
-static int _ccv_nnc_swiglu_codebook(const ccv_nnc_tensor_view_t* const gate_w, const ccv_nnc_tensor_view_t* const up_w, uint32_t* const format, mtl_buffer_t** const codebook)
-{
-	*codebook = NULL;
-	const ccv_nnc_tensor_view_t* const weights[2] = { gate_w, up_w };
-	int slots[2] = { 0, 0 };
-	int i;
-	for (i = 0; i < 2; i++)
-		if ((weights[i]->info.datatype & 0xf00) == CCV_NNC_QX_8I_ROWWISE_X)
-		{
-			slots[i] = ccv_nnc_codebook_slot_of(weights[i]->info.reserved);
-			if (slots[i] && !ccv_nnc_8i_rowwise_x_is_tmcq(weights[i]->info.reserved))
-				return 0;
-		}
-	if (slots[0] != slots[1])
-		return 0;
-	return ccv_nnc_mfa_codebook_format(ccv_nnc_default_mfa_context(), slots[0], format, codebook);
-}
-
 static size_t _ccv_nnc_swiglu_align_up(const size_t value, const size_t alignment)
 {
 	return (value + alignment - 1) & ~(alignment - 1);
@@ -53,12 +31,8 @@ static int _ccv_nnc_swiglu_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hi
 	if (outputs[0]->info.dim[0] == 0)
 		return CCV_NNC_EXEC_SUCCESS;
 	const ccv_nnc_tensor_view_t* const a = (const ccv_nnc_tensor_view_t*)inputs[0];
-	// TMCQ weights with an inline codebook: the data after the table, naming the table's slot.
-	ccv_nnc_tensor_t gate_inline, up_inline;
-	const ccv_nnc_tensor_view_t* const gate_w = (const ccv_nnc_tensor_view_t*)ccv_nnc_mps_8i_rowwise_x_inline_view(inputs[1], &gate_inline);
-	const ccv_nnc_tensor_view_t* const up_w = (const ccv_nnc_tensor_view_t*)ccv_nnc_mps_8i_rowwise_x_inline_view(inputs[2], &up_inline);
-	if (!gate_w || !up_w)
-		return CCV_NNC_EXEC_INVALID;
+	const ccv_nnc_tensor_view_t* const gate_w = (const ccv_nnc_tensor_view_t*)inputs[1];
+	const ccv_nnc_tensor_view_t* const up_w = (const ccv_nnc_tensor_view_t*)inputs[2];
 	ccv_nnc_tensor_view_t* const output = (ccv_nnc_tensor_view_t*)outputs[0];
 	const int a_nd = ccv_nnc_tensor_nd(a->info.dim);
 	const int gate_w_nd = ccv_nnc_tensor_nd(gate_w->info.dim);
@@ -81,13 +55,8 @@ static int _ccv_nnc_swiglu_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hi
 	const int up_subtype = up_w->info.datatype & 0xf00;
 	const int gate_rowwise = gate_subtype == CCV_NNC_QX_8I_ROWWISE || gate_subtype == CCV_NNC_QX_8I_ROWWISE_X;
 	const int up_rowwise = up_subtype == CCV_NNC_QX_8I_ROWWISE || up_subtype == CCV_NNC_QX_8I_ROWWISE_X;
-	const uint32_t gate_format = gate_subtype == CCV_NNC_QX_8I_ROWWISE_X ? (uint32_t)ccv_nnc_8i_rowwise_x_kernel_format(gate_w->info.reserved) : 0;
-	const uint32_t up_format = up_subtype == CCV_NNC_QX_8I_ROWWISE_X ? (uint32_t)ccv_nnc_8i_rowwise_x_kernel_format(up_w->info.reserved) : 0;
-	// TMCQ kernels take the codebook format; it equals gate_format for the built-in table.
-	uint32_t gate_codebook_format = gate_format;
-	mtl_buffer_t* codebook;
-	if (!_ccv_nnc_swiglu_codebook(gate_w, up_w, &gate_codebook_format, &codebook))
-		return CCV_NNC_EXEC_INVALID;
+	const uint32_t gate_format = gate_subtype == CCV_NNC_QX_8I_ROWWISE_X ? (uint32_t)gate_w->info.reserved : 0;
+	const uint32_t up_format = up_subtype == CCV_NNC_QX_8I_ROWWISE_X ? (uint32_t)up_w->info.reserved : 0;
 	const uint64_t mtl_datatype = _ccv_nnc_swiglu_mtl_datatype(a->info.datatype);
 	ccv_nnc_mfa_context_t* const context = ccv_nnc_default_mfa_context();
 	const int shape_supported =
@@ -111,14 +80,10 @@ static int _ccv_nnc_swiglu_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hi
 		gate_rowwise && up_rowwise && ((gate_w->info.datatype & 0xff) << 12) == a->info.datatype;
 	if (!dense_weights && !rowwise_weights)
 		return CCV_NNC_EXEC_INVALID;
-	// TMCQ is a 16 x 16 tile grid (K % 16, N % 16); the other packed codecs take whole 256-weight blocks.
+	// TMCQ is a 16 x 16 tile grid (K % 16, N % 16) without modifier bits; the other packed codecs take whole 256-weight blocks.
 	const int rowwise_shape_supported = gate_format == 0 ?
-		(K % 4) == 0 : ccv_nnc_8i_rowwise_x_is_tmcq(gate_format) ? (K % 16) == 0 && (N % 16) == 0 : (K % 256) == 0 && (N % 256) == 0;
+		(K % 4) == 0 : ccv_nnc_8i_rowwise_x_is_tmcq(gate_format) ? (K % 16) == 0 && (N % 16) == 0 && !(gate_format & ~CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK) : (K % 256) == 0 && (N % 256) == 0;
 	if (rowwise_weights && !rowwise_shape_supported)
-		return CCV_NNC_EXEC_INVALID;
-	// TMCQ weights have no direct row kernel here: they take the matrix paths below, which decode
-	// their 16 x 16 tiles first (N % 16 and K % 16 above). No TMCQ codec takes a Hadamard rotation.
-	if (rowwise_weights && ccv_nnc_8i_rowwise_x_is_tmcq(gate_format) && (gate_format & ~CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK))
 		return CCV_NNC_EXEC_INVALID;
 
 	@autoreleasepool {
@@ -171,8 +136,7 @@ static int _ccv_nnc_swiglu_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hi
 		{
 			const ccv_nnc_mfa_scaled_swiglu_params_t params = {
 				.data_type = mtl_datatype,
-			.format = gate_codebook_format,
-			.codebook = codebook,
+				.format = gate_format,
 				.M = M,
 				.N = N,
 				.K = K,
@@ -247,10 +211,9 @@ static int _ccv_nnc_swiglu_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hi
 			{
 				rowwise_x_decode_params = (ccv_nnc_mfa_dequantize_8i_rowwise_x_fp_params_t){
 					.data_type = mtl_datatype,
-				.format = gate_codebook_format,
+					.format = gate_format,
 					.row_length = K,
 					.length = (uint64_t)N * K,
-				.codebook = codebook,
 				};
 				ccv_nnc_mfa_prepare_dequantize_8i_rowwise_x_fp(context, rowwise_x_decode_params);
 			} else {

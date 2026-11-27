@@ -143,8 +143,7 @@ uint64_t Int8GemvDescriptor::inputScaleOffset() const noexcept {
 
 std::pair<Int8GemvKernelDescriptor, PipelineValue<Int8GemvKernel>*> Int8GemvDescriptor::findKernel(MTL::Device* const device, const DeviceProperties& dprops, NS::Array* const binaryArchivesToRead, MTL::BinaryArchive* const binaryArchiveToWrite, const std::string& pathToWrite, std::unordered_map<Int8GemvKernelDescriptor, std::unique_ptr<Int8GemvKernel>> *const libraryCache) const noexcept {
   if (is_tmcq(format)) {
-    // Bits 16 - 23: log2 of an external codebook's entry count, 0 for the built-in table (TMCQDecodeSource.hpp).
-    CCV_NNC_MFA_PRECONDITION(tmcq_codebook_format_ok(format));
+    CCV_NNC_MFA_PRECONDITION((format & ~CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK) == 0);
     CCV_NNC_MFA_PRECONDITION(mrows >= 1 && mrows <= 3);
     // The 16 x 16 tile grid: one threadgroup per tile row, the tile loop runs over any ncols / 16 tiles.
     CCV_NNC_MFA_PRECONDITION((nrows % 16) == 0 && (ncols % 16) == 0 && ncols > 0);

@@ -13,9 +13,6 @@
 #include "ccv.h"
 #include "ccv_internal.h"
 #include "nnc/ccv_nnc.h"
-// The codebook registry and the inline codebook helpers (ccv_nnc_codebook_resolve_inline), also for bindings that
-// only see this header.
-#include "nnc/ccv_nnc_codebook.h"
 #ifdef HAVE_MPS
 #ifdef __APPLE__
 #include "TargetConditionals.h"
@@ -229,77 +226,29 @@ static inline ccv_nnc_tensor_param_t ccv_nnc_tensor_8i_rowwise(const ccv_nnc_ten
 	return new_params;
 }
 
-/* TMCQ, with the built-in table (codebook slot 0) or the codebook in its slot. */
 static inline int ccv_nnc_8i_rowwise_x_is_tmcq(const int format)
 {
 	const int codec = format & CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK;
 	return codec >= CCV_NNC_QX_8I_ROWWISE_TMCQ_N16 && codec <= CCV_NNC_QX_8I_ROWWISE_TMCQ_N32;
 }
 
-/* Trellis bits per 256-weight tile over 16, i.e. the TMCQ rate n (bits per weight = n / 16). */
+/* The TMCQ rate n (n / 16 bits per weight). */
 static inline int ccv_nnc_8i_rowwise_x_tmcq_rate(const int format)
 {
 	assert(ccv_nnc_8i_rowwise_x_is_tmcq(format));
 	return 16 + 2 * ((format & CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK) - CCV_NNC_QX_8I_ROWWISE_TMCQ_N16);
 }
 
-/* The codebook slot of a format / reserved field (0 is the built-in table, see ccv_nnc_codebook.h). */
-static inline int ccv_nnc_8i_rowwise_x_codebook_slot(const int format)
+/* Bytes of the pair table at the start of the data: 1024 for TMCQ, 0 for the other codecs. */
+static inline size_t ccv_nnc_8i_rowwise_x_codebook_size(const int format)
 {
-	return (format & CCV_NNC_QX_8I_ROWWISE_CODEBOOK_SLOT_MASK) >> CCV_NNC_QX_8I_ROWWISE_CODEBOOK_SLOT_SHIFT;
-}
-
-/* The pair count of the inline codebook of a format / reserved field (512, 1024 or 2048), 0 if it has none. */
-static inline int ccv_nnc_8i_rowwise_x_inline_codebook_entries(const int format)
-{
-	const int code = (format & CCV_NNC_QX_8I_ROWWISE_CODEBOOK_INLINE_MASK) >> CCV_NNC_QX_8I_ROWWISE_CODEBOOK_INLINE_SHIFT;
-	return code ? 256 << code : 0;
-}
-
-/* Bytes before the payload of a tensor with an inline codebook (the serialized table and zeros, 128 + 2 P, a
- * multiple of 128), 0 if it has none. */
-static inline size_t ccv_nnc_8i_rowwise_x_inline_codebook_size(const int format)
-{
-	const int entries = ccv_nnc_8i_rowwise_x_inline_codebook_entries(format);
-	return entries ? 128 + (size_t)entries * 2 : 0;
-}
-
-/* format with an inline codebook of entries pairs (512, 1024 or 2048) and the inline slot 255; 0 removes both. */
-static inline int ccv_nnc_8i_rowwise_x_with_inline_codebook(const int format, const int entries)
-{
-	const int code = entries == 512 ? 1 : entries == 1024 ? 2 : entries == 2048 ? 3 : 0;
-	assert(code || entries == 0);
-	const int rest = format & ~(CCV_NNC_QX_8I_ROWWISE_CODEBOOK_INLINE_MASK | CCV_NNC_QX_8I_ROWWISE_CODEBOOK_SLOT_MASK);
-	return code ? rest | (code << CCV_NNC_QX_8I_ROWWISE_CODEBOOK_INLINE_SHIFT) | (0xff << CCV_NNC_QX_8I_ROWWISE_CODEBOOK_SLOT_SHIFT) : rest;
-}
-
-/* The codec (bits 0 - 7). */
-static inline int ccv_nnc_8i_rowwise_x_codec(const int format)
-{
-	return format & CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK;
-}
-
-/* The format handed to kernels and their descriptors: the codec and the modifier bits, without the codebook slot.
- * For a slot 0 tensor this is its reserved field unchanged. */
-static inline int ccv_nnc_8i_rowwise_x_kernel_format(const int format)
-{
-	return format & ~(CCV_NNC_QX_8I_ROWWISE_CODEBOOK_SLOT_MASK | CCV_NNC_QX_8I_ROWWISE_CODEBOOK_INLINE_MASK);
-}
-
-/* Whether the codec may name the codebook of format: TMCQ a slot (0 is the built-in table) or an inline codebook,
- * which always comes with slot 255 and slot 255 only with it; every other codec neither. */
-static inline int ccv_nnc_8i_rowwise_x_codebook_is_valid(const int format)
-{
-	const int is_inline = !!ccv_nnc_8i_rowwise_x_inline_codebook_entries(format);
-	if (ccv_nnc_8i_rowwise_x_is_tmcq(format))
-		return is_inline == (ccv_nnc_8i_rowwise_x_codebook_slot(format) == 0xff);
-	return ccv_nnc_8i_rowwise_x_codebook_slot(format) == 0 && !is_inline;
+	return ccv_nnc_8i_rowwise_x_is_tmcq(format) ? 1024 : 0;
 }
 
 static inline int ccv_nnc_8i_rowwise_x_group_size(const int format)
 {
 	if (ccv_nnc_8i_rowwise_x_is_tmcq(format))
-		return 256; // One 16 x 16 tile; it spans 16 rows, see CCV_NNC_QX_8I_ROWWISE_TMCQ_N16.
+		return 256; // One 16 x 16 tile.
 	switch (format & CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK)
 	{
 		case CCV_NNC_QX_8I_ROWWISE_Q5_K:
@@ -356,22 +305,13 @@ static inline int ccv_nnc_8i_rowwise_x_group_bits(const int format)
 	}
 }
 
-/* The 16 x 16 tiles of a row_count x row_length TMCQ tensor: (row_count / 16) tile rows of row_length / 16 tiles
- * each. */
-static inline uint64_t ccv_nnc_8i_rowwise_x_tile_count(const uint64_t row_count, const uint64_t row_length)
-{
-	return (row_count / 16) * (row_length / 16);
-}
-
-/* Bits of the packed payload of a row_count x row_length tensor. A TMCQ group is one 16 x 16 tile that spans 16
- * rows, so the payload is (row_count / 16) (row_length / 16) tiles of group_bits each, which needs only
- * row_length % 16 (with row_length % 256 it equals the row-wise formula below, byte for byte). Every other codec has
- * ceil(row_length / group_size) groups per row. */
+/* Bits of the packed payload: ceil(row_length / group_size) groups per row, or for TMCQ (row_count / 16)
+ * (row_length / 16) tiles, as a tile spans 16 rows. */
 static inline uint64_t ccv_nnc_8i_rowwise_x_payload_bits(const int format, const uint64_t row_count, const uint64_t row_length)
 {
 	const uint64_t group_bits = (uint64_t)ccv_nnc_8i_rowwise_x_group_bits(format);
 	if (ccv_nnc_8i_rowwise_x_is_tmcq(format))
-		return ccv_nnc_8i_rowwise_x_tile_count(row_count, row_length) * group_bits;
+		return (row_count / 16) * (row_length / 16) * group_bits;
 	const uint64_t group_size = (uint64_t)ccv_nnc_8i_rowwise_x_group_size(format);
 	return row_count * ((row_length + group_size - 1) / group_size) * group_bits;
 }
@@ -386,9 +326,7 @@ static inline ccv_nnc_tensor_param_t ccv_nnc_tensor_8i_rowwise_x(const ccv_nnc_t
 	}
 	if (ccv_nnc_8i_rowwise_x_is_tmcq(format))
 	{
-		// Tiles span 16 rows and 16 columns (ccv_nnc_8i_rowwise_x_payload_bits).
-		assert(nd > 0 && params.dim[nd - 1] > 0 && params.dim[nd - 1] % 16 == 0);
-		assert((ccv_nnc_tensor_count(params) / params.dim[nd - 1]) % 16 == 0);
+		assert(nd > 0 && params.dim[nd - 1] > 0 && params.dim[nd - 1] % 16 == 0 && (ccv_nnc_tensor_count(params) / params.dim[nd - 1]) % 16 == 0);
 		assert(!(format & CCV_NNC_QX_8I_ROWWISE_HADAMARD_256));
 	}
 	ccv_nnc_tensor_param_t new_params = params;
@@ -434,16 +372,10 @@ static inline size_t ccv_nnc_tensor_data_size_without_padding(const ccv_nnc_tens
 			assert(row_length > 0);
 			assert(count % row_length == 0);
 			const ssize_t row_count = count / row_length;
-			// The TMCQ tile grid rounds down, so a shape off the grid would be under-allocated.
-			if (ccv_nnc_8i_rowwise_x_is_tmcq(params.reserved))
-			{
-				assert(row_length % 16 == 0 && row_count % 16 == 0);
-			}
+			assert(!ccv_nnc_8i_rowwise_x_is_tmcq(params.reserved) || (row_length % 16 == 0 && row_count % 16 == 0));
 			const ssize_t payload_size = (ssize_t)((ccv_nnc_8i_rowwise_x_payload_bits(params.reserved, row_count, row_length) + 7) / 8);
 			const ssize_t scale_offset = (payload_size + 127) & -128;
-			// An inline codebook (TMCQ only) comes first; the rest is the layout without it.
-			assert(ccv_nnc_8i_rowwise_x_codebook_is_valid(params.reserved));
-			data_size = (ssize_t)ccv_nnc_8i_rowwise_x_inline_codebook_size(params.reserved) + scale_offset + row_count * CCV_GET_DATA_TYPE_SIZE(qx_datatype);
+			data_size = (ssize_t)ccv_nnc_8i_rowwise_x_codebook_size(params.reserved) + scale_offset + row_count * CCV_GET_DATA_TYPE_SIZE(qx_datatype);
 		} else {
 			assert(0);
 			data_size = 0;

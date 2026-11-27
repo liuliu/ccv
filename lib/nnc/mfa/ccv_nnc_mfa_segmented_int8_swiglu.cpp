@@ -96,26 +96,26 @@ void ccv_nnc_mfa_encode_segmented_int8_swiglu(
 
   auto encoder = commandBatch->startCommand();
   encoder->setComputePipelineState(pipeline.get());
-  encoder->setBuffer(tensors[0], tensorOffsets[0], 0);
-  encoder->setBuffer(tensors[1], tensorOffsets[1], 1);
+  // TMCQ weights as stored: their pair tables at buffer(15) and buffer(16), then the tiles.
+  const size_t codebookSize = (size_t)tmcq_codebook_size(params.format);
+  if (codebookSize) {
+    encoder->setBuffer(tensors[0], tensorOffsets[0], 15);
+    encoder->setBuffer(tensors[1], tensorOffsets[1], 16);
+  }
+  encoder->setBuffer(tensors[0], tensorOffsets[0] + codebookSize, 0);
+  encoder->setBuffer(tensors[1], tensorOffsets[1] + codebookSize, 1);
   encoder->setBuffer(tensors[2], tensorOffsets[2], 2);
   encoder->setBuffer(tensors[6], tensorOffsets[6], 3);
   encoder->setBuffer(
-    tensors[0], tensorOffsets[0] + descriptor.inputScaleOffset(), 4);
+    tensors[0], tensorOffsets[0] + codebookSize + descriptor.inputScaleOffset(), 4);
   encoder->setBuffer(
-    tensors[1], tensorOffsets[1] + descriptor.inputScaleOffset(), 5);
+    tensors[1], tensorOffsets[1] + codebookSize + descriptor.inputScaleOffset(), 5);
   encoder->setBuffer(tensors[3], tensorOffsets[3], 6);
   encoder->setBuffer(tensors[4], tensorOffsets[4], 7);
   encoder->setBuffer(tensors[5], tensorOffsets[5], 8);
   for (int i = 0; i < 6; ++i)
     encoder->useResource(tensors[i], MTL::ResourceUsageRead);
   encoder->useResource(tensors[6], MTL::ResourceUsageWrite);
-  if (tmcq_codebook_log2(params.format)) {
-    // External codebook (TMCQ with a codebook slot), see ccv_nnc_mfa_segmented_int8_swiglu_params_t::codebook.
-    CCV_NNC_MFA_PRECONDITION(params.codebook != nullptr);
-    encoder->setBuffer(params.codebook, 0, 15);
-    encoder->useResource(params.codebook, MTL::ResourceUsageRead);
-  }
   NS::UInteger sharedThreadgroups = 0;
   if (params.shared_rows > 0) {
     // Q8_0 rows are K bytes; Q5_K packs 16 weights in 11 bytes, Q6_K in 13.

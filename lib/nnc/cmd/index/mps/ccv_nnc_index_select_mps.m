@@ -48,8 +48,7 @@ static int _ccv_nnc_index_select_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hin
 	{
 		const int a_qx_subtype = a->info.datatype & 0xf00;
 		assert(a_qx_subtype == CCV_NNC_QX_8I_ROWWISE || a_qx_subtype == CCV_NNC_QX_8I_ROWWISE_X);
-		// TMCQ tiles span 16 rows, so a TMCQ table cannot be gathered row by row: TMCQ does not
-		// support IndexSelect (embeddings), reject it rather than decode garbage.
+		// A TMCQ tile spans 16 rows, thus a row cannot be gathered on its own.
 		if (a_qx_subtype == CCV_NNC_QX_8I_ROWWISE_X && ccv_nnc_8i_rowwise_x_is_tmcq((int)a->info.reserved))
 			return CCV_NNC_EXEC_INVALID;
 		assert(a_nd == 2);
@@ -93,7 +92,7 @@ static int _ccv_nnc_index_select_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hin
 			} else {
 				const ccv_nnc_mfa_index_select_8i_rowwise_x_params_t params = {
 					.data_type = mtl_data_type,
-				.format = (uint32_t)ccv_nnc_8i_rowwise_x_kernel_format(a->info.reserved),
+					.format = (uint32_t)a->info.reserved,
 					.row_length = (uint64_t)a->info.dim[1],
 					.input_length = (uint64_t)ccv_nnc_tensor_count(a->info),
 					.output_length = (uint64_t)ccv_nnc_tensor_count(b->info),

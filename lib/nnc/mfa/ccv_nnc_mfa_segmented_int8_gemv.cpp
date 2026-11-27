@@ -91,23 +91,21 @@ void ccv_nnc_mfa_encode_segmented_int8_gemv(
 
   auto encoder = command_batch->startCommand();
   encoder->setComputePipelineState(pipeline.get());
-  encoder->setBuffer(tensors[3], tensor_offsets[3], 0);
+  // A TMCQ weight as stored: its pair table at buffer(11), then the tiles.
+  const size_t codebook_size = (size_t)tmcq_codebook_size(params.format);
+  if (codebook_size)
+    encoder->setBuffer(tensors[3], tensor_offsets[3], 11);
+  encoder->setBuffer(tensors[3], tensor_offsets[3] + codebook_size, 0);
   encoder->setBuffer(tensors[0], tensor_offsets[0], 1);
   encoder->setBuffer(tensors[4], tensor_offsets[4], 2);
   encoder->setBuffer(
     tensors[3],
-    tensor_offsets[3] + descriptor.inputScaleOffset(),
+    tensor_offsets[3] + codebook_size + descriptor.inputScaleOffset(),
     3);
   if (params.fused_bias)
     encoder->setBuffer(tensors[5], tensor_offsets[5], 4);
   encoder->setBuffer(tensors[1], tensor_offsets[1], 5);
   encoder->setBuffer(tensors[2], tensor_offsets[2], 6);
-  if (tmcq_codebook_log2(params.format)) {
-    // External codebook (TMCQ with a codebook slot), see ccv_nnc_mfa_segmented_int8_gemv_params_t::codebook.
-    CCV_NNC_MFA_PRECONDITION(params.codebook != nullptr);
-    encoder->setBuffer(params.codebook, 0, 11);
-    encoder->useResource(params.codebook, MTL::ResourceUsageRead);
-  }
 
   encoder->useResource(tensors[0], MTL::ResourceUsageRead);
   encoder->useResource(tensors[1], MTL::ResourceUsageRead);

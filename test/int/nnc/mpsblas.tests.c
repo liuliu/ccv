@@ -1771,7 +1771,8 @@ static void _mps_segmented_packed_weights(dsfmt_t* const dsfmt, const int format
 {
 	const size_t group_size = ccv_nnc_8i_rowwise_x_group_size(format);
 	const size_t group_bits = ccv_nnc_8i_rowwise_x_group_bits(format);
-	const size_t scale_offset = ((count / group_size * group_bits + 7) / 8 + 127) & ~(size_t)127;
+	// TMCQ starts with its pair table, here random bytes like the payload.
+	const size_t scale_offset = ccv_nnc_8i_rowwise_x_codebook_size(format) + (((count / group_size * group_bits + 7) / 8 + 127) & ~(size_t)127);
 	int multiplier_bit = 0, multiplier_width = 0, multiplier_limit = 0;
 	switch (format)
 	{
@@ -1822,10 +1823,12 @@ static void _mps_segmented_packed_weights(dsfmt_t* const dsfmt, const int format
 // rather than the library's CPU codec: weight t of a 16 x 16 tile (tiles row-major over the grid,
 // weights row-major in a tile) reads the 15-bit LSB-first window of weight t | 1, ending at bit
 // (((t | 1) + 1) * n) >> 4 of the tile's 16n bits and wrapping inside the tile; q8 is half t & 1 of
-// pair (cw * 0x83DCD12D) >> 23 of the built-in table ccv_nnc_trellis_builtin_table.
+// pair (cw * 0x83DCD12D) >> 23 of the weights' own table, the first 1024 bytes of the data.
 // The output is row scale x q8 in `datatype`, like the CPU dequantizer.
-static void _mps_tmcq_dequantize(const uint8_t* const packed, const int datatype, const size_t count, const int k, const int format, void* const output)
+static void _mps_tmcq_dequantize(const uint8_t* const data, const int datatype, const size_t count, const int k, const int format, void* const output)
 {
+	const int8_t* const table = (const int8_t*)data;
+	const uint8_t* const packed = data + 1024;
 	const int n = ccv_nnc_8i_rowwise_x_tmcq_rate(format);
 	const int rows = (int)(count / k);
 	const size_t tile_bits = 16 * (size_t)n;
@@ -1854,7 +1857,7 @@ static void _mps_tmcq_dequantize(const uint8_t* const packed, const int datatype
 					cw |= (uint32_t)((packed[bit >> 3] >> (bit & 7)) & 1) << j;
 				}
 				const int row = 16 * tr + t / 16;
-				values[(size_t)row * k + 16 * tc + t % 16] = scales[row] * ccv_nnc_trellis_builtin_table[2 * ((cw * 0x83DCD12Du) >> 23) + (t & 1)];
+				values[(size_t)row * k + 16 * tc + t % 16] = scales[row] * table[2 * ((cw * 0x83DCD12Du) >> 23) + (t & 1)];
 			}
 		}
 	if (datatype == CCV_16F)

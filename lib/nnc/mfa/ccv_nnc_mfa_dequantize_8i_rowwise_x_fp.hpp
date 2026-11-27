@@ -6,9 +6,6 @@ typedef struct {
 	uint32_t format;
 	uint64_t row_length;
 	uint64_t length;
-	// The external codebook of a TMCQ format whose bits 16 - 23 hold its log2 entry count (see
-	// ccv_nnc_mfa_codebook_buffer); bound at buffer(3). NULL for the built-in table.
-	mtl_buffer_t* codebook;
 } ccv_nnc_mfa_dequantize_8i_rowwise_x_fp_params_t;
 
 #ifdef __cplusplus

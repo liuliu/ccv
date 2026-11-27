@@ -574,14 +574,12 @@ TEST_CASE("MPS segmented SwiGLU soft caps rowwise decode and grouped prefill")
 // TMCQ reference decode, written from the codec definition (CCV_NNC_QX_8I_ROWWISE_TMCQ_N16)
 // rather than the library's CPU codec: weight t of a 16 x 16 tile reads the 15-bit LSB-first window of
 // weight t | 1, ending at bit E_{t|1} = (((t | 1) + 1) * n) >> 4 of the tile's 16n bits and wrapping
-// inside the tile, and takes half t & 1 of pair (cw * 0x83DCD12D) >> 23 of the built-in table.
-static int _segmented_swiglu_tmcq_q8(const uint32_t cw, const int half)
+// inside the tile, and takes half t & 1 of pair (cw * 0x83DCD12D) >> 23 of the weights' own table, the first 1024
+// bytes of the data.
+static void _segmented_swiglu_tmcq_decode(const uint8_t* const data, const int rows, const int cols, const int n, int8_t* const codes)
 {
-	return ccv_nnc_trellis_builtin_table[2 * ((cw * 0x83DCD12Du) >> 23) + half];
-}
-
-static void _segmented_swiglu_tmcq_decode(const uint8_t* const payload, const int rows, const int cols, const int n, int8_t* const codes)
-{
+	const int8_t* const table = (const int8_t*)data;
+	const uint8_t* const payload = data + 1024;
 	const size_t tile_bits = 16 * (size_t)n;
 	const int tiles_per_row = cols / 16;
 	int tr, tc, t, j;
@@ -598,20 +596,30 @@ static void _segmented_swiglu_tmcq_decode(const uint8_t* const payload, const in
 					const size_t bit = base + (end + tile_bits - 15 + j) % tile_bits;
 					cw |= (uint32_t)((payload[bit >> 3] >> (bit & 7)) & 1) << j;
 				}
-				codes[(size_t)(16 * tr + t / 16) * cols + 16 * tc + t % 16] = (int8_t)_segmented_swiglu_tmcq_q8(cw, t & 1);
+				codes[(size_t)(16 * tr + t / 16) * cols + 16 * tc + t % 16] = table[2 * ((cw * 0x83DCD12Du) >> 23) + (t & 1)];
 			}
 		}
 }
 
-// Random TMCQ weights: any payload bit string is valid. Row scales are stored as `datatype`, and
-// dense gets row scale x code in FP32 from the stored (rounded) scale.
+// Random TMCQ weights: their own table (the built-in pairs in a random order, so the codes keep their statistics), then
+// a random payload (any bit string is valid). Row scales are stored as `datatype`, and dense gets row scale x code in
+// FP32 from the stored (rounded) scale.
 static void _segmented_swiglu_tmcq_weights(dsfmt_t* const dsfmt, const int format, const int datatype, const int rows, const int k, uint8_t* const packed, float* const dense)
 {
 	const int n = ccv_nnc_8i_rowwise_x_tmcq_rate(format);
 	const size_t payload_size = (size_t)rows * k * n / 128;
-	const size_t scale_offset = (payload_size + 127) & ~(size_t)127;
+	const size_t scale_offset = 1024 + ((payload_size + 127) & ~(size_t)127);
+	memcpy(packed, ccv_nnc_trellis_builtin_table, 1024);
 	size_t i;
-	for (i = 0; i < scale_offset; i++)
+	for (i = 511; i > 0; i--)
+	{
+		const size_t j = dsfmt_genrand_uint32(dsfmt) % (i + 1);
+		uint16_t pair;
+		memcpy(&pair, packed + 2 * i, 2);
+		memcpy(packed + 2 * i, packed + 2 * j, 2);
+		memcpy(packed + 2 * j, &pair, 2);
+	}
+	for (i = 1024; i < scale_offset; i++)
 		packed[i] = dsfmt_genrand_uint32(dsfmt) & 255;
 	float* const scales = (float*)ccmalloc(sizeof(float) * rows);
 	for (i = 0; i < rows; i++)

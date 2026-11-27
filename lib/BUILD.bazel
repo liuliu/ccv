@@ -358,8 +358,7 @@ cc_library(
 		"nnc/cmd/ccv_nnc_cmd_easy.h",
 		"nnc/co.h",
 		"nnc/ccv_nnc_8i_rowwise_packed_grids.inc",
-		"nnc/ccv_nnc_trellis_builtin_table.inc",
-		"nnc/ccv_nnc_codebook.h"
+		"nnc/ccv_nnc_trellis_builtin_table.inc"
 	],
 	includes = [
 		"."
@@ -537,7 +536,6 @@ cc_library(
 		"nnc/_ccv_cnnp_model.h",
 		"nnc/ccv_nnc_palettize.c",
 		"nnc/ccv_nnc_8i_rowwise.c",
-		"nnc/ccv_nnc_codebook.c",
 		"nnc/ccv_nnc_tensor.c",
 		"nnc/ccv_nnc_tensor_io.c",
 		"nnc/ccv_nnc_tensor_tape.c",

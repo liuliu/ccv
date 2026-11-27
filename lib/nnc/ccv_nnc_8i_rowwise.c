@@ -9,10 +9,8 @@
 #include <cblas.h>
 #endif
 #include "ccv_nnc_8i_rowwise_packed_grids.inc"
-// The built-in pair codebook, ccv_nnc_trellis_builtin_table[2 k + parity] with k = (cw * 0x83DCD12D) >> 23:
-// TMCQ and its quantizer.
+// The built-in pair table that the TMCQ quantizer writes at the start of its output and fits the tiles to.
 #include "ccv_nnc_trellis_builtin_table.inc"
-#include "ccv_nnc_codebook.h"
 #ifdef USE_DISPATCH
 #include <dispatch/dispatch.h>
 #endif
@@ -52,11 +50,8 @@ CCV_WARN_UNUSED(size_t) ccv_nnc_8i_rowwise_x_data_size(const int format, const i
 	assert(row_length > 0);
 	assert(input_length % row_length == 0);
 	const size_t row_count = input_length / row_length;
-	if (!ccv_nnc_8i_rowwise_x_codebook_is_valid(format))
-		return 0;
 	const size_t scale_offset = _ccv_nnc_8i_rowwise_packed_scale_offset(format, input_length, row_length);
-	// An inline codebook (TMCQ) comes first.
-	return ccv_nnc_8i_rowwise_x_inline_codebook_size(format) + scale_offset + row_count * CCV_GET_DATA_TYPE_SIZE(datatype);
+	return ccv_nnc_8i_rowwise_x_codebook_size(format) + scale_offset + row_count * CCV_GET_DATA_TYPE_SIZE(datatype);
 }
 
 static void _ccv_nnc_8i_rowwise_packed_write_bits(uint8_t* const data, const size_t bit_offset, const uint32_t value, const int bits)
@@ -1441,10 +1436,9 @@ static inline int _ccv_nnc_8i_rowwise_tmcq_end(const int t, const int n)
 }
 
 // Decode the 256 int8 codes of tile g (tile-row-major, weights row-major inside the tile), one pair at a time, with
-// the pair table of entries pairs (the built-in table for slot 0, else the codebook in the slot).
-static void _ccv_nnc_8i_rowwise_tmcq_decode_tile(const uint8_t* const input, const size_t g, const int n, const int8_t* const table, const int entries, int8_t* const q8)
+// the tensor's 512-pair table.
+static void _ccv_nnc_8i_rowwise_tmcq_decode_tile(const uint8_t* const input, const size_t g, const int n, const int8_t* const table, int8_t* const q8)
 {
-	const int shift = 32 - ccv_nnc_codebook_log2_entries(entries);
 	const int T = 16 * n;
 	uint8_t bits[512 + 15];
 	const size_t bit_offset = g * (size_t)T;
@@ -1462,7 +1456,7 @@ static void _ccv_nnc_8i_rowwise_tmcq_decode_tile(const uint8_t* const input, con
 		int j;
 		for (j = 0; j < 15; j++)
 			cw |= (uint32_t)bits[end + j] << j; // bit (end - 15 + j) mod T.
-		const int k = (int)((cw * 0x83DCD12Du) >> shift);
+		const int k = (int)((cw * 0x83DCD12Du) >> 23);
 		q8[2 * pj] = table[2 * k];
 		q8[2 * pj + 1] = table[2 * k + 1];
 	}
@@ -2291,15 +2285,16 @@ static void _ccv_nnc_8i_rowwise_trellis_quantize_tile_row(const ccv_nnc_8i_rowwi
 	ccfree(x);
 }
 
-// TMCQ writes the code from byte 0 and zeroes the padding up to the scales.
+// TMCQ writes the built-in table, then the code, and zeroes the padding up to the scales.
 static size_t _ccv_nnc_quantize_8i_rowwise_x_trellis(const void* input, const int datatype, const size_t input_length, const size_t row_length, const int format, void* output, const size_t output_length)
 {
 	const size_t row_count = input_length / row_length;
 	const size_t scale_offset = _ccv_nnc_8i_rowwise_packed_scale_offset(format, input_length, row_length);
-	const size_t output_size = scale_offset + row_count * CCV_GET_DATA_TYPE_SIZE(datatype);
+	const size_t output_size = sizeof(ccv_nnc_trellis_builtin_table) + scale_offset + row_count * CCV_GET_DATA_TYPE_SIZE(datatype);
 	if (output_length < output_size)
 		return 0;
-	uint8_t* const u8 = (uint8_t*)output;
+	memcpy(output, ccv_nnc_trellis_builtin_table, sizeof(ccv_nnc_trellis_builtin_table));
+	uint8_t* const u8 = (uint8_t*)output + sizeof(ccv_nnc_trellis_builtin_table);
 	memset(u8, 0, scale_offset);
 	const int n = ccv_nnc_8i_rowwise_x_tmcq_rate(format);
 	const int window = 15;
@@ -2838,9 +2833,6 @@ CCV_WARN_UNUSED(size_t) ccv_nnc_quantize_8i_rowwise_x(const void* input, const i
 		if (hessian_length < matrix_length || hessian_length % matrix_length != 0 || row_count % (hessian_length / matrix_length) != 0)
 			return 0;
 	}
-	// The quantizer encodes with the built-in codebook only.
-	if (ccv_nnc_8i_rowwise_x_codebook_slot(format) != 0 || ccv_nnc_8i_rowwise_x_inline_codebook_entries(format))
-		return 0;
 	if (ccv_nnc_8i_rowwise_x_is_tmcq(format))
 	{
 		// TMCQ: whole 16 x 16 tiles, unweighted (no imatrix or Hessian).
@@ -2851,26 +2843,16 @@ CCV_WARN_UNUSED(size_t) ccv_nnc_quantize_8i_rowwise_x(const void* input, const i
 	return _ccv_nnc_quantize_8i_rowwise_x(input, datatype, input_length, row_length, format, imatrix, imatrix_length, hessian, hessian_length, output, output_length);
 }
 
-int ccv_nnc_dequantize_8i_rowwise_x(const void* input, const int datatype, const int memory_type, const size_t input_length, const size_t row_length, const int format_in, void* output, const size_t output_length)
+void ccv_nnc_dequantize_8i_rowwise_x(const void* input, const int datatype, const int memory_type, const size_t input_length, const size_t row_length, const int format, void* output, const size_t output_length)
 {
 	assert(datatype == CCV_16F || datatype == CCV_16BF || datatype == CCV_32F || datatype == CCV_64F);
 	assert(memory_type == CCV_TENSOR_CPU_MEMORY || memory_type == CCV_TENSOR_GPU_MEMORY);
 	assert(row_length > 0);
 	assert(output_length % row_length == 0);
-	assert(!(format_in & CCV_NNC_QX_8I_ROWWISE_HADAMARD_256) || row_length % 256 == 0);
-	if (!ccv_nnc_8i_rowwise_x_codebook_is_valid(format_in))
-		return -1;
+	assert(!(format & CCV_NNC_QX_8I_ROWWISE_HADAMARD_256) || row_length % 256 == 0);
 	if (memory_type != CCV_TENSOR_CPU_MEMORY)
 	{
-		// A GPU backend reads an inline codebook from the buffer itself; any other slot is checked here.
-		const int codebook_slot = ccv_nnc_codebook_slot_of(format_in);
-		if (codebook_slot && !ccv_nnc_8i_rowwise_x_inline_codebook_entries(format_in) && !ccv_nnc_codebook_get(codebook_slot, 0, 0))
-			return -1;
-		const int format = format_in;
 #ifdef HAVE_CUDA
-		// CUDA has no device copy of a codebook in a process slot, only the built-in and inline ones.
-		if (codebook_slot && !ccv_nnc_8i_rowwise_x_inline_codebook_entries(format_in))
-			return -1;
 		ccv_nnc_compat_dequantize_8i_rowwise_x_fp(input, datatype, input_length, row_length, format, output, output_length, 0);
 #elif defined(HAVE_MPS)
 		assert(datatype != CCV_64F);
@@ -2878,27 +2860,17 @@ int ccv_nnc_dequantize_8i_rowwise_x(const void* input, const int datatype, const
 #else
 		assert(memory_type == CCV_TENSOR_CPU_MEMORY);
 #endif
-		return 0;
+		return;
 	}
-	// An inline codebook (TMCQ) is the start of the data: register it and decode the rest with its slot.
-	const size_t inline_size = ccv_nnc_8i_rowwise_x_inline_codebook_size(format_in);
-	if (input_length < inline_size)
-		return -1;
-	const int format = ccv_nnc_codebook_resolve_inline(input, format_in);
-	if (format < 0)
-		return -1;
-	input = (const uint8_t*)input + inline_size;
-	const size_t payload_length = input_length - inline_size;
-	// A codebook slot only names a table for the trellis codecs, and only once it is registered.
-	const int codebook_slot = ccv_nnc_codebook_slot_of(format);
-	if (codebook_slot && (!ccv_nnc_8i_rowwise_x_is_tmcq(format) || !ccv_nnc_codebook_get(codebook_slot, 0, 0)))
-		return -1;
 	const size_t row_count = output_length / row_length;
 	const size_t group_size = ccv_nnc_8i_rowwise_x_group_size(format);
 	const size_t groups_per_row = (row_length + group_size - 1) / group_size;
 	const size_t scale_offset = _ccv_nnc_8i_rowwise_packed_scale_offset(format, output_length, row_length);
-	assert(payload_length >= scale_offset + row_count * CCV_GET_DATA_TYPE_SIZE(datatype));
-	const uint8_t* const u8 = (const uint8_t*)input;
+	// TMCQ starts with the pair table.
+	const int8_t* const table = (const int8_t*)input;
+	const size_t codebook_size = ccv_nnc_8i_rowwise_x_codebook_size(format);
+	assert(input_length >= codebook_size + scale_offset + row_count * CCV_GET_DATA_TYPE_SIZE(datatype));
+	const uint8_t* const u8 = (const uint8_t*)input + codebook_size;
 	const uint8_t* const scales = u8 + scale_offset;
 	if (ccv_nnc_8i_rowwise_x_is_tmcq(format))
 	{
@@ -2906,11 +2878,6 @@ int ccv_nnc_dequantize_8i_rowwise_x(const void* input, const int datatype, const
 		assert(!(format & CCV_NNC_QX_8I_ROWWISE_HADAMARD_256));
 		assert(row_length % 16 == 0 && row_count % 16 == 0);
 		const int n = ccv_nnc_8i_rowwise_x_tmcq_rate(format);
-		// Slot 0 is the built-in table, any other the codebook in the slot (registered, checked above).
-		int entries = 0;
-		const int8_t* const table = ccv_nnc_codebook_get(ccv_nnc_8i_rowwise_x_codebook_slot(format), &entries, 0);
-		if (!table)
-			return -1;
 		const size_t strips = row_length / 16;
 		parallel_for(tr, (int)(row_count / 16)) {
 			double scale[16];
@@ -2921,13 +2888,13 @@ int ccv_nnc_dequantize_8i_rowwise_x(const void* input, const int datatype, const
 			for (tc = 0; tc < strips; tc++)
 			{
 				int8_t q8[256];
-				_ccv_nnc_8i_rowwise_tmcq_decode_tile(u8, (size_t)tr * strips + tc, n, table, entries, q8);
+				_ccv_nnc_8i_rowwise_tmcq_decode_tile(u8, (size_t)tr * strips + tc, n, table, q8);
 				int t;
 				for (t = 0; t < 256; t++)
 					_ccv_nnc_8i_rowwise_packed_write_value(output, datatype, ((size_t)tr * 16 + t / 16) * row_length + tc * 16 + t % 16, scale[t / 16] * q8[t]);
 			}
 		} parallel_endfor
-		return 0;
+		return;
 	}
 	parallel_for(i, (int)row_count) {
 		const double scale = _ccv_nnc_8i_rowwise_packed_load_scale(scales, datatype, i);
@@ -2969,7 +2936,6 @@ int ccv_nnc_dequantize_8i_rowwise_x(const void* input, const int datatype, const
 			}
 		}
 	} parallel_endfor
-	return 0;
 }
 
 static inline int _ccv_nnc_8i_rowwise_quantize(const double v, const double inv_scale)

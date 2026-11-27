@@ -16,9 +16,6 @@ typedef struct {
   uint32_t vector_row_stride;
   uint32_t output_row_stride;
   uint8_t fused_bias;
-  // The external codebook of a TMCQ format whose bits 16 - 23 hold its log2 entry count (see
-  // ccv_nnc_mfa_codebook_buffer); bound at buffer(5). NULL for the built-in table.
-  mtl_buffer_t* codebook;
 } ccv_nnc_mfa_scaled_gemv_params_t;
 
 #ifdef __cplusplus
