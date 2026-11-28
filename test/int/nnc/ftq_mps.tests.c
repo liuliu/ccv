@@ -2129,6 +2129,22 @@ TEST_CASE("an ftq_vr checkpoint above 64 keeps its high levels in the table word
 			REQUIRE_EQ(written, CCV_IO_FINAL, "%s writes", names[c]);
 		} else if (c == FIELD_BIT_27 || c == FIELD_BIT_31) {
 			REQUIRE(written != CCV_IO_FINAL, "%s is not written", names[c]);
+			// Store a valid blob under the name and put the broken bytes in its place: the read rejects them, also
+			// for metadata only.
+			uint8_t* const bad = (uint8_t*)ccmalloc(size);
+			memcpy(bad, d, size);
+			ftq_vr_fill(d, size, format, rows, cols, high, ftq_builtin_table, 0, 0x88a0u);
+			REQUIRE_EQ(ccv_nnc_tensor_write(t, db, name, 0), CCV_IO_FINAL, "%s: a valid blob writes", names[c]);
+			sqlite3_stmt* update = 0;
+			REQUIRE_EQ(sqlite3_prepare_v2(db, "UPDATE tensors SET data=?1 WHERE name=?2", -1, &update, 0), SQLITE_OK, "update prepares");
+			sqlite3_bind_blob(update, 1, bad, (int)size, SQLITE_TRANSIENT);
+			sqlite3_bind_text(update, 2, name, -1, SQLITE_TRANSIENT);
+			REQUIRE_EQ(sqlite3_step(update), SQLITE_DONE, "%s is stored", names[c]);
+			sqlite3_finalize(update);
+			ccfree(bad);
+			ccv_nnc_tensor_t* restored = 0;
+			REQUIRE(ccv_nnc_tensor_read(db, name, 0, 0, 0, &restored) != CCV_IO_FINAL && !restored, "%s fails to load", names[c]);
+			REQUIRE(ccv_nnc_tensor_read(db, name, 0, CCV_NNC_TENSOR_READ_METADATA_ONLY, 0, &restored) != CCV_IO_FINAL && !restored, "%s metadata fails to load", names[c]);
 		}
 		if (written == CCV_IO_FINAL)
 		{
@@ -2894,8 +2910,9 @@ TEST_CASE("mps ftq and ftq_vr with an inline codebook equal the registered slot 
 		REQUIRE(tables[ti].slot >= 1, "table %d registers", ti);
 	REQUIRE(ccv_nnc_codebook_flags(tables[4].slot) == CCV_NNC_CODEBOOK_FOLD, "table 4 is folded");
 	// (rows, cols, static rate n or FTQ_VR mean nm, vr): FTQ at n20, n48 and n88 (above 4 bpw); FTQ_VR at nm20 (rates 8 -
-	// 32), nm72 and nm88 (tile row rates up to 84 / 88, so level mask bits 18 - 26 of its table word are set).
-	static const int cases[][4] = { { 64, 1024, 20, 0 }, { 272, 512, 48, 0 }, { 48, 768, 88, 0 }, { 208, 768, 20, 1 }, { 96, 512, 72, 1 }, { 48, 1024, 88, 1 } };
+	// 32), nm72 and nm88 (tile row rates above 72, so level mask bits 18 - 26 of its table word are set; nm88 over 6
+	// tile rows reaches n88).
+	static const int cases[][4] = { { 64, 1024, 20, 0 }, { 272, 512, 48, 0 }, { 48, 768, 88, 0 }, { 208, 768, 20, 1 }, { 96, 512, 72, 1 }, { 96, 1024, 88, 1 } };
 	int c, compared = 0;
 	for (c = 0; c < (int)(sizeof(cases) / sizeof(cases[0])); c++)
 		for (ti = 0; ti < 5; ti++)
@@ -3042,14 +3059,12 @@ TEST_CASE("mps ftq and ftq_vr reject an inline codebook that the blob header doe
 	};
 	static const char* const names[MUTATIONS] = {
 		"good", "header id 0", "header id and crc of a registered decoy", "header log2 P + 1", "header crc + 1", "header crc of another table", "structure 2", "structure 3",
-		"structure 1 on a table with negative values", "structure 1 on a 1024-pair table", "static-rate table word bit 18", "prefix magic CCVCB001", "blob magic of the other FTQ",
+		"structure 1 on a table with negative values", "structure 1 on a 1024-pair table", "table word bit 18 (FTQ) / 27 (FTQ_VR)", "prefix magic CCVCB001", "blob magic of the other FTQ",
 	};
 	int vr, mu, checked = 0;
 	for (vr = 0; vr < 2; vr++)
 		for (mu = 0; mu < MUTATIONS; mu++)
 		{
-			if (vr && mu == HIGH_BITS)
-				continue; // FTQ_VR keeps level mask bits there.
 			const ftq_inline_table_t t = mu == FOLD_NEGATIVE ? plain : mu == FOLD_1024 ? wide : mu == STRUCTURE_2 || mu == STRUCTURE_3 ? folded : (mu & 1) ? folded : plain;
 			const int base = vr ? ftq_vr_format(20) : ftq_format(20);
 			ccv_nnc_tensor_t* const blob = ccv_nnc_tensor_new(0, ccv_nnc_tensor_8i_rowwise_x(ftq_params(CCV_TENSOR_CPU_MEMORY, rows, cols), base), 0);
@@ -3065,7 +3080,7 @@ TEST_CASE("mps ftq and ftq_vr reject an inline codebook that the blob header doe
 				case STRUCTURE_2: field = (field & ~(3u << 16)) | (2u << 16); break;
 				case STRUCTURE_3: field |= 3u << 16; break;
 				case FOLD_NEGATIVE: case FOLD_1024: field |= 1u << 16; break;
-				case HIGH_BITS: field |= 1u << 18; break;
+				case HIGH_BITS: field |= 1u << (vr ? 27 : 18); break; // FTQ_VR keeps level mask bits in 18 - 26.
 			}
 			int rates[rows / 16];
 			if (vr)
@@ -3113,21 +3128,28 @@ TEST_CASE("mps ftq and ftq_vr reject an inline codebook that the blob header doe
 			unlink(path);
 			ccfree(out_file_backed);
 			ccfree(out);
-			// A checkpoint: the read fails unless the blob is good.
+			// A checkpoint: the read fails unless the blob is good. The writer checks the blob header's window bits too
+			// (CCV_NNC_QX_8I_ROWWISE_FTQ_WINDOW_SHIFT), so a table word with bit 18 (FTQ) or 27 (FTQ_VR) is not written.
 			sqlite3* db = 0;
 			REQUIRE_EQ(sqlite3_open(":memory:", &db), SQLITE_OK, "in-memory database opens");
-			REQUIRE_EQ(ccv_nnc_tensor_write(hq, db, "w", 0), CCV_IO_FINAL, "%s writes", what);
-			ccv_nnc_tensor_t* restored = 0;
-			REQUIRE_EQ(ccv_nnc_tensor_read(db, "w", 0, 0, 0, &restored), good ? CCV_IO_FINAL : CCV_IO_ERROR, "%s: the read %s", what, good ? "succeeds" : "fails");
-			if (restored)
-				ccv_nnc_tensor_free(restored);
+			const int written = ccv_nnc_tensor_write(hq, db, "w", 0);
+			if (mu == HIGH_BITS)
+			{
+				REQUIRE(written != CCV_IO_FINAL, "%s is not written", what);
+			} else {
+				REQUIRE_EQ(written, CCV_IO_FINAL, "%s writes", what);
+				ccv_nnc_tensor_t* restored = 0;
+				REQUIRE_EQ(ccv_nnc_tensor_read(db, "w", 0, 0, 0, &restored), good ? CCV_IO_FINAL : CCV_IO_ERROR, "%s: the read %s", what, good ? "succeeds" : "fails");
+				if (restored)
+					ccv_nnc_tensor_free(restored);
+			}
 			sqlite3_close(db);
 			checked++;
 			ccv_nnc_tensor_free(gq);
 			ccv_nnc_tensor_free(hq);
 			ccv_nnc_tensor_free(blob);
 		}
-	REQUIRE_EQ(checked, 2 * MUTATIONS - 1, "every mutation ran");
+	REQUIRE_EQ(checked, 2 * MUTATIONS, "every mutation ran");
 	// IndexSelect and the dense SwiGLU take no FTQ weight, also not an inline one.
 	{
 		ccv_nnc_tensor_t* const blob = ccv_nnc_tensor_new(0, ccv_nnc_tensor_8i_rowwise_x(ftq_params(CCV_TENSOR_CPU_MEMORY, rows, cols), ftq_format(20)), 0);
