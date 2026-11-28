@@ -432,8 +432,8 @@ inline void quantize_qk_tile(
         max(fabs(value[2]), fabs(value[3]))));
   }
   const float max_abs = quantize_reduce_max(local_max, scratch, sgid, lane_id, simdgroup_count);
-  const float scale = max_abs > 0 ? max_abs / 127.0f : (1.0f / 127.0f);
-  const float inv_scale = max_abs > 0 ? 127.0f / max_abs : 127.0f;
+  const float scale = max_abs > 0 ? precise::divide(max_abs, 127.0f) : (1.0f / 127.0f);
+  const float inv_scale = max_abs > 0 ? precise::divide(127.0f, max_abs) : 127.0f;
   if (tid == 0)
     scales[batch * scale_batch_stride + head * scale_tiles + tile] = scale;
   for (uint i = tid; i < total_vectors; i += thread_count) {
@@ -488,8 +488,8 @@ inline void quantize_qk_tile(
         max(fabs(value[2]), fabs(value[3]))));
   }
   const float max_abs = quantize_reduce_max(local_max, scratch, sgid, lane_id, simdgroup_count);
-  const float scale = max_abs > 0 ? max_abs / 127.0f : (1.0f / 127.0f);
-  const float inv_scale = max_abs > 0 ? 127.0f / max_abs : 127.0f;
+  const float scale = max_abs > 0 ? precise::divide(max_abs, 127.0f) : (1.0f / 127.0f);
+  const float inv_scale = max_abs > 0 ? precise::divide(127.0f, max_abs) : 127.0f;
   if (tid == 0)
     scales[batch * scale_batch_stride + head * scale_tiles + tile] = scale;
   for (uint i = tid; i < total_vectors; i += thread_count) {
@@ -543,8 +543,8 @@ inline void quantize_qk_tile(
     local_max = max(local_max, fabs((float)src[index]));
   }
   const float max_abs = quantize_reduce_max(local_max, scratch, sgid, lane_id, simdgroup_count);
-  const float scale = max_abs > 0 ? max_abs / 127.0f : (1.0f / 127.0f);
-  const float inv_scale = max_abs > 0 ? 127.0f / max_abs : 127.0f;
+  const float scale = max_abs > 0 ? precise::divide(max_abs, 127.0f) : (1.0f / 127.0f);
+  const float inv_scale = max_abs > 0 ? precise::divide(127.0f, max_abs) : 127.0f;
   if (tid == 0)
     scales[batch * scale_batch_stride + head * scale_tiles + tile] = scale;
   for (uint i = tid; i < total; i += thread_count) {
@@ -592,8 +592,8 @@ inline void quantize_qk_tile(
     local_max = max(local_max, fabs((float)src[index]));
   }
   const float max_abs = quantize_reduce_max(local_max, scratch, sgid, lane_id, simdgroup_count);
-  const float scale = max_abs > 0 ? max_abs / 127.0f : (1.0f / 127.0f);
-  const float inv_scale = max_abs > 0 ? 127.0f / max_abs : 127.0f;
+  const float scale = max_abs > 0 ? precise::divide(max_abs, 127.0f) : (1.0f / 127.0f);
+  const float inv_scale = max_abs > 0 ? precise::divide(127.0f, max_abs) : 127.0f;
   if (tid == 0)
     scales[batch * scale_batch_stride + head * scale_tiles + tile] = scale;
   for (uint i = tid; i < total; i += thread_count) {
@@ -746,7 +746,7 @@ inline void quantize_qk_tile(
   }
   const float max_abs = quantize_reduce_max(local_max, scratch, sgid, lane_id, simdgroups);
   const float scale = max_abs > 0 ? max_abs * ({{HADAMARD_NORMALIZATION}} / 127.0f) : 1.0f / 127.0f;
-  const float inv_scale = max_abs > 0 ? 127.0f / max_abs : 127.0f;
+  const float inv_scale = max_abs > 0 ? precise::divide(127.0f, max_abs) : 127.0f;
   if (tid == 0)
     scales[batch * scale_batch_stride + head * scale_tiles + tile] = scale;
   #pragma clang loop unroll(full)
@@ -929,8 +929,8 @@ kernel void quantize_v(
         max(fabs(value[2]), fabs(value[3]))));
   }
   const float max_abs = quantize_reduce_max(local_max, scratch, sgid, lane_id, QUANTIZE_KV_SIMDGROUPS);
-  const float scale = max_abs > 0 ? max_abs / 127.0f : (1.0f / 127.0f);
-  const float inv_scale = max_abs > 0 ? 127.0f / max_abs : 127.0f;
+  const float scale = max_abs > 0 ? precise::divide(max_abs, 127.0f) : (1.0f / 127.0f);
+  const float inv_scale = max_abs > 0 ? precise::divide(127.0f, max_abs) : 127.0f;
   if (tid == 0)
     scales[batch * QUANTIZE_KV_SCALE_BATCH_STRIDE + head * QUANTIZE_KV_SCALE_TILES + tile] = scale;
   for (uint i = tid; i < total_vectors; i += QUANTIZE_KV_THREADS) {
@@ -973,8 +973,8 @@ kernel void quantize_v(
     local_max = max(local_max, fabs(value));
   }
   const float max_abs = quantize_reduce_max(local_max, scratch, sgid, lane_id, QUANTIZE_KV_SIMDGROUPS);
-  const float scale = max_abs > 0 ? max_abs / 127.0f : (1.0f / 127.0f);
-  const float inv_scale = max_abs > 0 ? 127.0f / max_abs : 127.0f;
+  const float scale = max_abs > 0 ? precise::divide(max_abs, 127.0f) : (1.0f / 127.0f);
+  const float inv_scale = max_abs > 0 ? precise::divide(127.0f, max_abs) : 127.0f;
   if (tid == 0)
     scales[batch * QUANTIZE_KV_SCALE_BATCH_STRIDE + head * QUANTIZE_KV_SCALE_TILES + tile] = scale;
   for (uint i = tid; i < total; i += QUANTIZE_KV_THREADS) {
@@ -1880,7 +1880,7 @@ void NAInt8AttentionKernel::loopBackwardKeyValue(CodeWriter& source) const noexc
     }
     P_log2_max = simd_max(P_log2_max);
     const float P_max = fast::exp2(min(P_log2_max, 0.0f));
-    const float P_quantization_scale = P_max > 0 ? 127.0f / P_max : 0.0f;
+    const float P_quantization_scale = P_max > 0 ? precise::divide(127.0f, P_max) : 0.0f;
 )";
   };
   if (blockDimensions[2] % 32 == 0) {
