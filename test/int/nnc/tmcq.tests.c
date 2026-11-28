@@ -540,8 +540,9 @@ static int _test_trellis_fresh(const int j, const int n)
 }
 
 // Straightforward pair Viterbi over one tile of W-bit states in processing order j' = 0..127,
-// j = (j' + rotation) mod 128. start < 0: free ends. bp is 128 x 2^(W - 2) indexed by j'. Returns the end state.
-static int _test_trellis_pass(const int window, const double* const y, const double* const w, const int n, const int rotation, const int start, uint8_t* const bp, double* const cost_out)
+// j = (j' + rotation) mod 128. start < 0: free ends. bp is 128 x 2^(W - 2) indexed by j', each up to f <= 11 bits (n88).
+// Returns the end state.
+static int _test_trellis_pass(const int window, const double* const y, const double* const w, const int n, const int rotation, const int start, uint16_t* const bp, double* const cost_out)
 {
 	const int states = 1 << window, stride = 1 << (window - 2);
 	double* cost = ccmalloc(sizeof(double) * states);
@@ -585,7 +586,7 @@ static int _test_trellis_pass(const int window, const double* const y, const dou
 	return end;
 }
 
-static int _test_trellis_trace(const int window, const uint8_t* const bp, const int n, const int rotation, const int last, const int first, int s, int* const states)
+static int _test_trellis_trace(const int window, const uint16_t* const bp, const int n, const int rotation, const int last, const int first, int s, int* const states)
 {
 	const int stride = 1 << (window - 2);
 	int step;
@@ -605,7 +606,7 @@ static int _test_trellis_trace(const int window, const uint8_t* const bp, const 
 // anchor (s_63, the window ending at E_63 = 8n).
 static double _test_trellis_fit_tile(const int window, const double* const y, const double* const w, const int n, const int mid, int* const states)
 {
-	uint8_t* const bp = ccmalloc(128 << (window - 2));
+	uint16_t* const bp = ccmalloc(sizeof(uint16_t) * (128 << (window - 2)));
 	double cost;
 	int s_star = _test_trellis_pass(window, y, w, n, 0, -1, bp, &cost);
 	if (mid)
@@ -697,11 +698,15 @@ TEST_CASE("TMCQ and FTQ mid anchor matches an independent encoder and costs no m
 	static const struct {
 		int format;
 		int window;
-	} cases[4] = {
+	} cases[7] = {
 		{CCV_NNC_QX_8I_ROWWISE_TMCQ_N16, 15},
 		{CCV_NNC_QX_8I_ROWWISE_TMCQ_N24, 15},
 		{CCV_NNC_QX_8I_ROWWISE_FTQ_N20, 16},
-		{CCV_NNC_QX_8I_ROWWISE_FTQ_N48, 16},
+		{CCV_NNC_QX_8I_ROWWISE_FTQ_N56, 16},
+		// Above 4 bpw: 9 or 10 fresh bits a pair (n66 / n78), 11 (n88).
+		{CCV_NNC_QX_8I_ROWWISE_FTQ_BLOCK_FIRST + (66 - 8) / 2, 16},
+		{CCV_NNC_QX_8I_ROWWISE_FTQ_BLOCK_FIRST + (78 - 8) / 2, 16},
+		{CCV_NNC_QX_8I_ROWWISE_FTQ_BLOCK_FIRST + (88 - 8) / 2, 16},
 	};
 	dsfmt_t dsfmt;
 	dsfmt_init_gen_rand(&dsfmt, 4242);
@@ -712,7 +717,7 @@ TEST_CASE("TMCQ and FTQ mid anchor matches an independent encoder and costs no m
 	ccv_float_to_half_precision(values, half, count);
 	ccv_half_precision_to_float(half, values, count);
 	int c;
-	for (c = 0; c < 4; c++)
+	for (c = 0; c < 7; c++)
 	{
 		const int format = cases[c].format;
 		const int ftq = cases[c].window == 16;
@@ -865,10 +870,11 @@ TEST_CASE("FTQ encoder golden vectors")
 	static const struct {
 		int format;
 		const char* digest;
-	} cases[3] = {
+	} cases[4] = {
 		{CCV_NNC_QX_8I_ROWWISE_FTQ_N16, "7881fcfd31389285cfbcce24b607bc0718d3b2a4b78a3af6f76dad19a64153e4"},
 		{CCV_NNC_QX_8I_ROWWISE_FTQ_N32, "4996f179e57448b9acd3bf311b408ec11d2a722c29b4ab31c701e0aaba63bd52"},
 		{CCV_NNC_QX_8I_ROWWISE_FTQ_N48, "9c294d6526c5bfd599637e7ae126797d399bb3123e68802dce3d91b5e431cdb0"},
+		{CCV_NNC_QX_8I_ROWWISE_FTQ_N64, "feb3595ff4fd4d974dbcc23cbd2c89c843b60975698bd8b5b45b54daada0ba98"},
 	};
 	uint32_t state = 0x12345678;
 	float* const values = ccmalloc(sizeof(float) * count);
@@ -882,7 +888,7 @@ TEST_CASE("FTQ encoder golden vectors")
 	REQUIRE(strcmp(digest, "2457d29c78ab867fd09946a2ca8b1c18baf38290b88174728302da8bdb2354e7") == 0, "golden input digest %s", digest);
 	ccv_float_to_half_precision(values, half, count);
 	ccv_half_precision_to_float(half, rounded, count);
-	for (c = 0; c < 3; c++)
+	for (c = 0; c < 4; c++)
 	{
 		const int format = cases[c].format;
 		const int n = ccv_nnc_8i_rowwise_x_ftq_rate(format);
@@ -1230,11 +1236,11 @@ TEST_CASE("tiled row-wise-x sizes follow the 16 x 16 tile grid for K % 16 and ar
 		const size_t count = (size_t)rows * cols;
 		const size_t tiles = (size_t)rows / 16 * (cols / 16);
 		REQUIRE_EQ(ccv_nnc_8i_rowwise_x_tile_count(rows, cols), (uint64_t)tiles, "%d x %d tile count", rows, cols);
-		// TMCQ_N16 .. N32, FTQ_N16 .. N48, FTQ_VR_N16 .. N48.
-		for (f = 0; f < 9 + 17 + 17; f++)
+		// TMCQ_N16 .. N32, FTQ_N16 .. N88, FTQ_VR_N16 .. N88.
+		for (f = 0; f < 9 + 37 + 37; f++)
 		{
-			const int vr = f >= 26, ftq = f >= 9 && !vr;
-			const int format = f < 9 ? tmcq_formats[f] : ftq ? CCV_NNC_QX_8I_ROWWISE_FTQ_N16 + (f - 9) : CCV_NNC_QX_8I_ROWWISE_FTQ_VR_N16 + (f - 26);
+			const int vr = f >= 46, ftq = f >= 9 && !vr;
+			const int format = f < 9 ? tmcq_formats[f] : ftq ? CCV_NNC_QX_8I_ROWWISE_FTQ_N16 + (f - 9) : CCV_NNC_QX_8I_ROWWISE_FTQ_VR_N16 + (f - 46);
 			const int n = f < 9 ? ccv_nnc_8i_rowwise_x_tmcq_rate(format) : ftq ? ccv_nnc_8i_rowwise_x_ftq_rate(format) : ccv_nnc_8i_rowwise_x_ftq_vr_rate(format);
 			const int datatype = f < 9 ? CCV_32F : CCV_16F;
 			const size_t code = tiles * 2 * n;
@@ -1409,7 +1415,7 @@ static void _test_ftq_ref_decode(const uint8_t* const blob, const int rows, cons
 
 TEST_CASE("FTQ CPU decode of random blobs matches the reference for K % 16")
 {
-	static const int rates[] = { 16, 18, 20, 36, 46, 48 };
+	static const int rates[] = { 16, 18, 20, 36, 50, 64, 66, 72, 86, 88 };
 	uint32_t seed = 0x1152u;
 	int s, r, i;
 	for (s = 0; s < (int)(sizeof(tiled_decode_shapes) / sizeof(tiled_decode_shapes[0])); s++)
@@ -1481,7 +1487,8 @@ static void _test_ftq_wide_ref_tile(const uint8_t* const blob, const uint64_t st
 
 TEST_CASE("FTQ CPU decode of random blobs with an 18, 20 and 22-bit window matches the reference")
 {
-	static const int rates[] = { 16, 32, 48 };
+	// Three words a lane up to n48, four above (n64, n88: tiles of 1408 bits).
+	static const int rates[] = { 16, 32, 48, 64, 88 };
 	static const int shapes[][2] = { { 32, 1152 }, { 16, 272 } };
 	int8_t base[1024];
 	int i;
@@ -1496,7 +1503,7 @@ TEST_CASE("FTQ CPU decode of random blobs with an 18, 20 and 22-bit window match
 	for (w = 1; w <= 3; w++)
 		for (f = 0; f < 2; f++)
 			for (s = 0; s < 2; s++)
-				for (r = 0; r < 3; r++)
+				for (r = 0; r < 5; r++)
 				{
 					const int rows = shapes[s][0], cols = shapes[s][1], n = rates[r], L = 16 + 2 * w;
 					const int narrow = ccv_nnc_codebook_with_slot(CCV_NNC_QX_8I_ROWWISE_FTQ_N16 + (n - 16) / 2, f ? folded : 0);
@@ -1593,12 +1600,13 @@ static uint8_t* _test_ftq_wide_blob(const int format, const int rows, const int 
 	uint8_t* const blob = ccmalloc(*size);
 	memset(blob, 0, *size);
 	const int nm = vr ? ccv_nnc_8i_rowwise_x_ftq_vr_rate(format) : ccv_nnc_8i_rowwise_x_ftq_rate(format);
-	uint32_t level_mask = 0;
+	uint64_t level_mask = 0;
 	int i, r;
 	for (r = 0; r < R; r++)
-		level_mask |= 1u << ((row_rates[r] - 8) / 2);
+		level_mask |= (uint64_t)1 << ((row_rates[r] - 8) / 2);
 	memcpy(blob, vr ? "CCVFTQVR" : "CCVFTQSR", 8);
-	const uint32_t header[6] = { (uint32_t)rows, (uint32_t)cols, 16u * nm, vr ? level_mask : 0, (9u << 8) | ((uint32_t)w << 30), 0 };
+	// Level mask bits 32 - 40 (n72 ... n88) go to bits 18 - 26 of the table word, next to the window in bits 30 - 31.
+	const uint32_t header[6] = { (uint32_t)rows, (uint32_t)cols, 16u * nm, vr ? (uint32_t)level_mask : 0, (9u << 8) | (vr ? (uint32_t)((level_mask >> 32) << 18) : 0) | ((uint32_t)w << 30), 0 };
 	memcpy(blob + 8, header, sizeof(header));
 	// Code start (bytes) and each tile row's start (bits).
 	const size_t code = vr ? 32 + 4 * (size_t)(R + 1) : 32;
@@ -1645,26 +1653,34 @@ static uint8_t* _test_ftq_wide_blob(const int format, const int rows, const int 
 TEST_CASE("FTQ-VR CPU decode of random blobs with an 18, 20 and 22-bit window matches the reference")
 {
 	enum { rows = 64, cols = 272 };
-	// Tile row rates of mean 24 (8 wraps the first windows of rows 0 and 1, see CCV_NNC_QX_8I_ROWWISE_FTQ_VR_N16).
-	static const int row_rates[] = { 8, 48, 16, 24 };
+	// Tile row rates of mean 24 (8 wraps the first windows of rows 0 and 1, see CCV_NNC_QX_8I_ROWWISE_FTQ_VR_N16), and of
+	// mean 70 with n72 and n88, whose level mask bits 32 and 40 sit in table word bits 18 and 26 next to the window.
+	static const int row_rates[2][4] = { { 8, 48, 16, 24 }, { 72, 48, 88, 72 } };
+	static const int means[2] = { 24, 70 };
 	uint32_t seed = 0x51edu;
 	uint16_t* const expected = ccmalloc(sizeof(uint16_t) * rows * cols);
 	uint16_t* const actual = ccmalloc(sizeof(uint16_t) * rows * cols);
-	int w;
-	for (w = 1; w <= 3; w++)
-	{
-		const int narrow = CCV_NNC_QX_8I_ROWWISE_FTQ_VR_N24;
-		const int format = narrow | (w << CCV_NNC_QX_8I_ROWWISE_FTQ_WINDOW_SHIFT);
-		size_t size;
-		uint8_t* const blob = _test_ftq_wide_blob(format, rows, cols, row_rates, &seed, &size, expected);
-		uint32_t mask = 0;
-		REQUIRE_EQ(ccv_nnc_8i_rowwise_x_ftq_vr_check(blob, size, format, rows, cols, &mask), 0, "L%d FTQ-VR blob passes the check", 16 + 2 * w);
-		REQUIRE_EQ(ccv_nnc_dequantize_8i_rowwise_x(blob, CCV_16F, CCV_TENSOR_CPU_MEMORY, size, cols, format, actual, (size_t)rows * cols), 0, "L%d FTQ-VR decodes", 16 + 2 * w);
-		REQUIRE_ARRAY_EQ(uint16_t, expected, actual, rows * cols, "L%d FTQ-VR decode matches the reference", 16 + 2 * w);
-		REQUIRE_EQ(ccv_nnc_8i_rowwise_x_ftq_vr_check(blob, size, narrow, rows, cols, 0), -1, "L%d FTQ-VR blob fails the 16-bit check", 16 + 2 * w);
-		REQUIRE_EQ(ccv_nnc_dequantize_8i_rowwise_x(blob, CCV_16F, CCV_TENSOR_CPU_MEMORY, size, cols, narrow, actual, (size_t)rows * cols), -1, "L%d FTQ-VR blob with a 16-bit format", 16 + 2 * w);
-		ccfree(blob);
-	}
+	int w, v;
+	for (v = 0; v < 2; v++)
+		for (w = 1; w <= 3; w++)
+		{
+			const int narrow = CCV_NNC_QX_8I_ROWWISE_FTQ_VR_N16 + (means[v] - 16) / 2;
+			const int format = narrow | (w << CCV_NNC_QX_8I_ROWWISE_FTQ_WINDOW_SHIFT);
+			size_t size;
+			uint8_t* const blob = _test_ftq_wide_blob(format, rows, cols, row_rates[v], &seed, &size, expected);
+			uint64_t mask = 0;
+			REQUIRE_EQ(ccv_nnc_8i_rowwise_x_ftq_vr_check(blob, size, format, rows, cols, &mask), 0, "L%d FTQ-VR blob passes the check", 16 + 2 * w);
+			uint64_t want = 0;
+			int r;
+			for (r = 0; r < 4; r++)
+				want |= (uint64_t)1 << ((row_rates[v][r] - 8) / 2);
+			REQUIRE_EQ(mask, want, "L%d FTQ-VR nm%d level mask", 16 + 2 * w, means[v]);
+			REQUIRE_EQ(ccv_nnc_dequantize_8i_rowwise_x(blob, CCV_16F, CCV_TENSOR_CPU_MEMORY, size, cols, format, actual, (size_t)rows * cols), 0, "L%d FTQ-VR decodes", 16 + 2 * w);
+			REQUIRE_ARRAY_EQ(uint16_t, expected, actual, rows * cols, "L%d FTQ-VR decode matches the reference", 16 + 2 * w);
+			REQUIRE_EQ(ccv_nnc_8i_rowwise_x_ftq_vr_check(blob, size, narrow, rows, cols, 0), -1, "L%d FTQ-VR blob fails the 16-bit check", 16 + 2 * w);
+			REQUIRE_EQ(ccv_nnc_dequantize_8i_rowwise_x(blob, CCV_16F, CCV_TENSOR_CPU_MEMORY, size, cols, narrow, actual, (size_t)rows * cols), -1, "L%d FTQ-VR blob with a 16-bit format", 16 + 2 * w);
+			ccfree(blob);
+		}
 	ccfree(actual);
 	ccfree(expected);
 }
@@ -1934,7 +1950,7 @@ TEST_CASE("TMCQ, FTQ and FTQ_VR at K = 1152 and K = 272 survive tensor persisten
 {
 	// 2D tensors and a 3D tensor of 2 experts (its rows are the rows of both experts).
 	static const int shapes[][3] = { { 0, 32, 1152 }, { 0, 48, 272 }, { 2, 16, 1152 }, { 2, 32, 272 } };
-	const int formats[] = { CCV_NNC_QX_8I_ROWWISE_TMCQ_N24, CCV_NNC_QX_8I_ROWWISE_FTQ_N20, CCV_NNC_QX_8I_ROWWISE_FTQ_VR_N20 };
+	const int formats[] = { CCV_NNC_QX_8I_ROWWISE_TMCQ_N24, CCV_NNC_QX_8I_ROWWISE_FTQ_N20, CCV_NNC_QX_8I_ROWWISE_FTQ_VR_N20, CCV_NNC_QX_8I_ROWWISE_FTQ_N88 };
 	dsfmt_t dsfmt;
 	dsfmt_init_gen_rand(&dsfmt, 1152);
 	sqlite3* db = 0;
@@ -1947,7 +1963,7 @@ TEST_CASE("TMCQ, FTQ and FTQ_VR at K = 1152 and K = 272 survive tensor persisten
 	REQUIRE(ccv_nnc_codebook_get(slot_alt, 0, &crc_alt) != 0, "the alternate table has a crc");
 	int s, f, external;
 	for (s = 0; s < 4; s++)
-		for (f = 0; f < 3; f++)
+		for (f = 0; f < 4; f++)
 			for (external = 0; external < (f == 2 ? 2 : 1); external++)
 			{
 				const int experts = shapes[s][0], rows = shapes[s][1], cols = shapes[s][2];
@@ -2139,28 +2155,32 @@ TEST_CASE("FTQ_VR under budget pads the code with zeros, and ftq_vr_check reject
 	static const int shapes[][2] = { { 48, 272 }, { 64, 1152 } };
 	dsfmt_t dsfmt;
 	dsfmt_init_gen_rand(&dsfmt, 2304);
-	const int format = CCV_NNC_QX_8I_ROWWISE_FTQ_VR_N20;
-	int s, i;
-	for (s = 0; s < 2; s++)
+	// nm20 with tile rows 12, 16, 12, ...; nm72 with 48, 88, 48, ... (across 64: n48 is bit 20 of word 3, n88 bit 40 of
+	// the level mask, bit 26 of the table word).
+	static const int means[2] = { 20, 72 }, low[2] = { 12, 48 }, high[2] = { 16, 88 };
+	int c, i;
+	for (c = 0; c < 4; c++)
 	{
+		const int v = c / 2, s = c % 2, nm = means[v];
+		const int format = CCV_NNC_QX_8I_ROWWISE_FTQ_VR_N16 + (nm - 16) / 2;
 		const int rows = shapes[s][0], cols = shapes[s][1], count = rows * cols, R = rows / 16, C = cols / 16;
 		float* const values = ccmalloc(sizeof(float) * count);
 		uint16_t* const half = ccmalloc(sizeof(uint16_t) * count);
 		_test_tmcq_values(&dsfmt, values, rows, cols);
 		ccv_float_to_half_precision(values, half, count);
-		// Tile row rates 12, 16, 12, ...: sum(n_r) < 20 R, thus the code ends before the budget.
+		// Tile row rates low, high, low, ...: sum(n_r) < nm R, thus the code ends before the budget.
 		int* const rates = ccmalloc(sizeof(int) * R);
 		int sum = 0;
 		for (i = 0; i < R; i++)
-			sum += rates[i] = i % 2 ? 16 : 12;
-		REQUIRE(sum < R * 20, "under budget");
+			sum += rates[i] = i % 2 ? high[v] : low[v];
+		REQUIRE(sum < R * nm, "under budget");
 		const size_t size = ccv_nnc_8i_rowwise_x_data_size(format, CCV_16F, count, cols);
 		uint8_t* const blob = ccmalloc(size);
 		memset(blob, 0xa5, size);
 		REQUIRE_EQ(ccv_nnc_quantize_8i_rowwise_x_ftq_vr(half, CCV_16F, CCV_TENSOR_CPU_MEMORY, count, cols, format, rates, blob, size), size, "%d x %d under budget writes the exact size", rows, cols);
 		const size_t code_start = 32 + 4 * (R + 1);
 		const size_t code_end = code_start + (size_t)C * sum / 2 * 4;
-		const size_t scale_offset = _test_tiled_align128(code_start + (size_t)R * C * 2 * 20);
+		const size_t scale_offset = _test_tiled_align128(code_start + (size_t)R * C * 2 * nm);
 		REQUIRE_EQ(size, scale_offset + 2 * rows, "%d x %d scales follow the budget", rows, cols);
 		uint32_t last;
 		memcpy(&last, blob + 32 + 4 * R, 4);
@@ -2169,10 +2189,16 @@ TEST_CASE("FTQ_VR under budget pads the code with zeros, and ftq_vr_check reject
 		for (p = code_end; p < scale_offset; p++)
 			nonzero += blob[p] != 0;
 		REQUIRE_EQ((int)nonzero, 0, "%d x %d padding from the code end to the scales is zero", rows, cols);
-		REQUIRE(scale_offset - code_end >= (size_t)C * (R * 20 - sum) * 2, "%d x %d the unused budget is padding", rows, cols);
-		uint32_t level_mask = 0;
-		REQUIRE_EQ(ccv_nnc_8i_rowwise_x_ftq_vr_check(blob, size, format, rows, cols, &level_mask), 0, "%d x %d under budget passes the check", rows, cols);
-		REQUIRE_EQ(level_mask, (1u << ((12 - 8) / 2)) | (R > 1 ? 1u << ((16 - 8) / 2) : 0), "%d x %d level mask has 12 and 16", rows, cols);
+		REQUIRE(scale_offset - code_end >= (size_t)C * (R * nm - sum) * 2, "%d x %d the unused budget is padding", rows, cols);
+		uint64_t level_mask = 0;
+		REQUIRE_EQ(ccv_nnc_8i_rowwise_x_ftq_vr_check(blob, size, format, rows, cols, &level_mask), 0, "%d x %d nm%d under budget passes the check", rows, cols, nm);
+		const uint64_t want_mask = ((uint64_t)1 << ((low[v] - 8) / 2)) | (R > 1 ? (uint64_t)1 << ((high[v] - 8) / 2) : 0);
+		REQUIRE_EQ(level_mask, want_mask, "%d x %d level mask has %d and %d", rows, cols, low[v], high[v]);
+		// The encoder splits the mask as QuantStar's split_level_mask: bits 0 - 31 in word 3, 32 - 40 in table word bits 18 - 26.
+		uint32_t header[6];
+		memcpy(header, blob + 8, sizeof(header));
+		REQUIRE_EQ(header[3], (uint32_t)want_mask, "%d x %d nm%d header word 3", rows, cols, nm);
+		REQUIRE_EQ(header[4], (9u << 8) | (uint32_t)((want_mask >> 32) << 18), "%d x %d nm%d table word", rows, cols, nm);
 		uint64_t* const row_bits = ccmalloc(sizeof(uint64_t) * R);
 		uint32_t word = 0;
 		for (i = 0; i < R; i++)
@@ -2198,8 +2224,8 @@ TEST_CASE("FTQ_VR under budget pads the code with zeros, and ftq_vr_check reject
 			REQUIRE_EQ(ccv_nnc_8i_rowwise_x_ftq_vr_check(bad, size, format, rows, cols, 0), -1, "%d x %d nonzero padding at %zu fails", rows, cols, pads[i]);
 			REQUIRE_EQ(ccv_nnc_dequantize_8i_rowwise_x(bad, CCV_16F, CCV_TENSOR_CPU_MEMORY, size, cols, format, actual, count), -1, "%d x %d decode of nonzero padding fails", rows, cols);
 		}
-		// Offsets: a word difference that is not a multiple of C (off[1] + 1), one that is C n / 2 with n = 18 (not a
-		// level of the mask), a decreasing pair, and off[0] != 0.
+		// Offsets: a word difference that is not a multiple of C (off[1] + 1), one that is C n / 2 with n = n_0 + 2 (18 or
+		// 50, not a level of the mask), a decreasing pair, and off[0] != 0.
 		uint32_t off1;
 		memcpy(&off1, blob + 36, 4);
 		const uint32_t offsets[][2] = { { 1, off1 + 1 }, { 1, off1 + C }, { 0, 1 } };
