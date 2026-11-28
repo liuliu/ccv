@@ -18,9 +18,10 @@ void ccv_nnc_drain_autotune_cache(void);
 /**
  * Check a variable-rate FTQ blob of length bytes for a row_count x row_length tensor of format (its codebook slot
  * included) against every rule of CCV_NNC_QX_8I_ROWWISE_FTQ_VR_N16, length exactly the blob size and every FP16 row
- * scale finite and not negative (-0 passes). Returns 0 and the level mask, or -1.
+ * scale finite and not negative (-0 passes). Returns 0 and the 41-bit level mask (bit i is rate 8 + 2 i, bits 32 - 40
+ * from bits 18 - 26 of the table word), or -1.
  */
-int ccv_nnc_8i_rowwise_x_ftq_vr_check(const void* const data, const size_t length, const int format, const size_t row_count, const size_t row_length, uint32_t* const level_mask_out);
+int ccv_nnc_8i_rowwise_x_ftq_vr_check(const void* const data, const size_t length, const int format, const size_t row_count, const size_t row_length, uint64_t* const level_mask_out);
 /**
  * The load-time checks of a static-rate FTQ blob of length bytes for a row_count x row_length tensor of format:
  * length is exactly the blob size of the format's schedule (align128(32 + code bytes) + 2 rows), the CCVFTQSR header

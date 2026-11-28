@@ -1465,12 +1465,12 @@ inline float stable_sigmoid(const float value)
   return shader;
 }
 
-// The static-rate FTQ rate n of a format (n = 8 .. 48, with an external codebook's log2 in bits 16 - 23 and, for a
-// quadrant-folded table, bit 24), or 0. The dispatch only sends the open rates n16 - n48 (segmentedFTQRate).
+// The static-rate FTQ rate n of a format (n = 8 .. 88, with an external codebook's log2 in bits 16 - 23 and, for a
+// quadrant-folded table, bit 24), or 0. The dispatch only sends the open rates n16 - n88 (segmentedFTQRate).
 static uint32_t ftqSwiGLURate(const uint32_t format)
 {
   const uint32_t codec = format & 0xffu;
-  if (!tmcq_codebook_format_ok(format, true) || codec < CCV_NNC_QX_8I_ROWWISE_FTQ_BLOCK_FIRST || codec > CCV_NNC_QX_8I_ROWWISE_FTQ_N48)
+  if (!tmcq_codebook_format_ok(format, true) || codec < CCV_NNC_QX_8I_ROWWISE_FTQ_BLOCK_FIRST || codec > CCV_NNC_QX_8I_ROWWISE_FTQ_N88)
     return 0;
   return 8 + 2 * (codec - CCV_NNC_QX_8I_ROWWISE_FTQ_BLOCK_FIRST);
 }

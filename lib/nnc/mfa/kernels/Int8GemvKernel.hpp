@@ -21,7 +21,7 @@ struct Int8GemvKernel {
   GEMMOperandPrecision memoryPrecision;
 
   // Variable-rate FTQ: the level mask whose rates get per-rate loop bodies; 0 otherwise.
-  uint32_t levelMask;
+  uint64_t levelMask;
 
   Int8GemvKernel(Int8GemvKernelDescriptor descriptor, MTL::Device* const device);
 

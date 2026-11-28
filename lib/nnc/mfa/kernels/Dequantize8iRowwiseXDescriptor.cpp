@@ -30,7 +30,7 @@ static uint32_t tmcq_rate(const uint32_t format) noexcept
 static bool is_ftq(const uint32_t format) noexcept
 {
 	const uint32_t codec = format & CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK;
-	return codec >= CCV_NNC_QX_8I_ROWWISE_FTQ_N16 && codec <= CCV_NNC_QX_8I_ROWWISE_FTQ_N48;
+	return codec >= CCV_NNC_QX_8I_ROWWISE_FTQ_N16 && codec <= CCV_NNC_QX_8I_ROWWISE_FTQ_N88;
 }
 
 static uint32_t ftq_rate(const uint32_t format) noexcept
@@ -42,7 +42,7 @@ static uint32_t ftq_rate(const uint32_t format) noexcept
 static bool is_ftq_vr(const uint32_t format) noexcept
 {
 	const uint32_t codec = format & CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK;
-	return codec >= CCV_NNC_QX_8I_ROWWISE_FTQ_VR_N16 && codec <= CCV_NNC_QX_8I_ROWWISE_FTQ_VR_N48;
+	return codec >= CCV_NNC_QX_8I_ROWWISE_FTQ_VR_N16 && codec <= CCV_NNC_QX_8I_ROWWISE_FTQ_VR_N88;
 }
 
 static uint32_t ftq_vr_rate(const uint32_t format) noexcept
@@ -188,7 +188,7 @@ std::size_t std::hash<Dequantize8iRowwiseXDescriptor>::operator()(const Dequanti
 	std::size_t seed = 0;
 	seed = combine_64(seed, pack_64(simd::uint2 { hash.format, hash.scaleSize }));
 	seed = combine_64(seed, pack_64(simd::uint2 { hash.rowLength, hash.length }));
-	seed = combine_32(seed, hash.levelMask);
+	seed = combine_64(seed, hash.levelMask);
 	return seed;
 }
 
@@ -207,8 +207,8 @@ std::pair<Dequantize8iRowwiseXKernelDescriptor, PipelineValue<Dequantize8iRowwis
 	// The FTQ blob carries FP16 scales.
 	if (is_ftq_any(format))
 		CCV_NNC_MFA_PRECONDITION(scaleSize == 2);
-	// Variable-rate FTQ: a non-empty level mask of rates 8 ... 48, at most 6 of them; nothing else carries one.
-	CCV_NNC_MFA_PRECONDITION(is_ftq_vr(format) ? (levelMask != 0 && (levelMask >> 21) == 0 && __builtin_popcount(levelMask) <= 6) : levelMask == 0);
+	// Variable-rate FTQ: a non-empty level mask of rates 8 ... 88, at most 6 of them; nothing else carries one.
+	CCV_NNC_MFA_PRECONDITION(is_ftq_vr(format) ? (levelMask != 0 && (levelMask >> 41) == 0 && __builtin_popcountll(levelMask) <= 6) : levelMask == 0);
 	auto createKernel =
 	[=](Dequantize8iRowwiseXKernelDescriptor descriptor) -> Dequantize8iRowwiseXKernel* {
 		auto iterator = libraryCache->find(descriptor);

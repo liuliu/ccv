@@ -716,8 +716,9 @@ static size_t _ccv_nnc_mps_8i_rowwise_x_inline_head_size(const int format)
 // bytes): the table registered (folded when an FTQ header says so, ccv_nnc_8i_rowwise_x_resolve_inline). For FTQ any,
 // the blob header must name that table: a nonzero id (it stays the id the blob was fitted with and is never looked
 // up), log2 of the prefix's P, the prefix's crc32, structure 0 or 1 (1 only for 512 base pairs, which the folded
-// registration requires) and zeros in bits 18 - 31. The kernels then take the table from the resolved slot only. -1
-// if any of it does not hold.
+// registration requires) and zeros in bits 18 - 31, except the CCVFTQVR level mask bits 32 - 40 in bits 18 - 26
+// (ccv_nnc_8i_rowwise_x_ftq_table_field). The kernels then take the table from the resolved slot only. -1 if any of
+// it does not hold.
 static int _ccv_nnc_mps_8i_rowwise_x_resolve_inline_head(const uint8_t* const head, const int format)
 {
 	if (ccv_nnc_8i_rowwise_x_ftq_window(format))
@@ -728,6 +729,7 @@ static int _ccv_nnc_mps_8i_rowwise_x_resolve_inline_head(const uint8_t* const he
 		return resolved;
 	uint32_t field, crc, prefix_crc;
 	memcpy(&field, head + inline_size + 24, 4);
+	field = ccv_nnc_8i_rowwise_x_ftq_table_field(field, format);
 	memcpy(&crc, head + inline_size + 28, 4);
 	memcpy(&prefix_crc, head + 12, 4);
 	const int entries = ccv_nnc_8i_rowwise_x_inline_codebook_entries(format);

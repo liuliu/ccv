@@ -1443,11 +1443,11 @@ static void _ccv_nnc_8i_rowwise_packed_quant_iq3_xxs(const double* const y, cons
 // when bit 15 of h is set and the second when bit 31 is.
 static void _ccv_nnc_8i_rowwise_ftq_decode_tile(const uint8_t* const input, const uint64_t start, const int T, const int window, const int8_t* const table, const int shift, int8_t* const q8)
 {
-	assert(T >= 16 && T <= 768);
+	assert(T >= 16 && T <= 1408); // Up to n = 88.
 	assert(window >= 0 && window <= 3);
 	const int L = 16 + 2 * window;
 	assert(L <= T);
-	uint8_t bits[768];
+	uint8_t bits[1408];
 	int p;
 	for (p = 0; p < T; p++)
 	{
@@ -2114,7 +2114,7 @@ static inline int _ccv_nnc_8i_rowwise_trellis_end(const int pj, const int n)
 	return ((pj + 1) * n) >> 3;
 }
 
-// f_j = E_j - E_{j-1} with E_{-1} = 0, the fresh bits of pair j: 1 .. 6 for n = 8 .. 48. For even n,
+// f_j = E_j - E_{j-1} with E_{-1} = 0, the fresh bits of pair j: 1 .. 11 for n = 8 .. 88. For even n,
 // E_{j+4} = E_j + n / 2, so f has period 4 pairs (it divides 64).
 static inline int _ccv_nnc_8i_rowwise_trellis_fresh(const int pj, const int n)
 {
@@ -2145,16 +2145,21 @@ typedef struct {
 	double* cost; // Path cost per state, 2^W.
 	double* next; // Next step's path cost per state.
 	double* low_min; // min_h cost[(low << f) | h] per low, up to 2^(W - 1).
-	uint8_t* bp; // Back pointers h, CCV_NNC_8I_ROWWISE_TRELLIS_PAIRS x 2^(W - 1).
+	// Back pointers h (< 2^f), CCV_NNC_8I_ROWWISE_TRELLIS_PAIRS x 2^(W - 1): bp up to n = 64 (f <= 8), bp16 above
+	// (f <= 11 at n = 88); the other one is 0. Byte back pointers keep the encoder's speed up to n64 (as uint16_t the
+	// n64 fit took 1.6 times as long on M5 Ultra).
+	uint8_t* bp;
+	uint16_t* bp16;
 } ccv_nnc_8i_rowwise_trellis_t;
 
 // One Viterbi pass over the 128 pairs of a tile, processed in the order j' = 0..127 with original pair
 // j = (j' + rotation) mod 128 (targets, weights and f all taken at j). The step cost of state s is
 // w_{2j} (y_{2j} - T[2k])^2 + w_{2j+1} (y_{2j+1} - T[2k+1])^2 with k = k(s). State s at pair j follows the
 // states (low << f) | h, low = s mod 2^(W - f). With start < 0 both ends are free and the cheapest end state is
-// returned; otherwise both ends are fixed to start. Back pointers are recorded at bp[j' * 2^(W - 1)] for
-// j' >= bp_from only, when bp is set.
-static int _ccv_nnc_8i_rowwise_trellis_viterbi_pass(const ccv_nnc_8i_rowwise_trellis_t* const ws, const double* const y, const double* const w, const int rotation, const int start, uint8_t* const bp, const int bp_from)
+// returned; otherwise both ends are fixed to start. Back pointers are recorded at bp[j' * 2^(W - 1)] (bp16 when wide)
+// for j' >= bp_from only. Always inlined with a constant wide by _ccv_nnc_8i_rowwise_trellis_viterbi_pass, so that each
+// back pointer width gets its own loop (one loop storing either width took 1.3 times as long at n32 and n64).
+static inline __attribute__((always_inline)) int _ccv_nnc_8i_rowwise_trellis_viterbi_pass_of(const ccv_nnc_8i_rowwise_trellis_t* const ws, const double* const y, const double* const w, const int rotation, const int start, uint8_t* const bp, uint16_t* const bp16, const int bp_from, const int wide)
 {
 	const int window = ws->window;
 	const int states = 1 << window;
@@ -2170,7 +2175,7 @@ static int _ccv_nnc_8i_rowwise_trellis_viterbi_pass(const ccv_nnc_8i_rowwise_tre
 	{
 		const int pj = (step + rotation) & (CCV_NNC_8I_ROWWISE_TRELLIS_PAIRS - 1);
 		const int f = _ccv_nnc_8i_rowwise_trellis_fresh(pj, ws->n);
-		assert(f >= 1 && f <= 6);
+		assert(f >= 1 && f <= 11);
 		assert(f == _ccv_nnc_8i_rowwise_trellis_fresh(step, ws->n)); // Rotating by 64 pairs keeps the f sequence.
 		const int lows = 1 << (window - f);
 		const int hs = 1 << f;
@@ -2183,7 +2188,8 @@ static int _ccv_nnc_8i_rowwise_trellis_viterbi_pass(const ccv_nnc_8i_rowwise_tre
 			const double d1 = y[2 * pj + 1] - (double)ccv_nnc_trellis_builtin_table[2 * k + 1];
 			code_cost[k] = w[2 * pj] * (d0 * d0) + w[2 * pj + 1] * (d1 * d1);
 		}
-		uint8_t* const bpt = (bp && step >= bp_from) ? bp + (size_t)step * bp_stride : 0;
+		uint8_t* const bpt = (!wide && step >= bp_from) ? bp + (size_t)step * bp_stride : 0;
+		uint16_t* const bpt16 = (wide && step >= bp_from) ? bp16 + (size_t)step * bp_stride : 0;
 		int low;
 		for (low = 0; low < lows; low++)
 		{
@@ -2198,7 +2204,11 @@ static int _ccv_nnc_8i_rowwise_trellis_viterbi_pass(const ccv_nnc_8i_rowwise_tre
 					best_h = h;
 				}
 			low_min[low] = best;
-			if (bpt)
+			if (wide)
+			{
+				if (bpt16)
+					bpt16[low] = (uint16_t)best_h;
+			} else if (bpt)
 				bpt[low] = (uint8_t)best_h;
 		}
 		const int mask = lows - 1;
@@ -2221,6 +2231,13 @@ static int _ccv_nnc_8i_rowwise_trellis_viterbi_pass(const ccv_nnc_8i_rowwise_tre
 	return best_s;
 }
 
+static int _ccv_nnc_8i_rowwise_trellis_viterbi_pass(const ccv_nnc_8i_rowwise_trellis_t* const ws, const double* const y, const double* const w, const int rotation, const int start, const int bp_from)
+{
+	if (ws->bp16)
+		return _ccv_nnc_8i_rowwise_trellis_viterbi_pass_of(ws, y, w, rotation, start, 0, ws->bp16, bp_from, 1);
+	return _ccv_nnc_8i_rowwise_trellis_viterbi_pass_of(ws, y, w, rotation, start, ws->bp, 0, bp_from, 0);
+}
+
 // Walk the back pointers of processing steps last .. first (inclusive, descending) from state s, storing
 // the state of each step at states[(step + rotation) mod 128] when states is set. Returns the state before
 // step first.
@@ -2235,7 +2252,7 @@ static int _ccv_nnc_8i_rowwise_trellis_backtrack(const ccv_nnc_8i_rowwise_trelli
 			states[pj] = (uint16_t)s;
 		const int f = _ccv_nnc_8i_rowwise_trellis_fresh(pj, ws->n);
 		const int low = s & ((1 << (ws->window - f)) - 1);
-		s = (low << f) | ws->bp[(size_t)step * bp_stride + low];
+		s = (low << f) | (ws->bp ? ws->bp[(size_t)step * bp_stride + low] : ws->bp16[(size_t)step * bp_stride + low]);
 	}
 	return s;
 }
@@ -2247,9 +2264,9 @@ static int _ccv_nnc_8i_rowwise_trellis_backtrack(const ccv_nnc_8i_rowwise_trelli
 static void _ccv_nnc_8i_rowwise_trellis_viterbi(const ccv_nnc_8i_rowwise_trellis_t* const ws, const double* const y, const double* const w, uint16_t* const states)
 {
 	enum { P = CCV_NNC_8I_ROWWISE_TRELLIS_PAIRS, H = CCV_NNC_8I_ROWWISE_TRELLIS_PAIRS / 2 };
-	const int s_end = _ccv_nnc_8i_rowwise_trellis_viterbi_pass(ws, y, w, 0, -1, ws->bp, H);
+	const int s_end = _ccv_nnc_8i_rowwise_trellis_viterbi_pass(ws, y, w, 0, -1, H);
 	const int s_star = _ccv_nnc_8i_rowwise_trellis_backtrack(ws, 0, P - 1, H, s_end, 0);
-	_ccv_nnc_8i_rowwise_trellis_viterbi_pass(ws, y, w, H, s_star, ws->bp, 0);
+	_ccv_nnc_8i_rowwise_trellis_viterbi_pass(ws, y, w, H, s_star, 0);
 	const int s = _ccv_nnc_8i_rowwise_trellis_backtrack(ws, H, P - 1, 0, s_star, states);
 	assert(s == s_star); // The state before pair 64 is s_63 = s*.
 	(void)s;
@@ -2303,7 +2320,8 @@ static void _ccv_nnc_8i_rowwise_trellis_quantize_tile_row(const ccv_nnc_8i_rowwi
 	ws.cost = (double*)ccmalloc(sizeof(double) << window);
 	ws.next = (double*)ccmalloc(sizeof(double) << window);
 	ws.low_min = (double*)ccmalloc(sizeof(double) << (window - 1));
-	ws.bp = (uint8_t*)ccmalloc((size_t)CCV_NNC_8I_ROWWISE_TRELLIS_PAIRS << (window - 1));
+	ws.bp = n <= 64 ? (uint8_t*)ccmalloc((size_t)CCV_NNC_8I_ROWWISE_TRELLIS_PAIRS << (window - 1)) : 0;
+	ws.bp16 = n > 64 ? (uint16_t*)ccmalloc(sizeof(uint16_t) * ((size_t)CCV_NNC_8I_ROWWISE_TRELLIS_PAIRS << (window - 1))) : 0;
 	const size_t row_begin = tr * R;
 	size_t i, j, k;
 	for (i = 0; i < R; i++)
@@ -2335,7 +2353,10 @@ static void _ccv_nnc_8i_rowwise_trellis_quantize_tile_row(const ccv_nnc_8i_rowwi
 		_ccv_nnc_8i_rowwise_trellis_viterbi(&ws, y, w, states);
 		_ccv_nnc_8i_rowwise_trellis_pack_tile(ctx->u8, row_bit + tc * (size_t)(16 * n), window, n, states);
 	}
-	ccfree(ws.bp);
+	if (ws.bp)
+		ccfree(ws.bp);
+	if (ws.bp16)
+		ccfree(ws.bp16);
 	ccfree(ws.low_min);
 	ccfree(ws.next);
 	ccfree(ws.cost);
@@ -2360,21 +2381,21 @@ static size_t _ccv_nnc_quantize_8i_rowwise_x_trellis(const void* input, const in
 	const size_t tile_rows = row_count / CCV_NNC_8I_ROWWISE_TRELLIS_TILE;
 	const size_t strips = row_length / CCV_NNC_8I_ROWWISE_TRELLIS_TILE;
 	const int n = ftq ? ccv_nnc_8i_rowwise_x_ftq_rate(format) : vr ? ccv_nnc_8i_rowwise_x_ftq_vr_rate(format) : ccv_nnc_8i_rowwise_x_tmcq_rate(format);
-	uint32_t level_mask = 0;
+	uint64_t level_mask = 0;
 	if (vr)
 	{
-		// Every rate even in 8 .. 48, at most 6 of them, and the code within the R C 2 nm byte budget.
+		// Every rate even in 8 .. 88, at most 6 of them, and the code within the R C 2 nm byte budget.
 		uint64_t total = 0;
 		size_t r;
 		for (r = 0; r < tile_rows; r++)
 		{
 			const int nr = rates ? rates[r] : n;
-			if (nr < 8 || nr > 48 || (nr & 1))
+			if (nr < 8 || nr > 88 || (nr & 1))
 				return 0;
-			level_mask |= 1u << ((nr - 8) / 2);
+			level_mask |= (uint64_t)1 << ((nr - 8) / 2);
 			total += (uint64_t)nr;
 		}
-		if (__builtin_popcount(level_mask) > 6 || total > (uint64_t)tile_rows * n)
+		if (__builtin_popcountll(level_mask) > 6 || total > (uint64_t)tile_rows * n)
 			return 0;
 	}
 	const size_t scale_offset = _ccv_nnc_8i_rowwise_packed_scale_offset(format, input_length, row_length);
@@ -2387,7 +2408,9 @@ static size_t _ccv_nnc_quantize_8i_rowwise_x_trellis(const void* input, const in
 	uint32_t* offsets = 0;
 	if (ftq || vr)
 	{
-		const uint32_t header[6] = { (uint32_t)row_count, (uint32_t)row_length, (uint32_t)(16 * n), vr ? level_mask : 0, 9u << 8, 0 };
+		// Bits 32 - 40 of the level mask (n 72 ... 88) go to bits 18 - 26 of the table word, see
+		// CCV_NNC_QX_8I_ROWWISE_FTQ_VR_N16.
+		const uint32_t header[6] = { (uint32_t)row_count, (uint32_t)row_length, (uint32_t)(16 * n), (uint32_t)level_mask, (9u << 8) | (uint32_t)((level_mask >> 32) << 18), 0 };
 		memcpy(u8, vr ? "CCVFTQVR" : "CCVFTQSR", 8);
 		memcpy(u8 + 8, header, sizeof(header));
 	}
@@ -2967,8 +2990,9 @@ CCV_WARN_UNUSED(size_t) ccv_nnc_quantize_8i_rowwise_x_ftq_vr(const void* input, 
 // The table of an FTQ header (table field, table_crc) against the tensor's codebook slot: id 0 is the built-in table
 // (log2 9, crc 0, slot 0); otherwise the slot is a registered table of 2^log2 pairs whose crc32 is table_crc. Bits
 // 16 - 17 are the structure, 0 plain, 1 quadrant fold (a non-zero id of 512 base pairs, the slot registered with
-// CCV_NNC_CODEBOOK_FOLD); bits 18 - 29 are zero and bits 30 - 31 are the state window of the tensor's format
-// (CCV_NNC_QX_8I_ROWWISE_FTQ_WINDOW_SHIFT). Returns the table and the lookup shift (32 - log2, 0 when folded), or 0 if any check fails.
+// CCV_NNC_CODEBOOK_FOLD); bits 18 - 29 are zero (in a CCVFTQVR header bits 18 - 26 are level mask bits, which this
+// takes as they are, see ccv_nnc_8i_rowwise_x_ftq_table_field) and bits 30 - 31 are the state window of the tensor's
+// format (CCV_NNC_QX_8I_ROWWISE_FTQ_WINDOW_SHIFT). Returns the table and the lookup shift (32 - log2, 0 when folded), or 0 if any check fails.
 static const int8_t* _ccv_nnc_8i_rowwise_ftq_table(const int format, const uint32_t field, const uint32_t table_crc, int* const shift)
 {
 	const int slot = ccv_nnc_codebook_slot_of(format);
@@ -3017,7 +3041,7 @@ static const int8_t* _ccv_nnc_8i_rowwise_ftq_container(const uint8_t* const u8, 
 	if (!ccv_nnc_8i_rowwise_x_is_ftq(format) || (format & CCV_NNC_QX_8I_ROWWISE_HADAMARD_256) || row_length == 0 || row_length % 16 != 0 || row_count == 0 || row_count % 16 != 0 || row_count > UINT32_MAX || row_length > UINT32_MAX)
 		return 0;
 	const ccv_nnc_8i_rowwise_x_ftq_schedule_t schedule = ccv_nnc_8i_rowwise_x_ftq_schedule(format, row_count, row_length);
-	if (schedule.high_bits > 768 || length < schedule.scale_offset + 2 * row_count)
+	if (schedule.high_bits > 1408 || length < schedule.scale_offset + 2 * row_count)
 		return 0;
 	// "CCVFTQSR", rows, cols, high_bits, drop_count, table, table_crc.
 	uint32_t header[6];
@@ -3082,7 +3106,15 @@ int ccv_nnc_8i_rowwise_x_ftq_load_check(const void* const data, const size_t len
 	return _ccv_nnc_8i_rowwise_ftq_container((const uint8_t*)data, length, format, row_count, row_length, 0, &shift) ? 0 : -1;
 }
 
-int ccv_nnc_8i_rowwise_x_ftq_vr_check(const void* const data, const size_t length, const int format, const size_t row_count, const size_t row_length, uint32_t* const level_mask_out)
+// The 41-bit CCVFTQVR level mask of header words 3 (bits 0 - 31) and 4 (bits 18 - 26 as bits 32 - 40), see
+// CCV_NNC_QX_8I_ROWWISE_FTQ_VR_N16. Bits 27 - 31 of word 4 are not level mask bits (27 - 29 are zero, 30 - 31 the state
+// window).
+static inline uint64_t _ccv_nnc_8i_rowwise_ftq_vr_level_mask(const uint32_t* const header)
+{
+	return (uint64_t)header[3] | ((uint64_t)((header[4] >> 18) & 0x1ffu) << 32);
+}
+
+int ccv_nnc_8i_rowwise_x_ftq_vr_check(const void* const data, const size_t length, const int format, const size_t row_count, const size_t row_length, uint64_t* const level_mask_out)
 {
 	if (!ccv_nnc_8i_rowwise_x_is_ftq_vr(format) || (format & CCV_NNC_QX_8I_ROWWISE_HADAMARD_256) || row_length == 0 || row_length % 16 != 0 || row_count == 0 || row_count % 16 != 0 || row_count > UINT32_MAX || row_length > UINT32_MAX)
 		return -1;
@@ -3099,9 +3131,9 @@ int ccv_nnc_8i_rowwise_x_ftq_vr_check(const void* const data, const size_t lengt
 	memcpy(header, u8 + 8, sizeof(header));
 	if (header[0] != row_count || header[1] != row_length || header[2] != 16 * nm)
 		return -1;
-	const uint32_t level_mask = header[3];
-	// Levels are n = 8 + 2 i for i = 0 .. 20 (n 8 ... 48); at most 6 of them.
-	if ((level_mask >> 21) != 0 || __builtin_popcount(level_mask) > 6)
+	const uint64_t level_mask = _ccv_nnc_8i_rowwise_ftq_vr_level_mask(header);
+	// Levels are n = 8 + 2 i for i = 0 .. 40 (n 8 ... 88); at most 6 of them.
+	if ((level_mask >> 41) != 0 || __builtin_popcountll(level_mask) > 6)
 		return -1;
 	int shift;
 	if (!_ccv_nnc_8i_rowwise_ftq_table(format, header[4], header[5], &shift))
@@ -3119,7 +3151,7 @@ int ccv_nnc_8i_rowwise_x_ftq_vr_check(const void* const data, const size_t lengt
 		if (next < previous || (next - previous) % tiles != 0)
 			return -1;
 		const uint64_t nr = 2 * (uint64_t)(next - previous) / tiles;
-		if (nr < 8 || nr > 48 || !(level_mask & (1u << ((nr - 8) / 2))))
+		if (nr < 8 || nr > 88 || !(level_mask & ((uint64_t)1 << ((nr - 8) / 2))))
 			return -1;
 		previous = next;
 	}

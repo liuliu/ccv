@@ -23,8 +23,9 @@ struct Int8GemvKernelDescriptor {
   uint8_t batched;
   uint32_t format;
   GEMMOperandPrecision memoryPrecision;
-  // Variable-rate FTQ: the blob's level mask (bit i is rate 8 + 2 i), which picks the per-rate loop bodies; 0 otherwise.
-  uint32_t levelMask = 0;
+  // Variable-rate FTQ: the blob's level mask (bit i is rate 8 + 2 i, i <= 40), which picks the per-rate loop bodies; 0
+  // otherwise.
+  uint64_t levelMask = 0;
   constexpr bool operator==(const Int8GemvKernelDescriptor& rhs) const { return fusedBias == rhs.fusedBias && mrows == rhs.mrows && batched == rhs.batched && format == rhs.format && memoryPrecision == rhs.memoryPrecision && levelMask == rhs.levelMask; }
 };
 
@@ -32,7 +33,7 @@ template<>
 struct std::hash<Int8GemvKernelDescriptor>
 {
   std::size_t operator()(const Int8GemvKernelDescriptor& hash) const noexcept {
-    return std::hash<uint64_t>()((uint64_t)hash.fusedBias | ((uint64_t)hash.mrows << 8) | ((uint64_t)hash.memoryPrecision.value << 16) | ((uint64_t)hash.batched << 24) | ((uint64_t)hash.format << 32)) ^ std::hash<uint32_t>()(hash.levelMask);
+    return std::hash<uint64_t>()((uint64_t)hash.fusedBias | ((uint64_t)hash.mrows << 8) | ((uint64_t)hash.memoryPrecision.value << 16) | ((uint64_t)hash.batched << 24) | ((uint64_t)hash.format << 32)) ^ std::hash<uint64_t>()(hash.levelMask);
   }
 };
 
@@ -60,8 +61,8 @@ struct Int8GemvDescriptor {
 
   std::optional<simd::uint4> batchStrides;
 
-  // Variable-rate FTQ: the level mask of the blob's header; 0 for every other format.
-  uint32_t levelMask = 0;
+  // Variable-rate FTQ: the level mask of the blob's header (words 3 and 4); 0 for every other format.
+  uint64_t levelMask = 0;
 
   bool operator==(const Int8GemvDescriptor& rhs) const;
 

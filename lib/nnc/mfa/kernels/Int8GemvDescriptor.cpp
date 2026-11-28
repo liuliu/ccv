@@ -18,7 +18,7 @@ bool is_tmcq(const uint32_t format)
 bool is_ftq(const uint32_t format)
 {
   const uint32_t codec = format & CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK;
-  return codec >= CCV_NNC_QX_8I_ROWWISE_FTQ_N16 && codec <= CCV_NNC_QX_8I_ROWWISE_FTQ_N48;
+  return codec >= CCV_NNC_QX_8I_ROWWISE_FTQ_N16 && codec <= CCV_NNC_QX_8I_ROWWISE_FTQ_N88;
 }
 
 uint32_t ftq_rate(const uint32_t format)
@@ -30,7 +30,7 @@ uint32_t ftq_rate(const uint32_t format)
 bool is_ftq_vr(const uint32_t format)
 {
   const uint32_t codec = format & CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK;
-  return codec >= CCV_NNC_QX_8I_ROWWISE_FTQ_VR_N16 && codec <= CCV_NNC_QX_8I_ROWWISE_FTQ_VR_N48;
+  return codec >= CCV_NNC_QX_8I_ROWWISE_FTQ_VR_N16 && codec <= CCV_NNC_QX_8I_ROWWISE_FTQ_VR_N88;
 }
 
 uint32_t ftq_vr_rate(const uint32_t format)
@@ -65,7 +65,8 @@ std::size_t std::hash<Int8GemvDescriptor>::operator()(const Int8GemvDescriptor& 
   std::size_t seed = 0;
   seed = combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.memoryPrecision.value, (unsigned int)hash.fusedBias | ((unsigned int)hash.mrows << 8) }));
   seed = combine_64(seed, pack_64(simd::uint2 { (unsigned int)hash.format, (unsigned int)hash.nrows }));
-  seed = combine_64(seed, pack_64(simd::uint2 { hash.ncols, hash.levelMask }));
+  seed = combine_64(seed, pack_64(simd::uint2 { hash.ncols, (uint32_t)hash.levelMask }));
+  seed = combine_32(seed, (uint32_t)(hash.levelMask >> 32));
   seed = combine_64(seed, pack_64(simd::uint2 { hash.vectorRowStride, hash.outputRowStride }));
   if (hash.batchStrides.has_value()) {
     seed = combine_32(seed, hash.batchStrides.value()[0]);
@@ -191,8 +192,8 @@ std::pair<Int8GemvKernelDescriptor, PipelineValue<Int8GemvKernel>*> Int8GemvDesc
   // FTQ: FP16 scales in the blob, no batched weights (one blob is one 2-D tensor).
   if (is_ftq_any(format))
     CCV_NNC_MFA_PRECONDITION(memoryPrecision == GEMMOperandPrecision::FP16 && !batchStrides.has_value());
-  // Variable-rate FTQ: a non-empty level mask of rates 8 ... 48, at most 6 of them; nothing else carries one.
-  CCV_NNC_MFA_PRECONDITION(is_ftq_vr(format) ? (levelMask != 0 && (levelMask >> 21) == 0 && __builtin_popcount(levelMask) <= 6) : levelMask == 0);
+  // Variable-rate FTQ: a non-empty level mask of rates 8 ... 88, at most 6 of them; nothing else carries one.
+  CCV_NNC_MFA_PRECONDITION(is_ftq_vr(format) ? (levelMask != 0 && (levelMask >> 41) == 0 && __builtin_popcountll(levelMask) <= 6) : levelMask == 0);
   auto createKernel =
   [=](Int8GemvKernelDescriptor descriptor) -> Int8GemvKernel* {
     auto iterator = libraryCache->find(descriptor);

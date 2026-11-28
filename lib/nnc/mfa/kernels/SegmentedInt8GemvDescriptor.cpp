@@ -242,7 +242,7 @@ uint32_t segmentedTMCQRate(const uint32_t format)
 uint32_t segmentedFTQRate(const uint32_t format)
 {
   const uint32_t codec = format & 0xffu;
-  if (!tmcq_codebook_format_ok(format, true) || codec < CCV_NNC_QX_8I_ROWWISE_FTQ_N16 || codec > CCV_NNC_QX_8I_ROWWISE_FTQ_N48)
+  if (!tmcq_codebook_format_ok(format, true) || codec < CCV_NNC_QX_8I_ROWWISE_FTQ_N16 || codec > CCV_NNC_QX_8I_ROWWISE_FTQ_N88)
     return 0;
   return 8 + 2 * (codec - CCV_NNC_QX_8I_ROWWISE_FTQ_BLOCK_FIRST);
 }

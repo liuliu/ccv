@@ -251,16 +251,19 @@ static inline const char* tmcq_w3_decode_source()
 // ftq_store_segment (Dequantize8iRowwiseXKernel), so the codes are the selected-expert decode's bit for bit. The table
 // is a threadgroup ushort copy of the pairs (q8[2 j] in the low byte); log2Entries / fold as ccv_nnc_mfa_ftq_w1_source.
 // Append after ccv_nnc_mfa_tmcq_decode_source(), which defines tmcq_funnel.
+// ftq_w3_decode_row16_words holds up to N = 90, so for every open rate (n16 - n88): the last window ends at
+// N - floor(N / 8) + 16 <= 95 bits past the row's start (three funnels, f[0 .. 2]), from sh <= 31 that is four words, and
+// every window from offset 64 has (offset & 31) <= 16, so none reads past f[2].
 static inline std::string ccv_nnc_mfa_ftq_w3_source(const uint32_t log2Entries, const bool fold)
 {
   std::string shader = "constant uint ftq_w3_index_shift = " + std::to_string(32 - log2Entries) + "u;\n";
   shader += "#define FTQ_W3_ENTRIES " + std::to_string(1u << log2Entries) + "u\n";
   shader += std::string("#define FTQ_W3_FOLD ") + (fold ? "1" : "0") + "\n";
   shader += R"(
-// The 32 bits of the little-endian pair (lo, hi) from bit o (0 <= o < 32) as one 64-bit shift. Above rate 32 a row's
-// bit offset mod 32 varies with the row (32 does not divide n). There this form took less time than tmcq_funnel's two
-// 32-bit shifts on M5 Ultra (the fused GEMM, measured over n34 - n56: 2 - 16%), but more at n24 (4%), so
-// ftq_w3_decode_row16_words takes it above rate 32.
+// The 32 bits of the little-endian pair (lo, hi) from bit o (0 <= o < 32) as one 64-bit shift. A row's bit offset mod
+// 32 varies with the row unless 32 divides n. With such a varying offset above rate 32 this form took less time than
+// tmcq_funnel's two 32-bit shifts on M5 Ultra (the fused GEMM, n34 - n56: 2 - 16%), but more at n24 (4%) and, with the
+// constant offset, at n64 (1 - 3%), so ftq_w3_decode_row16_words picks it by that rule.
 inline uint ftq_w3_funnel(uint lo, uint hi, uint o)
 {
   return uint(as_type<ulong>(uint2(lo, hi)) >> o);
@@ -282,8 +285,8 @@ inline uint ftq_w3_pair(threadgroup const ushort* table, uint state)
 // Row r of a rate N tile whose n / 2 words start at `tile`: its windows start at bit r N + floor(N / 8) - 16, row 0's
 // before the tile, wrapping to its end, and the words from there are taken mod N / 2, as ftq_store_segment reads them.
 // Window i is at offset floor((i + 1) N / 8) - floor(N / 8) of the funnelled bits, so the windows span
-// N - floor(N / 8) + 16 bits: from bit offset sh <= 31 that is within the three words, and within the first 64
-// funnelled bits, for every rate up to N = 48.
+// N - floor(N / 8) + 16 bits: from bit offset sh <= 31 that is within three words up to N = 56 (ftq_store_segment reads a
+// fourth from N = 50, whose bits no window uses there) and four words from N = 58.
 template <uint N>
 inline uint4 ftq_w3_decode_row16_words(device const uint* tile, uint r, threadgroup const ushort* table)
 {
@@ -294,12 +297,16 @@ inline uint4 ftq_w3_decode_row16_words(device const uint* tile, uint r, threadgr
   const uint o2 = o1 + 1u == W ? 0u : o1 + 1u;
   const uint sh = lane_bit & 31u;
   const uint w0 = tile[o0], w1 = tile[o1], w2 = tile[o2];
-  constexpr bool wide_funnel = N > 32u;
+  constexpr bool wide_funnel = N > 32u && (N % 32u) != 0u;
   uint f[3];
   f[0] = wide_funnel ? ftq_w3_funnel(w0, w1, sh) : tmcq_funnel(w0, w1, sh);
   f[1] = wide_funnel ? ftq_w3_funnel(w1, w2, sh) : tmcq_funnel(w1, w2, sh);
-  // No window reaches past the first 64 bits.
-  f[2] = 0;
+  if (N > 48u) {
+    // Bits of f[2] past the windows' end are never read, so up to N = 56 the fourth word may as well be 0.
+    const uint w3 = 31u + N - (N >> 3) + 16u > 96u ? tile[o2 + 1u == W ? 0u : o2 + 1u] : 0u;
+    f[2] = wide_funnel ? ftq_w3_funnel(w2, w3, sh) : tmcq_funnel(w2, w3, sh);
+  } else
+    f[2] = 0;
   uint t[8];
   #pragma clang loop unroll(full)
   for (uint i = 0; i < 8u; ++i)
@@ -398,6 +405,9 @@ static inline const char* ccv_nnc_mfa_tmcq_w2_source()
 // pair lookup from a half2 threadgroup copy of the table and the 8 windows of one lane. log2Entries / fold: the pair
 // table (9 for the built-in one); fold is a quadrant-folded external table (CCV_NNC_MFA_CODEBOOK_FOLD, log2Entries 9).
 // Append after ccv_nnc_mfa_tmcq_decode_source(), whose tmcq_funnel the rate loop uses.
+// ftq_decode_lane holds up to N = 90, so for every open rate (n16 - n88): window offsets up to 48 read lo, the others
+// hi >> (offset - 32) with offset - 32 + 16 <= 64, and the four words of the rate loops (n > 48) cover the last window's
+// end, N - floor(N / 8) + 16 <= 95 bits from sh <= 31.
 static inline std::string ccv_nnc_mfa_ftq_w1_source(const uint32_t log2Entries, const bool fold)
 {
   // 32 - log2 of the pair count.
@@ -420,15 +430,15 @@ inline float2 ftq_lookup(threadgroup const half2* table, uint state)
 }
 
 // The 8 windows of a lane from its funnelled bits at rate N: window i at offset floor((i + 1) N / 8) - floor(N / 8) of the
-// lane's first window start, from the low 64 bits.
+// lane's first window start, from the low 64 bits or (N > 48 only, offsets past 48) from bits 32 .. 95.
 template <uint N>
-inline void ftq_decode_lane(ulong lo, thread float4* q, threadgroup const half2* table)
+inline void ftq_decode_lane(ulong lo, ulong hi, thread float4* q, threadgroup const half2* table)
 {
   float2 c[8];
   #pragma clang loop unroll(full)
   for (uint i = 0; i < 8u; i++) {
     const uint k = (((i + 1u) * N) >> 3) - (N >> 3);
-    const uint state = uint(lo >> k) & 0xffffu;
+    const uint state = (k <= 48u ? uint(lo >> k) : uint(hi >> (k - 32u))) & 0xffffu;
     c[i] = ftq_lookup(table, state);
   }
   q[0] = float4(c[0], c[1]);
@@ -441,7 +451,7 @@ inline void ftq_decode_lane(ulong lo, thread float4* q, threadgroup const half2*
 }
 
 // The tile loop of one threadgroup's 16 rows at the compile-time rate n, over row_code (the tile row's first word):
-// the lane's three words from its first window's start and its 8 windows at compile-time offsets.
+// the lane's three (n <= 48) or four words from its first window's start and its 8 windows at compile-time offsets.
 // Below n = 16 the first windows of rows 0 and 1 start before the tile and wrap to its end. In scope it needs r, stream,
 // STREAMS, tiles_per_row, row_code, tmcq_tg (the half2 table); `accumulate` is the per-tile statement, which reads
 // tile column tc and its weights qa[0 .. 3].
@@ -456,14 +466,23 @@ static inline std::string ccv_nnc_mfa_ftq_w1_rate_source(const uint32_t n, const
   body += "  const uint o0 = lane_bit >> 5;\n"
     "  const uint o1 = o0 + 1u == W ? 0u : o0 + 1u;\n"
     "  const uint o2 = o1 + 1u == W ? 0u : o1 + 1u;\n";
+  if (n > 48)
+    body += "  const uint o3 = o2 + 1u == W ? 0u : o2 + 1u;\n";
   body += "  const uint sh = lane_bit & 31u;\n"
     "  // One tile per iteration.\n"
     "  for (uint tc = stream; tc < tiles_per_row; tc += STREAMS) {\n"
     "    device const uint* t = row_code + tc * W;\n";
-  body += "    const uint w0 = t[o0], w1 = t[o1], w2 = t[o2];\n"
-    "    const ulong lo = ((ulong)tmcq_funnel(w1, w2, sh) << 32) | tmcq_funnel(w0, w1, sh);\n";
+  if (n > 48)
+    body += "    const uint w0 = t[o0], w1 = t[o1], w2 = t[o2], w3 = t[o3];\n"
+      "    const uint f1 = tmcq_funnel(w1, w2, sh);\n"
+      "    const ulong lo = ((ulong)f1 << 32) | tmcq_funnel(w0, w1, sh);\n"
+      "    const ulong hi = ((ulong)tmcq_funnel(w2, w3, sh) << 32) | f1;\n";
+  else
+    body += "    const uint w0 = t[o0], w1 = t[o1], w2 = t[o2];\n"
+      "    const ulong lo = ((ulong)tmcq_funnel(w1, w2, sh) << 32) | tmcq_funnel(w0, w1, sh);\n"
+      "    const ulong hi = 0;\n";
   body += "    float4 qa[4];\n"
-    "    ftq_decode_lane<N>(lo, qa, (threadgroup const half2*)tmcq_tg);\n";
+    "    ftq_decode_lane<N>(lo, hi, qa, (threadgroup const half2*)tmcq_tg);\n";
   body += accumulate;
   body += "  }\n"
     "  }\n";
@@ -485,15 +504,24 @@ static inline std::string ccv_nnc_mfa_ftq_w1_rate_pair_source(const uint32_t n, 
   body += "  const uint o0 = lane_bit >> 5;\n"
     "  const uint o1 = o0 + 1u == W ? 0u : o0 + 1u;\n"
     "  const uint o2 = o1 + 1u == W ? 0u : o1 + 1u;\n";
+  if (n > 48)
+    body += "  const uint o3 = o2 + 1u == W ? 0u : o2 + 1u;\n";
   body += "  const uint sh = lane_bit & 31u;\n"
     "  // One tile per iteration.\n"
     "  for (uint tc = stream; tc < tiles_per_row; tc += STREAMS) {\n";
   for (int i = 0; i < 2; i++) {
     body += "    float4 " + q[i] + "[4];\n    {\n"
       "    device const uint* t = " + codes[i] + " + tc * W;\n";
-    body += "    const uint w0 = t[o0], w1 = t[o1], w2 = t[o2];\n"
-      "    const ulong lo = ((ulong)tmcq_funnel(w1, w2, sh) << 32) | tmcq_funnel(w0, w1, sh);\n";
-    body += "    ftq_decode_lane<N>(lo, " + q[i] + ", (threadgroup const half2*)tmcq_tg);\n    }\n";
+    if (n > 48)
+      body += "    const uint w0 = t[o0], w1 = t[o1], w2 = t[o2], w3 = t[o3];\n"
+        "    const uint f1 = tmcq_funnel(w1, w2, sh);\n"
+        "    const ulong lo = ((ulong)f1 << 32) | tmcq_funnel(w0, w1, sh);\n"
+        "    const ulong hi = ((ulong)tmcq_funnel(w2, w3, sh) << 32) | f1;\n";
+    else
+      body += "    const uint w0 = t[o0], w1 = t[o1], w2 = t[o2];\n"
+        "    const ulong lo = ((ulong)tmcq_funnel(w1, w2, sh) << 32) | tmcq_funnel(w0, w1, sh);\n"
+        "    const ulong hi = 0;\n";
+    body += "    ftq_decode_lane<N>(lo, hi, " + q[i] + ", (threadgroup const half2*)tmcq_tg);\n    }\n";
   }
   body += accumulate;
   body += "  }\n"

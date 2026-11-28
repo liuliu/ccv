@@ -287,20 +287,20 @@ static inline int ccv_nnc_8i_rowwise_x_kernel_format(const int format)
 	return format & ~(CCV_NNC_QX_8I_ROWWISE_CODEBOOK_SLOT_MASK | CCV_NNC_QX_8I_ROWWISE_CODEBOOK_INLINE_MASK);
 }
 
-/* Static-rate FTQ (CCV_NNC_QX_8I_ROWWISE_FTQ_N16 .. N48, the open codes of its block): whole CCVFTQSR blobs with FP16
+/* Static-rate FTQ (CCV_NNC_QX_8I_ROWWISE_FTQ_N16 .. N88, the open codes of its block): whole CCVFTQSR blobs with FP16
  * scales. */
 static inline int ccv_nnc_8i_rowwise_x_is_ftq(const int format)
 {
 	const int codec = format & CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK;
-	return codec >= CCV_NNC_QX_8I_ROWWISE_FTQ_N16 && codec <= CCV_NNC_QX_8I_ROWWISE_FTQ_N48;
+	return codec >= CCV_NNC_QX_8I_ROWWISE_FTQ_N16 && codec <= CCV_NNC_QX_8I_ROWWISE_FTQ_N88;
 }
 
-/* Variable-rate FTQ (CCV_NNC_QX_8I_ROWWISE_FTQ_VR_N16 .. N48, the open codes of its block): whole CCVFTQVR blobs with
+/* Variable-rate FTQ (CCV_NNC_QX_8I_ROWWISE_FTQ_VR_N16 .. N88, the open codes of its block): whole CCVFTQVR blobs with
  * FP16 scales. */
 static inline int ccv_nnc_8i_rowwise_x_is_ftq_vr(const int format)
 {
 	const int codec = format & CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK;
-	return codec >= CCV_NNC_QX_8I_ROWWISE_FTQ_VR_N16 && codec <= CCV_NNC_QX_8I_ROWWISE_FTQ_VR_N48;
+	return codec >= CCV_NNC_QX_8I_ROWWISE_FTQ_VR_N16 && codec <= CCV_NNC_QX_8I_ROWWISE_FTQ_VR_N88;
 }
 
 /* The FTQ state window w of format (bits 26 - 27): an L = 16 + 2 w bit window. */
@@ -309,11 +309,20 @@ static inline int ccv_nnc_8i_rowwise_x_ftq_window(const int format)
 	return (format & CCV_NNC_QX_8I_ROWWISE_FTQ_WINDOW_MASK) >> CCV_NNC_QX_8I_ROWWISE_FTQ_WINDOW_SHIFT;
 }
 
+/* Table field `field` of an FTQ blob header without the high bits of a CCVFTQVR level mask: for variable-rate FTQ
+ * (format) bits 18 - 26 are level mask bits 32 - 40 (n 72 ... 88, see CCV_NNC_QX_8I_ROWWISE_FTQ_VR_N16) and are
+ * cleared; a static-rate field is returned as is. */
+static inline unsigned int ccv_nnc_8i_rowwise_x_ftq_table_field(const unsigned int field, const int format)
+{
+	return ccv_nnc_8i_rowwise_x_is_ftq_vr(format) ? field & ~0x7fc0000u : field;
+}
+
 /* Whether table field `field` of an FTQ blob header (CCVFTQSR or CCVFTQVR) does not name the state window of format,
- * or has a bit of 18 - 29 set: bits 30 - 31 hold the window (see CCV_NNC_QX_8I_ROWWISE_FTQ_WINDOW_SHIFT). */
+ * or has a bit of 18 - 29 set other than CCVFTQVR level mask bits (18 - 26): bits 30 - 31 hold the window (see
+ * CCV_NNC_QX_8I_ROWWISE_FTQ_WINDOW_SHIFT). */
 static inline int ccv_nnc_8i_rowwise_x_ftq_header_window_mismatch(const unsigned int field, const int format)
 {
-	return (field & 0x3ffc0000u) != 0 || (int)(field >> 30) != ccv_nnc_8i_rowwise_x_ftq_window(format);
+	return (ccv_nnc_8i_rowwise_x_ftq_table_field(field, format) & 0x3ffc0000u) != 0 || (int)(field >> 30) != ccv_nnc_8i_rowwise_x_ftq_window(format);
 }
 
 /* Static- or variable-rate FTQ. */
@@ -322,7 +331,7 @@ static inline int ccv_nnc_8i_rowwise_x_is_ftq_any(const int format)
 	return ccv_nnc_8i_rowwise_x_is_ftq(format) || ccv_nnc_8i_rowwise_x_is_ftq_vr(format);
 }
 
-/* A code of the static- or variable-rate FTQ block that is not open (n or nm other than 16 .. 48): no format. */
+/* A code of the static- or variable-rate FTQ block that is not open (n or nm other than 16 .. 88): no format. */
 static inline int ccv_nnc_8i_rowwise_x_is_ftq_unopened(const int format)
 {
 	const int codec = format & CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK;

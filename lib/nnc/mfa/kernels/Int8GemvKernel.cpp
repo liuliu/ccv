@@ -1121,7 +1121,7 @@ kernel void int8_gemv(
 bool is_ftq(const uint32_t format)
 {
   const uint32_t codec = format & CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK;
-  return codec >= CCV_NNC_QX_8I_ROWWISE_FTQ_N16 && codec <= CCV_NNC_QX_8I_ROWWISE_FTQ_N48;
+  return codec >= CCV_NNC_QX_8I_ROWWISE_FTQ_N16 && codec <= CCV_NNC_QX_8I_ROWWISE_FTQ_N88;
 }
 
 // FTQ GEMV for one to three activation rows (codec: CCV_NNC_QX_8I_ROWWISE_FTQ_N16). Same thread mapping, table copy
@@ -1130,8 +1130,8 @@ bool is_ftq(const uint32_t format)
 // into the blob. A lane's 8 windows end at r n + floor((i + 1) n / 8): it reads the tile words from its first window's
 // start (bit r n + floor(n / 8) - 16, taken mod the tile because the tile is a tail-biting loop, so row 0 wraps to the
 // tile end and row 15's unused high bits to the tile start, as TMCQ indexes its words), funnels them once with a
-// per-lane shift and finds every window at a compile-time offset in three words and 64 bits (the 8 windows span
-// 7 n / 8 + 16 bits, n <= 48).
+// per-lane shift and finds every window at a compile-time offset: three words and 64 bits for n <= 48, four words and
+// 96 bits above (the 8 windows span 7 n / 8 + 16 bits).
 // log2Entries / externalTable: the pair table. The default is the built-in 512-pair table as a compile-time
 // constant; an external table arrives as a pre-converted half2 buffer, `device const uint4* codebook [[buffer(5)]]`
 // (P / 4 uint4), copied to the same threadgroup half2[P] with uint4 loads and looked up with shift 32 - log2Entries
@@ -1142,7 +1142,7 @@ bool is_ftq(const uint32_t format)
 static bool is_ftq_vr(const uint32_t format)
 {
   const uint32_t codec = format & CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK;
-  return codec >= CCV_NNC_QX_8I_ROWWISE_FTQ_VR_N16 && codec <= CCV_NNC_QX_8I_ROWWISE_FTQ_VR_N48;
+  return codec >= CCV_NNC_QX_8I_ROWWISE_FTQ_VR_N16 && codec <= CCV_NNC_QX_8I_ROWWISE_FTQ_VR_N88;
 }
 
 // The FTQ GEMV's per-tile statement (ccv_nnc_mfa_ftq_w1_rate_source): tile column tc against every activation row.
@@ -1156,7 +1156,7 @@ static const char* const ftq_gemv_accumulate =
 // the R + 1 word prefix (bound again as a constant buffer at buffer(6)); n_r = 2 (prefix[tr + 1] - prefix[tr]) /
 // tiles_per_row is uniform in the threadgroup, which switches once to the static-rate loop at n_r for every level of
 // the mask (bit i is n = 8 + 2 i).
-static void append_ftq_kernel(std::string& shader, const uint32_t format, const uint32_t mrows, const bool fusedBias, const uint32_t log2Entries = 9, const bool externalTable = false, const bool fold = false, const uint32_t levelMask = 0)
+static void append_ftq_kernel(std::string& shader, const uint32_t format, const uint32_t mrows, const bool fusedBias, const uint32_t log2Entries = 9, const bool externalTable = false, const bool fold = false, const uint64_t levelMask = 0)
 {
   const bool vr = is_ftq_vr(format);
   const uint32_t n = vr ? 0 : 8 + 2 * ((format & CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK) - CCV_NNC_QX_8I_ROWWISE_FTQ_BLOCK_FIRST);
@@ -1240,8 +1240,8 @@ kernel void int8_gemv(
   device const uint* row_code = code + ((nrows >> 4) + 1u) + off0;
   switch (VW) {
 )";
-    for (uint32_t i = 0; i < 21; i++)
-      if (levelMask & (1u << i))
+    for (uint32_t i = 0; i <= 40; i++) // n = 8 ... 88.
+      if ((levelMask >> i) & 1)
         shader += "  case " + std::to_string((8 + 2 * i) / 2) + "u:\n" + ccv_nnc_mfa_ftq_w1_rate_source(8 + 2 * i, ftq_gemv_accumulate) + "  break;\n";
     // A rate outside the level mask (rejected when the weights are loaded) adds nothing.
     shader += "  default:\n  break;\n  }\n";
