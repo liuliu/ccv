@@ -1379,21 +1379,55 @@ static __device__ __forceinline__ uint2 _ccv_nnc_8i_rowwise_x_tmcq_decode_oct(co
 	return make_uint2(codes[0] | (codes[1] << 16), codes[2] | (codes[3] << 16));
 }
 
-// row_scale x q8 in the datatype, bit for bit what the CPU decode writes: the product is exact in float (at most
-// 11 + 7 significant bits for 16-bit scales), then CPU narrows it to FP16 / BF16 with ccv_float_to_half_precision /
-// ccv_float_to_bfloat, which truncate, thus round towards zero here as well.
+// row_scale x q8 in the datatype, bit for bit what the CPU decode writes: the CPU multiplies in double, which is exact
+// (at most 24 + 7 significant bits), and narrows to FP16 / BF16 / FP32 rounding to nearest even (ccv_float_to_half_precision
+// and ccv_float_to_bfloat since 9df009a6), keeping subnormals. --use_fast_math flushes FP32 subnormal operands and
+// results to zero, and only a subnormal BF16 / FP32 scale can meet one (a nonzero product of a normal scale and |q| >= 1
+// is normal, and FP16 values are normal in FP32), so those take an integer path that does not depend on FTZ.
+//
+// A subnormal scale is m 2^(emin - mbits) (m < 2^mbits, emin = -126 for both formats), thus scale x q is
+// sign x P 2^(emin - mbits) with the integer P = m |q|: below 2^mbits it is the subnormal of mantissa P, otherwise
+// P rounded to mbits + 1 significant bits (nearest even) with the biased exponent shift + 1.
+static __device__ __forceinline__ uint32_t _ccv_nnc_8i_rowwise_x_tmcq_subnormal_mul(const uint32_t sign, const uint32_t m, const int q, const int mbits)
+{
+	const uint32_t result_sign = sign ^ (q < 0 ? 1u : 0u);
+	const uint64_t p = (uint64_t)m * (uint64_t)(q < 0 ? -q : q);
+	if (p < (UINT64_C(1) << mbits))
+		return (result_sign << (mbits + 8)) | (uint32_t)p; // Subnormal or zero, exact.
+	const int shift = (63 - __clzll((long long)p)) - mbits; // p has mbits + 1 + shift significant bits.
+	uint64_t mant = p >> shift;
+	if (shift > 0)
+	{
+		const uint64_t rem = p & ((UINT64_C(1) << shift) - 1);
+		const uint64_t half = UINT64_C(1) << (shift - 1);
+		if (rem > half || (rem == half && (mant & 1)))
+			++mant;
+	}
+	uint32_t exponent = (uint32_t)shift + 1;
+	if (mant == (UINT64_C(1) << (mbits + 1)))
+		mant >>= 1, ++exponent;
+	return (result_sign << (mbits + 8)) | (exponent << mbits) | (uint32_t)(mant & ((UINT64_C(1) << mbits) - 1));
+}
+
 static __device__ __forceinline__ __half _ccv_nnc_8i_rowwise_x_tmcq_mul(const __half scale, const int q)
 {
-	return __float2half_rz(__half2float(scale) * (float)q);
+	// Exact in FP32 and normal there (FP16 subnormals are FP32 normals), so FTZ never applies.
+	return __float2half_rn(__half2float(scale) * (float)q);
 }
 
 static __device__ __forceinline__ __nv_bfloat16 _ccv_nnc_8i_rowwise_x_tmcq_mul(const __nv_bfloat16 scale, const int q)
 {
-	return __float2bfloat16_rz(__bfloat162float(scale) * (float)q);
+	const uint32_t bits = __bfloat16_as_ushort(scale);
+	if ((bits & 0x7f80u) == 0)
+		return __ushort_as_bfloat16((unsigned short)_ccv_nnc_8i_rowwise_x_tmcq_subnormal_mul(bits >> 15, bits & 0x7fu, q, 7));
+	return __float2bfloat16_rn(__bfloat162float(scale) * (float)q);
 }
 
 static __device__ __forceinline__ float _ccv_nnc_8i_rowwise_x_tmcq_mul(const float scale, const int q)
 {
+	const uint32_t bits = __float_as_uint(scale);
+	if ((bits & 0x7f800000u) == 0)
+		return __uint_as_float(_ccv_nnc_8i_rowwise_x_tmcq_subnormal_mul(bits >> 31, bits & 0x7fffffu, q, 23));
 	return q * scale;
 }
 

@@ -388,7 +388,7 @@ static double _tmcq_gemm_max_rel_diff(const int datatype, const int format, cons
 			if (fast_path)
 				w_f[i * k + j] = (float)(scale * codes[(size_t)i * k + j]);
 			else {
-				// The fallback decodes into the datatype (truncating like the CPU decode) before cuBLAS.
+				// The fallback decodes into the datatype (rounding to nearest even like the CPU decode) before cuBLAS.
 				uint8_t v[8];
 				_tmcq_store(datatype, v, 0, scale * codes[(size_t)i * k + j]);
 				w_f[i * k + j] = (float)_tmcq_load(datatype, v, 0);
@@ -709,6 +709,84 @@ TEST_CASE("cublas forward gemm with CPU-quantized TMCQ weights matches the CPU d
 		ccv_nnc_tensor_free(a);
 		ccv_nnc_tensor_free(w);
 	}
+}
+
+TEST_CASE("TMCQ CUDA dequantization keeps subnormal BF16, FP32 and FP16 scales bit for bit like the CPU")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_GPU_CUBLAS));
+#ifdef HAVE_CUDA
+	// --use_fast_math flushes FP32 subnormals: the products of subnormal BF16 / FP32 scales must still match the CPU,
+	// which multiplies in double and keeps them. FP16 subnormals are FP32 normals and are checked as well.
+	const int datatypes[] = {CCV_16BF, CCV_32F, CCV_16F};
+	const int shapes[][2] = {{16, 272}, {32, 1152}};
+	dsfmt_t dsfmt;
+	dsfmt_init_gen_rand(&dsfmt, 47);
+	int d, s, f;
+	for (d = 0; d < sizeof(datatypes) / sizeof(datatypes[0]); d++)
+		for (s = 0; s < sizeof(shapes) / sizeof(shapes[0]); s++)
+			for (f = 0; f < sizeof(tmcq_formats) / sizeof(tmcq_formats[0]); f += 4)
+			{
+				const int format = tmcq_formats[f];
+				const int rows = shapes[s][0], k = shapes[s][1];
+				const size_t count = (size_t)rows * k;
+				ccv_nnc_tensor_param_t host_params = CPU_TENSOR_NHWC(32F, rows, k);
+				host_params.datatype = datatypes[d];
+				ccv_nnc_tensor_param_t gpu_params = host_params;
+				gpu_params.type = CCV_TENSOR_GPU_MEMORY | 000;
+				ccv_nnc_tensor_t* const q = ccv_nnc_tensor_new(0, ccv_nnc_tensor_8i_rowwise_x(host_params, format), 0);
+				ccv_nnc_tensor_t* const gq = ccv_nnc_tensor_new(0, ccv_nnc_tensor_8i_rowwise_x(gpu_params, format), 0);
+				const size_t qsize = ccv_nnc_tensor_data_size_without_padding(q->info);
+				const size_t scale_offset = _tmcq_fill(q, datatypes[d], rows, 0.01, &dsfmt);
+				// Subnormal scale bit patterns of both signs: the smallest, the largest, and others in between; row 0
+				// keeps a normal scale and row 1 is +0.
+				int i;
+				for (i = 1; i < rows; i++)
+				{
+					const uint32_t sign = i % 3 == 2;
+					if (datatypes[d] == CCV_32F)
+					{
+						const uint32_t m = i == 1 ? 0 : i == 2 ? 1 : i == 3 ? 0x7fffffu : (uint32_t)(dsfmt_genrand_uint32(&dsfmt) & 0x7fffffu) >> (i % 20);
+						const uint32_t bits = (sign << 31) | m;
+						memcpy(q->data.u8 + scale_offset + 4 * i, &bits, 4);
+					} else {
+						const uint16_t m = datatypes[d] == CCV_16BF ? (i == 1 ? 0 : i == 2 ? 1 : i == 3 ? 0x7f : (uint16_t)(dsfmt_genrand_uint32(&dsfmt) & 0x7f)) : (i == 1 ? 0 : i == 2 ? 1 : i == 3 ? 0x3ff : (uint16_t)(dsfmt_genrand_uint32(&dsfmt) & 0x3ff));
+						const uint16_t bits = (uint16_t)((sign << 15) | m);
+						memcpy(q->data.u8 + scale_offset + 2 * i, &bits, 2);
+					}
+				}
+				ccv_nnc_tensor_t* const expected = ccv_nnc_tensor_new(0, host_params, 0);
+				REQUIRE_EQ(ccv_nnc_dequantize_8i_rowwise_x(q->data.u8, datatypes[d], CCV_TENSOR_CPU_MEMORY, qsize, k, format, expected->data.u8, count), 0, "CPU decodes");
+				// The CPU decode is the independent definition here too: the reference codes times the exact scales.
+				int8_t* const codes = (int8_t*)ccmalloc(count);
+				_tmcq_reference_codes(q->data.u8, rows, k, ccv_nnc_8i_rowwise_x_tmcq_rate(format), codes);
+				ccv_nnc_tensor_t* const reference = ccv_nnc_tensor_new(0, host_params, 0);
+				size_t j;
+				for (j = 0; j < count; j++)
+					_tmcq_store(datatypes[d], reference->data.u8, j, _tmcq_load(datatypes[d], q->data.u8 + scale_offset, j / k) * codes[j]);
+				const size_t bytes = count * CCV_GET_DATA_TYPE_SIZE(datatypes[d]);
+				REQUIRE(memcmp(expected->data.u8, reference->data.u8, bytes) == 0, "CPU decode keeps subnormal products: datatype=%x k=%d", datatypes[d], k);
+				size_t nonzero_subnormal = 0;
+				for (j = (size_t)2 * k; j < count; j++)
+					nonzero_subnormal += codes[j] != 0 && _tmcq_load(datatypes[d], reference->data.u8, j) != 0;
+				REQUIRE(nonzero_subnormal > 0, "the case has nonzero products of subnormal scales");
+				ccv_nnc_tensor_t* const gout = ccv_nnc_tensor_new(0, gpu_params, 0);
+				ccv_nnc_tensor_t* const actual = ccv_nnc_tensor_new(0, host_params, 0);
+				ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(q), TENSOR_LIST(gq), 0);
+				ccv_nnc_dequantize_8i_rowwise_x(gq->data.u8, datatypes[d], CCV_TENSOR_GPU_MEMORY, qsize, k, format, gout->data.u8, count);
+				ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(gout), TENSOR_LIST(actual), 0);
+				size_t mismatches = 0;
+				for (j = 0; j < bytes; j++)
+					mismatches += expected->data.u8[j] != actual->data.u8[j];
+				REQUIRE_EQ((int)mismatches, 0, "GPU TMCQ decode keeps subnormal scale products: datatype=%x k=%d n=%d", datatypes[d], k, ccv_nnc_8i_rowwise_x_tmcq_rate(format));
+				ccfree(codes);
+				ccv_nnc_tensor_free(reference);
+				ccv_nnc_tensor_free(actual);
+				ccv_nnc_tensor_free(gout);
+				ccv_nnc_tensor_free(expected);
+				ccv_nnc_tensor_free(gq);
+				ccv_nnc_tensor_free(q);
+			}
+#endif
 }
 
 TEST_CASE("CUDA index select rejects TMCQ, FTQ and FTQ-VR embeddings")
