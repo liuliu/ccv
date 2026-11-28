@@ -76,8 +76,9 @@ static int _ccv_nnc_segmented_swiglu_shared_forw(const float clamp, const float 
 		gate_rowwise && up_rowwise && ((gate_w->info.datatype & 0xff) << 12) == a->info.datatype;
 	if (!dense_weights && !rowwise_weights)
 		return CCV_NNC_EXEC_INVALID;
+	// TMCQ is a 16 x 16 tile grid (K % 16, N % 16) without modifier bits; the other packed codecs take whole 256-weight blocks.
 	const int rowwise_shape_supported = gate_format == 0 ?
-		(K % 4) == 0 : (K % 256) == 0 && (N % 256) == 0;
+		(K % 4) == 0 : ccv_nnc_8i_rowwise_x_is_tmcq(gate_format) ? (K % 16) == 0 && (N % 16) == 0 && !(gate_format & ~CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK) : (K % 256) == 0 && (N % 256) == 0;
 	if (rowwise_weights && !rowwise_shape_supported)
 		return CCV_NNC_EXEC_INVALID;
 
@@ -327,7 +328,10 @@ static int _ccv_nnc_segmented_swiglu_routed_forw(const ccv_nnc_cmd_t cmd, ccv_nn
 	const int up_rowwise = up_subtype == CCV_NNC_QX_8I_ROWWISE || up_subtype == CCV_NNC_QX_8I_ROWWISE_X;
 	const uint32_t gate_format = gate_subtype == CCV_NNC_QX_8I_ROWWISE_X ? (uint32_t)gate_w->info.reserved : 0;
 	const uint32_t up_format = up_subtype == CCV_NNC_QX_8I_ROWWISE_X ? (uint32_t)up_w->info.reserved : 0;
-	const int rowwise_shape_supported = gate_format == 0 ? (K % 4) == 0 : (K % 256) == 0 && (N % 256) == 0;
+	// TMCQ: a 16 x 16 tile grid without modifier bits, read as 32-bit words.
+	const int rowwise_shape_supported = gate_format == 0 ? (K % 4) == 0 : ccv_nnc_8i_rowwise_x_is_tmcq(gate_format) ?
+		(K % 16) == 0 && (N % 16) == 0 && !(gate_format & ~CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK) && (gate_w->dataof % 4) == 0 && (up_w->dataof % 4) == 0 :
+		(K % 256) == 0 && (N % 256) == 0;
 	const uint64_t mtl_datatype = _ccv_nnc_segmented_swiglu_mtl_datatype(a->info.datatype);
 	ccv_nnc_mfa_context_t* const context = ccv_nnc_default_mfa_context();
 	const int use_neural_accelerators =
@@ -341,7 +345,7 @@ static int _ccv_nnc_segmented_swiglu_routed_forw(const ccv_nnc_cmd_t cmd, ccv_nn
 	// expert's weights once per row, so it wins at about one row per expert and loses once
 	// rows share experts (on M5 Max, 0.86x at 36 rows when consecutive tokens share half).
 	const int fused_packed_matrix_supported =
-		ccv_nnc_mfa_segmented_scaled_gemm_fuses_packed_format(gate_format, M, bincount) &&
+		ccv_nnc_mfa_segmented_scaled_gemm_fuses_packed_format(gate_format, M, bincount, N, K) &&
 		a->info.datatype == CCV_32F && use_neural_accelerators;
 	const int direct_small_batch =
 		input_shape_supported && (!fused_packed_matrix_supported || input_rows == 1 || M <= 36) &&
@@ -371,7 +375,8 @@ static int _ccv_nnc_segmented_swiglu_routed_forw(const ccv_nnc_cmd_t cmd, ccv_nn
 		 gate_format == CCV_NNC_QX_8I_ROWWISE_IQ3_XXS ||
 		 gate_format == CCV_NNC_QX_8I_ROWWISE_Q2_K ||
 		 gate_format == CCV_NNC_QX_8I_ROWWISE_IQ1_S ||
-		 gate_format == CCV_NNC_QX_8I_ROWWISE_IQ1_M);
+		 gate_format == CCV_NNC_QX_8I_ROWWISE_IQ1_M ||
+		 ccv_nnc_8i_rowwise_x_is_tmcq(gate_format));
 	// A one-row shared expert with int8 rowwise (Q8_0, Q5_K or Q6_K) weights over the same FP32
 	// input width joins the packed decode dispatch when the routed weights are resident.
 	const ccv_nnc_tensor_view_t* const shared_a = shared ? (const ccv_nnc_tensor_view_t*)shared[0] : 0;
@@ -536,6 +541,8 @@ static int _ccv_nnc_segmented_swiglu_routed_forw(const ccv_nnc_cmd_t cmd, ccv_nn
 		gate_rowwise && up_rowwise &&
 		((gate_w->info.datatype & 0xff) << 12) == a->info.datatype;
 	if (!dense_weights && !rowwise_weights)
+		return CCV_NNC_EXEC_INVALID;
+	if (rowwise_weights && ccv_nnc_8i_rowwise_x_is_tmcq(gate_format) && !rowwise_shape_supported)
 		return CCV_NNC_EXEC_INVALID;
 	const int use_segmented_scaled_swiglu_without_neural_accelerators =
 		!use_neural_accelerators && rowwise_shape_supported && a->info.datatype == CCV_32F &&

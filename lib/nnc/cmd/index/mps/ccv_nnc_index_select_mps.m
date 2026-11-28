@@ -48,6 +48,9 @@ static int _ccv_nnc_index_select_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hin
 	{
 		const int a_qx_subtype = a->info.datatype & 0xf00;
 		assert(a_qx_subtype == CCV_NNC_QX_8I_ROWWISE || a_qx_subtype == CCV_NNC_QX_8I_ROWWISE_X);
+		// A TMCQ tile spans 16 rows, thus a row cannot be gathered on its own.
+		if (a_qx_subtype == CCV_NNC_QX_8I_ROWWISE_X && ccv_nnc_8i_rowwise_x_is_tmcq((int)a->info.reserved))
+			return CCV_NNC_EXEC_INVALID;
 		assert(a_nd == 2);
 		assert(b_nd == 2);
 		assert(indices->info.datatype == CCV_32S);

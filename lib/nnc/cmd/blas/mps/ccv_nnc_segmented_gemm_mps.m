@@ -277,6 +277,10 @@ static int _ccv_nnc_segmented_gemm_routed_forw(const ccv_nnc_cmd_t cmd, const cc
 		const int w_qx_subtype = w->info.datatype & 0xf00;
 		const int w_qx_8i_rowwise = (w_qx_subtype == CCV_NNC_QX_8I_ROWWISE || w_qx_subtype == CCV_NNC_QX_8I_ROWWISE_X);
 		const uint32_t w_8i_rowwise_x_format = w_qx_subtype == CCV_NNC_QX_8I_ROWWISE_X ? (uint32_t)w->info.reserved : 0;
+		// TMCQ experts are whole 16 x 16 tiles (N % 16, K % 16) read as 32-bit words, without H256.
+		const int w_tmcq = ccv_nnc_8i_rowwise_x_is_tmcq(w_8i_rowwise_x_format);
+		const int w_tmcq_supported = !w_tmcq ||
+			(!(w_8i_rowwise_x_format & CCV_NNC_QX_8I_ROWWISE_HADAMARD_256) && (b_cols % 16) == 0 && (w_rows % 16) == 0 && (w->dataof % 4) == 0);
 		const int a_datatype = CCV_GET_DATA_TYPE(a->info.datatype) == CCV_QX ? ((a->info.datatype & 0xff) << 12) : a->info.datatype;
 		const int w_datatype = CCV_GET_DATA_TYPE(w->info.datatype) == CCV_QX ? ((w->info.datatype & 0xff) << 12) : w->info.datatype;
 		const int is_same_dtype =
@@ -327,6 +331,7 @@ static int _ccv_nnc_segmented_gemm_routed_forw(const ccv_nnc_cmd_t cmd, const cc
 			ccv_nnc_tensor_count(b->info) <= UINT32_MAX;
 		const int use_segmented_scaled_gemm =
 			w_qx_8i_rowwise &&
+			w_tmcq_supported &&
 			(CCV_GET_DATA_TYPE(a->info.datatype) != CCV_QX) &&
 			(CCV_GET_DATA_TYPE(b->info.datatype) != CCV_QX) &&
 			(!bias || CCV_GET_DATA_TYPE(bias->info.datatype) != CCV_QX) &&
@@ -347,7 +352,8 @@ static int _ccv_nnc_segmented_gemm_routed_forw(const ccv_nnc_cmd_t cmd, const cc
 			(!bias || CCV_GET_DATA_TYPE(bias->info.datatype) != CCV_QX) &&
 			((w_rows % 4) == 0) &&
 			(!w_8i_rowwise_x_format ||
-				((w_rows % 256) == 0 && (b_cols % 256) == 0)) &&
+				(w_tmcq ? ((w_rows % 16) == 0 && (b_cols % 16) == 0) : ((w_rows % 256) == 0 && (b_cols % 256) == 0))) &&
+			w_tmcq_supported &&
 			!is_transpose_a &&
 			is_transpose_w &&
 			is_contiguous &&
@@ -463,9 +469,9 @@ static int _ccv_nnc_segmented_gemm_routed_forw(const ccv_nnc_cmd_t cmd, const cc
 			ccv_nnc_mfa_segmented_scaled_gemm_params_t params = {
 				.data_type = mtl_data_type,
 				// Packed weights can be decoded per tile instead of expanding the expert bank into scratch.
+				// The predicate takes the shape: N % 64 and K % 64 for TMCQ, N % 256 and K % 256 for the others.
 				.format = use_neural_accelerators && !bias &&
-					(b_cols % 256) == 0 && (w_rows % 256) == 0 &&
-					ccv_nnc_mfa_segmented_scaled_gemm_fuses_packed_format(w_8i_rowwise_x_format, b_rows, bincount) ? w_8i_rowwise_x_format : 0,
+					ccv_nnc_mfa_segmented_scaled_gemm_fuses_packed_format(w_8i_rowwise_x_format, b_rows, bincount, (uint32_t)b_cols, (uint32_t)w_rows) ? w_8i_rowwise_x_format : 0,
 				.M = (uint32_t)(b_rows + ccv_max(bincount - 2, 0)) / ccv_max(bincount - 1, 1),
 				.N = (uint32_t)b_cols,
 				.K = (uint32_t)w_rows,

@@ -24,7 +24,12 @@ typedef enum {
 	WEIGHT_IQ2_XS,
 	WEIGHT_IQ3_S,
 	WEIGHT_IQ3_XXS,
+	WEIGHT_IQ1_S,
+	WEIGHT_TMCQ_N18,
+	WEIGHT_TMCQ_N22,
+	WEIGHT_TMCQ_N26,
 	WEIGHT_ALL,
+	WEIGHT_TMCQ_COMPARE,
 } weight_format_t;
 
 static double get_current_time(void)
@@ -105,8 +110,18 @@ static const char* weight_format_name(const weight_format_t weight_format)
 			return "iq3_s";
 		case WEIGHT_IQ3_XXS:
 			return "iq3_xxs";
+		case WEIGHT_IQ1_S:
+			return "iq1_s";
+		case WEIGHT_TMCQ_N18:
+			return "tmcq_n18";
+		case WEIGHT_TMCQ_N22:
+			return "tmcq_n22";
+		case WEIGHT_TMCQ_N26:
+			return "tmcq_n26";
 		case WEIGHT_ALL:
 			return "all";
+		case WEIGHT_TMCQ_COMPARE:
+			return "tmcq";
 		case WEIGHT_ROWWISE:
 		default:
 			return "rowwise";
@@ -135,6 +150,15 @@ static ccv_nnc_tensor_param_t weight_params_for_format(const ccv_nnc_tensor_para
 			return ccv_nnc_tensor_8i_rowwise_x(dense_params, CCV_NNC_QX_8I_ROWWISE_IQ3_S);
 		case WEIGHT_IQ3_XXS:
 			return ccv_nnc_tensor_8i_rowwise_x(dense_params, CCV_NNC_QX_8I_ROWWISE_IQ3_XXS);
+		case WEIGHT_IQ1_S:
+			return ccv_nnc_tensor_8i_rowwise_x(dense_params, CCV_NNC_QX_8I_ROWWISE_IQ1_S);
+		// The weights are left as allocated: every TMCQ (and IQ) bit pattern is a valid payload.
+		case WEIGHT_TMCQ_N18:
+			return ccv_nnc_tensor_8i_rowwise_x(dense_params, CCV_NNC_QX_8I_ROWWISE_TMCQ_N18);
+		case WEIGHT_TMCQ_N22:
+			return ccv_nnc_tensor_8i_rowwise_x(dense_params, CCV_NNC_QX_8I_ROWWISE_TMCQ_N22);
+		case WEIGHT_TMCQ_N26:
+			return ccv_nnc_tensor_8i_rowwise_x(dense_params, CCV_NNC_QX_8I_ROWWISE_TMCQ_N26);
 		case WEIGHT_ROWWISE:
 		default:
 			return ccv_nnc_tensor_8i_rowwise(dense_params);
@@ -334,7 +358,18 @@ static weight_format_t parse_weight_format(const char* const arg)
 		return WEIGHT_IQ3_S;
 	if (strcmp(arg, "iq3_xxs") == 0 || strcmp(arg, "IQ3_XXS") == 0)
 		return WEIGHT_IQ3_XXS;
-	fprintf(stderr, "usage: routed_segmented_gemm_bench [balanced|sparse6] [rowwise|q5_k|q4_k|q3_k|q2_k|iq2_xxs|iq2_s|iq2_xs|iq3_s|iq3_xxs|all] [warmup] [iterations]\n");
+	if (strcmp(arg, "iq1_s") == 0 || strcmp(arg, "IQ1_S") == 0)
+		return WEIGHT_IQ1_S;
+	if (strcmp(arg, "tmcq_n18") == 0 || strcmp(arg, "TMCQ_N18") == 0)
+		return WEIGHT_TMCQ_N18;
+	if (strcmp(arg, "tmcq_n22") == 0 || strcmp(arg, "TMCQ_N22") == 0)
+		return WEIGHT_TMCQ_N22;
+	if (strcmp(arg, "tmcq_n26") == 0 || strcmp(arg, "TMCQ_N26") == 0)
+		return WEIGHT_TMCQ_N26;
+	if (strcmp(arg, "tmcq") == 0 || strcmp(arg, "TMCQ") == 0)
+		return WEIGHT_TMCQ_COMPARE;
+	fprintf(stderr, "usage: routed_segmented_gemm_bench [balanced|sparse6] [rowwise|q5_k|q4_k|q3_k|q2_k|iq2_xxs|iq2_s|iq2_xs|iq3_s|iq3_xxs|iq1_s|tmcq_n18|tmcq_n22|tmcq_n26|tmcq|all] [warmup] [iterations] [tokens] [fp16|fp32]\n"
+		"  tmcq runs the TMCQ comparison set: iq1_s, iq2_xxs, tmcq_n18, tmcq_n22, tmcq_n26\n");
 	exit(1);
 }
 
@@ -379,12 +414,25 @@ int main(int argc, char** argv)
 		WEIGHT_IQ2_XS,
 		WEIGHT_IQ3_S,
 		WEIGHT_IQ3_XXS,
+		WEIGHT_IQ1_S,
+		WEIGHT_TMCQ_N18,
+		WEIGHT_TMCQ_N22,
+		WEIGHT_TMCQ_N26,
 	};
-	const int format_count = weight_format == WEIGHT_ALL ? sizeof(all_formats) / sizeof(all_formats[0]) : 1;
+	const weight_format_t tmcq_formats[] = {
+		WEIGHT_IQ1_S,
+		WEIGHT_IQ2_XXS,
+		WEIGHT_TMCQ_N18,
+		WEIGHT_TMCQ_N22,
+		WEIGHT_TMCQ_N26,
+	};
+	const int format_count = weight_format == WEIGHT_ALL ? sizeof(all_formats) / sizeof(all_formats[0]) :
+		weight_format == WEIGHT_TMCQ_COMPARE ? sizeof(tmcq_formats) / sizeof(tmcq_formats[0]) : 1;
 	int i;
 	for (i = 0; i < format_count; i++)
 	{
-		const weight_format_t current_format = weight_format == WEIGHT_ALL ? all_formats[i] : weight_format;
+		const weight_format_t current_format = weight_format == WEIGHT_ALL ? all_formats[i] :
+			weight_format == WEIGHT_TMCQ_COMPARE ? tmcq_formats[i] : weight_format;
 		const double gate_ms = benchmark_case("gate", 2048, 4096, expert_count, token_count, routing_mode, current_format, datatype, warmup, iterations);
 		const double up_ms = benchmark_case("up", 2048, 4096, expert_count, token_count, routing_mode, current_format, datatype, warmup, iterations);
 		const double down_ms = benchmark_case("down", 4096, 2048, expert_count, token_count, routing_mode, current_format, datatype, warmup, iterations);

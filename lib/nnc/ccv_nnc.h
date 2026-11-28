@@ -1158,6 +1158,24 @@ enum {
 	CCV_NNC_QX_8I_ROWWISE_Q6_K,
 	CCV_NNC_QX_8I_ROWWISE_IQ1_S,
 	CCV_NNC_QX_8I_ROWWISE_IQ1_M,
+	/* TMCQ, a tail-biting trellis codec of n / 16 bits per weight, one value per even rate n = 16 .. 32. Each 16 x 16
+	 * tile of the weight (tiles row-major over the tile grid, weights row-major inside a tile) is one trellis of 16 n
+	 * bits. With E_t = floor((t + 1) n / 16), the weight pair 2j, 2j + 1 (j = 0 .. 127) reads the 15-bit LSB-first
+	 * window cw that ends at bit E_{2j+1} (bits E - 15 .. E - 1, wrapping inside the tile), takes
+	 * k = ((uint32_t)cw * 0x83DCD12D) >> 23 and gets the int8 codes q8[2j] = T[2k], q8[2j + 1] = T[2k + 1] of the
+	 * tensor's pair table T. The weight is row_scale * q8 like every other row-wise-x codec. The data starts with T,
+	 * 512 int8 pairs (1024 bytes, one table for the whole tensor), followed by the layout of the other codecs: the
+	 * (row_count / 16) (row_length / 16) tiles of 2 n bytes (ccv_nnc_8i_rowwise_x_payload_bits) and the row scales.
+	 * Requires row_count % 16 == 0 and row_length % 16 == 0. */
+	CCV_NNC_QX_8I_ROWWISE_TMCQ_N16,
+	CCV_NNC_QX_8I_ROWWISE_TMCQ_N18,
+	CCV_NNC_QX_8I_ROWWISE_TMCQ_N20,
+	CCV_NNC_QX_8I_ROWWISE_TMCQ_N22,
+	CCV_NNC_QX_8I_ROWWISE_TMCQ_N24,
+	CCV_NNC_QX_8I_ROWWISE_TMCQ_N26,
+	CCV_NNC_QX_8I_ROWWISE_TMCQ_N28,
+	CCV_NNC_QX_8I_ROWWISE_TMCQ_N30,
+	CCV_NNC_QX_8I_ROWWISE_TMCQ_N32,
 };
 
 /* Modifiers for the format argument / tensor reserved field of ROWWISE_X. */
@@ -1247,6 +1265,9 @@ CCV_WARN_UNUSED(size_t) ccv_nnc_8i_rowwise_x_data_size(const int format, const i
  * CCV_NNC_QX_8I_ROWWISE_HADAMARD_256 (returns 0).
  * @param hessian_length The number of elements in @p hessian. It must be a multiple of
  * row_length * row_length. Multiple slices partition rows evenly, as with imatrix.
+ * TMCQ writes the built-in pair table (ccv_nnc_trellis_builtin_table.inc) at the start of the output and fits the
+ * tiles to it unweighted: a tail-biting Viterbi per tile on the squared error, row scale rms(row) / cb_rms (cb_rms
+ * the code rms over all window states). It returns 0 with an imatrix or a Hessian.
  */
 CCV_WARN_UNUSED(size_t) ccv_nnc_quantize_8i_rowwise_x(const void* input, const int datatype, const int memory_type, const size_t input_length, const size_t row_length, const int format, const float* const imatrix, const size_t imatrix_length, const float* const hessian, const size_t hessian_length, void* output, const size_t output_length);
 /**

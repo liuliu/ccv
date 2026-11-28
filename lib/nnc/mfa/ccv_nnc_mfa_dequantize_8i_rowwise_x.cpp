@@ -66,6 +66,12 @@ void ccv_nnc_mfa_encode_dequantize_8i_rowwise_x(ccv_nnc_mfa_context_t* context, 
 		num_tensors += 1;
 	}
 	CCV_NNC_MFA_PRECONDITION(num_tensors == 2);
+	// A TMCQ weight as stored: its pair table at buffer(5), then the tiles.
+	const size_t codebook_size = (size_t)ccv_nnc_mfa_tmcq_codebook_size(params.format);
+	if (codebook_size) {
+		encoder->setBuffer(tensors[0], tensor_offsets[0], NS::UInteger(5));
+		encoder->setBuffer(tensors[0], tensor_offsets[0] + codebook_size, NS::UInteger(0));
+	}
 
 	Dequantize8iRowwiseXDescriptor descriptor;
 	descriptor.format = params.format;
@@ -76,7 +82,7 @@ void ccv_nnc_mfa_encode_dequantize_8i_rowwise_x(ccv_nnc_mfa_context_t* context, 
 	CCV_NNC_MFA_PRECONDITION(row_count <= UINT32_MAX / descriptor.scaleSize);
 	descriptor.rowLength = (uint32_t)params.row_length;
 	descriptor.length = (uint32_t)params.length;
-	encoder->setBuffer(tensors[0], tensor_offsets[0] + (size_t)descriptor.inputScaleOffset(), NS::UInteger(2));
+	encoder->setBuffer(tensors[0], tensor_offsets[0] + codebook_size + (size_t)descriptor.inputScaleOffset(), NS::UInteger(2));
 	encoder->setBuffer(tensors[1], tensor_offsets[1] + (size_t)descriptor.outputScaleOffset(), NS::UInteger(3));
 
 	auto pool = NS::AutoreleasePool::alloc()->init();
@@ -150,10 +156,14 @@ void ccv_nnc_mfa_encode_dequantize_8i_rowwise_x_selected(ccv_nnc_mfa_context_t* 
 	encoder->useResource(tensors[0], MTL::ResourceUsageRead);
 	encoder->useResource(tensors[3], MTL::ResourceUsageWrite);
 	encoder->useResource(tensors[4], MTL::ResourceUsageRead);
-	encoder->setBuffer(tensors[0], tensor_offsets[0], NS::UInteger(0));
+	// A TMCQ weight as stored: its pair table at buffer(5), then the tiles.
+	const size_t codebook_size = (size_t)ccv_nnc_mfa_tmcq_codebook_size(params.format);
+	if (codebook_size)
+		encoder->setBuffer(tensors[0], tensor_offsets[0], NS::UInteger(5));
+	encoder->setBuffer(tensors[0], tensor_offsets[0] + codebook_size, NS::UInteger(0));
 	encoder->setBuffer(tensors[4], tensor_offsets[4] + scratch_layout.active_experts_offset, NS::UInteger(1));
 	encoder->setBuffer(tensors[3], tensor_offsets[3], NS::UInteger(2));
-	encoder->setBuffer(tensors[0], tensor_offsets[0] + (size_t)descriptor.inputScaleOffset(), NS::UInteger(3));
+	encoder->setBuffer(tensors[0], tensor_offsets[0] + codebook_size + (size_t)descriptor.inputScaleOffset(), NS::UInteger(3));
 	encoder->setBuffer(tensors[3], tensor_offsets[3] + (size_t)descriptor.outputScaleOffset(), NS::UInteger(4));
 
 	encoder->dispatchThreadgroups(tensors[4], tensor_offsets[4] + scratch_layout.dispatch_offset, kernel->threadgroupSize);

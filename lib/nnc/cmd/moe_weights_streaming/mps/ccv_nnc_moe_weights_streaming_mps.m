@@ -19,6 +19,7 @@
 #import <unistd.h>
 
 typedef struct {
+	size_t payload_offset; // The TMCQ pair table comes first (ccv_nnc_8i_rowwise_x_codebook_size).
 	size_t payload_per_expert;
 	size_t scale_per_expert;
 	size_t scale_offset;
@@ -113,6 +114,8 @@ static void _ccv_nnc_moe_wait_for_in_flight(const size_t staged, ccv_nnc_stream_
 }
 
 static int _ccv_nnc_moe_resident_buffers(MFAMoEWeightsStreamingState* const state, id<MTLBuffer>* const buffers);
+static int _ccv_nnc_moe_open_source_fds(MFAMoEWeightsStreamingState* const state);
+static int _ccv_nnc_moe_pread_all(const int fd, const off_t source_offset, void* const destination, const size_t size);
 
 - (void)dealloc
 {
@@ -198,10 +201,11 @@ static int _ccv_nnc_moe_weight_layout(const ccv_nnc_tensor_param_t source_info, 
 	if (subtype == CCV_NNC_QX_8I_ROWWISE)
 		payload_per_expert = (size_t)source_info.dim[1] * source_info.dim[2];
 	else if (subtype == CCV_NNC_QX_8I_ROWWISE_X) {
-		const size_t group_size = (size_t)ccv_nnc_8i_rowwise_x_group_size(source_info.reserved);
-		const size_t group_bits = (size_t)ccv_nnc_8i_rowwise_x_group_bits(source_info.reserved);
-		const size_t groups_per_row = ((size_t)source_info.dim[2] + group_size - 1) / group_size;
-		const size_t payload_bits = (size_t)source_info.dim[1] * groups_per_row * group_bits;
+		// An expert slot of TMCQ holds whole tile rows over whole tiles (N % 16, K % 16), with no modifier bits.
+		if (ccv_nnc_8i_rowwise_x_is_tmcq(source_info.reserved) &&
+			((source_info.dim[1] % 16) != 0 || (source_info.dim[2] % 16) != 0 || (source_info.reserved & ~CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK)))
+			return 0;
+		const size_t payload_bits = (size_t)ccv_nnc_8i_rowwise_x_payload_bits(source_info.reserved, (uint64_t)source_info.dim[1], (uint64_t)source_info.dim[2]);
 		if (payload_bits & 7)
 			return 0;
 		payload_per_expert = payload_bits >> 3;
@@ -210,13 +214,15 @@ static int _ccv_nnc_moe_weight_layout(const ccv_nnc_tensor_param_t source_info, 
 	const size_t scale_per_expert = (size_t)source_info.dim[1] * scale_size;
 	const size_t payload_size = (size_t)slots * payload_per_expert;
 	const size_t scale_size_total = (size_t)slots * scale_per_expert;
-	const size_t scale_offset = _ccv_nnc_moe_align_up(payload_size, 128);
+	const size_t payload_offset = subtype == CCV_NNC_QX_8I_ROWWISE_X ? ccv_nnc_8i_rowwise_x_codebook_size(source_info.reserved) : 0;
+	const size_t scale_offset = payload_offset + _ccv_nnc_moe_align_up(payload_size, 128);
 	ccv_nnc_tensor_param_t info = source_info;
 	info.dim[0] = slots;
 	const size_t size = scale_offset + scale_size_total;
 	if (size != ccv_nnc_tensor_data_size_without_padding(info))
 		return 0;
 	*layout = (ccv_nnc_moe_weight_layout_t){
+		.payload_offset = payload_offset,
 		.payload_per_expert = payload_per_expert,
 		.scale_per_expert = scale_per_expert,
 		.scale_offset = scale_offset,
@@ -438,6 +444,14 @@ static MFAMoEWeightsStreamingState* _ccv_nnc_moe_state_for_inputs(ccv_nnc_tensor
 			[state release];
 			return nil;
 		}
+		// A TMCQ bank starts with the pair table of its source, the experts stream in after it.
+		for (i = 0; i < 3; i++)
+			if (state->resident_layouts[i].payload_offset && (!_ccv_nnc_moe_open_source_fds(state) ||
+				!_ccv_nnc_moe_pread_all(state->source_fds[i], state->source_offsets[i], state->resident_buffers[i].contents, state->resident_layouts[i].payload_offset)))
+			{
+				[state release];
+				return nil;
+			}
 		__atomic_store_n((uint32_t*)state->gpu_route_generation_buffer.contents, 0, __ATOMIC_RELEASE);
 		for (i = 0; i < CCV_NNC_MOE_READINESS_COUNT; i++)
 		{
@@ -489,6 +503,8 @@ static int _ccv_nnc_moe_prepare_prefill_buffers(MFAMoEWeightsStreamingState* con
 		}
 		state->prefill_leases[i] = lease;
 		state->prefill_buffers[i] = scratch;
+		// The pair table of a TMCQ bank, which the experts copied in later do not carry.
+		memcpy(scratch.contents, state->resident_buffers[i].contents, state->source_layouts[i].payload_offset);
 	}
 	return 1;
 }
@@ -638,7 +654,7 @@ static int _ccv_nnc_moe_read_expert_span_to(MFAMoEWeightsStreamingState* const s
 	}
 	const size_t payload_size = (size_t)expert_count * destination_layout.payload_per_expert;
 	const size_t scale_size = (size_t)expert_count * destination_layout.scale_per_expert;
-	const size_t payload_start = (size_t)destination_slot * destination_layout.payload_per_expert;
+	const size_t payload_start = destination_layout.payload_offset + (size_t)destination_slot * destination_layout.payload_per_expert;
 	const size_t scale_start = destination_layout.scale_offset +
 		(size_t)destination_slot * destination_layout.scale_per_expert;
 	if (!destination_buffer.contents || payload_start > destination_buffer.length ||
@@ -649,7 +665,7 @@ static int _ccv_nnc_moe_read_expert_span_to(MFAMoEWeightsStreamingState* const s
 			projection, expert, expert_count, destination_slot);
 		return 0;
 	}
-	const size_t source_payload_delta = (size_t)expert * source_layout.payload_per_expert;
+	const size_t source_payload_delta = source_layout.payload_offset + (size_t)expert * source_layout.payload_per_expert;
 	const size_t source_scale_delta = source_layout.scale_offset +
 		(size_t)expert * source_layout.scale_per_expert;
 	if (source_payload_delta > INT64_MAX || source_scale_delta > INT64_MAX ||
@@ -711,8 +727,8 @@ static int _ccv_nnc_moe_copy_resident_to_prefill(MFAMoEWeightsStreamingState* co
 	if (!source || !destination || resident_slot < 0 || resident_slot >= state->resident_slot_count ||
 		prefill_slot < 0 || prefill_slot >= state->expert_count)
 		return 0;
-	memcpy(destination + (size_t)prefill_slot * prefill_layout.payload_per_expert,
-		source + (size_t)resident_slot * resident_layout.payload_per_expert,
+	memcpy(destination + prefill_layout.payload_offset + (size_t)prefill_slot * prefill_layout.payload_per_expert,
+		source + resident_layout.payload_offset + (size_t)resident_slot * resident_layout.payload_per_expert,
 		prefill_layout.payload_per_expert);
 	memcpy(destination + prefill_layout.scale_offset + (size_t)prefill_slot * prefill_layout.scale_per_expert,
 		source + resident_layout.scale_offset + (size_t)resident_slot * resident_layout.scale_per_expert,

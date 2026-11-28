@@ -51,7 +51,14 @@ void ccv_nnc_mfa_encode_scaled_gemv(ccv_nnc_mfa_context_t* context, ccv_nnc_mfa_
     CCV_NNC_MFA_PRECONDITION(params.batch_stride_output > 0);
     CCV_NNC_MFA_PRECONDITION(params.batch_stride_scale > 0);
   }
-  CCV_NNC_MFA_PRECONDITION(params.format == 0 || ((params.ncols % 256) == 0 && (params.nrows % 256) == 0));
+  // TMCQ tiles span 16 rows and 16 columns, so TMCQ needs N % 16 and K % 16; its kernel reads the payload as 32-bit
+  // words.
+  if (ccv_nnc_mfa_tmcq_rate(params.format)) {
+    CCV_NNC_MFA_PRECONDITION((params.ncols % 16) == 0 && (params.nrows % 16) == 0);
+    CCV_NNC_MFA_PRECONDITION((tensor_offsets[0] % 4) == 0 && (batchDimension == 1 || (params.batch_stride_weights % 4) == 0));
+  } else {
+    CCV_NNC_MFA_PRECONDITION(params.format == 0 || ((params.ncols % 256) == 0 && (params.nrows % 256) == 0));
+  }
   CCV_NNC_MFA_PRECONDITION(params.format != 0 || (params.ncols % 4) == 0);
 
   Int8GemvDescriptor descriptor;
@@ -82,10 +89,14 @@ void ccv_nnc_mfa_encode_scaled_gemv(ccv_nnc_mfa_context_t* context, ccv_nnc_mfa_
   pool->drain();
   auto pipeline = pipelineValue->pipeline;
 
-  encoder->setBuffer(tensors[0], tensor_offsets[0], NS::UInteger(0));
+  // A TMCQ weight as stored: its pair table at buffer(5), then the tiles.
+  const size_t codebook_size = (size_t)ccv_nnc_mfa_tmcq_codebook_size(params.format);
+  if (codebook_size)
+    encoder->setBuffer(tensors[0], tensor_offsets[0], NS::UInteger(5));
+  encoder->setBuffer(tensors[0], tensor_offsets[0] + codebook_size, NS::UInteger(0));
   encoder->setBuffer(tensors[1], tensor_offsets[1], NS::UInteger(1));
   encoder->setBuffer(tensors[2], tensor_offsets[2], NS::UInteger(2));
-  encoder->setBuffer(tensors[0], tensor_offsets[0] + scale_buffer_offset, NS::UInteger(3));
+  encoder->setBuffer(tensors[0], tensor_offsets[0] + codebook_size + scale_buffer_offset, NS::UInteger(3));
   if (num_tensors == 4) {
     encoder->setBuffer(tensors[3], tensor_offsets[3], NS::UInteger(4));
   }
@@ -101,6 +112,6 @@ void ccv_nnc_mfa_encode_scaled_gemv(ccv_nnc_mfa_context_t* context, ccv_nnc_mfa_
   const uint32_t rowsPerThreadgroup = descriptor.rowsPerThreadgroup();
   MTL::Size gridSize = MTL::Size((params.nrows + rowsPerThreadgroup - 1) / rowsPerThreadgroup, 1, batchDimension);
   CCV_NNC_MFA_PRECONDITION(gridSize.width > 0);
-  encoder->dispatchThreadgroups(gridSize, MTL::Size(kInt8GemvSIMDGroupsPerThreadgroup * 32, 1, 1));
+  encoder->dispatchThreadgroups(gridSize, MTL::Size(descriptor.threadsPerThreadgroup(), 1, 1));
   command_batch->finishCommand(encoder);
 }

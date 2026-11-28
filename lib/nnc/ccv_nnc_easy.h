@@ -226,8 +226,29 @@ static inline ccv_nnc_tensor_param_t ccv_nnc_tensor_8i_rowwise(const ccv_nnc_ten
 	return new_params;
 }
 
+static inline int ccv_nnc_8i_rowwise_x_is_tmcq(const int format)
+{
+	const int codec = format & CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK;
+	return codec >= CCV_NNC_QX_8I_ROWWISE_TMCQ_N16 && codec <= CCV_NNC_QX_8I_ROWWISE_TMCQ_N32;
+}
+
+/* The TMCQ rate n (n / 16 bits per weight). */
+static inline int ccv_nnc_8i_rowwise_x_tmcq_rate(const int format)
+{
+	assert(ccv_nnc_8i_rowwise_x_is_tmcq(format));
+	return 16 + 2 * ((format & CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK) - CCV_NNC_QX_8I_ROWWISE_TMCQ_N16);
+}
+
+/* Bytes of the pair table at the start of the data: 1024 for TMCQ, 0 for the other codecs. */
+static inline size_t ccv_nnc_8i_rowwise_x_codebook_size(const int format)
+{
+	return ccv_nnc_8i_rowwise_x_is_tmcq(format) ? 1024 : 0;
+}
+
 static inline int ccv_nnc_8i_rowwise_x_group_size(const int format)
 {
+	if (ccv_nnc_8i_rowwise_x_is_tmcq(format))
+		return 256; // One 16 x 16 tile.
 	switch (format & CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK)
 	{
 		case CCV_NNC_QX_8I_ROWWISE_Q5_K:
@@ -253,6 +274,8 @@ static inline int ccv_nnc_8i_rowwise_x_group_size(const int format)
 
 static inline int ccv_nnc_8i_rowwise_x_group_bits(const int format)
 {
+	if (ccv_nnc_8i_rowwise_x_is_tmcq(format))
+		return 16 * ccv_nnc_8i_rowwise_x_tmcq_rate(format);
 	switch (format & CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK)
 	{
 		case CCV_NNC_QX_8I_ROWWISE_Q5_K:
@@ -282,6 +305,17 @@ static inline int ccv_nnc_8i_rowwise_x_group_bits(const int format)
 	}
 }
 
+/* Bits of the packed payload: ceil(row_length / group_size) groups per row, or for TMCQ (row_count / 16)
+ * (row_length / 16) tiles, as a tile spans 16 rows. */
+static inline uint64_t ccv_nnc_8i_rowwise_x_payload_bits(const int format, const uint64_t row_count, const uint64_t row_length)
+{
+	const uint64_t group_bits = (uint64_t)ccv_nnc_8i_rowwise_x_group_bits(format);
+	if (ccv_nnc_8i_rowwise_x_is_tmcq(format))
+		return (row_count / 16) * (row_length / 16) * group_bits;
+	const uint64_t group_size = (uint64_t)ccv_nnc_8i_rowwise_x_group_size(format);
+	return row_count * ((row_length + group_size - 1) / group_size) * group_bits;
+}
+
 static inline ccv_nnc_tensor_param_t ccv_nnc_tensor_8i_rowwise_x(const ccv_nnc_tensor_param_t params, const int format)
 {
 	assert(params.datatype == CCV_16F || params.datatype == CCV_32F || params.datatype == CCV_64F || params.datatype == CCV_16BF);
@@ -289,6 +323,11 @@ static inline ccv_nnc_tensor_param_t ccv_nnc_tensor_8i_rowwise_x(const ccv_nnc_t
 	if (format & CCV_NNC_QX_8I_ROWWISE_HADAMARD_256)
 	{
 		assert(nd > 0 && params.dim[nd - 1] > 0 && params.dim[nd - 1] % 256 == 0);
+	}
+	if (ccv_nnc_8i_rowwise_x_is_tmcq(format))
+	{
+		assert(nd > 0 && params.dim[nd - 1] > 0 && params.dim[nd - 1] % 16 == 0 && (ccv_nnc_tensor_count(params) / params.dim[nd - 1]) % 16 == 0);
+		assert(!(format & CCV_NNC_QX_8I_ROWWISE_HADAMARD_256));
 	}
 	ccv_nnc_tensor_param_t new_params = params;
 	new_params.datatype = ((params.datatype >> 12) & 0xff) | CCV_QX | CCV_NNC_QX_8I_ROWWISE_X;
@@ -333,12 +372,10 @@ static inline size_t ccv_nnc_tensor_data_size_without_padding(const ccv_nnc_tens
 			assert(row_length > 0);
 			assert(count % row_length == 0);
 			const ssize_t row_count = count / row_length;
-			const ssize_t group_size = ccv_nnc_8i_rowwise_x_group_size(params.reserved);
-			const ssize_t groups_per_row = (row_length + group_size - 1) / group_size;
-			const ssize_t group_bits = ccv_nnc_8i_rowwise_x_group_bits(params.reserved);
-			const ssize_t payload_size = (row_count * groups_per_row * group_bits + 7) / 8;
+			assert(!ccv_nnc_8i_rowwise_x_is_tmcq(params.reserved) || (row_length % 16 == 0 && row_count % 16 == 0));
+			const ssize_t payload_size = (ssize_t)((ccv_nnc_8i_rowwise_x_payload_bits(params.reserved, row_count, row_length) + 7) / 8);
 			const ssize_t scale_offset = (payload_size + 127) & -128;
-			data_size = scale_offset + row_count * CCV_GET_DATA_TYPE_SIZE(qx_datatype);
+			data_size = (ssize_t)ccv_nnc_8i_rowwise_x_codebook_size(params.reserved) + scale_offset + row_count * CCV_GET_DATA_TYPE_SIZE(qx_datatype);
 		} else {
 			assert(0);
 			data_size = 0;

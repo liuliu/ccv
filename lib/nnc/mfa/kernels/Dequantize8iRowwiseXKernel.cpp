@@ -245,6 +245,7 @@ inline uint4 iq1_pair_bytes(const uint index0, const uint index1, const uint shi
 Dequantize8iRowwiseXKernel::Dequantize8iRowwiseXKernel(Dequantize8iRowwiseXKernelDescriptor descriptor, MTL::Device* const device)
 {
 	format = descriptor.format;
+	tileTail = descriptor.tileTail;
 	source = createSource();
 	threadgroupSize = MTL::Size(256, 1, 1);
 
@@ -584,6 +585,201 @@ inline void decode_group(device const uchar* source, const ulong group_index, th
 std::string Dequantize8iRowwiseXKernel::createSource() const noexcept
 {
 	std::string shader = createConstants() + "\n";
+	if (const uint32_t rate = ccv_nnc_mfa_tmcq_rate(format)) {
+		// TMCQ: a tile spans 16 rows, so the per-group kernels below do not apply. Thread mapping: one
+		// thread per row segment, i.e. the 16 weights one output row takes from one tile. Threads go in
+		// blocks of 2 neighbouring tiles x 16 rows (tile_pair_row_column): the 32 lanes of a SIMD group
+		// read the Rate adjacent words of two tiles (coalesced) and write 32-byte pieces of 16 output
+		// rows. dispatch_items (see the descriptors) is max(rows * K / 16, scale bytes); total_groups /
+		// groups_per_expert count tiles. With tileTail (an odd tiles_per_row, K % 32 == 16) the last tile
+		// of every tile row goes to 16 threads of its own. The pair table is at buffer(5) (the plain
+		// kernel binds 0 - 3, the selected one 0 - 4); each threadgroup copies it before any thread
+		// returns.
+		shader += R"(
+#include <metal_stdlib>
+using namespace metal;
+)";
+		shader += "constant constexpr uint Rate = " + std::to_string(rate) + ";\n";
+		shader += "constant constexpr uint TileWords = Rate / 2;\n";
+		shader += R"(
+// The 32 bits of the little-endian pair (lo, hi) starting at bit o (0 <= o < 32).
+// (hi << 1) << (31 - o) is hi << (32 - o) without an undefined 32-bit shift when o == 0.
+inline uint tmcq_funnel(uint lo, uint hi, uint o)
+{
+  return (lo >> o) | ((hi << 1) << (31u - o));
+}
+
+// Lane index of count threads copies the weight's 512 int8 pairs into threadgroup half2 (int8
+// values are exact in half), two pairs per 32-bit load. The caller adds the barrier.
+inline void tmcq_codebook_load(threadgroup half2* table, device const uint* codebook, uint index, uint count)
+{
+  for (uint i = index; i < 256u; i += count)
+  {
+    const char4 pairs = as_type<char4>(codebook[i]);
+    table[2u * i] = half2(pairs.xy);
+    table[2u * i + 1u] = half2(pairs.zw);
+  }
+}
+
+// int8 codes of row r (weights 16 r ... 16 r + 15) of a tile, as q[0 .. 3] = columns 0-3, ..., 12-15.
+// Weight t reads the 15-bit window ending at bit floor((t + 1) Rate / 16) of the tile, wrapping from
+// the tile's end for weight 0; weights 2 j and 2 j + 1 take the window of weight 2 j + 1, cw, as the
+// pair (cw * 0x83DCD12D) >> 23 of the table. The row's windows start at bits first + k_j,
+// k_j = floor((j + 1) Rate / 16) - floor(Rate / 16), with first = r Rate + floor(Rate / 16) - 15, and
+// end by (r + 1) Rate: at most Rate + 14 <= 46 bits. Three words from the first window's word cover
+// them; shifting that 96-bit value right by first % 32 leaves a 64-bit (a, b) where window j is bits
+// [k_j, k_j + 15) with k_j <= 30 known at compile time. Only row 0 starts before the tile (its first
+// window is the tail-biting one); its word index wraps to the tile's end. No other window crosses
+// the tile's end, so the wrapped third word is never used. Only the 8 odd windows are read.
+inline void tmcq_decode_row(device const uint* tile, uint r, thread int4* q, threadgroup const half2* table)
+{
+  const int words = int(TileWords);
+  const int first = int(r * Rate + (Rate >> 4)) - 15;
+  const int w = first >> 5; // -1 only for row 0
+  const uint s0 = uint(first) & 31u;
+  const int i0 = w < 0 ? w + words : w;
+  const int i1 = w + 1 >= words ? w + 1 - words : w + 1;
+  const int i2 = w + 2 >= words ? w + 2 - words : w + 2;
+  const uint w0 = tile[i0];
+  const uint w1 = tile[i1];
+  const uint w2 = tile[i2];
+  const uint a = tmcq_funnel(w0, w1, s0);
+  const uint b = tmcq_funnel(w1, w2, s0);
+  int c[16];
+  #pragma clang loop unroll(full)
+  for (uint i = 0; i < 8u; ++i)
+  {
+    const uint k = (((2u * i + 2u) * Rate) >> 4) - (Rate >> 4);
+    const uint window = k + 15u <= 32u ? (a >> k) : ((a >> k) | (b << (32u - k)));
+    const char2 v = char2(table[((window & 0x7fffu) * 0x83DCD12Du) >> 23]);
+    c[2u * i] = v.x;
+    c[2u * i + 1u] = v.y;
+  }
+  q[0] = int4(c[0], c[1], c[2], c[3]);
+  q[1] = int4(c[4], c[5], c[6], c[7]);
+  q[2] = int4(c[8], c[9], c[10], c[11]);
+  q[3] = int4(c[12], c[13], c[14], c[15]);
+}
+
+// Thread x of a tile grid -> (output row, tile column) in blocks of 2 neighbouring tiles x 16 rows: the 32 lanes of a
+// SIMD group decode the 16 rows of two adjacent tiles, so they read adjacent code words (the row-major order spread a
+// tile's 16 readers over 16 SIMD groups, uncoalesced).
+inline uint2 tile_pair_row_column(const uint x, const uint tiles_per_row)
+{
+  const uint tile_row = x / (16u * tiles_per_row);
+  const uint in_tile_row = x - tile_row * (16u * tiles_per_row);
+)";
+		if (tileTail & 1)
+			shader += R"(
+  // An odd tiles_per_row: the last 16 threads of the tile row take its last tile, one row each.
+  if ((tiles_per_row & 1u) && in_tile_row >= 16u * (tiles_per_row - 1u))
+    return uint2(tile_row * 16u + (in_tile_row & 15u), tiles_per_row - 1u);
+)";
+		shader += R"(
+  return uint2(tile_row * 16u + ((in_tile_row & 31u) >> 1), (in_tile_row >> 5) * 2u + (in_tile_row & 1u));
+}
+
+// Writes the 16 int8 weights of `row` (local to the tile grid starting at `source`) in tile column
+// `tc` to destination[row * row_length + 16 * tc ...].
+inline void tmcq_store_segment(device const uchar* source, device uchar* destination, const uint row, const uint tc, threadgroup const half2* table)
+{
+  const uint tiles_per_row = row_length >> 4;
+  const ulong tile_index = (ulong)(row >> 4) * tiles_per_row + tc;
+  device const uint* tile = reinterpret_cast<device const uint*>(source) + tile_index * TileWords;
+  int4 q[4];
+  tmcq_decode_row(tile, row & 15u, q, table);
+  device char4* destination4 = reinterpret_cast<device char4*>(destination + (ulong)row * row_length + (tc << 4));
+  destination4[0] = char4(q[0]);
+  destination4[1] = char4(q[1]);
+  destination4[2] = char4(q[2]);
+  destination4[3] = char4(q[3]);
+}
+
+kernel void dequantize_8i_rowwise_x(
+  device const uchar* source [[buffer(0)]],
+  device uchar* destination [[buffer(1)]],
+  device const uchar* input_scales [[buffer(2)]],
+  device uchar* output_scales [[buffer(3)]],
+  device const uint* codebook [[buffer(5)]],
+
+  uint3 tgid [[threadgroup_position_in_grid]],
+  ushort lid [[thread_index_in_threadgroup]]
+) {
+  threadgroup half2 table[512];
+  tmcq_codebook_load(table, codebook, lid, threadgroup_size);
+  threadgroup_barrier(mem_flags::mem_threadgroup);
+  const uint x = tgid.x * threadgroup_size + lid;
+  if (x >= dispatch_items)
+    return;
+  // total_groups tiles of 16 segments each.
+  if (x < total_groups * 16u) {
+    const uint2 rc = tile_pair_row_column(x, row_length >> 4);
+    tmcq_store_segment(source, destination, rc.x, rc.y, table);
+  }
+  if (x < scale_bytes)
+    output_scales[x] = input_scales[x];
+}
+
+kernel void dequantize_8i_rowwise_x_selected(
+  device const uchar* source [[buffer(0)]],
+  device const uint* active_experts [[buffer(1)]],
+  device uchar* destination [[buffer(2)]],
+  device const uchar* input_scales [[buffer(3)]],
+  device uchar* output_scales [[buffer(4)]],
+  device const uint* codebook [[buffer(5)]],
+
+  uint3 tgid [[threadgroup_position_in_grid]],
+  ushort lid [[thread_index_in_threadgroup]]
+) {
+  threadgroup half2 table[512];
+  tmcq_codebook_load(table, codebook, lid, threadgroup_size);
+  threadgroup_barrier(mem_flags::mem_threadgroup);
+  const uint x = tgid.x * threadgroup_size + lid;
+  const uint active_expert = tgid.y;
+  if (x >= selected_dispatch_items_per_expert)
+    return;
+  const uint expert = active_experts[active_expert];
+  if (expert >= expert_count)
+    return;
+  // groups_per_expert tiles of 16 segments each; rows_per_expert % 16 == 0, so experts start on
+  // tile rows, and whole tiles of Rate / 2 words keep every expert on a word boundary.
+  if (x < groups_per_expert * 16u) {
+    const uint2 rc = tile_pair_row_column(x, row_length >> 4);
+    device const uchar* expert_source = source + (ulong)expert * groups_per_expert * (TileWords * 4u);
+    device uchar* expert_destination = destination + (ulong)expert * rows_per_expert * row_length;
+    tmcq_store_segment(expert_source, expert_destination, rc.x, rc.y, table);
+  }
+  if (x < scale_bytes_per_expert) {
+    output_scales[expert * scale_bytes_per_expert + x] =
+      input_scales[expert * scale_bytes_per_expert + x];
+  }
+}
+
+kernel void dequantize_8i_rowwise_x_selected_plan(
+  device const int* indices [[buffer(0)]],
+  device const int* counts [[buffer(1)]],
+  device uint* active_experts [[buffer(2)]],
+  device uint* dispatch_args [[buffer(3)]],
+  ushort lid [[thread_index_in_threadgroup]]
+) {
+  if (lid != 0)
+    return;
+  uint active_count = 0;
+  for (uint bin = 0; bin < bincount; ++bin) {
+    const int count = counts[bin];
+    const int expert_i = indices[bin];
+    if (count > 0 && expert_i >= 0 && expert_i < (int)expert_count)
+      active_experts[active_count++] = (uint)expert_i;
+  }
+  if (active_count == 0)
+    active_experts[0] = expert_count;
+  dispatch_args[0] = (selected_dispatch_items_per_expert + threadgroup_size - 1) / threadgroup_size;
+  dispatch_args[1] = max(active_count, 1u);
+  dispatch_args[2] = 1;
+}
+)";
+		return shader;
+	}
 	shader += R"(
 #include <metal_stdlib>
 using namespace metal;

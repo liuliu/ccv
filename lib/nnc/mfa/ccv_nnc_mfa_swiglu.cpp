@@ -221,8 +221,11 @@ void ccv_nnc_mfa_encode_scaled_swiglu(
     ++num_tensors;
   CCV_NNC_MFA_PRECONDITION(num_tensors == 4);
   CCV_NNC_MFA_PRECONDITION(params.M > 0 && params.N > 0 && params.K > 0);
+  // TMCQ weights (16 x 16 tiles, N % 16 and K % 16, no modifier bits) are decoded to int8 rows below like every packed
+  // format, which take whole 256-weight blocks.
   CCV_NNC_MFA_PRECONDITION(
-    params.format == 0 || ((params.N % 256) == 0 && (params.K % 256) == 0));
+    params.format == 0 || (ccv_nnc_mfa_tmcq_rate(params.format) ?
+      ((params.N % 16) == 0 && (params.K % 16) == 0) : ((params.N % 256) == 0 && (params.K % 256) == 0)));
 
   if (!params.use_neural_accelerators) {
     CCV_NNC_MFA_PRECONDITION(

@@ -40,6 +40,9 @@ std::size_t std::hash<SegmentedInt8GemvDescriptor>::operator()(
 
 uint32_t SegmentedInt8GemvDescriptor::groupSize() const noexcept
 {
+  // One 16 x 16 TMCQ tile is a 256-weight group; see CCV_NNC_QX_8I_ROWWISE_TMCQ_N16.
+  if (ccv_nnc_mfa_tmcq_rate(format))
+    return 256;
   switch (format) {
     case 0:
       return 0;
@@ -72,6 +75,10 @@ uint32_t SegmentedInt8GemvDescriptor::groupsPerRow() const noexcept
 
 uint32_t SegmentedInt8GemvDescriptor::groupBits() const noexcept
 {
+  // 16 * n bits per tile; the payload is (rows / 16) (K / 16) such tiles (ccv_nnc_mfa_tmcq_tile_count), for N % 16 == 0 and
+  // K % 16 == 0.
+  if (const uint32_t rate = ccv_nnc_mfa_tmcq_rate(format))
+    return 16 * rate;
   switch (format) {
     case 0:
       return 0;
@@ -108,7 +115,8 @@ uint64_t SegmentedInt8GemvDescriptor::inputScaleOffset() const noexcept
   const uint32_t K = matrixDimensions[1];
   if (format == 0)
     return ((uint64_t)expertCount * N * K + 127) & ~UINT64_C(127);
-  const uint64_t payloadBits =
+  const uint64_t payloadBits = ccv_nnc_mfa_tmcq_rate(format) ?
+    ccv_nnc_mfa_tmcq_tile_count((uint64_t)expertCount * N, K) * groupBits() :
     (uint64_t)expertCount * N * groupsPerRow() * groupBits();
   const uint64_t payloadBytes = (payloadBits + 7) / 8;
   return (payloadBytes + 127) & ~UINT64_C(127);
@@ -120,8 +128,12 @@ uint64_t SegmentedInt8GemvDescriptor::weightExpertStride() const noexcept
   const uint32_t K = matrixDimensions[1];
   if (format == 0)
     return (uint64_t)N * K;
-  const uint64_t expertBits = (uint64_t)N * groupsPerRow() * groupBits();
+  const uint64_t expertBits = ccv_nnc_mfa_tmcq_rate(format) ?
+    ccv_nnc_mfa_tmcq_tile_count(N, K) * groupBits() :
+    (uint64_t)N * groupsPerRow() * groupBits();
   CCV_NNC_MFA_PRECONDITION((expertBits % 8) == 0);
+  // TMCQ experts are whole tile rows read as 32-bit words.
+  CCV_NNC_MFA_PRECONDITION(!ccv_nnc_mfa_tmcq_rate(format) || ((N % 16) == 0 && (expertBits % 32) == 0));
   return expertBits / 8;
 }
 
@@ -206,5 +218,13 @@ std::pair<
 
 uint32_t segmentedInt8GemvSIMDGroupsPerThreadgroup(const uint32_t format)
 {
-  return format == CCV_NNC_QX_8I_ROWWISE_Q2_K ? 4 : kSegmentedInt8GemvSIMDGroupsPerThreadgroup;
+  return (format == CCV_NNC_QX_8I_ROWWISE_Q2_K || ccv_nnc_mfa_tmcq_rate(format)) ? 4 : kSegmentedInt8GemvSIMDGroupsPerThreadgroup;
+}
+
+uint32_t segmentedInt8GemvRowsPerThreadgroup(const uint32_t format)
+{
+  // TMCQ: one 16-row tile row per threadgroup, its SIMD groups splitting K.
+  if (ccv_nnc_mfa_tmcq_rate(format))
+    return 16;
+  return kSegmentedInt8GemvRowsPerSIMDGroup * segmentedInt8GemvSIMDGroupsPerThreadgroup(format);
 }

@@ -7,14 +7,17 @@
 
 struct Dequantize8iRowwiseXKernelDescriptor {
 	uint32_t format;
-	constexpr bool operator==(const Dequantize8iRowwiseXKernelDescriptor& rhs) const { return format == rhs.format; }
+	// TMCQ thread map for tile rows the original 2-tile blocks do not tile (0 otherwise, which generates the original
+	// source): bit 0 is an odd tiles_per_row.
+	uint32_t tileTail = 0;
+	constexpr bool operator==(const Dequantize8iRowwiseXKernelDescriptor& rhs) const { return format == rhs.format && tileTail == rhs.tileTail; }
 };
 
 template<>
 struct std::hash<Dequantize8iRowwiseXKernelDescriptor>
 {
 	std::size_t operator()(const Dequantize8iRowwiseXKernelDescriptor& hash) const noexcept {
-		return std::hash<uint32_t>()(hash.format);
+		return std::hash<uint64_t>()((uint64_t)hash.format | ((uint64_t)hash.tileTail << 32));
 	}
 };
 
@@ -33,6 +36,7 @@ struct Dequantize8iRowwiseXDescriptor {
 	uint32_t groupsPerRow() const noexcept;
 	uint32_t groupBits() const noexcept;
 	uint32_t totalGroups() const noexcept;
+	uint32_t tileTail() const noexcept;
 		uint64_t inputScaleOffset() const noexcept;
 		uint64_t outputScaleOffset() const noexcept;
 	uint32_t scaleBytes() const noexcept;

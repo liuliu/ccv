@@ -308,6 +308,10 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 		const uint32_t w_8i_rowwise_x_format = w_8i_rowwise_x_flags & CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK;
 		if (activation_hadamard_256 && (w->info.dim[w_nd - 1] <= 0 || w->info.dim[w_nd - 1] % 256 != 0))
 			return CCV_NNC_EXEC_INVALID;
+		// TMCQ tiles span 16 weight rows and 16 columns and never combine with H256; every path reads them as 32-bit words.
+		const int w_8i_rowwise_x_tmcq = ccv_nnc_8i_rowwise_x_is_tmcq(w_8i_rowwise_x_format);
+		if (w_8i_rowwise_x_tmcq && (activation_hadamard_256 || (w->dataof % 4) != 0 || w->info.dim[w_nd - 1] % 16 != 0 || (ccv_nnc_tensor_count(w->info) / w->info.dim[w_nd - 1]) % 16 != 0))
+			return CCV_NNC_EXEC_INVALID;
 		const int is_same_dtype =
 			(a_datatype == w_datatype) &&
 			(a_datatype == b->info.datatype) &&
@@ -326,7 +330,7 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 			CCV_GET_DATA_TYPE(b->info.datatype) != CCV_QX;
 		const uint64_t interleaved_scaled_gemv_w_batch_payload_bits =
 			is_interleaved_batched_scaled_gemm && w_8i_rowwise_x_format ?
-			(uint64_t)w_cols * (((uint64_t)w_rows + ccv_nnc_8i_rowwise_x_group_size(w_8i_rowwise_x_format) - 1) / ccv_nnc_8i_rowwise_x_group_size(w_8i_rowwise_x_format)) * ccv_nnc_8i_rowwise_x_group_bits(w_8i_rowwise_x_format) : 0;
+			ccv_nnc_8i_rowwise_x_payload_bits((int)w_8i_rowwise_x_format, (uint64_t)w_cols, (uint64_t)w_rows) : 0;
 		const uint64_t interleaved_scaled_gemv_w_batch_stride = w_8i_rowwise_x_format ?
 			(interleaved_scaled_gemv_w_batch_payload_bits + 7) / 8 : interleaved_w_batch_stride;
 		// Q8_0, Q5_K and Q6_K weights keep the vector kernel up to 8 rows, which covers a
@@ -471,7 +475,7 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 			!is_transpose_a &&
 			is_transpose_w &&
 			(w_rows % 4) == 0 &&
-			(!w_8i_rowwise_x_format || ((w_rows % 256) == 0 && (w_cols % 256) == 0)) &&
+			(!w_8i_rowwise_x_format || (w_8i_rowwise_x_tmcq ? ((w_rows % 16) == 0 && (w_cols % 16) == 0) : ((w_rows % 256) == 0 && (w_cols % 256) == 0))) &&
 			(!is_batched || is_interleaved_batched_scaled_gemv) &&
 			is_contiguous &&
 			is_same_dtype &&

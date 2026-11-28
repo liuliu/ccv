@@ -107,6 +107,9 @@ struct Pipelines {
   uint32_t packed_format = 0;
   uint32_t dequant_x_dispatch_items = 0;
   uint32_t gemv_rows_per_threadgroup = 0;
+  // Packed direct GEMV rows per threadgroup: 2 for most formats, a 16-row tile row for TMCQ.
+  uint32_t scaled_x_rows_per_threadgroup = kInt8GemvRowsPerThreadgroup;
+  uint32_t scaled_x_threads_per_threadgroup = kInt8GemvSIMDGroupsPerThreadgroup * 32;
 };
 
 constexpr FormatInfo kRowwiseFormat = { 0, "rowwise" };
@@ -122,7 +125,22 @@ constexpr FormatInfo kPackedFormats[] = {
   { CCV_NNC_QX_8I_ROWWISE_IQ2_XS, "iq2_xs" },
   { CCV_NNC_QX_8I_ROWWISE_IQ3_S, "iq3_s" },
   { CCV_NNC_QX_8I_ROWWISE_IQ3_XXS, "iq3_xxs" },
+  { CCV_NNC_QX_8I_ROWWISE_IQ1_S, "iq1_s" },
+  { CCV_NNC_QX_8I_ROWWISE_TMCQ_N18, "tmcq_n18" },
+  { CCV_NNC_QX_8I_ROWWISE_TMCQ_N22, "tmcq_n22" },
+  { CCV_NNC_QX_8I_ROWWISE_TMCQ_N26, "tmcq_n26" },
 };
+
+bool is_tmcq_format(const uint32_t format)
+{
+  return format >= CCV_NNC_QX_8I_ROWWISE_TMCQ_N16 && format <= CCV_NNC_QX_8I_ROWWISE_TMCQ_N32;
+}
+
+// A TMCQ weight starts with its 512-pair table (any 1024 bytes are a valid one), then the tiles and scales.
+size_t rowwise_x_codebook_size(const uint32_t format)
+{
+  return is_tmcq_format(format) ? 1024 : 0;
+}
 
 uint32_t ceil_div(const uint32_t x, const uint32_t y)
 {
@@ -252,6 +270,9 @@ std::vector<FormatInfo> selected_formats(const Config& config)
 
 uint32_t rowwise_x_group_size(const uint32_t format)
 {
+  // A TMCQ group is one 16 x 16 tile (rows % 16 == 0 here, as rows % 256 == 0).
+  if (is_tmcq_format(format))
+    return 256;
   switch (format) {
     case CCV_NNC_QX_8I_ROWWISE_Q5_K:
     case CCV_NNC_QX_8I_ROWWISE_Q4_K:
@@ -261,6 +282,7 @@ uint32_t rowwise_x_group_size(const uint32_t format)
     case CCV_NNC_QX_8I_ROWWISE_IQ3_S:
       return 16;
     case CCV_NNC_QX_8I_ROWWISE_IQ2_XXS:
+    case CCV_NNC_QX_8I_ROWWISE_IQ1_S:
       return 32;
     case CCV_NNC_QX_8I_ROWWISE_Q6_K:
     case CCV_NNC_QX_8I_ROWWISE_IQ2_XS:
@@ -273,6 +295,8 @@ uint32_t rowwise_x_group_size(const uint32_t format)
 
 uint32_t rowwise_x_group_bits(const uint32_t format)
 {
+  if (is_tmcq_format(format))
+    return 16 * (16 + 2 * (format - CCV_NNC_QX_8I_ROWWISE_TMCQ_N16));
   switch (format) {
     case CCV_NNC_QX_8I_ROWWISE_Q5_K:
       return 88;
@@ -292,6 +316,8 @@ uint32_t rowwise_x_group_bits(const uint32_t format)
       return 28;
     case CCV_NNC_QX_8I_ROWWISE_IQ2_XXS:
       return 64;
+    case CCV_NNC_QX_8I_ROWWISE_IQ1_S:
+      return 50;
     default:
       return 0;
   }
@@ -325,8 +351,9 @@ std::vector<uint8_t> make_packed_rowwise_x(
   const size_t payload_bytes = (payload_bits + 7) / 8;
   const size_t scale_offset = align_up(payload_bytes, 128);
   const size_t rowwise_scale_offset = align_up((size_t)rows * cols, 128);
-  std::vector<uint8_t> packed(scale_offset + (size_t)rows * sizeof(T), 0);
-  for (size_t i = 0; i < scale_offset; ++i)
+  const size_t codebook_size = rowwise_x_codebook_size(format);
+  std::vector<uint8_t> packed(codebook_size + scale_offset + (size_t)rows * sizeof(T), 0);
+  for (size_t i = 0; i < codebook_size + scale_offset; ++i)
     packed[i] = (uint8_t)((i * 131 + format * 17 + 23) & 0xff);
   if (format == CCV_NNC_QX_8I_ROWWISE_Q5_K || format == CCV_NNC_QX_8I_ROWWISE_Q4_K || format == CCV_NNC_QX_8I_ROWWISE_Q3_K) {
     const uint32_t groups_per_row = ceil_div(cols, group_size);
@@ -349,7 +376,7 @@ std::vector<uint8_t> make_packed_rowwise_x(
         packed[(metadata_bit + b) >> 3] &= (uint8_t)~(1u << ((metadata_bit + b) & 7));
     }
   }
-  std::memcpy(packed.data() + scale_offset, rowwise.data() + rowwise_scale_offset, (size_t)rows * sizeof(T));
+  std::memcpy(packed.data() + codebook_size + scale_offset, rowwise.data() + rowwise_scale_offset, (size_t)rows * sizeof(T));
   return packed;
 }
 
@@ -432,8 +459,14 @@ Pipelines create_pipelines(
     dequant_x_desc.length = shape.rows * shape.cols;
     pipelines.dequant_x_dispatch_items = dequant_x_desc.dispatchItems();
   }
-  if (scaled_x_value)
+  if (scaled_x_value) {
     pipelines.scaled_x = scaled_x_value->pipeline;
+    Int8GemvDescriptor scaled_x_desc;
+    scaled_x_desc.format = packed_format;
+    scaled_x_desc.mrows = (uint8_t)mrows;
+    pipelines.scaled_x_rows_per_threadgroup = scaled_x_desc.rowsPerThreadgroup();
+    pipelines.scaled_x_threads_per_threadgroup = scaled_x_desc.threadsPerThreadgroup();
+  }
   pipelines.gemv_rows_per_threadgroup = GemvDescriptor::rowsPerThreadgroup(device);
   return pipelines;
 }
@@ -555,9 +588,13 @@ void encode_dequant_x(
     MTL::Buffer* const rowwise)
 {
   encoder->setComputePipelineState(pipelines.dequant_x.get());
-  encoder->setBuffer(quantized, 0, 0);
+  // A TMCQ weight as stored: its pair table at buffer(5), then the tiles.
+  const size_t codebook_size = rowwise_x_codebook_size(pipelines.packed_format);
+  if (codebook_size)
+    encoder->setBuffer(quantized, 0, 5);
+  encoder->setBuffer(quantized, codebook_size, 0);
   encoder->setBuffer(rowwise, 0, 1);
-  encoder->setBuffer(quantized, rowwise_x_scale_offset(pipelines.packed_format, shape), 2);
+  encoder->setBuffer(quantized, codebook_size + rowwise_x_scale_offset(pipelines.packed_format, shape), 2);
   encoder->setBuffer(rowwise, rowwise_scale_offset(shape), 3);
   encoder->dispatchThreadgroups(
       pipelines.dequant_x_kernel->gridSize(pipelines.dequant_x_dispatch_items),
@@ -574,15 +611,19 @@ void encode_scaled_x_gemv(
     MTL::Buffer* const bias)
 {
   encoder->setComputePipelineState(pipelines.scaled_x.get());
-  encoder->setBuffer(quantized, 0, 0);
+  // A TMCQ weight as stored: its pair table at buffer(5), then the tiles.
+  const size_t codebook_size = rowwise_x_codebook_size(pipelines.packed_format);
+  if (codebook_size)
+    encoder->setBuffer(quantized, 0, 5);
+  encoder->setBuffer(quantized, codebook_size, 0);
   encoder->setBuffer(vector, 0, 1);
   encoder->setBuffer(output, 0, 2);
-  encoder->setBuffer(quantized, rowwise_x_scale_offset(pipelines.packed_format, shape), 3);
+  encoder->setBuffer(quantized, codebook_size + rowwise_x_scale_offset(pipelines.packed_format, shape), 3);
   if (bias)
     encoder->setBuffer(bias, 0, 4);
   encoder->dispatchThreadgroups(
-      MTL::Size(ceil_div(shape.rows, kInt8GemvRowsPerThreadgroup), 1, 1),
-      MTL::Size(kInt8GemvSIMDGroupsPerThreadgroup * 32, 1, 1));
+      MTL::Size(ceil_div(shape.rows, pipelines.scaled_x_rows_per_threadgroup), 1, 1),
+      MTL::Size(pipelines.scaled_x_threads_per_threadgroup, 1, 1));
 }
 
 double run_raw_once(
@@ -1002,7 +1043,7 @@ int run_shape(
 void print_usage(const char* const argv0)
 {
   std::cerr << "usage: " << argv0 << " [--dtype fp16|bf16|fp32] "
-            << "[--format rowwise|q5_k|q6_k|q4_k|q3_k|q2_k|iq2_xxs|iq2_s|iq2_xs|iq3_s|iq3_xxs] [--all-formats] "
+            << "[--format rowwise|q5_k|q6_k|q4_k|q3_k|q2_k|iq2_xxs|iq2_s|iq2_xs|iq3_s|iq3_xxs|iq1_s|tmcq_n18|tmcq_n22|tmcq_n26] [--all-formats] "
             << "[--bias 0|1] [--mrows 1|2|3] [--shape rows cols] [--runs 20] [--warmup 3] "
             << "[--dispatches 5] [--sleep-ms 200]\n";
 }
