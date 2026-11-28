@@ -1,6 +1,7 @@
 #include "ccv.h"
 #include "ccv_internal.h"
 #include "nnc/ccv_nnc.h"
+#include "nnc/ccv_nnc_codebook.h"
 #include "nnc/ccv_nnc_easy.h"
 #include "nnc/ccv_nnc_internal.h"
 #include <Foundation/Foundation.h>
@@ -60,7 +61,7 @@ static ccv_nnc_mfa_qx_decode_params_t _ccv_nnc_mfa_qx_decode_params(const ccv_nn
 		const int nd = ccv_nnc_tensor_nd(params.dim);
 		decode_params.dequantize_8i_rowwise_x_fp_params = (ccv_nnc_mfa_dequantize_8i_rowwise_x_fp_params_t){
 			.data_type = mtl_data_type,
-			.format = (uint32_t)params.reserved,
+			.format = (uint32_t)ccv_nnc_8i_rowwise_x_kernel_format(params.reserved),
 			.row_length = (uint64_t)params.dim[nd - 1],
 			.length = (uint64_t)ccv_nnc_tensor_count(params),
 		};
@@ -116,14 +117,26 @@ static size_t _ccv_nnc_8i_rowwise_data_size(const size_t rows, const size_t cols
 	return scale_offset + rows * CCV_GET_DATA_TYPE_SIZE(datatype);
 }
 
-static ccv_nnc_mfa_dequantize_8i_rowwise_x_params_t _ccv_nnc_8i_rowwise_x_decode_params(const uint32_t data_type, const uint32_t format, const uint32_t rows, const uint32_t cols)
+// format carries the log2 entry count of an external codebook in bits 16 - 23 (0 for the built-in table), codebook
+// its buffer (_ccv_nnc_mps_codebook).
+static ccv_nnc_mfa_dequantize_8i_rowwise_x_params_t _ccv_nnc_8i_rowwise_x_decode_params(const uint32_t data_type, const uint32_t format, const uint32_t rows, const uint32_t cols, mtl_buffer_t* const codebook)
 {
 	return (ccv_nnc_mfa_dequantize_8i_rowwise_x_params_t){
 		.data_type = data_type,
 		.format = format,
 		.row_length = cols,
 		.length = (uint64_t)rows * cols,
+		.codebook = codebook,
 	};
+}
+
+// The MFA format of a TMCQ / FTQ weight that names codebook slot `slot` (bits 16 - 23 of its reserved field, see
+// ccv_nnc_codebook.h): format with log2 of the table's entry count in bits 16 - 23, and the table's buffer in
+// *codebook. Slot 0 (the built-in table) leaves format as is and *codebook NULL. Returns 0 if the slot is not
+// registered.
+static int _ccv_nnc_mps_codebook(ccv_nnc_mfa_context_t* const context, const int slot, uint32_t* const format, mtl_buffer_t** const codebook)
+{
+	return ccv_nnc_mfa_codebook_format(context, slot, ccv_nnc_8i_rowwise_x_is_ftq_any((int)*format), format, codebook);
 }
 
 static void _ccv_nnc_mfa_encode_8i_rowwise_x_decode(ccv_nnc_mfa_context_t* const context, const ccv_nnc_mfa_dequantize_8i_rowwise_x_params_t params, mtl_command_batch_t* const command_batch, mtl_buffer_t* const source, const size_t source_offset, mtl_buffer_t* const destination, const size_t destination_offset)
@@ -144,7 +157,11 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 {
 	assert(input_size >= 2);
 	const ccv_nnc_tensor_view_t* a = (const ccv_nnc_tensor_view_t*)inputs[0];
-	const ccv_nnc_tensor_view_t* w = (const ccv_nnc_tensor_view_t*)inputs[1];
+	// A TMCQ / FTQ weight with an inline codebook: the data after the table, naming the table's slot.
+	ccv_nnc_tensor_t w_inline;
+	const ccv_nnc_tensor_view_t* w = (const ccv_nnc_tensor_view_t*)ccv_nnc_mps_8i_rowwise_x_inline_view(inputs[1], &w_inline);
+	if (!w)
+		return CCV_NNC_EXEC_INVALID;
 	const ccv_nnc_tensor_view_t* bias = input_size > 2 ? (const ccv_nnc_tensor_view_t*)inputs[2] : 0;
 	assert(output_size == 1);
 	ccv_nnc_tensor_view_t* b = (ccv_nnc_tensor_view_t*)outputs[0];
@@ -305,8 +322,25 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 		const int w_qx_8i_rowwise = (w_qx_subtype == CCV_NNC_QX_8I_ROWWISE || w_qx_subtype == CCV_NNC_QX_8I_ROWWISE_X);
 		const uint32_t w_8i_rowwise_x_flags = w_qx_subtype == CCV_NNC_QX_8I_ROWWISE_X ? (uint32_t)w->info.reserved : 0;
 		const int activation_hadamard_256 = !!(w_8i_rowwise_x_flags & CCV_NNC_QX_8I_ROWWISE_HADAMARD_256);
-		const uint32_t w_8i_rowwise_x_format = w_8i_rowwise_x_flags & CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK;
+		// The codec alone; the codebook is the slot in w->info.reserved.
+		const uint32_t w_8i_rowwise_x_format = (uint32_t)ccv_nnc_8i_rowwise_x_codec((int)w_8i_rowwise_x_flags);
+		// External pair codebooks (bits 16 - 23 of reserved, ccv_nnc_codebook.h) exist for TMCQ and FTQ only.
+		const int w_codebook_slot = ccv_nnc_codebook_slot_of((int)w_8i_rowwise_x_flags);
+		if (w_codebook_slot && !ccv_nnc_8i_rowwise_x_is_tiled(w_8i_rowwise_x_format))
+			return CCV_NNC_EXEC_INVALID;
 		if (activation_hadamard_256 && (w->info.dim[w_nd - 1] <= 0 || w->info.dim[w_nd - 1] % 256 != 0))
+			return CCV_NNC_EXEC_INVALID;
+		// TMCQ tiles span 16 weight rows and 16 columns (N % 16, K % 16) and never combine with H256.
+		// Every MPS path either runs the TMCQ GEMV or decodes the tiles first (Dequantize8iRowwiseX to int8 for scaled GEMM and the ANE, the fp decode for
+		// the generic fallback), and all of them read the payload as 32-bit words.
+		const int w_8i_rowwise_x_tmcq = ccv_nnc_8i_rowwise_x_is_tmcq(w_8i_rowwise_x_format);
+		if (w_8i_rowwise_x_tmcq && (activation_hadamard_256 || (w->dataof % 4) != 0 || w->info.dim[w_nd - 1] <= 0 || w->info.dim[w_nd - 1] % 16 != 0 || (ccv_nnc_tensor_count(w->info) / w->info.dim[w_nd - 1]) % 16 != 0))
+			return CCV_NNC_EXEC_INVALID;
+		// FTQ runs a fused GEMV for 1 to 3 rows; every other path decodes them to 8I_ROWWISE scratch
+		// first (the scaled GEMM, the ANE), and anything else is rejected below. The blob is one 2-D FP16
+		// tensor, so batched weights are rejected too.
+		const int w_8i_rowwise_x_ftq = ccv_nnc_8i_rowwise_x_is_ftq_any(w_8i_rowwise_x_format);
+		if (w_8i_rowwise_x_ftq && (activation_hadamard_256 || w_datatype != CCV_16F || w_batch_size != 1 || w->info.dim[w_nd - 1] <= 0 || w->info.dim[w_nd - 1] % 16 != 0 || (ccv_nnc_tensor_count(w->info) / w->info.dim[w_nd - 1]) % 16 != 0))
 			return CCV_NNC_EXEC_INVALID;
 		const int is_same_dtype =
 			(a_datatype == w_datatype) &&
@@ -324,9 +358,10 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 			CCV_GET_DATA_TYPE(a->info.datatype) != CCV_QX &&
 			w_qx_8i_rowwise &&
 			CCV_GET_DATA_TYPE(b->info.datatype) != CCV_QX;
+		// A batch of the weight: for TMCQ / FTQ (N / 16) (K / 16) tiles (N % 16, see use_scaled_gemv).
 		const uint64_t interleaved_scaled_gemv_w_batch_payload_bits =
 			is_interleaved_batched_scaled_gemm && w_8i_rowwise_x_format ?
-			(uint64_t)w_cols * (((uint64_t)w_rows + ccv_nnc_8i_rowwise_x_group_size(w_8i_rowwise_x_format) - 1) / ccv_nnc_8i_rowwise_x_group_size(w_8i_rowwise_x_format)) * ccv_nnc_8i_rowwise_x_group_bits(w_8i_rowwise_x_format) : 0;
+			ccv_nnc_8i_rowwise_x_payload_bits((int)w_8i_rowwise_x_format, (uint64_t)w_cols, (uint64_t)w_rows) : 0;
 		const uint64_t interleaved_scaled_gemv_w_batch_stride = w_8i_rowwise_x_format ?
 			(interleaved_scaled_gemv_w_batch_payload_bits + 7) / 8 : interleaved_w_batch_stride;
 		// Q8_0, Q5_K and Q6_K weights keep the vector kernel up to 8 rows, which covers a
@@ -397,6 +432,11 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 		const int is_ane_rowwise_compatible_batch = is_mfa_compatible_batch && B_batch_size == 1;
 
 		ccv_nnc_mfa_context_t* context = ccv_nnc_default_mfa_context();
+		// The format the MFA kernels see: the codec plus, for an external codebook, its log2 entry count.
+		uint32_t w_8i_rowwise_x_codebook_format = w_8i_rowwise_x_format;
+		mtl_buffer_t* w_codebook = NULL;
+		if (!_ccv_nnc_mps_codebook(context, w_codebook_slot, &w_8i_rowwise_x_codebook_format, &w_codebook))
+			return CCV_NNC_EXEC_INVALID;
 		const int load_m = !!(ccv_nnc_flags() & CCV_NNC_DISABLE_MFA_GEMM_SPECIALIZING_M);
 		// A few activation rows over short, long weights, as mHC mixes and MoE routers in a
 		// speculative verify, stay in the vector kernel: the matrix path costs over a hundred
@@ -463,6 +503,8 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 			(use_neural_accelerators || use_scaled_gemm_without_neural_accelerators);
 		const int use_scaled_gemv =
 			!activation_hadamard_256 &&
+			// The fused FTQ GEMV takes 1 to 3 rows (is_scaled_gemv_rows) and reads the blob as words.
+			(!w_8i_rowwise_x_ftq || (w->dataof % 4) == 0) &&
 			w_qx_8i_rowwise &&
 			(CCV_GET_DATA_TYPE(a->info.datatype) != CCV_QX) &&
 			(CCV_GET_DATA_TYPE(b->info.datatype) != CCV_QX) &&
@@ -471,7 +513,8 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 			!is_transpose_a &&
 			is_transpose_w &&
 			(w_rows % 4) == 0 &&
-			(!w_8i_rowwise_x_format || ((w_rows % 256) == 0 && (w_cols % 256) == 0)) &&
+			// TMCQ / FTQ: K % 16 and N % 16, one threadgroup per 16-row tile row.
+			(!w_8i_rowwise_x_format || ((w_8i_rowwise_x_tmcq || w_8i_rowwise_x_ftq) ? ((w_rows % 16) == 0 && (w_cols % 16) == 0) : ((w_rows % 256) == 0 && (w_cols % 256) == 0))) &&
 			(!is_batched || is_interleaved_batched_scaled_gemv) &&
 			is_contiguous &&
 			is_same_dtype &&
@@ -503,7 +546,7 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 		{
 			ccv_nnc_mfa_scaled_gemv_params_t params = {
 				.data_type = mtl_data_type,
-				.format = w_8i_rowwise_x_format,
+				.format = w_8i_rowwise_x_codebook_format,
 				.mrows = (uint32_t)scaled_gemv_rows,
 				.ncols = (uint32_t)w_rows,
 				.nrows = (uint32_t)w_cols,
@@ -515,6 +558,7 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 				.vector_row_stride = is_interleaved_batched_scaled_gemv ? (uint32_t)interleaved_a_leading_dimension : 0,
 				.output_row_stride = is_interleaved_batched_scaled_gemv ? (uint32_t)interleaved_c_leading_dimension : 0,
 				.fused_bias = bias ? 1 : 0,
+				.codebook = w_codebook,
 			};
 			ccv_nnc_mfa_prepare_scaled_gemv(context, params);
 			mtl_command_batch_t* command_batch = ccv_nnc_stream_context_start_command_batch(stream_context);
@@ -572,7 +616,7 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 			if (w_8i_rowwise_x_format)
 			{
 				mtl_buffer_t* const scratch = ccv_nnc_mfa_request_scratch(context, scratch_offset + w_8i_rowwise_data_size);
-				ccv_nnc_mfa_dequantize_8i_rowwise_x_params_t w_decode_params = _ccv_nnc_8i_rowwise_x_decode_params(mtl_data_type, w_8i_rowwise_x_format, w_8i_rowwise_rows, w_8i_rowwise_cols);
+				ccv_nnc_mfa_dequantize_8i_rowwise_x_params_t w_decode_params = _ccv_nnc_8i_rowwise_x_decode_params(mtl_data_type, w_8i_rowwise_x_codebook_format, w_8i_rowwise_rows, w_8i_rowwise_cols, w_codebook);
 				ccv_nnc_mfa_prepare_dequantize_8i_rowwise_x(context, w_decode_params);
 				mtl_command_batch_t* command_batch = ccv_nnc_stream_context_start_command_batch(stream_context);
 				_ccv_nnc_mfa_encode_8i_rowwise_x_decode(context, w_decode_params, command_batch, mpgetbuffer((ccv_nnc_tensor_t*)w), w->dataof, scratch, scratch_offset);
@@ -624,7 +668,7 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 			if (w_8i_rowwise_x_format)
 			{
 				mtl_buffer_t* const scratch = ccv_nnc_mfa_request_scratch(context, scratch_offset + w_8i_rowwise_data_size);
-				ccv_nnc_mfa_dequantize_8i_rowwise_x_params_t w_decode_params = _ccv_nnc_8i_rowwise_x_decode_params(mtl_data_type, w_8i_rowwise_x_format, w_8i_rowwise_rows, w_8i_rowwise_cols);
+				ccv_nnc_mfa_dequantize_8i_rowwise_x_params_t w_decode_params = _ccv_nnc_8i_rowwise_x_decode_params(mtl_data_type, w_8i_rowwise_x_codebook_format, w_8i_rowwise_rows, w_8i_rowwise_cols, w_codebook);
 				ccv_nnc_mfa_prepare_dequantize_8i_rowwise_x(context, w_decode_params);
 				mtl_command_batch_t* command_batch = ccv_nnc_stream_context_start_command_batch(stream_context);
 				_ccv_nnc_mfa_encode_8i_rowwise_x_decode(context, w_decode_params, command_batch, mpgetbuffer((ccv_nnc_tensor_t*)w), w->dataof, scratch, scratch_offset);
@@ -684,7 +728,7 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 			if (w_8i_rowwise_x_format)
 			{
 				scratch = ccv_nnc_mfa_request_scratch(context, scratch_offset + w_8i_rowwise_data_size);
-				w_decode_params = _ccv_nnc_8i_rowwise_x_decode_params(mtl_data_type, w_8i_rowwise_x_format, w_8i_rowwise_rows, w_8i_rowwise_cols);
+				w_decode_params = _ccv_nnc_8i_rowwise_x_decode_params(mtl_data_type, w_8i_rowwise_x_codebook_format, w_8i_rowwise_rows, w_8i_rowwise_cols, w_codebook);
 				ccv_nnc_mfa_prepare_dequantize_8i_rowwise_x(context, w_decode_params);
 				w_data = scratch;
 				w_dataof = scratch_offset;
@@ -712,6 +756,11 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 			ccv_nnc_stream_context_finish_command_batch(stream_context, command_batch);
 			return CCV_NNC_EXEC_SUCCESS;
 		}
+
+		// The paths below decode to floating point, which FTQ does not have; the floating-point decode of TMCQ reads the
+		// built-in table only, so an external codebook stops here too.
+		if (w_8i_rowwise_x_ftq || w_codebook_slot)
+			return CCV_NNC_EXEC_INVALID;
 
 		if (METAL_LOG_LEVEL(context) >= 3)
 		{
@@ -1050,6 +1099,10 @@ static int _ccv_nnc_gemm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	const int is_transpose_w = w || dw ? ccv_nnc_is_matrix_transpose(w ? w->info : dw->info, cmd.info.blas.transpose_b) : 0;
 	const int a_datatype = a ? (CCV_GET_DATA_TYPE(a->info.datatype) == CCV_QX ? ((a->info.datatype & 0xff) << 12) : a->info.datatype) : 0;
 	const int w_datatype = w ? (CCV_GET_DATA_TYPE(w->info.datatype) == CCV_QX ? ((w->info.datatype & 0xff) << 12) : w->info.datatype) : 0;
+	// FTQ weights only decode to int8 for the forward GEMM paths; the backward decode reads the built-in TMCQ table only.
+	if (w && CCV_GET_DATA_TYPE(w->info.datatype) == CCV_QX && (w->info.datatype & 0xf00) == CCV_NNC_QX_8I_ROWWISE_X &&
+		(ccv_nnc_8i_rowwise_x_is_ftq_any(w->info.reserved) || ccv_nnc_codebook_slot_of(w->info.reserved) || ccv_nnc_codebook_inline_entries(w->info.reserved)))
+		return CCV_NNC_EXEC_INVALID;
 
 	@autoreleasepool {
 		const int is_contiguous =

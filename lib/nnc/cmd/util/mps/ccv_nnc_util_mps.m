@@ -42,7 +42,7 @@ static int _ccv_nnc_data_transfer(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t 
 				id<MTLBuffer> buffer_a = [ccv_nnc_default_device() newBufferWithBytesNoCopy:aligned_ptr length:aligned_size options:MTLResourceCPUCacheModeDefaultCache | MTLResourceStorageModeShared deallocator:nil];
 				id<MTLCommandBuffer> command_buffer = ccv_nnc_stream_context_start_mps_command_buffer(stream_context);
 				id<MTLBlitCommandEncoder> encoder = [command_buffer blitCommandEncoder];
-				[encoder copyFromBuffer:buffer_a sourceOffset:offset_a toBuffer:buffer_b destinationOffset:offset_b size:size];
+				ccv_nnc_mps_blit_copy(encoder, buffer_a, offset_a, buffer_b, offset_b, size);
 				[encoder endEncoding];
 				ccv_nnc_stream_context_finish_mps_command_buffer(stream_context, command_buffer);
 				[buffer_a release];
@@ -58,7 +58,7 @@ static int _ccv_nnc_data_transfer(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t 
 				id<MTLBuffer> buffer_b = [ccv_nnc_default_device() newBufferWithBytesNoCopy:aligned_ptr length:aligned_size options:MTLResourceCPUCacheModeDefaultCache | MTLResourceStorageModeShared deallocator:nil];
 				MPSCommandBuffer* command_buffer = ccv_nnc_stream_context_start_mps_command_buffer(stream_context);
 				id<MTLBlitCommandEncoder> encoder = [command_buffer.commandBuffer blitCommandEncoder];
-				[encoder copyFromBuffer:buffer_a sourceOffset:offset_a toBuffer:buffer_b destinationOffset:offset_b size:size];
+				ccv_nnc_mps_blit_copy(encoder, buffer_a, offset_a, buffer_b, offset_b, size);
 				[encoder endEncoding];
 				const int fast_fence_encoded = !needs_fast_fence || ccv_nnc_mps_encode_tensor_fast_fence(command_buffer, b, buffer_b, aligned_ptr, aligned_size, offset_b, size);
 				ccv_nnc_stream_context_finish_mps_command_buffer(stream_context, command_buffer);
@@ -86,7 +86,7 @@ static int _ccv_nnc_data_transfer(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t 
 			@autoreleasepool {
 				id<MTLCommandBuffer> command_buffer = ccv_nnc_stream_context_start_mps_command_buffer(stream_context);
 				id<MTLBlitCommandEncoder> encoder = [command_buffer blitCommandEncoder];
-				[encoder copyFromBuffer:buffer_a sourceOffset:offset_a toBuffer:buffer_b destinationOffset:offset_b size:size];
+				ccv_nnc_mps_blit_copy(encoder, buffer_a, offset_a, buffer_b, offset_b, size);
 				[encoder endEncoding];
 				ccv_nnc_stream_context_finish_mps_command_buffer(stream_context, command_buffer);
 			}
@@ -343,7 +343,7 @@ static int _ccv_nnc_format_transform(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint
 				const off_t offset_b = mpgetoffset((const ccv_nnc_tensor_t*)b);
 				@autoreleasepool {
 					id<MTLBlitCommandEncoder> encoder = [command_buffer blitCommandEncoder];
-					[encoder copyFromBuffer:buffer_a sourceOffset:offset_a toBuffer:buffer_b destinationOffset:offset_b size:size];
+					ccv_nnc_mps_blit_copy(encoder, buffer_a, offset_a, buffer_b, offset_b, size);
 					[encoder endEncoding];
 				}
 				continue;

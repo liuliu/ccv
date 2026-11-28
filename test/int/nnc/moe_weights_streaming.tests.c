@@ -4,6 +4,7 @@
 #include <ccv.h>
 #include <nnc/ccv_nnc.h>
 #include <nnc/ccv_nnc_easy.h>
+#include <nnc/ccv_nnc_codebook.h>
 #include <math.h>
 #include <stdio.h>
 #include <string.h>
@@ -755,6 +756,177 @@ TEST_CASE("MPS MoE weights streaming waits at the weights streaming watermark fo
 				"prompt chunks of %d rows back to back should match the same rowwise weights without streaming (watermark %d, max difference %.8g)",
 				chunk_rows[i], j, max_differences[i][j]);
 		}
+}
+
+// slot: the codebook of every projection (0: the built-in table). inline_codebook: the streamed (file-backed) weights
+// carry that table inline (ccv_nnc_codebook.h) instead of naming the slot; the reference weights still name it.
+static void _moe_weights_streaming_tmcq_case(const int slot, const int inline_codebook, int* const __case_result__)
+{
+	// TMCQ experts are whole 16-row tile rows, so a slot copy moves one expert's tiles exactly. The
+	// streamed outputs must match the same weights without streaming, through decode (in-place
+	// tile decode) and prefill. The payload is random bits, all of which are valid TMCQ codes.
+	const int experts = 32;
+	const int n = 256;
+	const int k = 512;
+	ccv_nnc_tensor_t* quantized_weights[3];
+	ccv_nnc_tensor_t* reference_weights[3];
+	ccv_nnc_tensor_t* streamed_weights[3];
+	char paths[3][64] = {
+		"/tmp/ccv-moe-tmcq-gate-XXXXXX",
+		"/tmp/ccv-moe-tmcq-up-XXXXXX",
+		"/tmp/ccv-moe-tmcq-down-XXXXXX",
+	};
+	const int formats[3] = {
+		CCV_NNC_QX_8I_ROWWISE_TMCQ_N18,
+		CCV_NNC_QX_8I_ROWWISE_TMCQ_N18,
+		CCV_NNC_QX_8I_ROWWISE_TMCQ_N24,
+	};
+	int i;
+	for (i = 0; i < 3; i++)
+	{
+		const ccv_nnc_tensor_param_t host_params = i < 2 ?
+			CPU_TENSOR_NHWC(16F, experts, n, k) : CPU_TENSOR_NHWC(16F, experts, k, n);
+		// TMCQ naming the codebook slot (0: the built-in table).
+		const int format = ccv_nnc_codebook_with_slot(formats[i], slot);
+		const ccv_nnc_tensor_param_t quantized_params = ccv_nnc_tensor_8i_rowwise_x(host_params, format);
+		quantized_weights[i] = ccv_nnc_tensor_new(0, quantized_params, 0);
+		const int rows = experts * host_params.dim[1];
+		const int row_length = host_params.dim[2];
+		const size_t payload_size = (size_t)rows * row_length * ccv_nnc_8i_rowwise_x_tmcq_rate(formats[i]) / 128;
+		const size_t scale_offset = (payload_size + 127) & ~(size_t)127;
+		REQUIRE_EQ(scale_offset + sizeof(ccv_float16_t) * rows, ccv_nnc_tensor_data_size_without_padding(quantized_params),
+			"TMCQ payload should be rows x K x n / 16 bits, then 128-byte aligned row scales");
+		size_t j;
+		uint32_t state = 0x9e3779b9u * (i + 1);
+		for (j = 0; j < scale_offset; j++)
+		{
+			state = state * 1664525u + 1013904223u;
+			quantized_weights[i]->data.u8[j] = state >> 24;
+		}
+		float* const scales = (float*)ccmalloc(sizeof(float) * rows);
+		for (j = 0; j < (size_t)rows; j++)
+			scales[j] = (float)(1 + (j * 37) % 61) / 32768;
+		ccv_float_to_half_precision(scales, (uint16_t*)(quantized_weights[i]->data.u8 + scale_offset), rows);
+		ccfree(scales);
+		ccv_nnc_tensor_param_t streamed_params = quantized_params;
+		if (inline_codebook)
+		{
+			// The serialized table, zeros up to 128 + 2 P bytes, then the same bytes.
+			int entries = 0;
+			ccv_nnc_codebook_get(slot, &entries, 0);
+			streamed_params = ccv_nnc_tensor_8i_rowwise_x(host_params, ccv_nnc_8i_rowwise_x_with_inline_codebook(formats[i], entries));
+			ccv_nnc_tensor_t* const inline_weights = ccv_nnc_tensor_new(0, streamed_params, 0);
+			const size_t prefix = ccv_nnc_8i_rowwise_x_inline_codebook_size(streamed_params.reserved);
+			const size_t size = ccv_nnc_tensor_data_size_without_padding(quantized_params);
+			REQUIRE_EQ(ccv_nnc_tensor_data_size_without_padding(streamed_params), prefix + size, "the inline codebook comes before the payload");
+			memset(inline_weights->data.u8, 0, prefix);
+			REQUIRE_EQ(ccv_nnc_codebook_serialize(slot, inline_weights->data.u8, prefix), 16 + 2 * entries, "the table serializes");
+			memcpy(inline_weights->data.u8 + prefix, quantized_weights[i]->data.u8, size);
+			REQUIRE(_moe_weights_streaming_write_file(inline_weights, paths[i]),
+				"each TMCQ projection should be written to a page-sized temporary file");
+			ccv_nnc_tensor_free(inline_weights);
+		} else
+			REQUIRE(_moe_weights_streaming_write_file(quantized_weights[i], paths[i]),
+				"each TMCQ projection should be written to a page-sized temporary file");
+		ccv_nnc_tensor_param_t gpu_params = quantized_params;
+		gpu_params.type = CCV_TENSOR_GPU_MEMORY | 000;
+		reference_weights[i] = ccv_nnc_tensor_new(0, gpu_params, 0);
+		streamed_params.type = CCV_TENSOR_GPU_MEMORY | 000;
+		streamed_weights[i] = ccv_nnc_tensor_new_from_file(
+			streamed_params, paths[i], 0, CCV_NNC_TENSOR_MEMORY_MAP_ON_DEMAND);
+	}
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0,
+		TENSOR_LIST(quantized_weights[0], quantized_weights[1], quantized_weights[2]),
+		TENSOR_LIST(reference_weights[0], reference_weights[1], reference_weights[2]), 0);
+	double max_difference = 0;
+	// Decode across cold misses, a resident hit and an eviction.
+	const int decode_indices[] = { 3, 17, 30, 0 };
+	const int decode_experts[] = { 0, 1, 0, 2, 3 };
+	for (i = 0; i < 5; i++)
+	{
+		int decode_counts[] = { 0, 0, 0, 0 };
+		decode_counts[decode_experts[i]] = 1;
+		REQUIRE_EQ(_moe_weights_streaming_run_case(
+			streamed_weights[0], streamed_weights[1], streamed_weights[2],
+			reference_weights[0], reference_weights[1], reference_weights[2],
+			decode_indices, decode_counts, 4, 1, 31 + i, 2, 0, 0, &max_difference),
+			CCV_NNC_EXEC_SUCCESS, "TMCQ decode should execute across cold misses, a resident hit, and eviction: slot=%d", slot);
+		REQUIRE(max_difference < 1e-3,
+			"streamed TMCQ decode should match the same weights without streaming: slot=%d (max difference %.8g)", slot, max_difference);
+	}
+	// Short multi-row calls through resident slots, then prefill that stages or loads fully.
+	const int verify_counts[] = { 1, 1, 2, 2 };
+	REQUIRE_EQ(_moe_weights_streaming_run_case(
+		streamed_weights[0], streamed_weights[1], streamed_weights[2],
+		reference_weights[0], reference_weights[1], reference_weights[2],
+		decode_indices, verify_counts, 4, 6, 41, 8, RESIDENT_INDICES, 0, &max_difference), CCV_NNC_EXEC_SUCCESS,
+		"a short TMCQ multi-row call should decode through the resident pool: slot=%d", slot);
+	REQUIRE(max_difference < 1e-3, "resident TMCQ multi-row decode should match: slot=%d (max difference %.8g)", slot, max_difference);
+	const int prefill_lengths[] = { 64, 512, 3072 };
+	for (i = 0; i < 3; i++)
+	{
+		const int m = prefill_lengths[i];
+		const int prefill_counts[] = { m / 2, m - m / 2, 0, 0 };
+		REQUIRE_EQ(_moe_weights_streaming_run_case(
+			streamed_weights[0], streamed_weights[1], streamed_weights[2],
+			reference_weights[0], reference_weights[1], reference_weights[2],
+			decode_indices, prefill_counts, 4, m, 47 + i, 2, i == 2 ? FULL_INDICES : STAGED_INDICES, i % 2, &max_difference),
+			CCV_NNC_EXEC_SUCCESS, "TMCQ prefill should execute: slot=%d m=%d", slot, m);
+		REQUIRE(max_difference < 1e-3,
+			"streamed TMCQ prefill should match the same weights without streaming: slot=%d m=%d (max difference %.8g)", slot, m, max_difference);
+	}
+	for (i = 0; i < 3; i++)
+	{
+		ccv_nnc_tensor_free(streamed_weights[i]);
+		ccv_nnc_tensor_free(reference_weights[i]);
+		ccv_nnc_tensor_free(quantized_weights[i]);
+		unlink(paths[i]);
+	}
+}
+
+TEST_CASE("MPS MoE weights streaming stages TMCQ experts by whole tile rows")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_MOE_WEIGHTS_STREAMING_FORWARD, CCV_NNC_BACKEND_MPS));
+	_moe_weights_streaming_tmcq_case(0, 0, __case_result__);
+}
+
+TEST_CASE("MPS MoE weights streaming stages TMCQ experts with an external codebook")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_MOE_WEIGHTS_STREAMING_FORWARD, CCV_NNC_BACKEND_MPS));
+	// A random 512-pair table: the resident bank keeps the codebook slot of its source weights.
+	int8_t pairs[1024];
+	uint32_t state = 0x2545f491u;
+	int i;
+	for (i = 0; i < 1024; i++)
+	{
+		state = state * 1664525u + 1013904223u;
+		pairs[i] = (int8_t)((int)((state >> 8) % 255) - 127);
+	}
+	const int slot = ccv_nnc_codebook_register(pairs, 512);
+	REQUIRE(slot > 0, "the random table should register");
+	_moe_weights_streaming_tmcq_case(slot, 0, __case_result__);
+}
+
+TEST_CASE("MPS MoE weights streaming stages TMCQ experts with an inline codebook from the file")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_MOE_WEIGHTS_STREAMING_FORWARD, CCV_NNC_BACKEND_MPS));
+	// The table is read from the file in front of the experts; the reference names the same table by slot.
+	static const int entries[] = { 512, 2048 };
+	int e;
+	for (e = 0; e < 2; e++)
+	{
+		int8_t pairs[4096];
+		uint32_t state = 0x7f4a7c15u + e;
+		int i;
+		for (i = 0; i < entries[e] * 2; i++)
+		{
+			state = state * 1664525u + 1013904223u;
+			pairs[i] = (int8_t)((int)((state >> 8) % 255) - 127);
+		}
+		const int slot = ccv_nnc_codebook_register(pairs, entries[e]);
+		REQUIRE(slot > 0, "the random table of %d pairs should register", entries[e]);
+		_moe_weights_streaming_tmcq_case(slot, 1, __case_result__);
+	}
 }
 
 #include "case_main.h"

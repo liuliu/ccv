@@ -38,7 +38,7 @@ static int _ccv_nnc_conform_data_format_copy(const ccv_nnc_tensor_view_t* const 
 		id<MTLCommandBuffer> const mtl_command_buffer = command_buffer.commandBuffer;
 		id<MTLBlitCommandEncoder> const encoder = [mtl_command_buffer blitCommandEncoder];
 		if (mpgetbuffer((ccv_nnc_tensor_t*)a) != mpgetbuffer((ccv_nnc_tensor_t*)b) || mpgetoffset((ccv_nnc_tensor_t*)a) != mpgetoffset((ccv_nnc_tensor_t*)b))
-			[encoder copyFromBuffer:mpgetbuffer((ccv_nnc_tensor_t*)a) sourceOffset:mpgetoffset((ccv_nnc_tensor_t*)a) toBuffer:mpgetbuffer((ccv_nnc_tensor_t*)b) destinationOffset:mpgetoffset((ccv_nnc_tensor_t*)b) size:CCV_GET_DATA_TYPE_SIZE(a->info.datatype) * ccv_nnc_tensor_count(a->info)];
+			ccv_nnc_mps_blit_copy(encoder, mpgetbuffer((ccv_nnc_tensor_t*)a), mpgetoffset((ccv_nnc_tensor_t*)a), mpgetbuffer((ccv_nnc_tensor_t*)b), mpgetoffset((ccv_nnc_tensor_t*)b), CCV_GET_DATA_TYPE_SIZE(a->info.datatype) * ccv_nnc_tensor_count(a->info));
 		[encoder endEncoding];
 		ccv_nnc_stream_context_finish_mps_command_buffer(stream_context, command_buffer);
 	}

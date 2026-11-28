@@ -96,7 +96,14 @@ static int _ccv_nnc_index_select_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hin
 			!CCV_IS_TENSOR_CONTIGUOUS(a) || !CCV_IS_TENSOR_CONTIGUOUS(indices) || !CCV_IS_TENSOR_CONTIGUOUS(b))
 			return CCV_NNC_EXEC_INVALID;
 		const int format = a->info.reserved & CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK;
+		// The CUDA kernels only have the built-in codebook (slot 0, no inline codebook).
+		if (subtype == CCV_NNC_QX_8I_ROWWISE_X && (ccv_nnc_8i_rowwise_x_codebook_slot(a->info.reserved) != 0 || ccv_nnc_8i_rowwise_x_inline_codebook_entries(a->info.reserved)))
+			return CCV_NNC_EXEC_INVALID;
 		if (subtype == CCV_NNC_QX_8I_ROWWISE_X && (format == CCV_NNC_QX_8I_ROWWISE_IQ1_S || format == CCV_NNC_QX_8I_ROWWISE_IQ1_M))
+			return CCV_NNC_EXEC_INVALID;
+		// A TMCQ / FTQ / FTQ-VR tile spans 16 rows, thus a row cannot be gathered on its own (see
+		// CCV_NNC_QX_8I_ROWWISE_TMCQ_N16); FTQ blobs also carry a header of the whole tensor.
+		if (subtype == CCV_NNC_QX_8I_ROWWISE_X && ccv_nnc_8i_rowwise_x_is_tiled(format))
 			return CCV_NNC_EXEC_INVALID;
 		const size_t group_size = subtype == CCV_NNC_QX_8I_ROWWISE ? 1 : ccv_nnc_8i_rowwise_x_group_size(a->info.reserved);
 		const size_t group_bits = subtype == CCV_NNC_QX_8I_ROWWISE ? 8 : ccv_nnc_8i_rowwise_x_group_bits(a->info.reserved);

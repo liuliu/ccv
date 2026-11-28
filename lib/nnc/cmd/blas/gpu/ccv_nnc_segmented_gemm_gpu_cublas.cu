@@ -205,6 +205,11 @@ static int _ccv_nnc_segmented_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_h
 		w_datatype = (w_params.datatype & 0xff) << 12;
 		w_data_size = ccv_nnc_compat_qx_dense_data_size(w_params);
 	}
+	// Quantized weights decode into their scale datatype, and cuBLAS multiplies one datatype here. Mixed
+	// precision (e.g. FP32 row scales with FP16 activations) is unsupported: reject it rather than reach
+	// _ccv_nnc_gbmm, whose asserts compile away in release builds.
+	if (CCV_GET_DATA_TYPE(w->info.datatype) == CCV_QX && w_datatype != a_datatype)
+		return CCV_NNC_EXEC_INVALID;
 	cudaStream_t stream = ccv_nnc_stream_context_get_stream(stream_context);
 	const int bincount = ccv_nnc_tensor_count(indices->info);
 	assert(ccv_nnc_tensor_count(counts->info) == bincount);

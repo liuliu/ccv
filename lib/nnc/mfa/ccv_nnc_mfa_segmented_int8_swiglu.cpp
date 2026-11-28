@@ -1,5 +1,7 @@
 #include "ccv_nnc_mfa.hpp"
+#include "kernels/TMCQDecodeSource.hpp"
 #include "kernels/SegmentedInt8SwiGLUDescriptor.hpp"
+#include "kernels/SegmentedInt8GemvDescriptor.hpp"
 
 using namespace ccv::nnc;
 
@@ -45,18 +47,31 @@ void ccv_nnc_mfa_encode_segmented_int8_swiglu(
   CCV_NNC_MFA_PRECONDITION(tensorCount == (params.shared_rows > 0 ? 11 : 7));
   CCV_NNC_MFA_PRECONDITION(params.shared_rows == 0 || (params.K % 4) == 0);
   CCV_NNC_MFA_PRECONDITION(params.shared_format == 0 || params.shared_format == CCV_NNC_QX_8I_ROWWISE_Q5_K || params.shared_format == CCV_NNC_QX_8I_ROWWISE_Q6_K);
-  CCV_NNC_MFA_PRECONDITION(params.shared_format == 0 || (params.shared_rows % 256) == 0);
+  // Q5_K / Q6_K shared rows are whole 256-weight blocks of the same K.
+  CCV_NNC_MFA_PRECONDITION(params.shared_format == 0 || ((params.shared_rows % 256) == 0 && (params.K % 256) == 0));
   CCV_NNC_MFA_PRECONDITION(
     params.M > 0 && params.N > 0 && params.K > 0 &&
     params.expert_count > 0 && params.bincount > 0);
-  CCV_NNC_MFA_PRECONDITION(params.K % 256 == 0 && params.N % 256 == 0);
+  // TMCQ / static-rate FTQ: whole 16 x 16 tiles (one threadgroup per tile row, a tile loop over any K / 16); the other
+  // codecs take whole 256-weight blocks.
+  const bool tiled = segmentedTMCQRate(params.format) || segmentedFTQRate(params.format);
+  CCV_NNC_MFA_PRECONDITION(tiled ?
+    (params.K % 16 == 0 && params.N % 16 == 0) : (params.K % 256 == 0 && params.N % 256 == 0));
   CCV_NNC_MFA_PRECONDITION(
     params.format == CCV_NNC_QX_8I_ROWWISE_IQ2_XXS ||
     params.format == CCV_NNC_QX_8I_ROWWISE_IQ2_XS ||
     params.format == CCV_NNC_QX_8I_ROWWISE_IQ3_XXS ||
     params.format == CCV_NNC_QX_8I_ROWWISE_Q2_K ||
     params.format == CCV_NNC_QX_8I_ROWWISE_IQ1_S ||
-    params.format == CCV_NNC_QX_8I_ROWWISE_IQ1_M);
+    params.format == CCV_NNC_QX_8I_ROWWISE_IQ1_M ||
+    segmentedTMCQRate(params.format) != 0 ||
+    segmentedFTQRate(params.format) != 0);
+  // An FTQ dispatch has no fused shared expert.
+  CCV_NNC_MFA_PRECONDITION(!segmentedFTQRate(params.format) || params.shared_rows == 0);
+
+  // TMCQ / FTQ tiles are read as 32-bit words.
+  CCV_NNC_MFA_PRECONDITION(!tiled ||
+    ((tensorOffsets[0] % 4) == 0 && (tensorOffsets[1] % 4) == 0));
 
   SegmentedInt8SwiGLUDescriptor descriptor;
   descriptor.matrixDimensions = simd::uint2 { params.N, params.K };
@@ -68,7 +83,10 @@ void ccv_nnc_mfa_encode_segmented_int8_swiglu(
   descriptor.gateSoftCap = params.gate_soft_cap;
   descriptor.upSoftCap = params.up_soft_cap;
   descriptor.memoryPrecision = ioPrecision(params.data_type);
-  const NS::UInteger threadgroupsPerRoute = (params.N + 3) / 4;
+  // Four rows per threadgroup (one per SIMD group), or for TMCQ / FTQ one 16-row tile row whose SIMD groups
+  // split K.
+  const NS::UInteger rowsPerThreadgroup = tiled ? 16 : 4;
+  const NS::UInteger threadgroupsPerRoute = (params.N + rowsPerThreadgroup - 1) / rowsPerThreadgroup;
   const NS::UInteger routedThreadgroups = threadgroupsPerRoute * params.M;
   descriptor.sharedRows = params.shared_rows;
   descriptor.routedThreadgroups = params.shared_rows > 0 ? (uint32_t)routedThreadgroups : 0;
@@ -96,6 +114,12 @@ void ccv_nnc_mfa_encode_segmented_int8_swiglu(
   for (int i = 0; i < 6; ++i)
     encoder->useResource(tensors[i], MTL::ResourceUsageRead);
   encoder->useResource(tensors[6], MTL::ResourceUsageWrite);
+  if (tmcq_codebook_log2(params.format)) {
+    // External codebook (TMCQ / FTQ with a codebook slot), see ccv_nnc_mfa_segmented_int8_swiglu_params_t::codebook.
+    CCV_NNC_MFA_PRECONDITION(params.codebook != nullptr);
+    encoder->setBuffer(params.codebook, 0, 15);
+    encoder->useResource(params.codebook, MTL::ResourceUsageRead);
+  }
   NS::UInteger sharedThreadgroups = 0;
   if (params.shared_rows > 0) {
     // Q8_0 rows are K bytes; Q5_K packs 16 weights in 11 bytes, Q6_K in 13.
@@ -117,7 +141,11 @@ void ccv_nnc_mfa_encode_segmented_int8_swiglu(
   }
 
   const MTL::Size gridSize(routedThreadgroups + sharedThreadgroups, 1, 1);
-  const MTL::Size threadgroupSize(128, 1, 1);
+  // 128 threads, or for TMCQ one SIMD group per K split and for FTQ its kSegmentedInt8SwiGLUFTQSIMDGroups splitting K.
+  const NS::UInteger threadgroupThreads = segmentedTMCQRate(params.format) ?
+    32 * segmentedInt8SwiGLUTMCQSIMDGroups(params.shared_rows > 0) :
+    segmentedFTQRate(params.format) ? 32 * kSegmentedInt8SwiGLUFTQSIMDGroups : 128;
+  const MTL::Size threadgroupSize(threadgroupThreads, 1, 1);
   encoder->dispatchThreadgroups(gridSize, threadgroupSize);
   commandBatch->finishCommand(encoder);
 }

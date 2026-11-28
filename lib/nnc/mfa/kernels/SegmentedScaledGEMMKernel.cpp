@@ -3,6 +3,8 @@
 #include "CodeWriter.hpp"
 #include "Dequantize8iRowwiseXDescriptor.hpp"
 #include "Dequantize8iRowwiseXKernel.hpp"
+#include "SegmentedInt8GemvDescriptor.hpp"
+#include "TMCQDecodeSource.hpp"
 #include "../../ccv_nnc_8i_rowwise_packed_grids.inc"
 #include "../ccv_nnc_mfa.hpp"
 
@@ -154,7 +156,9 @@ SegmentedScaledGEMMKernel::SegmentedScaledGEMMKernel(
   useBias = descriptor.useBias;
   loadM = descriptor.loadM;
   format = descriptor.format;
-  CCV_NNC_MFA_PRECONDITION(format == 0 || ((format & ~CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK) == 0 && !useBias));
+  // Bits 16 - 23 of a TMCQ or static-rate FTQ format may name an external codebook's log2 entry count, and bit 24 of an
+  // FTQ one a folded table (TMCQDecodeSource.hpp).
+  CCV_NNC_MFA_PRECONDITION(format == 0 || (((format & ~CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK) == 0 || (segmentedTMCQRate(format) && tmcq_codebook_log2(format)) || segmentedFTQRate(format)) && !useBias));
 
   source = createSource();
   auto string = NS::String::string(source.c_str(), NS::UTF8StringEncoding);
@@ -178,10 +182,32 @@ uint32_t SegmentedScaledGEMMKernel::maxTileRecords(uint32_t originalM, uint32_t 
   return bincount * (tilesPerBin > 0 ? tilesPerBin : 1u);
 }
 
-bool SegmentedScaledGEMMKernel::fusesPackedFormat(uint32_t format, uint64_t M, uint32_t binCount) noexcept
+bool SegmentedScaledGEMMKernel::fusesPackedFormat(uint32_t format, uint64_t M, uint32_t binCount, uint32_t N, uint32_t K) noexcept
 {
-  if (format == 0 || (format & ~CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK) != 0)
+  // Static-rate FTQ (with the built-in, an external or a folded table) decodes in registers on the same 16 x 16 tile grid
+  // and 32 x 64 x 64 register tiles as TMCQ (64 x 64 x 64 from rate 32 at long prefill, registerTileRows), so it takes
+  // N % 64 and K % 64 too. Like TMCQ's, the register decoder decodes each weight again for every row tile. On M5 Ultra (Inkling Mini routed shapes, FP32, n34 and n64) it beat
+  // expanding the selected experts from 2 to 512 rows per bin, tied at 1024 rows per bin over 8 to 64 experts, and at
+  // 2048 rows per bin expanding was up to 12% faster.
+  if (segmentedFTQRate(format))
+    return (N % 64) == 0 && (K % 64) == 0 && M <= (uint64_t)binCount * 1024;
+  // Variable-rate FTQ (no fixed expert stride) and the closed static rates have no tile decoder.
+  const uint32_t codec = format & CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK;
+  if (codec >= CCV_NNC_QX_8I_ROWWISE_FTQ_BLOCK_FIRST && codec <= CCV_NNC_QX_8I_ROWWISE_FTQ_VR_BLOCK_LAST)
     return false;
+  // A TMCQ format may carry an external codebook's log2 entry count in bits 16 - 23; nothing else takes modifier bits.
+  if (format == 0 || ((format & ~CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK) != 0 && !(segmentedTMCQRate(format) && tmcq_codebook_log2(format))))
+    return false;
+  // Whole decoder blocks: TMCQ's register tiles are 32 x 64 x 64 (BLOCK_N = 64 columns, K in steps of 64); the other
+  // packed decoders assume every packed row is whole 256-weight groups and every 128 or 256 column tile is full.
+  if (segmentedTMCQRate(format) ? ((N % 64) != 0 || (K % 64) != 0) : ((N % 256) != 0 || (K % 256) != 0))
+    return false;
+  // TMCQ's register decoder decodes each weight again for every 32-row tile. On M5 Ultra (DeepSeek
+  // routed shapes) it beat expanding the selected experts from 2 to 256 rows per bin over 384
+  // experts and tied at 4096 rows per bin over 6 experts; at 16384 rows per bin expanding was
+  // about 3% faster.
+  if (segmentedTMCQRate(format))
+    return M <= (uint64_t)binCount * 4096;
   // Dedicated tile decoders beat expanding the expert bank at every measured batch size.
   if (format == CCV_NNC_QX_8I_ROWWISE_IQ2_XXS || format == CCV_NNC_QX_8I_ROWWISE_IQ3_XXS || format == CCV_NNC_QX_8I_ROWWISE_Q2_K ||
       format == CCV_NNC_QX_8I_ROWWISE_IQ1_S || format == CCV_NNC_QX_8I_ROWWISE_IQ1_M)
@@ -189,6 +215,19 @@ bool SegmentedScaledGEMMKernel::fusesPackedFormat(uint32_t format, uint64_t M, u
   // The shared group decoder decodes each weight again for every row tile. It wins up to
   // about 64 rows per bin, but expanding once is faster for longer prefill.
   return M <= (uint64_t)binCount * 64;
+}
+
+uint16_t SegmentedScaledGEMMKernel::registerTileRows(uint32_t format, uint64_t M, uint32_t binCount) noexcept
+{
+  // A 64-row tile decodes each weight fragment once for two 32-row activation tiles. On M5 Ultra (FP32, 128 experts
+  // top-8) it took 2 - 9% less time than 32-row tiles from rate 32 to 64 at 32 to 512 rows per bin on the DeepSeek
+  // shapes (down 2304 x 1152, gate / up 3072 x 2304) and Inkling Mini's down, and 1 - 4% less on Inkling Mini's
+  // gate / up (1152 x 2304) up to 256 rows per bin, but 0 - 3% more there at 512. Decoding the fragments again for the
+  // second half did not make it slower, so the gain is not the saved decode. At n16 it took up to 5% more, at n24 it
+  // was mixed, and at 16 rows per bin it gained nothing.
+  if (segmentedFTQRate(format) >= 32 && M >= (uint64_t)binCount * 32)
+    return 64;
+  return 32;
 }
 
 std::string SegmentedScaledGEMMKernel::createSource() const noexcept
@@ -199,14 +238,36 @@ std::string SegmentedScaledGEMMKernel::createSource() const noexcept
   source.SetValue("BLOCK_K", std::to_string(blockDimensions[2]));
   source.SetValue("SIMDGROUPS", std::to_string(executionSIMDGroups));
   source.SetValue("IO_TYPE", ioPrecision.name());
-  if (format) {
+  const uint32_t tmcqRate = segmentedTMCQRate(format);
+  const uint32_t ftqRate = segmentedFTQRate(format);
+  // TMCQ and static-rate FTQ share the 16 x 16 tile grid and the register tile path.
+  const uint32_t tileRate = tmcqRate ? tmcqRate : ftqRate;
+  std::string packedRowBytes;
+  if (tileRate) {
+    // The weight is a grid of 16 x 16 tiles, 2n bytes each, row-major over the grid. An expert's
+    // rows and a SIMD group's first row are multiples of 16, so their byte offset is still rows times
+    // the average row size K / 16 tiles x 2n bytes / 16 rows = K n / 128 bytes, a whole number since the fused
+    // path takes K % 64 == 0 (fusesPackedFormat): K / 64 * n / 2. Only addressing inside a SIMD group's rows is by
+    // tile.
+    // FTQ's tiles follow its 32-byte header, and its row scales are FP16 whatever the io type.
+    packedRowBytes = "(K / 64u * " + std::to_string(tileRate / 2) + "u)";
+    source.SetValue("TMCQ_RATE", std::to_string(tileRate));
+  } else if (format) {
     Dequantize8iRowwiseXDescriptor packed = {};
     packed.format = format;
     // K is a multiple of 256, so every packed row starts on a byte boundary.
     source.SetValue("GROUP_SIZE", std::to_string(packed.groupSize()));
-    source.SetValue("PACKED_ROW_BYTES", "(K / " + std::to_string(packed.groupSize()) + "u * " + std::to_string(packed.groupBits()) + "u / 8u)");
+    packedRowBytes = "(K / " + std::to_string(packed.groupSize()) + "u * " + std::to_string(packed.groupBits()) + "u / 8u)";
     source.SetValue("IQ1_UNIT", format == CCV_NNC_QX_8I_ROWWISE_IQ1_S ? "iq1s_unit" : "iq1m_unit");
     source.SetValue("IQ1_UNIT_BITS", format == CCV_NNC_QX_8I_ROWWISE_IQ1_S ? "50" : "56");
+  }
+  if (format) {
+    source.SetValue("PACKED_ROW_BYTES", packedRowBytes);
+    source.SetValue("REGISTER_WEIGHT_ROW_OFFSET", tileRate ?
+      "  // B stays at the SIMD group's first row: TMCQ / FTQ tiles are addressed in decode_weight_tiles." :
+      "  B += uint(origin.y) * " + packedRowBytes + ";");
+    source.SetValue("PACKED_CODE_OFFSET", ftqRate ? "32u + " : "");
+    source.SetValue("B_SCALE_TYPE", ftqRate ? "half" : ioPrecision.name());
   }
   source.SetValue("MAX_TILE_RECORDS_CONSTANT", loadM ? "" : "constant uint max_tile_records [[function_constant(6)]];\n");
   source.SetValue("LOAD_M_ARGUMENT", loadM ? "    const device uint* loadM [[buffer(4)]],\n" : "");
@@ -269,7 +330,7 @@ kernel void segmented_scaled_gemm_plan(
   dispatch_args[2] = 1;
 }
 )";
-  // IQ2_XXS, Q2_K and IQ3_XXS expand their weights in registers. Other packed projections
+  // IQ2_XXS, Q2_K, IQ3_XXS and TMCQ expand their weights in registers. Other packed projections
   // expand only the current weight tile: IQ1_S and IQ1_M have dedicated tile decoders, and
   // other formats fall back to the dequantizer's group decoder.
   if (format == CCV_NNC_QX_8I_ROWWISE_IQ2_XXS) {
@@ -300,6 +361,15 @@ kernel void segmented_scaled_gemm_plan(
     }
   } else if (format == CCV_NNC_QX_8I_ROWWISE_IQ1_S || format == CCV_NNC_QX_8I_ROWWISE_IQ1_M) {
     source += create_iq1_tile_source(format);
+  } else if (tmcqRate) {
+    source += ccv_nnc_mfa_tmcq_decode_source();
+    source += tmcq_w3_decode_source();
+  } else if (ftqRate) {
+    // tmcq_funnel and the built-in ushort table tmcq_w3_table (FTQ table id 0 is the TMCQ table).
+    source += ccv_nnc_mfa_tmcq_decode_source();
+    source += tmcq_w3_decode_source();
+    const uint32_t log2 = tmcq_codebook_log2(format);
+    source += ccv_nnc_mfa_ftq_w3_source(log2 ? log2 : 9, tmcq_codebook_fold(format));
   } else if (format && format != CCV_NNC_QX_8I_ROWWISE_Q2_K)
     source += Dequantize8iRowwiseXKernel::createDecodeGroupSource(format);
   if (blockDimensions[2] == 64) {
@@ -308,8 +378,9 @@ kernel void segmented_scaled_gemm_plan(
     // expands its own weight fragments straight into registers, so no tile goes through
     // threadgroup memory or waits on a threadgroup barrier per K step. Fragment layout and
     // MPP register assembly follow NAInt8MatMulKernel's register path.
-    CCV_NNC_MFA_PRECONDITION(format == CCV_NNC_QX_8I_ROWWISE_IQ2_XXS || format == CCV_NNC_QX_8I_ROWWISE_Q2_K || format == CCV_NNC_QX_8I_ROWWISE_IQ3_XXS);
-    CCV_NNC_MFA_PRECONDITION(blockDimensions[0] == 32 && blockDimensions[1] == 32 * executionSIMDGroups);
+    CCV_NNC_MFA_PRECONDITION(format == CCV_NNC_QX_8I_ROWWISE_IQ2_XXS || format == CCV_NNC_QX_8I_ROWWISE_Q2_K || format == CCV_NNC_QX_8I_ROWWISE_IQ3_XXS || tileRate);
+    // Static-rate FTQ also takes 64-row tiles (SegmentedScaledGEMMDescriptor's tileRows).
+    CCV_NNC_MFA_PRECONDITION((blockDimensions[0] == 32 || (blockDimensions[0] == 64 && ftqRate)) && blockDimensions[1] == 32 * executionSIMDGroups);
     source += R"(
 // A 16x16 fragment has eight values per lane: four adjacent columns in each of
 // two rows eight apart. A SIMD group owns a 2x2 array of fragments, where
@@ -331,7 +402,7 @@ struct accumulator_tile {
 // the product unchanged: in K32 step kk, a lane's fragment columns origin.x...+3
 // and origin.x + 16...+19 read K offsets 4 * origin.x + 8 * kk...+7. A lane
 // therefore holds 16 consecutive K values per row: one 16-byte activation load,
-// half an IQ2_XXS group, a whole Q2_K group, or a pair of IQ3_XXS groups.
+// half an IQ2_XXS group, a whole Q2_K group, a pair of IQ3_XXS groups, or one row of a TMCQ / FTQ tile.
 __attribute__((always_inline)) inline void set_fragments(thread register_tile (&tiles)[2], short m, short r, uint4 words) {
   #pragma clang loop unroll(full)
   for (short kk = 0; kk < 2; ++kk) {
@@ -448,6 +519,49 @@ __attribute__((always_inline)) inline void decode_weight_tiles(thread register_t
   }
 }
 )";
+    } else if (tmcqRate) {
+      source += R"(
+// Lanes index the pair table divergently, so it is read from a threadgroup copy.
+struct decode_tables {
+  threadgroup const ushort* table;
+};
+
+// B points at the SIMD group's first weight row, a multiple of 16, so its 32 rows are two whole
+// tile rows of K / 16 tiles each. A lane's 16 consecutive K values are one 16-weight row of the
+// tile in column (k + 4 origin.x) / 16; fragment rows origin.y + 8 r of fragment row n are tile
+// row n's rows origin.y + 8 r.
+__attribute__((always_inline)) inline void decode_weight_tiles(thread register_tile (&tiles)[2],
+    const device uchar* B, decode_tables tables, uint k, short2 origin) {
+  const device uint* tile = (const device uint*)B + (k + uint(origin.x) * 4u) / 16u * ({{TMCQ_RATE}}u / 2u);
+  #pragma clang loop unroll(full)
+  for (short n = 0; n < 2; ++n) {
+    #pragma clang loop unroll(full)
+    for (short r = 0; r < 2; ++r)
+      set_fragments(tiles, n, r, tmcq_w3_decode_row16_words(tile + uint(n) * (K / 16u) * ({{TMCQ_RATE}}u / 2u), {{TMCQ_RATE}}u, uint(origin.y) + uint(r) * 8u, tables.table));
+  }
+}
+)";
+    } else if (ftqRate) {
+      source += R"(
+// Lanes index the pair table divergently, so it is read from a threadgroup copy.
+struct decode_tables {
+  threadgroup const ushort* table;
+};
+
+// As TMCQ's: B points at the SIMD group's first weight row (two whole tile rows of K / 16 tiles), a lane's 16
+// consecutive K values are one row of the tile in column (k + 4 origin.x) / 16, and fragment rows origin.y + 8 r of
+// fragment row n are tile row n's rows origin.y + 8 r.
+__attribute__((always_inline)) inline void decode_weight_tiles(thread register_tile (&tiles)[2],
+    const device uchar* B, decode_tables tables, uint k, short2 origin) {
+  const device uint* tile = (const device uint*)B + (k + uint(origin.x) * 4u) / 16u * ({{TMCQ_RATE}}u / 2u);
+  #pragma clang loop unroll(full)
+  for (short n = 0; n < 2; ++n) {
+    #pragma clang loop unroll(full)
+    for (short r = 0; r < 2; ++r)
+      set_fragments(tiles, n, r, ftq_w3_decode_row16_words<{{TMCQ_RATE}}u>(tile + uint(n) * (K / 16u) * ({{TMCQ_RATE}}u / 2u), uint(origin.y) + uint(r) * 8u, tables.table));
+  }
+}
+)";
     } else {
       CCV_NNC_MFA_PRECONDITION(format == CCV_NNC_QX_8I_ROWWISE_Q2_K);
       source += R"(
@@ -488,7 +602,7 @@ __attribute__((always_inline)) inline void decode_weight_tiles(thread register_t
 )";
     }
     source += R"(
-// Four M16/N32/K16 operations form a SIMD group's M32/N32/K32 update.
+// Four 16 x 32 x 16 (M x N x K) operations form a SIMD group's 32 x 32 x 32 update.
 __attribute__((always_inline)) inline void multiply_register_tiles(thread accumulator_tile& accum,
     thread const register_tile& a, thread const register_tile& b) {
   constexpr auto descriptor = matmul2d_descriptor(
@@ -522,13 +636,17 @@ __attribute__((always_inline)) inline void multiply_register_tiles(thread accumu
   }
 }
 
-template<bool full_rows>
+\)";
+    // The 32- or 64-row multiply_register. A trailing backslash keeps CodeWriter from adding a line break, so the
+    // 32-row source is the same text as before the 64-row variant.
+    if (blockDimensions[0] == 32)
+      source += R"(template<bool full_rows>
 inline void multiply_register(const device int8_t* A, const device uchar* B, decode_tables tables,
-    device {{IO_TYPE}}* C, const device {{IO_TYPE}}* A_scale, const device {{IO_TYPE}}* B_scale,
+    device {{IO_TYPE}}* C, const device {{IO_TYPE}}* A_scale, const device {{B_SCALE_TYPE}}* B_scale,
     short rows, ushort lane) {
   const short2 origin = register_fragment_coordinate(lane);
   A += origin.y * K + origin.x * 4;
-  B += uint(origin.y) * {{PACKED_ROW_BYTES}};
+{{REGISTER_WEIGHT_ROW_OFFSET}}
   accumulator_tile accum;
   #pragma clang loop unroll(full)
   for (short i = 0; i < 4; ++i)
@@ -571,12 +689,86 @@ inline void multiply_register(const device int8_t* A, const device uchar* B, dec
   }
 }
 
-[[kernel, max_total_threads_per_threadgroup({{SIMDGROUPS}} * 32)]] void segmented_scaled_gemm(
+\)";
+    else
+      source += R"(// A 64-row tile: each SIMD group decodes its 32 weight rows once per K64 step and multiplies them with two 32-row
+// activation tiles (rows 0 - 31 and 32 - 63), so one decode serves 64 rows. Only the accumulators double; the second
+// activation tile loads after the first one's products. two_halves is false when the tile has at most 32 rows (the
+// second half is skipped), and full_rows says whether the last half taken is whole; any earlier half is.
+template<bool full_rows, bool two_halves>
+__attribute__((always_inline)) inline void multiply_register_k64(thread accumulator_tile (&accum)[2],
+    const device int8_t* A, const device uchar* B, decode_tables tables, uint k, short rows, short2 origin) {
+  register_tile b[2];
+  decode_weight_tiles(b, B, tables, k, origin);
+  {
+    register_tile a[2];
+    load_activation_tiles<full_rows || two_halves>(a, A + k, rows, origin);
+    multiply_register_tiles(accum[0], a[0], b[0]);
+    multiply_register_tiles(accum[0], a[1], b[1]);
+  }
+  if (two_halves) {
+    register_tile a[2];
+    load_activation_tiles<full_rows>(a, A + 32u * K + k, rows - 32, origin);
+    multiply_register_tiles(accum[1], a[0], b[0]);
+    multiply_register_tiles(accum[1], a[1], b[1]);
+  }
+}
+
+template<bool full_rows, bool two_halves>
+inline void multiply_register(const device int8_t* A, const device uchar* B, decode_tables tables,
+    device {{IO_TYPE}}* C, const device {{IO_TYPE}}* A_scale, const device {{B_SCALE_TYPE}}* B_scale,
+    short rows, ushort lane) {
+  const short2 origin = register_fragment_coordinate(lane);
+  A += origin.y * K + origin.x * 4;
+{{REGISTER_WEIGHT_ROW_OFFSET}}
+  accumulator_tile accum[2];
+  #pragma clang loop unroll(full)
+  for (short h = 0; h < 2; ++h) {
+    #pragma clang loop unroll(full)
+    for (short i = 0; i < 4; ++i)
+      accum[h].fragments[i] = vec<int32_t, 8>(0);
+  }
+  // Keep the SIMD groups in step every K512 so they share activation lines in cache.
+  #pragma clang loop unroll(disable)
+  for (uint block = 0; block < K / 512u; ++block) {
+    threadgroup_barrier(mem_flags::mem_none);
+    for (uint k = block * 512u; k < block * 512u + 512u; k += 64u)
+      multiply_register_k64<full_rows, two_halves>(accum, A, B, tables, k, rows, origin);
+  }
+  // K is a multiple of 64.
+  #pragma clang loop unroll(disable)
+  for (uint k = K / 512u * 512u; k < K; k += 64u)
+    multiply_register_k64<full_rows, two_halves>(accum, A, B, tables, k, rows, origin);
+  C += size_t(origin.y) * N + origin.x;
+  #pragma clang loop unroll(full)
+  for (short h = 0; h < (two_halves ? 2 : 1); ++h) {
+    #pragma clang loop unroll(full)
+    for (short m = 0; m < 2; ++m) {
+      #pragma clang loop unroll(full)
+      for (short n = 0; n < 2; ++n) {
+        #pragma clang loop unroll(full)
+        for (short i = 0; i < 8; ++i) {
+          const short row = h * 32 + m * 16 + (i / 4) * 8;
+          const short col = n * 16 + i % 4;
+          if ((h == 0 && two_halves) || full_rows || row < rows - origin.y) {
+#pragma METAL fp math_mode(safe)
+            // Fixed (acc * a) * b order: fast-math must not reassociate the dequantization.
+            C[size_t(row) * N + col] = ({{IO_TYPE}})((float(accum[h].fragments[m * 2 + n][i]) *
+              float(A_scale[origin.y + row])) * float(B_scale[origin.x + col]));
+          }
+        }
+      }
+    }
+  }
+}
+
+\)";
+    source += R"([[kernel, max_total_threads_per_threadgroup({{SIMDGROUPS}} * 32)]] void segmented_scaled_gemm(
     device int8_t* A_buf [[buffer(0)]],
     device const uchar* B_buf [[buffer(1)]],
     device {{IO_TYPE}}* C_buf [[buffer(2)]],
     device const {{IO_TYPE}}* A_scale_buf [[buffer(3)]],
-    device const {{IO_TYPE}}* B_scale_buf [[buffer(4)]],
+    device const {{B_SCALE_TYPE}}* B_scale_buf [[buffer(4)]],
     device const TileRecord* records [[buffer(5)]],
     uint3 tgid [[threadgroup_position_in_grid]],
     ushort sgid [[simdgroup_index_in_threadgroup]],
@@ -587,13 +779,13 @@ inline void multiply_register(const device int8_t* A, const device uchar* B, dec
   const uint local_row = record.local_row;
   if (n_start >= N || local_row >= record.count)
     return;
-  // Packed formats need N % 256 == 0, so every column tile is full.
+  // Register tile formats need N % 64 == 0, so every column tile is full.
   const uint m_count = min(M_block, record.count - local_row);
   const uint col = sgid * 32u;
   const short rows = m_count;
   const uint global_row = record.row_offset + local_row;
   A_buf += (ulong)global_row * K;
-  B_buf += ((ulong)record.expert * N + n_start + col) * {{PACKED_ROW_BYTES}};
+  B_buf += {{PACKED_CODE_OFFSET}}((ulong)record.expert * N + n_start + col) * {{PACKED_ROW_BYTES}};
   C_buf += (ulong)global_row * N + n_start + col;
   A_scale_buf += global_row;
   B_scale_buf += (ulong)record.expert * N + n_start + col;
@@ -617,6 +809,24 @@ inline void multiply_register(const device int8_t* A, const device uchar* B, dec
   threadgroup_barrier(mem_flags::mem_threadgroup);
   const decode_tables tables = { grid };
 )";
+    } else if (tmcqRate || (ftqRate && !tmcq_codebook_log2(format))) {
+      source += R"(
+  threadgroup ushort table[512];
+  for (uint i = sgid * 32u + lane; i < 512u; i += {{SIMDGROUPS}}u * 32u)
+    table[i] = tmcq_w3_table[i];
+  threadgroup_barrier(mem_flags::mem_threadgroup);
+  const decode_tables tables = { table };
+)";
+    } else if (ftqRate) {
+      // An external (or folded) FTQ table: the int8 pairs that follow the half2 ones in the codebook buffer
+      // (ccv_nnc_mfa_codebook_buffer), the copy the selected-expert decode reads, bound at buffer(7).
+      source += R"(
+  threadgroup ushort table[FTQ_W3_ENTRIES];
+  for (uint i = sgid * 32u + lane; i < FTQ_W3_ENTRIES; i += {{SIMDGROUPS}}u * 32u)
+    table[i] = codebook[2u * FTQ_W3_ENTRIES + i];
+  threadgroup_barrier(mem_flags::mem_threadgroup);
+  const decode_tables tables = { table };
+)";
     } else {
       source += R"(
   const decode_tables tables = {};
@@ -625,13 +835,45 @@ inline void multiply_register(const device int8_t* A, const device uchar* B, dec
     source += R"(
   // The row check uses the whole threadgroup tile, because multiply_register
   // contains threadgroup barriers.
-  if (m_count == M_block)
+\)";
+    if (blockDimensions[0] == 32)
+      source += R"(  if (m_count == M_block)
     multiply_register<true>(A_buf, B_buf, tables, C_buf, A_scale_buf, B_scale_buf, rows, lane);
   else
     multiply_register<false>(A_buf, B_buf, tables, C_buf, A_scale_buf, B_scale_buf, rows, lane);
 }
 )";
-    return source.ToString();
+    else
+      source += R"(  if (m_count == 64u)
+    multiply_register<true, true>(A_buf, B_buf, tables, C_buf, A_scale_buf, B_scale_buf, rows, lane);
+  else if (m_count > 32u)
+    multiply_register<false, true>(A_buf, B_buf, tables, C_buf, A_scale_buf, B_scale_buf, rows, lane);
+  else if (m_count == 32u)
+    multiply_register<true, false>(A_buf, B_buf, tables, C_buf, A_scale_buf, B_scale_buf, rows, lane);
+  else
+    multiply_register<false, false>(A_buf, B_buf, tables, C_buf, A_scale_buf, B_scale_buf, rows, lane);
+}
+)";
+    std::string shader = source.ToString();
+    if (ftqRate && tmcq_codebook_log2(format)) {
+      // An external FTQ table: the codebook buffer at buffer(7), read as ushort pairs; ftq_w3_source has the shift.
+      CCV_NNC_MFA_PRECONDITION(tmcq_codebook_replace(shader,
+        "    device const TileRecord* records [[buffer(5)]],\n    uint3 tgid [[threadgroup_position_in_grid]],",
+        "    device const TileRecord* records [[buffer(5)]],\n    device const ushort* codebook [[buffer(7)]],\n    uint3 tgid [[threadgroup_position_in_grid]],") == 1);
+    } else if (const uint32_t log2 = tmcq_codebook_log2(format)) {
+      // An external codebook (TMCQ with a codebook slot): the half2 buffer (ccv_nnc_mfa_codebook_buffer) at buffer(7) fills the same
+      // threadgroup ushort table the built-in kernel copies from tmcq_w3_table, sized for the table; lookups only
+      // change their shift.
+      tmcq_codebook_rewrite(shader, log2);
+      const std::string simdgroups = std::to_string(executionSIMDGroups);
+      CCV_NNC_MFA_PRECONDITION(tmcq_codebook_replace(shader,
+        "  threadgroup ushort table[512];\n  for (uint i = sgid * 32u + lane; i < 512u; i += " + simdgroups + "u * 32u)\n    table[i] = tmcq_w3_table[i];\n",
+        "  threadgroup ushort table[TMCQ_CODEBOOK_ENTRIES];\n  for (uint i = sgid * 32u + lane; i < TMCQ_CODEBOOK_ENTRIES; i += " + simdgroups + "u * 32u)\n    table[i] = as_type<ushort>(char2(codebook[i]));\n") == 1);
+      CCV_NNC_MFA_PRECONDITION(tmcq_codebook_replace(shader,
+        "    device const TileRecord* records [[buffer(5)]],\n    uint3 tgid [[threadgroup_position_in_grid]],",
+        "    device const TileRecord* records [[buffer(5)]],\n    device const half2* codebook [[buffer(7)]],\n    uint3 tgid [[threadgroup_position_in_grid]],") == 1);
+    }
+    return shader;
   }
   if (format) {
     source += R"(
@@ -660,6 +902,8 @@ kernel void segmented_scaled_gemm(
   B_scale_buf += (ulong)record.expert * N + n_start;
   threadgroup uint weight_words[{{BLOCK_N}} * {{BLOCK_K}} / 4];
   threadgroup int8_t* weights = (threadgroup int8_t*)weight_words;
+)";
+    source += R"(
   auto A = tensor<device int8_t, dextents<int32_t, 2>, tensor_inline>(A_buf, dextents<int32_t, 2>(K, m_count));
   auto B = tensor<threadgroup int8_t, extents<int32_t, {{BLOCK_K}}, {{BLOCK_N}}>, tensor_inline>(weights, extents<int32_t, {{BLOCK_K}}, {{BLOCK_N}}>());
   constexpr auto desc = matmul2d_descriptor({{BLOCK_M}}, {{BLOCK_N}}, {{BLOCK_K}}, false, true, true, matmul2d_descriptor::mode::multiply_accumulate);

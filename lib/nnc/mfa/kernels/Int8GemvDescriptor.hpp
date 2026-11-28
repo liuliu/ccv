@@ -10,6 +10,12 @@
 
 constexpr uint32_t kInt8GemvRowsPerThreadgroup = 2;
 constexpr uint32_t kInt8GemvSIMDGroupsPerThreadgroup = 4;
+// TMCQ tiles span 16 rows, so a TMCQ threadgroup computes one tile row of outputs.
+constexpr uint32_t kInt8GemvTMCQRowsPerThreadgroup = 16;
+
+// SIMD groups of a TMCQ GEMV threadgroup (one tile row) for `mrows` activation rows; every other
+// format uses kInt8GemvSIMDGroupsPerThreadgroup. See append_tmcq_kernel in Int8GemvKernel.cpp.
+uint32_t int8GemvTMCQSIMDGroups(const uint32_t mrows);
 
 struct Int8GemvKernelDescriptor {
   uint8_t fusedBias;
@@ -17,14 +23,17 @@ struct Int8GemvKernelDescriptor {
   uint8_t batched;
   uint32_t format;
   GEMMOperandPrecision memoryPrecision;
-  constexpr bool operator==(const Int8GemvKernelDescriptor& rhs) const { return fusedBias == rhs.fusedBias && mrows == rhs.mrows && batched == rhs.batched && format == rhs.format && memoryPrecision == rhs.memoryPrecision; }
+  // Variable-rate FTQ: the blob's level mask (bit i is rate 8 + 2 i, i <= 40), which picks the per-rate loop bodies; 0
+  // otherwise.
+  uint64_t levelMask = 0;
+  constexpr bool operator==(const Int8GemvKernelDescriptor& rhs) const { return fusedBias == rhs.fusedBias && mrows == rhs.mrows && batched == rhs.batched && format == rhs.format && memoryPrecision == rhs.memoryPrecision && levelMask == rhs.levelMask; }
 };
 
 template<>
 struct std::hash<Int8GemvKernelDescriptor>
 {
   std::size_t operator()(const Int8GemvKernelDescriptor& hash) const noexcept {
-    return std::hash<uint64_t>()((uint64_t)hash.fusedBias | ((uint64_t)hash.mrows << 8) | ((uint64_t)hash.memoryPrecision.value << 16) | ((uint64_t)hash.batched << 24) | ((uint64_t)hash.format << 32));
+    return std::hash<uint64_t>()((uint64_t)hash.fusedBias | ((uint64_t)hash.mrows << 8) | ((uint64_t)hash.memoryPrecision.value << 16) | ((uint64_t)hash.batched << 24) | ((uint64_t)hash.format << 32)) ^ std::hash<uint64_t>()(hash.levelMask);
   }
 };
 
@@ -36,6 +45,7 @@ struct Int8GemvDescriptor {
   uint8_t mrows;
 
   uint32_t format;
+
 
   GEMMOperandPrecision memoryPrecision;
 
@@ -51,6 +61,9 @@ struct Int8GemvDescriptor {
 
   std::optional<simd::uint4> batchStrides;
 
+  // Variable-rate FTQ: the level mask of the blob's header (words 3 and 4); 0 for every other format.
+  uint64_t levelMask = 0;
+
   bool operator==(const Int8GemvDescriptor& rhs) const;
 
   uint32_t groupSize() const noexcept;
@@ -58,6 +71,8 @@ struct Int8GemvDescriptor {
   uint32_t groupBits() const noexcept;
   // Weight rows each threadgroup computes.
   uint32_t rowsPerThreadgroup() const noexcept;
+  // Threads per threadgroup: kInt8GemvSIMDGroupsPerThreadgroup SIMD groups for every format but TMCQ.
+  uint32_t threadsPerThreadgroup() const noexcept;
 	  uint64_t inputScaleOffset() const noexcept;
 
   std::pair<Int8GemvKernelDescriptor, PipelineValue<Int8GemvKernel>*> findKernel(MTL::Device* const device, const DeviceProperties& dprops, NS::Array* const binaryArchivesToRead, MTL::BinaryArchive* const binaryArchiveToWrite, const std::string& pathToWrite, std::unordered_map<Int8GemvKernelDescriptor, std::unique_ptr<Int8GemvKernel>> *const libraryCache) const noexcept;

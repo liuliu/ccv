@@ -1,4 +1,5 @@
 #include "ccv_nnc_mfa.hpp"
+#include "kernels/TMCQDecodeSource.hpp"
 #include "kernels/SegmentedInt8GemvDescriptor.hpp"
 #include "kernels/SegmentedInt8GemvKernel.hpp"
 using namespace ccv::nnc;
@@ -47,9 +48,19 @@ void ccv_nnc_mfa_encode_segmented_int8_gemv(
   CCV_NNC_MFA_PRECONDITION(params.M > 0 && params.N > 0 && params.K > 0);
   CCV_NNC_MFA_PRECONDITION(params.expert_count > 0 && params.bincount > 0);
   CCV_NNC_MFA_PRECONDITION((params.K % 4) == 0);
+  // TMCQ / FTQ have their own N % 16 / K % 16 precondition below.
+  const bool tiled = segmentedTMCQRate(params.format) || segmentedFTQRate(params.format);
   CCV_NNC_MFA_PRECONDITION(
-    params.format == 0 ||
+    params.format == 0 || tiled ||
     ((params.K % 256) == 0 && (params.N % 256) == 0));
+  // TMCQ / FTQ tiles span 16 rows and 16 columns (a tile loop over any K / 16) and their kernels take one activation
+  // row per route; they have no modifier bits but the codebook's (no Hadamard rotation). FTQ takes no bias.
+  CCV_NNC_MFA_PRECONDITION(
+    !tiled || ((params.N % 16) == 0 && (params.K % 16) == 0));
+  CCV_NNC_MFA_PRECONDITION(!segmentedFTQRate(params.format) || !params.fused_bias);
+  // TMCQ / FTQ tiles are read as 32-bit words: the weight offset and the expert stride must keep that.
+  CCV_NNC_MFA_PRECONDITION(
+    !tiled || (tensor_offsets[3] % 4) == 0);
   CCV_NNC_MFA_PRECONDITION(
     (uint64_t)params.expert_count * params.N <= UINT32_MAX);
 
@@ -62,7 +73,8 @@ void ccv_nnc_mfa_encode_segmented_int8_gemv(
   descriptor.useBias = params.fused_bias;
   descriptor.broadcastInput = params.broadcast_input;
   const uint32_t simdgroups = segmentedInt8GemvSIMDGroupsPerThreadgroup(params.format);
-  const uint32_t rowsPerThreadgroup = kSegmentedInt8GemvRowsPerSIMDGroup * simdgroups;
+  // Two rows per SIMD group, or for TMCQ / FTQ one 16-row tile row per threadgroup.
+  const uint32_t rowsPerThreadgroup = segmentedInt8GemvRowsPerThreadgroup(params.format);
   const NS::UInteger threadgroupsPerRoute =
     (params.N + rowsPerThreadgroup - 1) / rowsPerThreadgroup;
   // The shared rows take two per threadgroup, after the routed ones in the grid's count.
@@ -92,6 +104,12 @@ void ccv_nnc_mfa_encode_segmented_int8_gemv(
     encoder->setBuffer(tensors[5], tensor_offsets[5], 4);
   encoder->setBuffer(tensors[1], tensor_offsets[1], 5);
   encoder->setBuffer(tensors[2], tensor_offsets[2], 6);
+  if (tmcq_codebook_log2(params.format)) {
+    // External codebook (TMCQ / FTQ with a codebook slot), see ccv_nnc_mfa_segmented_int8_gemv_params_t::codebook.
+    CCV_NNC_MFA_PRECONDITION(params.codebook != nullptr);
+    encoder->setBuffer(params.codebook, 0, 11);
+    encoder->useResource(params.codebook, MTL::ResourceUsageRead);
+  }
 
   encoder->useResource(tensors[0], MTL::ResourceUsageRead);
   encoder->useResource(tensors[1], MTL::ResourceUsageRead);

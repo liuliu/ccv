@@ -13,6 +13,10 @@
 #include "ccv.h"
 #include "ccv_internal.h"
 #include "nnc/ccv_nnc.h"
+#include "nnc/ccv_nnc_ftq_schedule.inc"
+// The codebook registry and the inline codebook helpers (ccv_nnc_codebook_resolve_inline), also for bindings that
+// only see this header.
+#include "nnc/ccv_nnc_codebook.h"
 #ifdef HAVE_MPS
 #ifdef __APPLE__
 #include "TargetConditionals.h"
@@ -226,8 +230,166 @@ static inline ccv_nnc_tensor_param_t ccv_nnc_tensor_8i_rowwise(const ccv_nnc_ten
 	return new_params;
 }
 
+/* TMCQ, with the built-in table (codebook slot 0) or the codebook in its slot. */
+static inline int ccv_nnc_8i_rowwise_x_is_tmcq(const int format)
+{
+	const int codec = format & CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK;
+	return codec >= CCV_NNC_QX_8I_ROWWISE_TMCQ_N16 && codec <= CCV_NNC_QX_8I_ROWWISE_TMCQ_N32;
+}
+
+/* Trellis bits per 256-weight tile over 16, i.e. the TMCQ rate n (bits per weight = n / 16). */
+static inline int ccv_nnc_8i_rowwise_x_tmcq_rate(const int format)
+{
+	assert(ccv_nnc_8i_rowwise_x_is_tmcq(format));
+	return 16 + 2 * ((format & CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK) - CCV_NNC_QX_8I_ROWWISE_TMCQ_N16);
+}
+
+/* The codebook slot of a format / reserved field (0 is the built-in table, see ccv_nnc_codebook.h). */
+static inline int ccv_nnc_8i_rowwise_x_codebook_slot(const int format)
+{
+	return (format & CCV_NNC_QX_8I_ROWWISE_CODEBOOK_SLOT_MASK) >> CCV_NNC_QX_8I_ROWWISE_CODEBOOK_SLOT_SHIFT;
+}
+
+/* The pair count of the inline codebook of a format / reserved field (512, 1024 or 2048), 0 if it has none. */
+static inline int ccv_nnc_8i_rowwise_x_inline_codebook_entries(const int format)
+{
+	const int code = (format & CCV_NNC_QX_8I_ROWWISE_CODEBOOK_INLINE_MASK) >> CCV_NNC_QX_8I_ROWWISE_CODEBOOK_INLINE_SHIFT;
+	return code ? 256 << code : 0;
+}
+
+/* Bytes before the payload of a tensor with an inline codebook (the serialized table and zeros, 128 + 2 P, a
+ * multiple of 128), 0 if it has none. */
+static inline size_t ccv_nnc_8i_rowwise_x_inline_codebook_size(const int format)
+{
+	const int entries = ccv_nnc_8i_rowwise_x_inline_codebook_entries(format);
+	return entries ? 128 + (size_t)entries * 2 : 0;
+}
+
+/* format with an inline codebook of entries pairs (512, 1024 or 2048) and the inline slot 255; 0 removes both. */
+static inline int ccv_nnc_8i_rowwise_x_with_inline_codebook(const int format, const int entries)
+{
+	const int code = entries == 512 ? 1 : entries == 1024 ? 2 : entries == 2048 ? 3 : 0;
+	assert(code || entries == 0);
+	const int rest = format & ~(CCV_NNC_QX_8I_ROWWISE_CODEBOOK_INLINE_MASK | CCV_NNC_QX_8I_ROWWISE_CODEBOOK_SLOT_MASK);
+	return code ? rest | (code << CCV_NNC_QX_8I_ROWWISE_CODEBOOK_INLINE_SHIFT) | (0xff << CCV_NNC_QX_8I_ROWWISE_CODEBOOK_SLOT_SHIFT) : rest;
+}
+
+/* The codec (bits 0 - 7). */
+static inline int ccv_nnc_8i_rowwise_x_codec(const int format)
+{
+	return format & CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK;
+}
+
+/* The format handed to kernels and their descriptors: the codec and the modifier bits, without the codebook slot.
+ * For a slot 0 tensor this is its reserved field unchanged. */
+static inline int ccv_nnc_8i_rowwise_x_kernel_format(const int format)
+{
+	return format & ~(CCV_NNC_QX_8I_ROWWISE_CODEBOOK_SLOT_MASK | CCV_NNC_QX_8I_ROWWISE_CODEBOOK_INLINE_MASK);
+}
+
+/* Static-rate FTQ (CCV_NNC_QX_8I_ROWWISE_FTQ_N16 .. N88, the open codes of its block): whole CCVFTQSR blobs with FP16
+ * scales. */
+static inline int ccv_nnc_8i_rowwise_x_is_ftq(const int format)
+{
+	const int codec = format & CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK;
+	return codec >= CCV_NNC_QX_8I_ROWWISE_FTQ_N16 && codec <= CCV_NNC_QX_8I_ROWWISE_FTQ_N88;
+}
+
+/* Variable-rate FTQ (CCV_NNC_QX_8I_ROWWISE_FTQ_VR_N16 .. N88, the open codes of its block): whole CCVFTQVR blobs with
+ * FP16 scales. */
+static inline int ccv_nnc_8i_rowwise_x_is_ftq_vr(const int format)
+{
+	const int codec = format & CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK;
+	return codec >= CCV_NNC_QX_8I_ROWWISE_FTQ_VR_N16 && codec <= CCV_NNC_QX_8I_ROWWISE_FTQ_VR_N88;
+}
+
+/* The FTQ state window w of format (bits 26 - 27): an L = 16 + 2 w bit window. */
+static inline int ccv_nnc_8i_rowwise_x_ftq_window(const int format)
+{
+	return (format & CCV_NNC_QX_8I_ROWWISE_FTQ_WINDOW_MASK) >> CCV_NNC_QX_8I_ROWWISE_FTQ_WINDOW_SHIFT;
+}
+
+/* Table field `field` of an FTQ blob header without the high bits of a CCVFTQVR level mask: for variable-rate FTQ
+ * (format) bits 18 - 26 are level mask bits 32 - 40 (n 72 ... 88, see CCV_NNC_QX_8I_ROWWISE_FTQ_VR_N16) and are
+ * cleared; a static-rate field is returned as is. */
+static inline unsigned int ccv_nnc_8i_rowwise_x_ftq_table_field(const unsigned int field, const int format)
+{
+	return ccv_nnc_8i_rowwise_x_is_ftq_vr(format) ? field & ~0x7fc0000u : field;
+}
+
+/* Whether table field `field` of an FTQ blob header (CCVFTQSR or CCVFTQVR) does not name the state window of format,
+ * or has a bit of 18 - 29 set other than CCVFTQVR level mask bits (18 - 26): bits 30 - 31 hold the window (see
+ * CCV_NNC_QX_8I_ROWWISE_FTQ_WINDOW_SHIFT). */
+static inline int ccv_nnc_8i_rowwise_x_ftq_header_window_mismatch(const unsigned int field, const int format)
+{
+	return (ccv_nnc_8i_rowwise_x_ftq_table_field(field, format) & 0x3ffc0000u) != 0 || (int)(field >> 30) != ccv_nnc_8i_rowwise_x_ftq_window(format);
+}
+
+/* Static- or variable-rate FTQ. */
+static inline int ccv_nnc_8i_rowwise_x_is_ftq_any(const int format)
+{
+	return ccv_nnc_8i_rowwise_x_is_ftq(format) || ccv_nnc_8i_rowwise_x_is_ftq_vr(format);
+}
+
+/* A code of the static- or variable-rate FTQ block that is not open (n or nm other than 16 .. 88): no format. */
+static inline int ccv_nnc_8i_rowwise_x_is_ftq_unopened(const int format)
+{
+	const int codec = format & CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK;
+	return codec >= CCV_NNC_QX_8I_ROWWISE_FTQ_BLOCK_FIRST && codec <= CCV_NNC_QX_8I_ROWWISE_FTQ_VR_BLOCK_LAST && !ccv_nnc_8i_rowwise_x_is_ftq_any(format);
+}
+
+/* Whether the codec may name the codebook of format: TMCQ and FTQ any a slot (0 is the built-in table) or an inline
+ * codebook, which always comes with slot 255 and slot 255 only with it; every other codec neither. A code of the FTQ
+ * blocks that is not open is not valid at all, so reads, decodes and loads reject it. */
+static inline int ccv_nnc_8i_rowwise_x_codebook_is_valid(const int format)
+{
+	if (ccv_nnc_8i_rowwise_x_is_ftq_unopened(format))
+		return 0;
+	// Only FTQ and FTQ-VR have a state window other than 16 bits.
+	if (ccv_nnc_8i_rowwise_x_ftq_window(format) && !ccv_nnc_8i_rowwise_x_is_ftq_any(format))
+		return 0;
+	const int is_inline = !!ccv_nnc_8i_rowwise_x_inline_codebook_entries(format);
+	if (ccv_nnc_8i_rowwise_x_is_tmcq(format) || ccv_nnc_8i_rowwise_x_is_ftq_any(format))
+		return is_inline == (ccv_nnc_8i_rowwise_x_codebook_slot(format) == 0xff);
+	return ccv_nnc_8i_rowwise_x_codebook_slot(format) == 0 && !is_inline;
+}
+
+/* Bytes of one row scale of an 8I_ROWWISE_X tensor of base datatype `datatype`: the FTQ and FTQ-VR blobs carry FP16
+ * scales whatever the base (static-rate FTQ may be FP16 or FP32), every other codec scales in its base datatype. */
+static inline int ccv_nnc_8i_rowwise_x_scale_size(const int format, const int datatype)
+{
+	return ccv_nnc_8i_rowwise_x_is_ftq_any(format) ? 2 : CCV_GET_DATA_TYPE_SIZE(datatype);
+}
+
+/* The FTQ rate n: every tile has 16 n bits, see CCV_NNC_QX_8I_ROWWISE_FTQ_N16. */
+static inline int ccv_nnc_8i_rowwise_x_ftq_rate(const int format)
+{
+	assert(ccv_nnc_8i_rowwise_x_is_ftq(format));
+	return 8 + 2 * ((format & CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK) - CCV_NNC_QX_8I_ROWWISE_FTQ_BLOCK_FIRST);
+}
+
+/* The variable-rate FTQ mean rate nm: the code has R C 2 nm bytes at most, see CCV_NNC_QX_8I_ROWWISE_FTQ_VR_N16. */
+static inline int ccv_nnc_8i_rowwise_x_ftq_vr_rate(const int format)
+{
+	assert(ccv_nnc_8i_rowwise_x_is_ftq_vr(format));
+	return 8 + 2 * ((format & CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK) - CCV_NNC_QX_8I_ROWWISE_FTQ_VR_BLOCK_FIRST);
+}
+
+/* Formats on the 16 x 16 tile grid (row_count % 16, row_length % 16, no H256). */
+static inline int ccv_nnc_8i_rowwise_x_is_tiled(const int format)
+{
+	return ccv_nnc_8i_rowwise_x_is_tmcq(format) || ccv_nnc_8i_rowwise_x_is_ftq_any(format);
+}
+
+static inline ccv_nnc_8i_rowwise_x_ftq_schedule_t ccv_nnc_8i_rowwise_x_ftq_schedule(const int format, const uint64_t row_count, const uint64_t row_length)
+{
+	return ccv_nnc_8i_rowwise_x_ftq_schedule_of_rate((uint64_t)ccv_nnc_8i_rowwise_x_ftq_rate(format), row_count, row_length);
+}
+
 static inline int ccv_nnc_8i_rowwise_x_group_size(const int format)
 {
+	if (ccv_nnc_8i_rowwise_x_is_tiled(format))
+		return 256; // One 16 x 16 tile; it spans 16 rows, see CCV_NNC_QX_8I_ROWWISE_TMCQ_N16.
 	switch (format & CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK)
 	{
 		case CCV_NNC_QX_8I_ROWWISE_Q5_K:
@@ -253,6 +415,14 @@ static inline int ccv_nnc_8i_rowwise_x_group_size(const int format)
 
 static inline int ccv_nnc_8i_rowwise_x_group_bits(const int format)
 {
+	if (ccv_nnc_8i_rowwise_x_is_tmcq(format))
+		return 16 * ccv_nnc_8i_rowwise_x_tmcq_rate(format);
+	// 16 n bits per tile, after the 32-byte FTQ header (ccv_nnc_8i_rowwise_x_payload_header).
+	if (ccv_nnc_8i_rowwise_x_is_ftq(format))
+		return 16 * ccv_nnc_8i_rowwise_x_ftq_rate(format);
+	// The budget of variable-rate FTQ: 16 nm bits per tile on average.
+	if (ccv_nnc_8i_rowwise_x_is_ftq_vr(format))
+		return 16 * ccv_nnc_8i_rowwise_x_ftq_vr_rate(format);
 	switch (format & CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK)
 	{
 		case CCV_NNC_QX_8I_ROWWISE_Q5_K:
@@ -282,6 +452,29 @@ static inline int ccv_nnc_8i_rowwise_x_group_bits(const int format)
 	}
 }
 
+/* Bytes in front of the packed payload: the 32-byte CCVFTQSR header for FTQ (its scales start at align128(32 +
+ * payload)), the 32-byte CCVFTQVR header and the R + 1 word tile row offsets for variable-rate FTQ, 0 for every
+ * other format. */
+static inline size_t ccv_nnc_8i_rowwise_x_payload_header(const int format, const size_t row_count)
+{
+	if (ccv_nnc_8i_rowwise_x_is_ftq_vr(format))
+		return 32 + 4 * (row_count / 16 + 1);
+	return ccv_nnc_8i_rowwise_x_is_ftq(format) ? 32 : 0;
+}
+
+/* Bits of the packed payload of a row_count x row_length tensor, without ccv_nnc_8i_rowwise_x_payload_header. A
+ * TMCQ / FTQ group is one 16 x 16 tile that spans 16 rows, so the payload is (row_count / 16) (row_length / 16)
+ * tiles of group_bits each, which needs only row_length % 16 (with row_length % 256 it equals the row-wise formula
+ * below, byte for byte). Every other codec has ceil(row_length / group_size) groups per row. */
+static inline uint64_t ccv_nnc_8i_rowwise_x_payload_bits(const int format, const uint64_t row_count, const uint64_t row_length)
+{
+	const uint64_t group_bits = (uint64_t)ccv_nnc_8i_rowwise_x_group_bits(format);
+	if (ccv_nnc_8i_rowwise_x_is_tiled(format))
+		return ccv_nnc_8i_rowwise_x_tile_count(row_count, row_length) * group_bits;
+	const uint64_t group_size = (uint64_t)ccv_nnc_8i_rowwise_x_group_size(format);
+	return row_count * ((row_length + group_size - 1) / group_size) * group_bits;
+}
+
 static inline ccv_nnc_tensor_param_t ccv_nnc_tensor_8i_rowwise_x(const ccv_nnc_tensor_param_t params, const int format)
 {
 	assert(params.datatype == CCV_16F || params.datatype == CCV_32F || params.datatype == CCV_64F || params.datatype == CCV_16BF);
@@ -289,6 +482,22 @@ static inline ccv_nnc_tensor_param_t ccv_nnc_tensor_8i_rowwise_x(const ccv_nnc_t
 	if (format & CCV_NNC_QX_8I_ROWWISE_HADAMARD_256)
 	{
 		assert(nd > 0 && params.dim[nd - 1] > 0 && params.dim[nd - 1] % 256 == 0);
+	}
+	if (ccv_nnc_8i_rowwise_x_is_tmcq(format))
+	{
+		// Tiles span 16 rows and 16 columns (ccv_nnc_8i_rowwise_x_payload_bits).
+		assert(nd > 0 && params.dim[nd - 1] > 0 && params.dim[nd - 1] % 16 == 0);
+		assert((ccv_nnc_tensor_count(params) / params.dim[nd - 1]) % 16 == 0);
+		assert(!(format & CCV_NNC_QX_8I_ROWWISE_HADAMARD_256));
+	}
+	if (ccv_nnc_8i_rowwise_x_is_ftq_any(format))
+	{
+		// FP16 scales are part of the FTQ and FTQ-VR blobs whatever the base (ccv_nnc_8i_rowwise_x_scale_size): static-rate
+		// FTQ takes an FP16 or FP32 base, variable-rate FTQ FP16 only.
+		assert(params.datatype == CCV_16F || (params.datatype == CCV_32F && ccv_nnc_8i_rowwise_x_is_ftq(format)));
+		assert(nd > 0 && params.dim[nd - 1] > 0 && params.dim[nd - 1] % 16 == 0);
+		assert((ccv_nnc_tensor_count(params) / params.dim[nd - 1]) % 16 == 0);
+		assert(!(format & CCV_NNC_QX_8I_ROWWISE_HADAMARD_256));
 	}
 	ccv_nnc_tensor_param_t new_params = params;
 	new_params.datatype = ((params.datatype >> 12) & 0xff) | CCV_QX | CCV_NNC_QX_8I_ROWWISE_X;
@@ -333,12 +542,16 @@ static inline size_t ccv_nnc_tensor_data_size_without_padding(const ccv_nnc_tens
 			assert(row_length > 0);
 			assert(count % row_length == 0);
 			const ssize_t row_count = count / row_length;
-			const ssize_t group_size = ccv_nnc_8i_rowwise_x_group_size(params.reserved);
-			const ssize_t groups_per_row = (row_length + group_size - 1) / group_size;
-			const ssize_t group_bits = ccv_nnc_8i_rowwise_x_group_bits(params.reserved);
-			const ssize_t payload_size = (row_count * groups_per_row * group_bits + 7) / 8;
+			// The tile grid of TMCQ / FTQ / FTQ-VR rounds down, so a shape off the grid would be under-allocated.
+			if (ccv_nnc_8i_rowwise_x_is_tiled(params.reserved))
+			{
+				assert(row_length % 16 == 0 && row_count % 16 == 0);
+			}
+			const ssize_t payload_size = (ssize_t)((ccv_nnc_8i_rowwise_x_payload_bits(params.reserved, row_count, row_length) + 7) / 8) + ccv_nnc_8i_rowwise_x_payload_header(params.reserved, row_count);
 			const ssize_t scale_offset = (payload_size + 127) & -128;
-			data_size = scale_offset + row_count * CCV_GET_DATA_TYPE_SIZE(qx_datatype);
+			// An inline codebook (TMCQ and FTQ any) comes first; the rest is the layout without it.
+			assert(ccv_nnc_8i_rowwise_x_codebook_is_valid(params.reserved));
+			data_size = (ssize_t)ccv_nnc_8i_rowwise_x_inline_codebook_size(params.reserved) + scale_offset + row_count * ccv_nnc_8i_rowwise_x_scale_size(params.reserved, qx_datatype);
 		} else {
 			assert(0);
 			data_size = 0;

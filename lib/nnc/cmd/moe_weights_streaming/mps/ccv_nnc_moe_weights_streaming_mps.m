@@ -2,6 +2,7 @@
 #include "ccv_internal.h"
 #include "nnc/ccv_nnc.h"
 #include "nnc/ccv_nnc_easy.h"
+#include "nnc/ccv_nnc_codebook.h"
 #include "nnc/ccv_nnc_internal.h"
 #include "nnc/mps/ccv_nnc_mps.h"
 #import <Foundation/Foundation.h>
@@ -19,6 +20,7 @@
 #import <unistd.h>
 
 typedef struct {
+	size_t payload_offset; // Bytes before the first expert's payload: the 32-byte CCVFTQSR header for FTQ, 0 otherwise.
 	size_t payload_per_expert;
 	size_t scale_per_expert;
 	size_t scale_offset;
@@ -54,6 +56,9 @@ enum { CCV_NNC_MOE_RESIDENT_BUFFER_COUNT = 3 + 5 + CCV_NNC_MOE_READINESS_COUNT }
 	unsigned char source_fd_owners[3];
 	ccv_nnc_tensor_param_t source_infos[3];
 	ccv_nnc_moe_weight_layout_t source_layouts[3];
+	// A static-rate FTQ source's CCVFTQSR header, and the resident bank's (rows rewritten to resident slots x N).
+	unsigned char source_headers[3][32];
+	unsigned char resident_headers[3][32];
 	ccv_nnc_moe_weight_layout_t resident_layouts[3];
 	id<MTLBuffer> resident_buffers[3];
 	id<MTLBuffer> prefill_buffers[3];
@@ -191,17 +196,33 @@ static int _ccv_nnc_moe_weight_layout(const ccv_nnc_tensor_param_t source_info, 
 		return 0;
 	const int subtype = source_info.datatype & 0xf00;
 	const int scale_datatype = (source_info.datatype & 0xff) << 12;
-	const size_t scale_size = CCV_GET_DATA_TYPE_SIZE(scale_datatype);
+	const size_t scale_size = subtype == CCV_NNC_QX_8I_ROWWISE_X ? ccv_nnc_8i_rowwise_x_scale_size(source_info.reserved, scale_datatype) : CCV_GET_DATA_TYPE_SIZE(scale_datatype);
 	if (CCV_GET_DATA_TYPE(source_info.datatype) != CCV_QX || scale_size == 0)
 		return 0;
+	size_t payload_offset = 0;
 	size_t payload_per_expert = 0;
 	if (subtype == CCV_NNC_QX_8I_ROWWISE)
 		payload_per_expert = (size_t)source_info.dim[1] * source_info.dim[2];
 	else if (subtype == CCV_NNC_QX_8I_ROWWISE_X) {
-		const size_t group_size = (size_t)ccv_nnc_8i_rowwise_x_group_size(source_info.reserved);
-		const size_t group_bits = (size_t)ccv_nnc_8i_rowwise_x_group_bits(source_info.reserved);
-		const size_t groups_per_row = ((size_t)source_info.dim[2] + group_size - 1) / group_size;
-		const size_t payload_bits = (size_t)source_info.dim[1] * groups_per_row * group_bits;
+		// TMCQ tiles span 16 rows: an expert slot must hold whole tile rows over whole tiles (N % 16,
+		// K % 16), so that copying payload_per_expert bytes moves exactly that expert's tiles, the
+		// (N / 16) (K / 16) tiles of 16n bits each (a whole number of words).
+		// A static-rate FTQ [E, N, K] blob is one (E N) x K blob: its 32-byte header, then expert e's (N / 16) (K / 16)
+		// tiles of 16 n bits, then its FP16 scales. The bank is the [slots, N, K] blob of the same layout, whose header is
+		// the source's with rows slots N (_ccv_nnc_moe_ftq_bank_header). A variable-rate blob has no fixed expert stride.
+		if (ccv_nnc_8i_rowwise_x_is_ftq_vr(source_info.reserved))
+			return 0;
+		const int ftq = ccv_nnc_8i_rowwise_x_is_ftq(source_info.reserved);
+		if (ftq)
+			payload_offset = 32;
+		// The resident bank keeps the reserved field, so a TMCQ / FTQ codebook slot (bits 16 - 23) carries over to it; no
+		// other modifier bit is taken.
+		const int tmcq = ccv_nnc_8i_rowwise_x_is_tmcq(source_info.reserved);
+		if ((tmcq || ftq) &&
+			((source_info.dim[1] % 16) != 0 || (source_info.dim[2] % 16) != 0 ||
+			 (source_info.reserved & ~(CCV_NNC_QX_8I_ROWWISE_FORMAT_MASK | CCV_NNC_CODEBOOK_SLOT_MASK))))
+			return 0;
+		const size_t payload_bits = (size_t)ccv_nnc_8i_rowwise_x_payload_bits(source_info.reserved, (uint64_t)source_info.dim[1], (uint64_t)source_info.dim[2]);
 		if (payload_bits & 7)
 			return 0;
 		payload_per_expert = payload_bits >> 3;
@@ -210,19 +231,42 @@ static int _ccv_nnc_moe_weight_layout(const ccv_nnc_tensor_param_t source_info, 
 	const size_t scale_per_expert = (size_t)source_info.dim[1] * scale_size;
 	const size_t payload_size = (size_t)slots * payload_per_expert;
 	const size_t scale_size_total = (size_t)slots * scale_per_expert;
-	const size_t scale_offset = _ccv_nnc_moe_align_up(payload_size, 128);
+	const size_t scale_offset = _ccv_nnc_moe_align_up(payload_offset + payload_size, 128);
 	ccv_nnc_tensor_param_t info = source_info;
 	info.dim[0] = slots;
 	const size_t size = scale_offset + scale_size_total;
 	if (size != ccv_nnc_tensor_data_size_without_padding(info))
 		return 0;
 	*layout = (ccv_nnc_moe_weight_layout_t){
+		.payload_offset = payload_offset,
 		.payload_per_expert = payload_per_expert,
 		.scale_per_expert = scale_per_expert,
 		.scale_offset = scale_offset,
 		.size = size,
 		.info = info,
 	};
+	return 1;
+}
+
+// The CCVFTQSR header of a static-rate FTQ source (a layout with payload_offset 32) from its file, and the bank's
+// header: the same table and crc with rows slots x N.
+static int _ccv_nnc_moe_read_ftq_headers(const ccv_nnc_mps_file_backed_region_t* const region, const ccv_nnc_tensor_param_t source_info, const int slots, unsigned char source_header[32], unsigned char bank_header[32])
+{
+	const int fd = open(region->path.fileSystemRepresentation, O_RDONLY);
+	if (fd < 0)
+		return 0;
+	ssize_t result;
+	do {
+		result = pread(fd, source_header, 32, region->offset);
+	} while (result < 0 && errno == EINTR);
+	close(fd);
+	uint32_t rows;
+	memcpy(&rows, source_header + 8, sizeof(rows));
+	if (result != 32 || memcmp(source_header, "CCVFTQSR", 8) != 0 || rows != (uint32_t)source_info.dim[0] * (uint32_t)source_info.dim[1])
+		return 0;
+	memcpy(bank_header, source_header, 32);
+	rows = (uint32_t)slots * (uint32_t)source_info.dim[1];
+	memcpy(bank_header + 8, &rows, sizeof(rows));
 	return 1;
 }
 
@@ -405,7 +449,9 @@ static MFAMoEWeightsStreamingState* _ccv_nnc_moe_state_for_inputs(ccv_nnc_tensor
 			const int has_resident_layout = _ccv_nnc_moe_weight_layout(
 				inputs[i + 3]->info, resident_slots, &state->resident_layouts[i]);
 			if (!has_region || !has_source_layout || !has_resident_layout ||
-				region.size < state->source_layouts[i].size)
+				region.size < state->source_layouts[i].size ||
+				(state->source_layouts[i].payload_offset &&
+				 !_ccv_nnc_moe_read_ftq_headers(&region, inputs[i + 3]->info, resident_slots, state->source_headers[i], state->resident_headers[i])))
 			{
 				invalid_source = 1;
 				break;
@@ -422,7 +468,12 @@ static MFAMoEWeightsStreamingState* _ccv_nnc_moe_state_for_inputs(ccv_nnc_tensor
 		ccv_nnc_mfa_prepare_moe_weights_streaming(ccv_nnc_default_mfa_context());
 		id<MTLDevice> const device = ccv_nnc_default_device();
 		for (i = 0; i < 3; i++)
+		{
 			state->resident_buffers[i] = [device newBufferWithLength:state->resident_layouts[i].size options:MTLResourceCPUCacheModeDefaultCache | MTLResourceStorageModeShared];
+			// Expert loads write payloads and scales only; an FTQ bank's header is written once.
+			if (state->resident_buffers[i] && state->resident_layouts[i].payload_offset)
+				memcpy(state->resident_buffers[i].contents, state->resident_headers[i], 32);
+		}
 		state->gpu_plan_size = _ccv_nnc_moe_gpu_plan_size(state->expert_count);
 		state->gpu_logical_to_slot_buffer = [device newBufferWithLength:sizeof(int32_t) * (size_t)state->expert_count options:MTLResourceStorageModePrivate];
 		state->gpu_slot_to_logical_buffer = [device newBufferWithLength:sizeof(int32_t) * resident_slots options:MTLResourceStorageModePrivate];
@@ -489,6 +540,10 @@ static int _ccv_nnc_moe_prepare_prefill_buffers(MFAMoEWeightsStreamingState* con
 		}
 		state->prefill_leases[i] = lease;
 		state->prefill_buffers[i] = scratch;
+		// Selective staging writes payloads and scales only; an FTQ source's header goes in front (a full load reads it
+		// again with the rest of the blob).
+		if (state->source_layouts[i].payload_offset)
+			memcpy(scratch.contents, state->source_headers[i], 32);
 	}
 	return 1;
 }
@@ -638,7 +693,7 @@ static int _ccv_nnc_moe_read_expert_span_to(MFAMoEWeightsStreamingState* const s
 	}
 	const size_t payload_size = (size_t)expert_count * destination_layout.payload_per_expert;
 	const size_t scale_size = (size_t)expert_count * destination_layout.scale_per_expert;
-	const size_t payload_start = (size_t)destination_slot * destination_layout.payload_per_expert;
+	const size_t payload_start = destination_layout.payload_offset + (size_t)destination_slot * destination_layout.payload_per_expert;
 	const size_t scale_start = destination_layout.scale_offset +
 		(size_t)destination_slot * destination_layout.scale_per_expert;
 	if (!destination_buffer.contents || payload_start > destination_buffer.length ||
@@ -649,7 +704,7 @@ static int _ccv_nnc_moe_read_expert_span_to(MFAMoEWeightsStreamingState* const s
 			projection, expert, expert_count, destination_slot);
 		return 0;
 	}
-	const size_t source_payload_delta = (size_t)expert * source_layout.payload_per_expert;
+	const size_t source_payload_delta = source_layout.payload_offset + (size_t)expert * source_layout.payload_per_expert;
 	const size_t source_scale_delta = source_layout.scale_offset +
 		(size_t)expert * source_layout.scale_per_expert;
 	if (source_payload_delta > INT64_MAX || source_scale_delta > INT64_MAX ||
@@ -711,8 +766,8 @@ static int _ccv_nnc_moe_copy_resident_to_prefill(MFAMoEWeightsStreamingState* co
 	if (!source || !destination || resident_slot < 0 || resident_slot >= state->resident_slot_count ||
 		prefill_slot < 0 || prefill_slot >= state->expert_count)
 		return 0;
-	memcpy(destination + (size_t)prefill_slot * prefill_layout.payload_per_expert,
-		source + (size_t)resident_slot * resident_layout.payload_per_expert,
+	memcpy(destination + prefill_layout.payload_offset + (size_t)prefill_slot * prefill_layout.payload_per_expert,
+		source + resident_layout.payload_offset + (size_t)resident_slot * resident_layout.payload_per_expert,
 		prefill_layout.payload_per_expert);
 	memcpy(destination + prefill_layout.scale_offset + (size_t)prefill_slot * prefill_layout.scale_per_expert,
 		source + resident_layout.scale_offset + (size_t)resident_slot * resident_layout.scale_per_expert,
@@ -873,13 +928,30 @@ static void _ccv_nnc_moe_load_gpu_plan(MFAMoEWeightsStreamingState* const state,
 			(unsigned long long)generation);
 }
 
-static int _ccv_nnc_moe_weights_streaming_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
+static int _ccv_nnc_moe_weights_streaming_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const source_inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
 {
 	if (input_size != 6 || output_size != 6 || !outputs[0])
 		return CCV_NNC_EXEC_INVALID;
 	if (outputs[0]->info.dim[0] == 0)
 		return CCV_NNC_EXEC_SUCCESS;
 	@autoreleasepool {
+		// Expert weights with an inline codebook (TMCQ, static-rate FTQ) stream as the data after the table, naming the
+		// table's slot: the file region, the layouts and the resident bank are those of a tensor without one. The view's
+		// region starts after the table, so an FTQ source's CCVFTQSR header is read from there, and the view checked that
+		// header against the table (ccv_nnc_mps_8i_rowwise_x_inline_view).
+		ccv_nnc_tensor_t weight_views[3];
+		ccv_nnc_tensor_t* inputs[6];
+		int k;
+		for (k = 0; k < 6; k++)
+		{
+			inputs[k] = source_inputs[k];
+			if (k >= 3)
+			{
+				inputs[k] = (ccv_nnc_tensor_t*)ccv_nnc_mps_8i_rowwise_x_inline_view(source_inputs[k], &weight_views[k - 3]);
+				if (!inputs[k])
+					return CCV_NNC_EXEC_INVALID;
+			}
+		}
 		if (!_ccv_nnc_moe_validate(cmd, inputs, input_size, outputs, output_size))
 			return CCV_NNC_EXEC_INVALID;
 		MFAMoEWeightsStreamingState* const state = _ccv_nnc_moe_state_for_inputs(
@@ -915,9 +987,9 @@ static int _ccv_nnc_moe_weights_streaming_forw(const ccv_nnc_cmd_t cmd, const cc
 				{
 					if (inputs[i] == outputs[i])
 						continue;
-					[encoder copyFromBuffer:mpgetbuffer(inputs[i]) sourceOffset:mpgetoffset(inputs[i])
-						toBuffer:mpgetbuffer(outputs[i]) destinationOffset:mpgetoffset(outputs[i])
-						size:ccv_nnc_tensor_data_size_without_padding(inputs[i]->info)];
+					ccv_nnc_mps_blit_copy(encoder, mpgetbuffer(inputs[i]), mpgetoffset(inputs[i]),
+						mpgetbuffer(outputs[i]), mpgetoffset(outputs[i]),
+						ccv_nnc_tensor_data_size_without_padding(inputs[i]->info));
 				}
 				[encoder endEncoding];
 				ccv_nnc_stream_context_finish_mps_command_buffer(stream_context, command_buffer);

@@ -17,6 +17,9 @@ typedef struct {
   // Optional streamed-weight readiness. Activations can be quantized before waiting.
   mtl_buffer_t* readiness_buffer;
   uint32_t readiness_value;
+  // The external codebook of a TMCQ or FTQ format whose bits 16 - 23 hold its log2 entry count (ccv_nnc_mfa_codebook_format),
+  // for both gate and up; NULL for the built-in table.
+  mtl_buffer_t* codebook;
 } ccv_nnc_mfa_segmented_scaled_swiglu_params_t;
 
 #ifdef __cplusplus

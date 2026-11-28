@@ -7,14 +7,21 @@
 
 struct Dequantize8iRowwiseXKernelDescriptor {
 	uint32_t format;
-	constexpr bool operator==(const Dequantize8iRowwiseXKernelDescriptor& rhs) const { return format == rhs.format; }
+	// Variable-rate FTQ: the blob's level mask (bit i is rate 8 + 2 i, i <= 40), which picks the per-rate bodies; 0
+	// otherwise.
+	uint64_t levelMask = 0;
+	// TMCQ / FTQ thread map for tile rows the original 2-tile blocks do not tile (0 otherwise, which generates the
+	// original source): bit 0 is an odd tiles_per_row (TMCQ, static-rate FTQ), bit 1 tiles_per_row % (2 T) != 0 for
+	// variable-rate FTQ (ftq_vr_generic_blocks).
+	uint32_t tileTail = 0;
+	constexpr bool operator==(const Dequantize8iRowwiseXKernelDescriptor& rhs) const { return format == rhs.format && levelMask == rhs.levelMask && tileTail == rhs.tileTail; }
 };
 
 template<>
 struct std::hash<Dequantize8iRowwiseXKernelDescriptor>
 {
 	std::size_t operator()(const Dequantize8iRowwiseXKernelDescriptor& hash) const noexcept {
-		return std::hash<uint32_t>()(hash.format);
+		return std::hash<uint64_t>()((uint64_t)hash.format | ((uint64_t)hash.levelMask << 32)) ^ std::hash<uint64_t>()(hash.levelMask >> 32) ^ ((std::size_t)hash.tileTail * 0x9E3779B97F4A7C15ull);
 	}
 };
 
@@ -25,6 +32,8 @@ struct Dequantize8iRowwiseXDescriptor {
 	uint32_t scaleSize;
 	uint32_t rowLength;
 	uint32_t length;
+	// Variable-rate FTQ: the level mask of the blob's header (words 3 and 4); 0 for every other format.
+	uint64_t levelMask = 0;
 
 	bool operator==(const Dequantize8iRowwiseXDescriptor& rhs) const;
 
@@ -33,6 +42,7 @@ struct Dequantize8iRowwiseXDescriptor {
 	uint32_t groupsPerRow() const noexcept;
 	uint32_t groupBits() const noexcept;
 	uint32_t totalGroups() const noexcept;
+	uint32_t tileTail() const noexcept;
 		uint64_t inputScaleOffset() const noexcept;
 		uint64_t outputScaleOffset() const noexcept;
 	uint32_t scaleBytes() const noexcept;

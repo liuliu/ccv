@@ -18,6 +18,19 @@ constexpr uint32_t kSegmentedInt8GemvRowsPerThreadgroup =
 // splitting the groups, so it takes more SIMD groups (and rows) per threadgroup.
 uint32_t segmentedInt8GemvSIMDGroupsPerThreadgroup(const uint32_t format);
 
+// The TMCQ rate n (n / 16 bits per weight) of a CCV_NNC_QX_8I_ROWWISE_TMCQ_N* format, or 0 for any
+// other format (including a TMCQ codec with modifier bits, which no kernel supports).
+uint32_t segmentedTMCQRate(const uint32_t format);
+
+// The static-rate FTQ rate n of a CCV_NNC_QX_8I_ROWWISE_FTQ_N* format (with an external codebook's log2 in bits 16 - 23
+// and, for a quadrant-folded table, bit 24), or 0 for any other format. The weight is one CCVFTQSR blob of
+// expertCount N x K experts: the 32-byte header, every expert's tiles in order, then one FP16 scale per row.
+uint32_t segmentedFTQRate(const uint32_t format);
+
+// Rows a threadgroup of the segmented GEMV covers. TMCQ tiles span 16 rows, so each of its SIMD
+// groups takes one 16-row tile row and shares the activation loads across those rows.
+uint32_t segmentedInt8GemvRowsPerThreadgroup(const uint32_t format);
+
 struct SegmentedInt8GemvKernelDescriptor {
   uint8_t fusedBias;
   uint8_t mrows;

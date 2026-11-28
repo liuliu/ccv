@@ -13,6 +13,12 @@ struct Dequantize8iRowwiseXKernel {
 
 	uint32_t format;
 
+	// Variable-rate FTQ: the level mask whose rates get per-rate bodies; 0 otherwise.
+	uint64_t levelMask;
+
+	// See Dequantize8iRowwiseXKernelDescriptor::tileTail.
+	uint32_t tileTail;
+
 	Dequantize8iRowwiseXKernel(Dequantize8iRowwiseXKernelDescriptor descriptor, MTL::Device* const device);
 
 	MTL::Size gridSize(uint32_t dispatchItems) const noexcept;

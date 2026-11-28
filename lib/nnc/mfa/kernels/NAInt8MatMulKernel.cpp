@@ -373,7 +373,7 @@ __attribute__((always_inline)) inline void load_register_tile(thread register_ti
   }
 }
 
-// Four M16/N32/K16 operations form a SIMD group's M32/N32/K32 update.
+// Four 16 x 32 x 16 (M x N x K) operations form a SIMD group's 32 x 32 x 32 update.
 // B is stored as [N,K], so its two N fragments become the right operand
 // of a transposed MPP multiply. The accumulator stays INT32 throughout K.
 __attribute__((always_inline)) inline void multiply_register_tiles(thread register_tile<int32_t>& accum,

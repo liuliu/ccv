@@ -15,6 +15,10 @@ typedef enum {
 	SEGMENTED_SWIGLU_IQ2_XS,
 	SEGMENTED_SWIGLU_IQ3_XXS,
 	SEGMENTED_SWIGLU_Q2_K,
+	SEGMENTED_SWIGLU_IQ1_S,
+	SEGMENTED_SWIGLU_TMCQ_N18,
+	SEGMENTED_SWIGLU_TMCQ_N22,
+	SEGMENTED_SWIGLU_TMCQ_N26,
 } segmented_swiglu_weight_format_t;
 
 typedef enum {
@@ -57,6 +61,14 @@ static const char* _segmented_swiglu_format_name(const segmented_swiglu_weight_f
 			return "iq3_xxs";
 		case SEGMENTED_SWIGLU_Q2_K:
 			return "q2_k";
+		case SEGMENTED_SWIGLU_IQ1_S:
+			return "iq1_s";
+		case SEGMENTED_SWIGLU_TMCQ_N18:
+			return "tmcq_n18";
+		case SEGMENTED_SWIGLU_TMCQ_N22:
+			return "tmcq_n22";
+		case SEGMENTED_SWIGLU_TMCQ_N26:
+			return "tmcq_n26";
 		default:
 			return "rowwise";
 	}
@@ -74,7 +86,15 @@ static segmented_swiglu_weight_format_t _segmented_swiglu_parse_format(const cha
 		return SEGMENTED_SWIGLU_IQ3_XXS;
 	if (strcmp(format, "q2_k") == 0 || strcmp(format, "Q2_K") == 0)
 		return SEGMENTED_SWIGLU_Q2_K;
-	fprintf(stderr, "weight format must be rowwise, iq2_xxs, iq2_xs, iq3_xxs, or q2_k\n");
+	if (strcmp(format, "iq1_s") == 0 || strcmp(format, "IQ1_S") == 0)
+		return SEGMENTED_SWIGLU_IQ1_S;
+	if (strcmp(format, "tmcq_n18") == 0 || strcmp(format, "TMCQ_N18") == 0)
+		return SEGMENTED_SWIGLU_TMCQ_N18;
+	if (strcmp(format, "tmcq_n22") == 0 || strcmp(format, "TMCQ_N22") == 0)
+		return SEGMENTED_SWIGLU_TMCQ_N22;
+	if (strcmp(format, "tmcq_n26") == 0 || strcmp(format, "TMCQ_N26") == 0)
+		return SEGMENTED_SWIGLU_TMCQ_N26;
+	fprintf(stderr, "weight format must be rowwise, iq2_xxs, iq2_xs, iq3_xxs, q2_k, iq1_s, tmcq_n18, tmcq_n22, or tmcq_n26\n");
 	exit(1);
 }
 
@@ -90,6 +110,15 @@ static ccv_nnc_tensor_param_t _segmented_swiglu_quantized_params(const ccv_nnc_t
 			return ccv_nnc_tensor_8i_rowwise_x(dense_params, CCV_NNC_QX_8I_ROWWISE_IQ3_XXS);
 		case SEGMENTED_SWIGLU_Q2_K:
 			return ccv_nnc_tensor_8i_rowwise_x(dense_params, CCV_NNC_QX_8I_ROWWISE_Q2_K);
+		case SEGMENTED_SWIGLU_IQ1_S:
+			return ccv_nnc_tensor_8i_rowwise_x(dense_params, CCV_NNC_QX_8I_ROWWISE_IQ1_S);
+		// Any TMCQ bit string is a valid payload, so the deterministic byte fill works as is.
+		case SEGMENTED_SWIGLU_TMCQ_N18:
+			return ccv_nnc_tensor_8i_rowwise_x(dense_params, CCV_NNC_QX_8I_ROWWISE_TMCQ_N18);
+		case SEGMENTED_SWIGLU_TMCQ_N22:
+			return ccv_nnc_tensor_8i_rowwise_x(dense_params, CCV_NNC_QX_8I_ROWWISE_TMCQ_N22);
+		case SEGMENTED_SWIGLU_TMCQ_N26:
+			return ccv_nnc_tensor_8i_rowwise_x(dense_params, CCV_NNC_QX_8I_ROWWISE_TMCQ_N26);
 		default:
 			return ccv_nnc_tensor_8i_rowwise(dense_params);
 	}
@@ -288,7 +317,7 @@ static int _segmented_swiglu_compare(const char* const path, const ccv_nnc_tenso
 	return relative_l2 < 0.02 && cosine > 0.999;
 }
 
-static int _segmented_swiglu_fp32_prefill_benchmark(const int warmup, const int iterations, const int token_count)
+static int _segmented_swiglu_fp32_prefill_benchmark(const int warmup, const int iterations, const int token_count, const segmented_swiglu_weight_format_t format)
 {
 	const int experts = 256;
 	const int n = 2048;
@@ -305,7 +334,8 @@ static int _segmented_swiglu_fp32_prefill_benchmark(const int warmup, const int 
 	ccv_nnc_tensor_t* const counts = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32S, segments), 0);
 	ccv_nnc_tensor_t* const route = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, rows), 0);
 	const ccv_nnc_tensor_param_t dense_weight_params = GPU_TENSOR_NHWC(000, 32F, experts, n, k);
-	const ccv_nnc_tensor_param_t quantized_weight_params = ccv_nnc_tensor_8i_rowwise(dense_weight_params);
+	// The weights stay as allocated: timing only, and every packed bit pattern is a valid payload.
+	const ccv_nnc_tensor_param_t quantized_weight_params = _segmented_swiglu_quantized_params(dense_weight_params, format);
 	ccv_nnc_tensor_t* const gate_w = ccv_nnc_tensor_new(0, quantized_weight_params, 0);
 	ccv_nnc_tensor_t* const up_w = ccv_nnc_tensor_new(0, quantized_weight_params, 0);
 	ccv_nnc_tensor_t* const output = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, rows, n), 0);
@@ -349,8 +379,8 @@ static int _segmented_swiglu_fp32_prefill_benchmark(const int warmup, const int 
 	if (status == CCV_NNC_EXEC_SUCCESS)
 	{
 		qsort(samples, iterations, sizeof(double), _segmented_swiglu_double_compare);
-		printf("fp32,rowwise,prefill,T=%d,M=%d,S=%d,E=%d,N=%d,K=%d,median_ms=%.4f,min_ms=%.4f\n",
-			token_count, rows, segments, experts, n, k, samples[iterations / 2], samples[0]);
+		printf("fp32,%s,prefill,T=%d,M=%d,S=%d,E=%d,N=%d,K=%d,median_ms=%.4f,min_ms=%.4f\n",
+			_segmented_swiglu_format_name(format), token_count, rows, segments, experts, n, k, samples[iterations / 2], samples[0]);
 	}
 	free(samples);
 	ccv_nnc_stream_context_free(stream);
@@ -374,7 +404,8 @@ int main(int argc, char** argv)
 		return _segmented_swiglu_fp32_prefill_benchmark(
 			argc > 2 ? atoi(argv[2]) : 2,
 			argc > 3 ? atoi(argv[3]) : 7,
-			argc > 4 ? atoi(argv[4]) : 2048);
+			argc > 4 ? atoi(argv[4]) : 2048,
+			argc > 5 ? _segmented_swiglu_parse_format(argv[5]) : SEGMENTED_SWIGLU_ROWWISE);
 	const segmented_swiglu_weight_format_t format = _segmented_swiglu_parse_format(argc > 1 ? argv[1] : "iq2_xxs");
 	const int warmup = argc > 2 ? atoi(argv[2]) : 5;
 	const int iterations = argc > 3 ? atoi(argv[3]) : 30;
@@ -384,7 +415,8 @@ int main(int argc, char** argv)
 	const int segments = argc > 7 ? atoi(argv[7]) : 6;
 	if (warmup < 0 || iterations <= 0 || batch_size <= 0 || experts <= 0 || rows <= 0 || segments <= 0 || rows < segments)
 	{
-		fprintf(stderr, "usage: %s [rowwise|iq2_xxs|iq2_xs|iq3_xxs|q2_k] [warmup>=0] [iterations>0] [batch_size>0] [experts>0] [rows>=segments] [segments>0]\n", argv[0]);
+		fprintf(stderr, "usage: %s [rowwise|iq2_xxs|iq2_xs|iq3_xxs|q2_k|iq1_s|tmcq_n18|tmcq_n22|tmcq_n26] [warmup>=0] [iterations>0] [batch_size>0] [experts>0] [rows>=segments] [segments>0]\n"
+			"       %s prefill_fp32 [warmup] [iterations] [tokens] [format]\n", argv[0], argv[0]);
 		return 1;
 	}
 	ccv_nnc_init();
