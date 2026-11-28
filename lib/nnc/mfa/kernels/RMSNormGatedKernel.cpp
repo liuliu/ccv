@@ -48,7 +48,7 @@ using namespace metal;
 
 inline float stable_sigmoid(float z)
 {
-  const float tail = 1.0f / (1.0f + exp(abs(z)));
+  const float tail = precise::divide(1.0f, 1.0f + precise::exp(abs(z)));
   const float positive = step(0.0f, z);
   return tail + positive * (1.0f - 2.0f * tail);
 }

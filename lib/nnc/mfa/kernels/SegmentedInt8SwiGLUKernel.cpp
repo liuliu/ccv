@@ -865,7 +865,7 @@ using namespace metal;
 
 inline float stable_sigmoid(const float value)
 {
-  const float tail = 1.0f / (1.0f + exp(abs(value)));
+  const float tail = precise::divide(1.0f, 1.0f + precise::exp(abs(value)));
   return tail + step(0.0f, value) * (1.0f - 2.0f * tail);
 }
 
@@ -874,9 +874,9 @@ inline float stable_sigmoid(const float value)
     // The sigmoid reads the gate itself, while the soft caps bound its linear factor and up. The
     // fast tanh loses accuracy for large inputs, as in the tanh kernel.
     shader += "inline float soft_cap_swiglu(const float gate, const float up)\n{\n  return (";
-    shader += descriptor.upSoftCap ? "up_soft_cap * precise::tanh(up / up_soft_cap)" : "up";
+    shader += descriptor.upSoftCap ? "up_soft_cap * precise::tanh(precise::divide(up, up_soft_cap))" : "up";
     shader += ") * (";
-    shader += descriptor.gateSoftCap ? "gate_soft_cap * precise::tanh(gate / gate_soft_cap)" : "gate";
+    shader += descriptor.gateSoftCap ? "gate_soft_cap * precise::tanh(precise::divide(gate, gate_soft_cap))" : "gate";
     shader += ") * stable_sigmoid(gate);\n}\n\n";
   }
   appendRoutesSignature(shader);
@@ -1003,7 +1003,7 @@ using namespace metal;
 
 inline float stable_sigmoid(const float value)
 {
-  const float tail = 1.0f / (1.0f + exp(abs(value)));
+  const float tail = precise::divide(1.0f, 1.0f + precise::exp(abs(value)));
   return tail + step(0.0f, value) * (1.0f - 2.0f * tail);
 }
 
@@ -1012,9 +1012,9 @@ inline float stable_sigmoid(const float value)
     // The sigmoid reads the gate itself, while the soft caps bound its linear factor and up. The
     // fast tanh loses accuracy for large inputs, as in the tanh kernel.
     shader += "inline float soft_cap_swiglu(const float gate, const float up)\n{\n  return (";
-    shader += descriptor.upSoftCap ? "up_soft_cap * precise::tanh(up / up_soft_cap)" : "up";
+    shader += descriptor.upSoftCap ? "up_soft_cap * precise::tanh(precise::divide(up, up_soft_cap))" : "up";
     shader += ") * (";
-    shader += descriptor.gateSoftCap ? "gate_soft_cap * precise::tanh(gate / gate_soft_cap)" : "gate";
+    shader += descriptor.gateSoftCap ? "gate_soft_cap * precise::tanh(precise::divide(gate, gate_soft_cap))" : "gate";
     shader += ") * stable_sigmoid(gate);\n}\n\n";
   }
   appendRoutesSignature(shader);
@@ -1144,7 +1144,7 @@ using namespace metal;
 
 inline float stable_sigmoid(const float value)
 {
-  const float tail = 1.0f / (1.0f + exp(abs(value)));
+  const float tail = precise::divide(1.0f, 1.0f + precise::exp(abs(value)));
   return tail + step(0.0f, value) * (1.0f - 2.0f * tail);
 }
 
@@ -1153,9 +1153,9 @@ inline float stable_sigmoid(const float value)
     // The sigmoid reads the gate itself, while the soft caps bound its linear factor and up. The
     // fast tanh loses accuracy for large inputs, as in the tanh kernel.
     shader += "inline float soft_cap_swiglu(const float gate, const float up)\n{\n  return (";
-    shader += descriptor.upSoftCap ? "up_soft_cap * precise::tanh(up / up_soft_cap)" : "up";
+    shader += descriptor.upSoftCap ? "up_soft_cap * precise::tanh(precise::divide(up, up_soft_cap))" : "up";
     shader += ") * (";
-    shader += descriptor.gateSoftCap ? "gate_soft_cap * precise::tanh(gate / gate_soft_cap)" : "gate";
+    shader += descriptor.gateSoftCap ? "gate_soft_cap * precise::tanh(precise::divide(gate, gate_soft_cap))" : "gate";
     shader += ") * stable_sigmoid(gate);\n}\n\n";
   }
   appendRoutesSignature(shader);
@@ -1282,7 +1282,7 @@ using namespace metal;
 
 inline float stable_sigmoid(const float value)
 {
-  const float tail = 1.0f / (1.0f + exp(abs(value)));
+  const float tail = precise::divide(1.0f, 1.0f + precise::exp(abs(value)));
   return tail + step(0.0f, value) * (1.0f - 2.0f * tail);
 }
 
@@ -1291,9 +1291,9 @@ inline float stable_sigmoid(const float value)
     // The sigmoid reads the gate itself, while the soft caps bound its linear factor and up. The
     // fast tanh loses accuracy for large inputs, as in the tanh kernel.
     shader += "inline float soft_cap_swiglu(const float gate, const float up)\n{\n  return (";
-    shader += descriptor.upSoftCap ? "up_soft_cap * precise::tanh(up / up_soft_cap)" : "up";
+    shader += descriptor.upSoftCap ? "up_soft_cap * precise::tanh(precise::divide(up, up_soft_cap))" : "up";
     shader += ") * (";
-    shader += descriptor.gateSoftCap ? "gate_soft_cap * precise::tanh(gate / gate_soft_cap)" : "gate";
+    shader += descriptor.gateSoftCap ? "gate_soft_cap * precise::tanh(precise::divide(gate, gate_soft_cap))" : "gate";
     shader += ") * stable_sigmoid(gate);\n}\n\n";
   }
   appendRoutesSignature(shader);
@@ -1514,7 +1514,7 @@ inline float2 dot_pair(
 
 inline float stable_sigmoid(const float value)
 {
-  const float tail = 1.0f / (1.0f + exp(abs(value)));
+  const float tail = precise::divide(1.0f, 1.0f + precise::exp(abs(value)));
   return tail + step(0.0f, value) * (1.0f - 2.0f * tail);
 }
 
@@ -1523,9 +1523,9 @@ inline float stable_sigmoid(const float value)
     // The sigmoid reads the gate itself, while the soft caps bound its linear factor and up. The
     // fast tanh loses accuracy for large inputs, as in the tanh kernel.
     shader += "inline float soft_cap_swiglu(const float gate, const float up)\n{\n  return (";
-    shader += descriptor.upSoftCap ? "up_soft_cap * precise::tanh(up / up_soft_cap)" : "up";
+    shader += descriptor.upSoftCap ? "up_soft_cap * precise::tanh(precise::divide(up, up_soft_cap))" : "up";
     shader += ") * (";
-    shader += descriptor.gateSoftCap ? "gate_soft_cap * precise::tanh(gate / gate_soft_cap)" : "gate";
+    shader += descriptor.gateSoftCap ? "gate_soft_cap * precise::tanh(precise::divide(gate, gate_soft_cap))" : "gate";
     shader += ") * stable_sigmoid(gate);\n}\n\n";
   }
   appendRoutesSignature(shader);

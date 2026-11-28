@@ -57,7 +57,7 @@ kernel void causal_convolution(
 {{DYNAMIC_OFFSET}}    for (uint j = 0; j < K; j++)
       sum += {{WEIGHT}} * context_value(x, previous, b, row + j, c, T);
     if (silu)
-      sum = sum / (1.0f + exp(-sum));
+      sum = precise::divide(sum, 1.0f + precise::exp(-sum));
     y[(b * T + row) * C + c] = real(sum);
   } else {
     // The next rows are the context's last R rows.

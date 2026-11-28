@@ -33,12 +33,12 @@ std::string TanhKernel::createSource() const noexcept {
     shader += "  if (idx >= count)\n    return;\n";
   if (gradient) {
     // The source is the forward output y, d(soft_cap * tanh(x / soft_cap)) / dx = 1 - (y / soft_cap)^2.
-    shader += "  const " + arithmetic + " y = (" + arithmetic + ")(src[idx]) / soft_cap;\n";
+    shader += "  const " + arithmetic + " y = precise::divide((" + arithmetic + ")(src[idx]), soft_cap);\n";
     shader += "  destination[idx] = (" + real + ")((" + arithmetic + ")g[idx] * (1.0f - y * y));\n";
   } else {
     // The fast tanh loses accuracy for large inputs, use the precise one like MLX does.
     shader += "  const " + arithmetic + " x = (" + arithmetic + ")(src[idx]);\n";
-    shader += "  destination[idx] = (" + real + ")(soft_cap * precise::tanh(x / soft_cap));\n";
+    shader += "  destination[idx] = (" + real + ")(soft_cap * precise::tanh(precise::divide(x, soft_cap)));\n";
   }
   shader += "}\n";
   return shader;

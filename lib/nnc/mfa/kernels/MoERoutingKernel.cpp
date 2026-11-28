@@ -48,6 +48,8 @@ constant uint token_count [[function_constant(8)]];
 
 inline float stable_log1p(float x)
 {
+	// Fast math folds (1 + x) - 1 back to x, which drops the compensation.
+	#pragma METAL fp math_mode(safe)
 	const float xp1 = 1.0f + x;
 	if (xp1 == 1.0f)
 		return x;
@@ -57,7 +59,7 @@ inline float stable_log1p(float x)
 inline float routing_probability(float x)
 {
 	if (sigmoid_scoring)
-		return 1.0f / (1.0f + precise::exp(-x));
+		return precise::divide(1.0f, 1.0f + precise::exp(-x));
 	const float positive = x > 0.0f ? x : 0.0f;
 	return sqrt(positive + stable_log1p(precise::exp(-abs(x))));
 }

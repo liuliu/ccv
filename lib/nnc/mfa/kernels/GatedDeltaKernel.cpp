@@ -104,7 +104,7 @@ constant float gate_lower_bound [[function_constant(19)]];
 constant bool sigmoid_beta [[function_constant(20)]];
 
 inline float gated_delta_sigmoid(float x) {
-  return 1.0f / (1.0f + precise::exp(-x));
+  return precise::divide(1.0f, 1.0f + precise::exp(-x));
 }
 
 // q, k and v may be the raw outputs of a causal convolution.
@@ -281,7 +281,7 @@ constant float gate_lower_bound [[function_constant(19)]];
 constant bool sigmoid_beta [[function_constant(20)]];
 
 inline float gated_delta_sigmoid(float x) {
-  return 1.0f / (1.0f + precise::exp(-x));
+  return precise::divide(1.0f, 1.0f + precise::exp(-x));
 }
 
 // q, k and v may be the raw outputs of a causal convolution.

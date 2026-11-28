@@ -32,16 +32,20 @@ using namespace metal;
 
 inline float stable_log1p(float x)
 {
+  // Fast math folds (1 + x) - 1 back to x, which drops the compensation.
+  #pragma METAL fp math_mode(safe)
   const float xp1 = 1.0f + x;
   if (xp1 == 1.0f)
     return x;
-  return x * (log(xp1) / (xp1 - 1.0f));
+  return x * (precise::log(xp1) / (xp1 - 1.0f));
 }
 
 inline float4 stable_log1p(float4 x)
 {
+  // Fast math folds (1 + x) - 1 back to x, which drops the compensation.
+  #pragma METAL fp math_mode(safe)
   const float4 xp1 = 1.0f + x;
-  const float4 y = x * (log(xp1) / (xp1 - 1.0f));
+  const float4 y = x * (precise::log(xp1) / (xp1 - 1.0f));
   return select(y, x, xp1 == 1.0f);
 }
 

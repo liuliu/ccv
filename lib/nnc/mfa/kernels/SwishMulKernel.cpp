@@ -70,7 +70,7 @@ using namespace metal;
       shader += R"(
 inline float4 stable_sigmoid(float4 z)
 {
-  const float4 tail = 1.0f / (1.0f + exp(abs(z)));
+  const float4 tail = precise::divide(1.0f, 1.0f + precise::exp(abs(z)));
   const float4 positive = step(0.0f, z);
   return tail + positive * (1.0f - 2.0f * tail);
 }
@@ -79,7 +79,7 @@ inline float4 stable_sigmoid(float4 z)
       shader += R"(
 inline float stable_sigmoid(float z)
 {
-  const float tail = 1.0f / (1.0f + exp(abs(z)));
+  const float tail = precise::divide(1.0f, 1.0f + precise::exp(abs(z)));
   const float positive = step(0.0f, z);
   return tail + positive * (1.0f - 2.0f * tail);
 }
@@ -90,8 +90,8 @@ inline float stable_sigmoid(float z)
       shader += R"(
 inline float4 stable_swish_gradient(float4 z)
 {
-  const float4 t = exp(-abs(z));
-  const float4 tail = t / (1.0f + t); // min(sigmoid, 1 - sigmoid)
+  const float4 t = precise::exp(-abs(z));
+  const float4 tail = precise::divide(t, 1.0f + t); // min(sigmoid, 1 - sigmoid)
   const float4 sigmoid = tail + step(0.0f, z) * (1.0f - 2.0f * tail);
   const float4 slope = tail * ((float4)(1.0f) - tail);
   const float4 correction = select((float4)(0.0f), z * slope, isfinite(z));
@@ -102,8 +102,8 @@ inline float4 stable_swish_gradient(float4 z)
       shader += R"(
 inline float stable_swish_gradient(float z)
 {
-  const float t = exp(-abs(z));
-  const float tail = t / (1.0f + t); // min(sigmoid, 1 - sigmoid)
+  const float t = precise::exp(-abs(z));
+  const float tail = precise::divide(t, 1.0f + t); // min(sigmoid, 1 - sigmoid)
   const float sigmoid = tail + step(0.0f, z) * (1.0f - 2.0f * tail);
   const float slope = tail * (1.0f - tail);
   const float correction = isfinite(z) ? (z * slope) : 0.0f;
@@ -200,9 +200,9 @@ inline float stable_swish_gradient(float z)
     // The sigmoid reads the gate itself; the soft caps bound its linear factor and the value.
     // The fast tanh loses accuracy for large inputs, as in the tanh kernel.
     if (upSoftCap)
-      shader += "  av = up_soft_cap * precise::tanh(av / up_soft_cap);\n";
+      shader += "  av = up_soft_cap * precise::tanh(precise::divide(av, up_soft_cap));\n";
     if (gateSoftCap)
-      shader += std::string("  float4 result = av * (gate_soft_cap * precise::tanh(bv / gate_soft_cap)) * stable_sigmoid(") + (beta_is_one ? "bv" : "beta * bv") + ");\n";
+      shader += std::string("  float4 result = av * (gate_soft_cap * precise::tanh(precise::divide(bv, gate_soft_cap))) * stable_sigmoid(") + (beta_is_one ? "bv" : "beta * bv") + ");\n";
     else if (beta_is_one)
       shader += "  float4 result = av * bv * stable_sigmoid(bv);\n";
     else
@@ -233,9 +233,9 @@ inline float stable_swish_gradient(float z)
     if (clamp_enabled)
       shader += "  av = metal::clamp(av, -clamp_limit, clamp_limit);\n  bv = min(bv, clamp_limit);\n";
     if (upSoftCap)
-      shader += "  av = up_soft_cap * precise::tanh(av / up_soft_cap);\n";
+      shader += "  av = up_soft_cap * precise::tanh(precise::divide(av, up_soft_cap));\n";
     if (gateSoftCap)
-      shader += std::string("  float result = av * (gate_soft_cap * precise::tanh(bv / gate_soft_cap)) * stable_sigmoid(") + (beta_is_one ? "bv" : "beta * bv") + ");\n";
+      shader += std::string("  float result = av * (gate_soft_cap * precise::tanh(precise::divide(bv, gate_soft_cap))) * stable_sigmoid(") + (beta_is_one ? "bv" : "beta * bv") + ");\n";
     else if (beta_is_one)
       shader += "  float result = av * bv * stable_sigmoid(bv);\n";
     else
